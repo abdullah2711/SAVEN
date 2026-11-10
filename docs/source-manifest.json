@@ -1,0 +1,20 @@
+{
+  "date": "2026-11-11",
+  "source_precedence": [
+    "Saven_Discussion.txt",
+    "SIMBA_Product_Blueprint.md"
+  ],
+  "sources": [
+    {
+      "file_name": "Saven_Discussion.txt",
+      "sha256": "41c33ee6319398159d0a397571bb2d4e75d8ad741cc58ab8cfd1d5b419e38e47",
+      "bytes": 50183
+    },
+    {
+      "file_name": "SIMBA_Product_Blueprint.md",
+      "sha256": "3ede4fc23d94f4e726d44812492c41b85daac2e77216854031a3fc11a58e603a",
+      "bytes": 33633
+    }
+  ],
+  "note": "Fingerprints identify the supplied inputs. Private raw feedback is not duplicated into the repository."
+}

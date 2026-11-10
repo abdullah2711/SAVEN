@@ -1,0 +1,2789 @@
+{
+  "product": "SAVEN",
+  "pronunciation": "seven",
+  "baseline": "1.0",
+  "date": "2026-11-11",
+  "meaning": "Specified requirements are not implemented features. Public launch requires agreed family gates.",
+  "requirements": [
+    {
+      "id": "FND-001",
+      "family": "Business foundation",
+      "title": "Tenant and company identity",
+      "supported_scope": "Organization subscription and explicit legal-company membership",
+      "acceptance": "A user in company A cannot read or reference company B records",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-002",
+      "family": "Business foundation",
+      "title": "Dimensions",
+      "supported_scope": "Branches departments projects stores and cost centres",
+      "acceptance": "A report filters and reconciles each permitted dimension",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-003",
+      "family": "Business foundation",
+      "title": "Currencies and precision",
+      "supported_scope": "Decimal money quantities exchange rates and rounding policies",
+      "acceptance": "Boundary and conversion examples agree to independently calculated results",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-004",
+      "family": "Business foundation",
+      "title": "Periods and dates",
+      "supported_scope": "Financial years business dates timezones and locks",
+      "acceptance": "Every entry route rejects a locked period",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-005",
+      "family": "Business foundation",
+      "title": "Numbering",
+      "supported_scope": "Scoped unique document series with concurrency control",
+      "acceptance": "Simultaneous submissions cannot duplicate a document number",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-006",
+      "family": "Business foundation",
+      "title": "Membership lifecycle",
+      "supported_scope": "Invite suspend revoke recover and switch companies",
+      "acceptance": "Revocation blocks new requests queued actions and downloads",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-007",
+      "family": "Business foundation",
+      "title": "Permissions",
+      "supported_scope": "Roles row scopes field sensitivity and effective-access preview",
+      "acceptance": "Preview agrees with allow and deny tests",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-008",
+      "family": "Business foundation",
+      "title": "Delegated administration",
+      "supported_scope": "Company superadmin and module administrator grants",
+      "acceptance": "Delegation cannot exceed grantor authority or cross companies",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-009",
+      "family": "Business foundation",
+      "title": "Workspace configuration",
+      "supported_scope": "Role navigation quick actions and personal preferences",
+      "acceptance": "Hidden menus do not grant or revoke business authority",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FND-010",
+      "family": "Business foundation",
+      "title": "Localization packs",
+      "supported_scope": "Versioned language reporting tax and employment configuration",
+      "acceptance": "Unsupported pack rules are visible before activation",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-001",
+      "family": "Accounting and close",
+      "title": "Chart of accounts",
+      "supported_scope": "Templates hierarchy account types control accounts and effective-dated changes",
+      "acceptance": "Used accounts cannot be deleted or retyped without controlled treatment",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-002",
+      "family": "Accounting and close",
+      "title": "Opening position",
+      "supported_scope": "Trial balance dimensions evidence and subledger links",
+      "acceptance": "Opening control accounts agree without duplicate recognition",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-003",
+      "family": "Accounting and close",
+      "title": "Journal preparation",
+      "supported_scope": "Manual recurring accrual prepayment allocation and reversal",
+      "acceptance": "Required evidence and allowed dimensions are validated",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-004",
+      "family": "Accounting and close",
+      "title": "Posting kernel",
+      "supported_scope": "Balanced atomic immutable effects and linked correction",
+      "acceptance": "Failure produces no partial journal and retries post once",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-005",
+      "family": "Accounting and close",
+      "title": "Period controls",
+      "supported_scope": "Close checklist lock authorized reopening and subsequent adjustment",
+      "acceptance": "Reopening leaves reason actor approval and previous report version",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-006",
+      "family": "Accounting and close",
+      "title": "Cash and bank",
+      "supported_scope": "Cashbooks transfers petty cash receipts and payment records",
+      "acceptance": "Both sides of a transfer reconcile without duplicate cash",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-007",
+      "family": "Accounting and close",
+      "title": "Bank reconciliation",
+      "supported_scope": "Statement import matching exceptions and duplicate checks",
+      "acceptance": "Statement balance agrees to reconciled book balance with explained items",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-008",
+      "family": "Accounting and close",
+      "title": "Foreign currency",
+      "supported_scope": "Transaction rates settlement gains and period remeasurement",
+      "acceptance": "Realized and unrealized balances reproduce from stored rates",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-009",
+      "family": "Accounting and close",
+      "title": "Intercompany",
+      "supported_scope": "Reciprocal documents and due-to due-from reconciliation",
+      "acceptance": "Authorized cross-company process detects unmatched reciprocal balances",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-010",
+      "family": "Accounting and close",
+      "title": "Consolidation",
+      "supported_scope": "Mapped group reports eliminations and translation in agreed scope",
+      "acceptance": "Consolidated totals reconcile to companies plus approved eliminations",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-011",
+      "family": "Accounting and close",
+      "title": "Close controls",
+      "supported_scope": "Control accounts suspense unusual entries and missing evidence",
+      "acceptance": "Reviewer can resolve or explain every close blocker",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-012",
+      "family": "Accounting and close",
+      "title": "Correction history",
+      "supported_scope": "Reversal credit adjustment and audit references",
+      "acceptance": "Original entry remains readable and all later effects are traceable",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-013",
+      "family": "Accounting and close",
+      "title": "Revenue and contract balances",
+      "supported_scope": "Milestones deferred income retention and approved recognition schedules",
+      "acceptance": "Recognition and contract balances reproduce from supported policy examples",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-014",
+      "family": "Accounting and close",
+      "title": "Provisions and credit losses",
+      "supported_scope": "Receivable impairment provisions estimates and authorized reversals",
+      "acceptance": "Estimate inputs approval and later utilization remain traceable",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-015",
+      "family": "Accounting and close",
+      "title": "Lease schedules",
+      "supported_scope": "Supported lessee contracts interest depreciation modifications and disclosures",
+      "acceptance": "Schedule agrees to approved reporting-policy examples and GL",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-016",
+      "family": "Accounting and close",
+      "title": "Tax accounting schedules",
+      "supported_scope": "Current and deferred tax workpapers temporary differences and reviewed entries",
+      "acceptance": "Schedules reconcile to approved tax calculations without an automatic compliance claim",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "ACC-017",
+      "family": "Accounting and close",
+      "title": "Financial and equity schedules",
+      "supported_scope": "Supported investments debt equity movements and distributions",
+      "acceptance": "Classification measurement basis and approval are explicit for each supported instrument",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-001",
+      "family": "Sales and receivables",
+      "title": "Customer records",
+      "supported_scope": "Contacts terms credit limits addresses and tax identity",
+      "acceptance": "Duplicate and credit-policy checks run before submission",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-002",
+      "family": "Sales and receivables",
+      "title": "Quotations and orders",
+      "supported_scope": "Optional acceptance and order steps",
+      "acceptance": "A company can invoice services without order or delivery paperwork",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-003",
+      "family": "Sales and receivables",
+      "title": "Service and goods invoices",
+      "supported_scope": "Direct and linked invoices with tax discounts and dimensions",
+      "acceptance": "One invoice creates the expected receivable revenue tax and stock effects",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-004",
+      "family": "Sales and receivables",
+      "title": "Fulfilment",
+      "supported_scope": "Partial delivery backorders reservations and returns",
+      "acceptance": "Delivered billed and remaining quantities agree",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-005",
+      "family": "Sales and receivables",
+      "title": "Recurring billing",
+      "supported_scope": "Schedules end dates pauses and exception review",
+      "acceptance": "A retry cannot create a second invoice for the same period",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-006",
+      "family": "Sales and receivables",
+      "title": "Credit and refund",
+      "supported_scope": "Linked credit notes returns and authorized refund records",
+      "acceptance": "Credit cannot silently exceed permitted original value or quantity",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-007",
+      "family": "Sales and receivables",
+      "title": "Receipts and allocation",
+      "supported_scope": "Partial receipts advances withholding and unapplied balances",
+      "acceptance": "Customer balance agrees to invoices credits and allocations",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SAL-008",
+      "family": "Sales and receivables",
+      "title": "Receivables oversight",
+      "supported_scope": "Ageing statements collection tasks and disputed balances",
+      "acceptance": "Ageing agrees to control account at the stated as-of date",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-001",
+      "family": "Purchases and payables",
+      "title": "Supplier records",
+      "supported_scope": "Terms bank details tax identity and controlled bank changes",
+      "acceptance": "A sensitive bank-detail change has authority and an audit record",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-002",
+      "family": "Purchases and payables",
+      "title": "Requisitions and orders",
+      "supported_scope": "Optional purchase request approval and order commitments",
+      "acceptance": "Unapproved requests do not create approved commitments",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-003",
+      "family": "Purchases and payables",
+      "title": "Goods and service receipt",
+      "supported_scope": "Physical receipts and service acceptance are distinct",
+      "acceptance": "Service acceptance does not invent stock movements",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-004",
+      "family": "Purchases and payables",
+      "title": "Supplier bills",
+      "supported_scope": "Direct or matched bills duplicate checks and evidence",
+      "acceptance": "Duplicate supplier reference is flagged before a second liability",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-005",
+      "family": "Purchases and payables",
+      "title": "Matching",
+      "supported_scope": "Configurable two-way and three-way quantity price and tolerance rules",
+      "acceptance": "Out-of-tolerance bills enter the configured exception route",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-006",
+      "family": "Purchases and payables",
+      "title": "Adjustments",
+      "supported_scope": "Supplier credits returns landed costs and price differences",
+      "acceptance": "Inventory or expense and payable adjustments reconcile",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-007",
+      "family": "Purchases and payables",
+      "title": "Payment proposals",
+      "supported_scope": "Due-date priorities cash constraints approvals and export",
+      "acceptance": "A proposal does not itself transfer funds or mark settlement",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PUR-008",
+      "family": "Purchases and payables",
+      "title": "Payable oversight",
+      "supported_scope": "Ageing statements advances retention and reconciliation",
+      "acceptance": "Supplier schedule agrees to the payable control account",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-001",
+      "family": "Point of sale",
+      "title": "Fast sale",
+      "supported_scope": "Barcode keyboard search touch quantity pricing and receipt",
+      "acceptance": "Cashier completes a normal sale without AI or ledger selection",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-002",
+      "family": "Point of sale",
+      "title": "Till sessions",
+      "supported_scope": "Cashier assignment opening float cash movements and close",
+      "acceptance": "Expected cash agrees to tenders and reviewed count differences",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-003",
+      "family": "Point of sale",
+      "title": "Tenders",
+      "supported_scope": "Cash bank card reference split tenders and change",
+      "acceptance": "Tender total agrees to sale and external settlement differences are visible",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-004",
+      "family": "Point of sale",
+      "title": "Discount and override",
+      "supported_scope": "Threshold authority price overrides and reason",
+      "acceptance": "Unauthorized discounts are denied by API as well as UI",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-005",
+      "family": "Point of sale",
+      "title": "Returns",
+      "supported_scope": "Original-sale lookup refund limits and stock return",
+      "acceptance": "A repeated return cannot refund or receive the same quantity twice",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-006",
+      "family": "Point of sale",
+      "title": "Tax receipt",
+      "supported_scope": "Applicable tax identifiers QR and fiscal status",
+      "acceptance": "Required tax data and acceptance state appear on receipt",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-007",
+      "family": "Point of sale",
+      "title": "Connectivity",
+      "supported_scope": "Connected operation draft recovery and safe retry",
+      "acceptance": "Interrupted submission cannot duplicate sale stock or tender",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "POS-008",
+      "family": "Point of sale",
+      "title": "Offline scope decision",
+      "supported_scope": "Offline operating contract subject to D05 review",
+      "acceptance": "No offline promise is made before tax sync tender and oversell policies pass",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-001",
+      "family": "Inventory",
+      "title": "Item masters",
+      "supported_scope": "Stock service variants categories units and conversions",
+      "acceptance": "Invalid or ambiguous unit conversion is rejected",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-002",
+      "family": "Inventory",
+      "title": "Stores and locations",
+      "supported_scope": "Multiple warehouses bins custody and transfer routes",
+      "acceptance": "Stock ownership and location remain separate and traceable",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-003",
+      "family": "Inventory",
+      "title": "Stock transactions",
+      "supported_scope": "Opening receipt issue return adjustment and transfer",
+      "acceptance": "Each event produces the correct quantity and accounting effect once",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-004",
+      "family": "Inventory",
+      "title": "Quick issue",
+      "supported_scope": "Default store unit cost mapping destination and scan",
+      "acceptance": "An unfamiliar user issues one tissue box without choosing accounts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-005",
+      "family": "Inventory",
+      "title": "Reservation and release",
+      "supported_scope": "Approval-before-release or authorized immediate issue policy",
+      "acceptance": "Pending release does not silently consume physical stock",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-006",
+      "family": "Inventory",
+      "title": "Cost formulas",
+      "supported_scope": "Specific identification FIFO and weighted average under policy",
+      "acceptance": "Similar nature and use checks prevent arbitrary formula selection",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-007",
+      "family": "Inventory",
+      "title": "Cost policy transition",
+      "supported_scope": "Effective date impact preview authorized migration and reconciliation",
+      "acceptance": "Historical valuation remains reproducible after an approved change",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-008",
+      "family": "Inventory",
+      "title": "Traceability",
+      "supported_scope": "Batch serial expiry genealogy and recall queries",
+      "acceptance": "A selected lot traces to receipts transfers production and issues",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-009",
+      "family": "Inventory",
+      "title": "Counts and adjustments",
+      "supported_scope": "Blind count variance review and cut-off",
+      "acceptance": "Count differences post only through authorized adjustment",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-010",
+      "family": "Inventory",
+      "title": "Landed cost and valuation",
+      "supported_scope": "Cost allocation NRV review slow stock and ageing",
+      "acceptance": "Inventory valuation agrees to GL with explained timing differences",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-011",
+      "family": "Inventory",
+      "title": "Availability controls",
+      "supported_scope": "Negative-stock policy concurrency and reservations",
+      "acceptance": "Two users cannot release the same last unit under no-negative policy",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "INV-012",
+      "family": "Inventory",
+      "title": "Replenishment",
+      "supported_scope": "Minimum levels lead times reorder proposals and commitments",
+      "acceptance": "Proposed supply accounts for approved open orders and reservations",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-001",
+      "family": "Fixed assets",
+      "title": "Register activation",
+      "supported_scope": "Existing assets cost depreciation and GL mapping",
+      "acceptance": "Opening register agrees without rebooking acquisition",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-002",
+      "family": "Fixed assets",
+      "title": "Acquisition and capitalization",
+      "supported_scope": "Purchase project cost capital WIP and components",
+      "acceptance": "Capitalized amount agrees to source and allowed policy",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-003",
+      "family": "Fixed assets",
+      "title": "Depreciation",
+      "supported_scope": "Methods useful lives residual values start date and proration",
+      "acceptance": "Schedule agrees to independent examples and period locks",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-004",
+      "family": "Fixed assets",
+      "title": "Custody and transfer",
+      "supported_scope": "Location custodian tags and verification counts",
+      "acceptance": "Transfers preserve asset history and approved responsibility",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-005",
+      "family": "Fixed assets",
+      "title": "Subsequent changes",
+      "supported_scope": "Impairment revaluation repair split and reassessment",
+      "acceptance": "Accounting treatment and future schedule are versioned and authorized",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-006",
+      "family": "Fixed assets",
+      "title": "Disposal",
+      "supported_scope": "Sale scrap partial disposal gain loss and derecognition",
+      "acceptance": "Cost accumulated depreciation proceeds and gain or loss reconcile",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AST-007",
+      "family": "Fixed assets",
+      "title": "Retirement controls",
+      "supported_scope": "Stop new acquisitions while preserving future obligations",
+      "acceptance": "Depreciation and historical reporting have an explicit continuing owner",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-001",
+      "family": "Manufacturing",
+      "title": "BOM versions",
+      "supported_scope": "Multi-level BOM yields substitutions units and effective dates",
+      "acceptance": "An order preserves the BOM version used at release",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-002",
+      "family": "Manufacturing",
+      "title": "Routes and capacity",
+      "supported_scope": "Operations work centres calendars and feasible capacity views",
+      "acceptance": "Plan distinguishes available capacity from assumed capacity",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-003",
+      "family": "Manufacturing",
+      "title": "Planning",
+      "supported_scope": "Demand material requirements supply and work-order proposals",
+      "acceptance": "Requirements net approved stock commitments and open supply",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-004",
+      "family": "Manufacturing",
+      "title": "Work orders",
+      "supported_scope": "Release issue progress partial completion closure and reopening",
+      "acceptance": "Open WIP and remaining quantities agree to actual movements",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-005",
+      "family": "Manufacturing",
+      "title": "Actual costing",
+      "supported_scope": "Material labour overhead standard comparison and variance",
+      "acceptance": "Completed output plus remaining WIP reconciles to inputs and approved variance",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-006",
+      "family": "Manufacturing",
+      "title": "Process loss and scrap",
+      "supported_scope": "By-products recoverable scrap loss limits and treatment",
+      "acceptance": "Recovered material cannot be counted twice and excess loss is reviewed",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-007",
+      "family": "Manufacturing",
+      "title": "Rework and quality",
+      "supported_scope": "Hold inspection rework route and permitted disposition",
+      "acceptance": "Held output cannot be issued as available finished stock",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-008",
+      "family": "Manufacturing",
+      "title": "Subcontracting",
+      "supported_scope": "Supplier-held material service cost partial receipts and returns",
+      "acceptance": "Custody quantities and owned value reconcile at the vendor",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-009",
+      "family": "Manufacturing",
+      "title": "Jewellery quantities",
+      "supported_scope": "Gross fine metal purity stones units and conversion tolerance",
+      "acceptance": "Fine-metal reconciliation explains input output scrap and process loss",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-010",
+      "family": "Manufacturing",
+      "title": "Jewellery ownership",
+      "supported_scope": "Customer-owned material repair conversion and making charges",
+      "acceptance": "Customer material is tracked without inflating owned inventory",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-011",
+      "family": "Manufacturing",
+      "title": "Genealogy and costing review",
+      "supported_scope": "Lot lineage alternate inputs and closed-order adjustments",
+      "acceptance": "Reviewer traces finished cost to actual sources and approved corrections",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "MFG-012",
+      "family": "Manufacturing",
+      "title": "Process boundaries",
+      "supported_scope": "Explicit acceptance for each specialized production pattern",
+      "acceptance": "Unsupported regulated or optimized process is flagged during fit review",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "INV-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-001",
+      "family": "Human resources and payroll",
+      "title": "Organization and employees",
+      "supported_scope": "Positions grades contracts employment type history and confidentiality",
+      "acceptance": "Authorized HR sees history while ordinary users cannot inspect pay data",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-002",
+      "family": "Human resources and payroll",
+      "title": "Recruitment",
+      "supported_scope": "Requisitions applicants interviews offers and hiring conversion",
+      "acceptance": "Candidate access and retention follow the approved policy",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-003",
+      "family": "Human resources and payroll",
+      "title": "Onboarding and separation",
+      "supported_scope": "Tasks document checklist probation exit and final settlement",
+      "acceptance": "Status changes trigger assigned tasks without silently deleting records",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-004",
+      "family": "Human resources and payroll",
+      "title": "Shifts and calendars",
+      "supported_scope": "Rotating shifts holidays overnight work timezone and rest rules",
+      "acceptance": "Overnight and holiday examples produce expected approved attendance",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-005",
+      "family": "Human resources and payroll",
+      "title": "Attendance ingestion",
+      "supported_scope": "Biometric web mobile import and manual source events",
+      "acceptance": "Duplicate source events do not duplicate attendance or earnings",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-006",
+      "family": "Human resources and payroll",
+      "title": "Attendance adjudication",
+      "supported_scope": "Missing punches conflicts corrections and manager approval",
+      "acceptance": "Payroll consumes the approved result and preserves its sources",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-007",
+      "family": "Human resources and payroll",
+      "title": "Leave",
+      "supported_scope": "Accrual eligibility carry-forward encashment and approval",
+      "acceptance": "Balances reconcile through leave year and effective policy changes",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-008",
+      "family": "Human resources and payroll",
+      "title": "Compensation",
+      "supported_scope": "Fixed variable hourly piece-rate overtime allowances and deductions",
+      "acceptance": "Formula engine handles independent complex pay examples without code injection",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-009",
+      "family": "Human resources and payroll",
+      "title": "Benefits",
+      "supported_scope": "Eligibility dependants contributions caps and effective dates",
+      "acceptance": "Benefit changes preserve prior-period calculations and privacy",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-010",
+      "family": "Human resources and payroll",
+      "title": "Payroll engine",
+      "supported_scope": "Proration arrears retro changes taxes contributions and rounding",
+      "acceptance": "Gross-to-net independently reconciles for supported employment cases",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-011",
+      "family": "Human resources and payroll",
+      "title": "Payroll approval",
+      "supported_scope": "Run snapshot variance review segregation payslips and GL",
+      "acceptance": "Approval binds exact inputs and a rerun cannot duplicate liabilities",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-012",
+      "family": "Human resources and payroll",
+      "title": "Employee finance",
+      "supported_scope": "Loans advances expenses recoveries and balances",
+      "acceptance": "Employee schedules agree to payroll deductions and control accounts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-013",
+      "family": "Human resources and payroll",
+      "title": "Settlement",
+      "supported_scope": "Payroll payment records final settlement and liability reconciliation",
+      "acceptance": "Paid status follows evidence of settlement rather than preparation",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-014",
+      "family": "Human resources and payroll",
+      "title": "Performance and learning",
+      "supported_scope": "Goals appraisal cycles feedback skills and training records",
+      "acceptance": "Only permitted participants can view or change confidential feedback",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-015",
+      "family": "Human resources and payroll",
+      "title": "Self service",
+      "supported_scope": "Payslip leave attendance correction and personal details",
+      "acceptance": "Employee can access own records without accessing colleagues",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-016",
+      "family": "Human resources and payroll",
+      "title": "Localization",
+      "supported_scope": "Effective-dated Pakistan tax benefit and provincial employment coverage",
+      "acceptance": "Current approved rule pack and unsupported cases are visible",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-017",
+      "family": "Human resources and payroll",
+      "title": "Long-term benefits",
+      "supported_scope": "Gratuity pension provident-fund inputs and independently supplied valuations",
+      "acceptance": "Payroll and accounts reconcile to the approved benefit calculation basis",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "HR-018",
+      "family": "Human resources and payroll",
+      "title": "HR cases and development",
+      "supported_scope": "Disciplinary cases confidential grievance records learning and succession fields",
+      "acceptance": "Sensitive cases remain restricted and retention is policy controlled",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PRJ-001",
+      "family": "Projects and basic CRM",
+      "title": "Leads and opportunities",
+      "supported_scope": "Contacts stages activities quotations and conversion",
+      "acceptance": "Conversion preserves references without duplicating the customer",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PRJ-002",
+      "family": "Projects and basic CRM",
+      "title": "Projects and tasks",
+      "supported_scope": "Milestones assignments progress and documents",
+      "acceptance": "Users see only their permitted projects and responsibilities",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PRJ-003",
+      "family": "Projects and basic CRM",
+      "title": "Time and expenses",
+      "supported_scope": "Timesheets billable status approvals and cost allocation",
+      "acceptance": "Approved entries flow once into project cost or billing",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PRJ-004",
+      "family": "Projects and basic CRM",
+      "title": "Budgets and commitments",
+      "supported_scope": "Project budgets purchasing retention and variations",
+      "acceptance": "Actual committed and remaining amounts reconcile by dimension",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "PRJ-005",
+      "family": "Projects and basic CRM",
+      "title": "Billing and margin",
+      "supported_scope": "Milestone progress time billing and profitability",
+      "acceptance": "Revenue and cost reconcile to the ledger with stated recognition basis",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-001",
+      "family": "Financial management",
+      "title": "Cash position",
+      "supported_scope": "Bank cash restricted balances and liquidity visibility",
+      "acceptance": "Displayed totals reconcile to source and identify stale bank data",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-002",
+      "family": "Financial management",
+      "title": "Liquidity forecast",
+      "supported_scope": "Thirteen-week actual committed and assumed cash scenarios",
+      "acceptance": "Stored scenario inputs reproduce the forecast exactly",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-003",
+      "family": "Financial management",
+      "title": "Working capital",
+      "supported_scope": "Receivable payable inventory cycles and improvement cases",
+      "acceptance": "Metric definitions and denominator periods are visible",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-004",
+      "family": "Financial management",
+      "title": "Credit and collection",
+      "supported_scope": "Limits exposure dispute priorities and collection proposals",
+      "acceptance": "Authoritative current balances govern limits rather than stale BI",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-005",
+      "family": "Financial management",
+      "title": "Budget and variance",
+      "supported_scope": "Versions dimensions drivers approvals and actual comparison",
+      "acceptance": "Variance reproduces from approved budget and stated ledger basis",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-006",
+      "family": "Financial management",
+      "title": "Profitability and pricing",
+      "supported_scope": "Product customer project contribution and break-even",
+      "acceptance": "Allocation assumptions and excluded costs remain visible",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-007",
+      "family": "Financial management",
+      "title": "Debt and facilities",
+      "supported_scope": "Drawdown interest repayment fees security and covenant schedules",
+      "acceptance": "Schedule agrees to contract inputs and GL liabilities",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-008",
+      "family": "Financial management",
+      "title": "Trade finance",
+      "supported_scope": "LC guarantees exposure expiry collateral and settlement tracking",
+      "acceptance": "Commitments and actual accounting recognition remain distinct",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-009",
+      "family": "Financial management",
+      "title": "Risk exposures",
+      "supported_scope": "FX commodity sensitivity concentration and policy limits",
+      "acceptance": "Exposure source prices and rate timestamps are traceable",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-010",
+      "family": "Financial management",
+      "title": "Capital appraisal",
+      "supported_scope": "NPV IRR payback scenarios and funding needs",
+      "acceptance": "Independent examples pass and ambiguous IRR is flagged",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-011",
+      "family": "Financial management",
+      "title": "Finance oversight",
+      "supported_scope": "Decision register assumptions approvals and action follow-up",
+      "acceptance": "A financial recommendation has an accountable decision owner",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "FIN-012",
+      "family": "Financial management",
+      "title": "Execution boundary",
+      "supported_scope": "Record or propose payments and finance actions initially",
+      "acceptance": "No funds transfer lending custody or dealing occurs without a separate project",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-001",
+      "family": "Tax and statutory localization",
+      "title": "Tax identity and applicability",
+      "supported_scope": "Company registrations jurisdictions exemptions and effective dates",
+      "acceptance": "Applicable pack requirements cannot be disabled through invoice UI",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-002",
+      "family": "Tax and statutory localization",
+      "title": "Sales and purchase taxes",
+      "supported_scope": "Rate versions inclusive exclusive recoverable and nonrecoverable treatment",
+      "acceptance": "Independent examples reconcile taxable base rounding and posting",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-003",
+      "family": "Tax and statutory localization",
+      "title": "Withholding",
+      "supported_scope": "Deduction collection certificates party status and settlement schedules",
+      "acceptance": "Invoice receipt payment and withholding control accounts agree",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-004",
+      "family": "Tax and statutory localization",
+      "title": "Tax reconciliation",
+      "supported_scope": "Return schedules input output withholding and ledger bridges",
+      "acceptance": "Every reported total traces to the relevant accepted documents",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-005",
+      "family": "Tax and statutory localization",
+      "title": "E-invoice obligations",
+      "supported_scope": "Current FBR applicability licensed arrangement and required document status",
+      "acceptance": "Supported customer profile passes current sandbox and reconciliation cases",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-006",
+      "family": "Tax and statutory localization",
+      "title": "Corrections and cancellations",
+      "supported_scope": "Authority-specific credit debit cancellation and amendment routes",
+      "acceptance": "Accepted tax invoices cannot be silently rewritten",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-007",
+      "family": "Tax and statutory localization",
+      "title": "Country pack lifecycle",
+      "supported_scope": "Reviewed effective-dated rules current source and release notes",
+      "acceptance": "A law change preserves prior-period calculation basis",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "TAX-008",
+      "family": "Tax and statutory localization",
+      "title": "Compliance boundary",
+      "supported_scope": "Supported entity province tax and employment cases plus missing coverage",
+      "acceptance": "Sales and onboarding flag unsupported statutory requirements before go-live",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-001",
+      "family": "Financial statements and BI",
+      "title": "Standard reports",
+      "supported_scope": "GL trial balance cash flow balances ageing and registers",
+      "acceptance": "Reports agree to ledger at the specified cutoff",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-002",
+      "family": "Financial statements and BI",
+      "title": "Statement mapping",
+      "supported_scope": "Account and dimension mapping versions presentation and rounding",
+      "acceptance": "Unmapped balances are flagged before publication",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-003",
+      "family": "Financial statements and BI",
+      "title": "Statement packs",
+      "supported_scope": "Primary statements comparatives notes schedules and cross references",
+      "acceptance": "Cross-casts comparative checks and note links pass",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-004",
+      "family": "Financial statements and BI",
+      "title": "Narrative notes",
+      "supported_scope": "Policies commitments contingencies related parties and subsequent events",
+      "acceptance": "Unsubstantiated facts remain completion tasks rather than invented prose",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-005",
+      "family": "Financial statements and BI",
+      "title": "Evidence drill-through",
+      "supported_scope": "Statement to note to schedule to journal to attachment",
+      "acceptance": "Authorized reviewer can trace a selected balance end to end",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-006",
+      "family": "Financial statements and BI",
+      "title": "Publication",
+      "supported_scope": "Review signoff snapshot revision and reproducibility",
+      "acceptance": "A published version can be recreated after later mapping changes",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-007",
+      "family": "Financial statements and BI",
+      "title": "Exports",
+      "supported_scope": "PDF editable statements and complete data export",
+      "acceptance": "Routine statement preparation needs no external spreadsheet",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-008",
+      "family": "Financial statements and BI",
+      "title": "Metric catalog",
+      "supported_scope": "Governed definitions dimensions filters and calculated measures",
+      "acceptance": "Two reports using a metric agree on the same basis",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-009",
+      "family": "Financial statements and BI",
+      "title": "BI builder",
+      "supported_scope": "Saved dashboards tables charts filters and sharing",
+      "acceptance": "Permission checks apply to datasets fields exports and cached results",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "RPT-010",
+      "family": "Financial statements and BI",
+      "title": "Report jobs",
+      "supported_scope": "Scheduling heavy query limits progress and freshness",
+      "acceptance": "Large report does not starve posting and shows its as-of time",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-001",
+      "family": "Configuration and workflows",
+      "title": "Capability activation",
+      "supported_scope": "Dependency plan openings effective date and reconciliation",
+      "acceptance": "Activation cannot duplicate pre-existing ledger values",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-002",
+      "family": "Configuration and workflows",
+      "title": "Capability retirement",
+      "supported_scope": "Pending work schedules dependencies history and replacement treatment",
+      "acceptance": "Retirement preserves historical links and explains blockers",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-003",
+      "family": "Configuration and workflows",
+      "title": "Policy builder",
+      "supported_scope": "Thresholds conditions approvers delegation escalation and simulation",
+      "acceptance": "Admin previews above-below thresholds and unavailable approver cases",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-004",
+      "family": "Configuration and workflows",
+      "title": "Policy versions",
+      "supported_scope": "Effective dates and explicit in-flight treatment",
+      "acceptance": "Material changes invalidate or migrate prior approvals explicitly",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-005",
+      "family": "Configuration and workflows",
+      "title": "Form builder",
+      "supported_scope": "Typed fields lists required values visibility defaults and attachments",
+      "acceptance": "Core financial or security validation cannot be removed",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-006",
+      "family": "Configuration and workflows",
+      "title": "Schema evolution",
+      "supported_scope": "Form versions old record interpretation and safe publication",
+      "acceptance": "An old document remains readable after a field change",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-007",
+      "family": "Configuration and workflows",
+      "title": "Print layouts",
+      "supported_scope": "Constrained components image reference preview and sanitization",
+      "acceptance": "Generated layout cannot execute script or fetch unauthorized data",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "CFG-008",
+      "family": "Configuration and workflows",
+      "title": "Configuration recovery",
+      "supported_scope": "Preview diff audit rollback for future work and migration plan",
+      "acceptance": "Failed publication leaves the last valid configuration active",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "DOC-001",
+      "family": "Company Drive and evidence",
+      "title": "Folders and access",
+      "supported_scope": "Company folders role ACL inheritance and sensitivity",
+      "acceptance": "Folder sharing cannot expose protected transaction attachments",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "DOC-002",
+      "family": "Company Drive and evidence",
+      "title": "Object storage",
+      "supported_scope": "Metadata versions hashes quarantine and signed access",
+      "acceptance": "Download is denied after access revocation even with cached metadata",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "DOC-003",
+      "family": "Company Drive and evidence",
+      "title": "Evidence links",
+      "supported_scope": "One source object linked to permitted transactions",
+      "acceptance": "Deleting a shortcut does not destroy required evidence",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "DOC-004",
+      "family": "Company Drive and evidence",
+      "title": "Quotas",
+      "supported_scope": "Plan storage metering retained versions warnings and limits",
+      "acceptance": "Quota enforcement is race safe and explains what counts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "DOC-005",
+      "family": "Company Drive and evidence",
+      "title": "Deletion and retention",
+      "supported_scope": "Soft delete holds recovery and authorized purge",
+      "acceptance": "Delete preview identifies affected records and legal or evidence holds",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "DOC-006",
+      "family": "Company Drive and evidence",
+      "title": "Search and retrieval",
+      "supported_scope": "Permitted metadata content and document versions",
+      "acceptance": "Search snippets and AI retrieval respect the same access rules",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-001",
+      "family": "APIs and Apps",
+      "title": "API contracts",
+      "supported_scope": "Versioned OpenAPI business commands examples typed errors and pagination",
+      "acceptance": "Developer completes sample invoice integration without reading source",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-002",
+      "family": "APIs and Apps",
+      "title": "API authority",
+      "supported_scope": "Scoped credentials rotation revocation and per-tenant limits",
+      "acceptance": "Revocation stops queued work and no scope can cross companies",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-003",
+      "family": "APIs and Apps",
+      "title": "Safe mutation",
+      "supported_scope": "Idempotency concurrency timeouts and transaction states",
+      "acceptance": "Retry with same key returns the original effect and changed payload conflicts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-004",
+      "family": "APIs and Apps",
+      "title": "App registry",
+      "supported_scope": "Standalone connectors and embedded actions with manifests",
+      "acceptance": "Installation shows permissions owner version and data use",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-005",
+      "family": "APIs and Apps",
+      "title": "App isolation",
+      "supported_scope": "Separate origin UI sandbox worker limits and network restrictions",
+      "acceptance": "Malicious app cannot read another tenant or call internal metadata services",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-006",
+      "family": "APIs and Apps",
+      "title": "Events and webhooks",
+      "supported_scope": "Signed at-least-once delivery replay control retries and dead-letter review",
+      "acceptance": "Duplicate reordered and delayed events reconcile without duplicate effects",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-007",
+      "family": "APIs and Apps",
+      "title": "Tax adapter",
+      "supported_scope": "Canonical invoice external reference QR errors and reconciliation",
+      "acceptance": "Unknown submission outcome is resolved before a second external invoice",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-008",
+      "family": "APIs and Apps",
+      "title": "External commerce",
+      "supported_scope": "Shopify-like orders stock payments refunds and mapping",
+      "acceptance": "External identifiers map once and settlement differences enter reconciliation",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-009",
+      "family": "APIs and Apps",
+      "title": "Developer sandbox",
+      "supported_scope": "Sample app SDK guide fixtures and install diagnostics",
+      "acceptance": "Independent integrator can install test revoke and uninstall a sample app",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "APP-010",
+      "family": "APIs and Apps",
+      "title": "Lifecycle",
+      "supported_scope": "Compatibility review migration uninstall and preserved records",
+      "acceptance": "Uninstall revokes execution while retaining required financial evidence",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-001",
+      "family": "AI tools memory and evaluation",
+      "title": "Tool parity",
+      "supported_scope": "All supported business functions expose scoped command tools",
+      "acceptance": "UI API and AI receive identical denial for the same forbidden action",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-002",
+      "family": "AI tools memory and evaluation",
+      "title": "Setup and COA",
+      "supported_scope": "Business interview account templates mappings and amendments",
+      "acceptance": "Proposed setup shows assumptions dependencies and review before activation",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-003",
+      "family": "AI tools memory and evaluation",
+      "title": "Navigation and guidance",
+      "supported_scope": "Contextual help against current permitted workspace",
+      "acceptance": "Answer never reveals hidden company or payroll information",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-004",
+      "family": "AI tools memory and evaluation",
+      "title": "Document extraction",
+      "supported_scope": "Invoices receipts credits and journal evidence with source regions",
+      "acceptance": "Missing material fields are flagged and duplicate scans do not create drafts twice",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-005",
+      "family": "AI tools memory and evaluation",
+      "title": "Classification and entry",
+      "supported_scope": "Document meaning account suggestions drafts and submission",
+      "acceptance": "Uncertain treatment abstains and configured approvals remain mandatory",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-006",
+      "family": "AI tools memory and evaluation",
+      "title": "Import assistance",
+      "supported_scope": "Column mapping units normalization staging and reconciliation",
+      "acceptance": "Malformed rows stay visible and opening values cannot double post",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-007",
+      "family": "AI tools memory and evaluation",
+      "title": "Forms and workflows",
+      "supported_scope": "Builder commands simulation and administrator publication",
+      "acceptance": "AI cannot weaken invariants or grant itself authority",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-008",
+      "family": "AI tools memory and evaluation",
+      "title": "Print and reports",
+      "supported_scope": "Reference-based print schema BI and statement specification",
+      "acceptance": "Output uses permitted components and metrics and passes preview checks",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-009",
+      "family": "AI tools memory and evaluation",
+      "title": "Reconciliation assistance",
+      "supported_scope": "Suggested bank matches close checklist and exception priorities",
+      "acceptance": "Suggestion cannot conceal unresolved differences or auto-certify correctness",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-010",
+      "family": "AI tools memory and evaluation",
+      "title": "Finance assistance",
+      "supported_scope": "Scenario inputs commentary and evidence-linked recommendations",
+      "acceptance": "Calculations use deterministic engines and distinguish assumptions",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-011",
+      "family": "AI tools memory and evaluation",
+      "title": "Memory scopes",
+      "supported_scope": "Private team company and approved-policy memories with provenance",
+      "acceptance": "Private facts never enter another user or company's context",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-012",
+      "family": "AI tools memory and evaluation",
+      "title": "Memory lifecycle",
+      "supported_scope": "Inspection correction expiry retention deletion and permission revocation",
+      "acceptance": "Retrieval and derived indexes honor current access and corrected facts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-013",
+      "family": "AI tools memory and evaluation",
+      "title": "Provider adapters",
+      "supported_scope": "Capability matrix prompt tool and model versions regression",
+      "acceptance": "A provider switch cannot bypass task quality and permission gates",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-014",
+      "family": "AI tools memory and evaluation",
+      "title": "Cost governance",
+      "supported_scope": "Tokens pages steps runtime concurrency and full-cost metering",
+      "acceptance": "Budget exhaustion stops visibly without leaving partial financial effects",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-015",
+      "family": "AI tools memory and evaluation",
+      "title": "Rollout controls",
+      "supported_scope": "Internal opted-in general suspended and retired task flags",
+      "acceptance": "Kill switch preserves drafts audit and manual completion",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-016",
+      "family": "AI tools memory and evaluation",
+      "title": "Adversarial safety",
+      "supported_scope": "Untrusted files prompts tool responses and memory injection tests",
+      "acceptance": "Injected instructions cannot authorize or expand a business action",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-001",
+      "family": "Portals subscription and operations",
+      "title": "Application portal",
+      "supported_scope": "Package selection company details bank-transfer evidence and status",
+      "acceptance": "Submission or screenshot alone cannot activate an app account",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-002",
+      "family": "Portals subscription and operations",
+      "title": "Verification and provisioning",
+      "supported_scope": "Operator review receipt entitlement and nominated company admin",
+      "acceptance": "Provisioning retries cannot create duplicate companies or entitlements",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-003",
+      "family": "Portals subscription and operations",
+      "title": "Operator administration",
+      "supported_scope": "Companies users quotas subscription dates features and support cases",
+      "acceptance": "Ordinary operator role cannot silently browse confidential business data",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-004",
+      "family": "Portals subscription and operations",
+      "title": "Subscription lifecycle",
+      "supported_scope": "Renewal due notices grace restrictions and read-export policy",
+      "acceptance": "Expiry does not erase ledger attachments or audit history",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-005",
+      "family": "Portals subscription and operations",
+      "title": "Backups and restoration",
+      "supported_scope": "Database objects configuration identity and work queues",
+      "acceptance": "Rehearsal demonstrates measured recovery and reconciled totals",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-006",
+      "family": "Portals subscription and operations",
+      "title": "Technical telemetry",
+      "supported_scope": "Structured redacted logs metrics tracing alerts and error queues",
+      "acceptance": "Credentials and unnecessary payroll content never appear in routine logs",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-007",
+      "family": "Portals subscription and operations",
+      "title": "Support access",
+      "supported_scope": "Own identity case scope expiry customer history and emergency review",
+      "acceptance": "Expired support authority blocks further access",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-008",
+      "family": "Portals subscription and operations",
+      "title": "Private deployment",
+      "supported_scope": "Same artifacts migrations entitlements grace and responsibility matrix",
+      "acceptance": "Upgrade and expiry tests match documented supported behaviour",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-009",
+      "family": "Portals subscription and operations",
+      "title": "Performance and cells",
+      "supported_scope": "Per-tenant limits asynchronous BI regional home and capacity measurement",
+      "acceptance": "Noisy neighbour and declared-load tests meet agreed budgets",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "OPS-010",
+      "family": "Portals subscription and operations",
+      "title": "Migration and releases",
+      "supported_scope": "Expand migrate contract canary compatibility and recovery",
+      "acceptance": "Old records remain interpretable and destructive changes have verified recovery",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-001",
+      "family": "Security audit and assurance",
+      "title": "Authentication",
+      "supported_scope": "MFA operator sessions recovery step-up and secure cookies",
+      "acceptance": "Account recovery and privilege actions resist defined takeover tests",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-002",
+      "family": "Security audit and assurance",
+      "title": "Tenant isolation",
+      "supported_scope": "Database files cache jobs search exports and AI context",
+      "acceptance": "Cross-tenant and pooled-connection tests deny all defined attempts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-003",
+      "family": "Security audit and assurance",
+      "title": "Business audit",
+      "supported_scope": "Actor initiator source reason before-after reference approval and outcome",
+      "acceptance": "Company reviewer traces a sample financial and configuration action",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-004",
+      "family": "Security audit and assurance",
+      "title": "Audit access",
+      "supported_scope": "Own activity company oversight and operator technical scopes",
+      "acceptance": "Sensitive fields remain protected even in logs and exports",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-005",
+      "family": "Security audit and assurance",
+      "title": "Secret management",
+      "supported_scope": "Server-side keys encryption rotation and redaction",
+      "acceptance": "No key enters browser bundle Git or routine diagnostic output",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-006",
+      "family": "Security audit and assurance",
+      "title": "Secure development",
+      "supported_scope": "Threat model dependency inventory scans and reviewed release artifacts",
+      "acceptance": "Material unresolved findings block public release",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-007",
+      "family": "Security audit and assurance",
+      "title": "Incident response",
+      "supported_scope": "Detection containment evidence recovery reconciliation and communication",
+      "acceptance": "A tabletop and restore exercise produces actionable evidence",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-008",
+      "family": "Security audit and assurance",
+      "title": "Independent assurance",
+      "supported_scope": "Scoped penetration test remediation and certification roadmap",
+      "acceptance": "Only obtained assurance is advertised and critical findings are resolved",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "SEC-009",
+      "family": "Security audit and assurance",
+      "title": "Export and exit",
+      "supported_scope": "Structured records attachments mappings and reconciliation",
+      "acceptance": "A sample export independently reconstructs accepted balances and evidence",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "UX-001",
+      "family": "Interface and accessibility",
+      "title": "Themes and glass",
+      "supported_scope": "Polished visible glass chrome with readable stable data surfaces",
+      "acceptance": "Light and dark review shows no gradient seam or contrast loss",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "UX-002",
+      "family": "Interface and accessibility",
+      "title": "Navigation",
+      "supported_scope": "Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps",
+      "acceptance": "User can locate each destination in both sidebar states",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "UX-003",
+      "family": "Interface and accessibility",
+      "title": "Brand",
+      "supported_scope": "SAVEN name official ESC emblem plum and ivory tokens",
+      "acceptance": "No provisional lion or obsolete product name appears in current application branding",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "UX-004",
+      "family": "Interface and accessibility",
+      "title": "Task interaction",
+      "supported_scope": "Keyboard scanning touch quick actions drafts and visible states",
+      "acceptance": "Frequent small issue requires no AI chat or specialist instruction",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "UX-005",
+      "family": "Interface and accessibility",
+      "title": "Accessibility",
+      "supported_scope": "WCAG 2.2 AA target focus labels contrast and reduced motion",
+      "acceptance": "Keyboard and assistive checks pass defined critical journeys",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "UX-006",
+      "family": "Interface and accessibility",
+      "title": "Responsive and weak network",
+      "supported_scope": "Small screens long values errors progress and safe retry",
+      "acceptance": "Interrupted submissions preserve intent without duplicate effects",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    }
+  ]
+}
