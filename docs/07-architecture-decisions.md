@@ -22,6 +22,8 @@ One Apps area governs UI apps connectors and workflow actions. Their execution m
 
 Store permissioned structured facts and summaries with provenance and lifecycle controls. Embeddings are optional derived indexes. Model providers are replaceable through evaluated adapters. Customer information is not automatically reusable across tenants or for model training. Revisit memory retention and regional storage by customer and country requirements.
 
+Revision 1.1 adds an optional company knowledge model beyond chat memory. Link facts and relationships to exact source versions and supporting locations; retain business effective time and observation time. Shared knowledge preserves source sensitivity. Customer and operator controls govern capture and use, while disablement, retention, deletion and reactivation are separate operations. See [Company knowledge and memory](10-company-knowledge-and-memory.md). Historical knowledge and inferred summaries cannot override current authoritative records or published policies.
+
 ## ADR 006 Change with historical meaning preserved
 
 Use versioned policies schemas reports and posting rules, with effective dates and expand-migrate-contract migrations. A new release may require core work; it must preserve historical interpretation and have rehearsed recovery. Revisit compatibility windows when real integration support costs are known.

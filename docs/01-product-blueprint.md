@@ -2,7 +2,7 @@
 
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
-11 November 2026 | Product baseline 1.0 | Pronounced seven
+11 November 2026 | Product baseline 1.1 | Pronounced seven
 
 ## 1 Purpose and product commitment
 
@@ -109,6 +109,16 @@ The assistant uses the invoking person's authorized commands. It can prepare wha
 Zero hallucinations and identical quality from every cheap model are not achievable guarantees. The design target is prevention of unauthorized or structurally invalid effects, traceable evidence, and reliable handling of uncertainty. High-risk semantics require qualified review. Cost and quality are measured per task, with abstention, escalation, and bounded retries. Provider-managed keys serve shared SaaS; private deployment credentials follow the agreed deployment contract.
 
 ## 9 Portals company Drive and Apps
+
+### Company knowledge and memory
+
+The optional company brain extends memory beyond chat history into a structured understanding of the company's supplied business information: identity, activities, people and responsibilities, products, relationships, contracts, processes, approved policies, decisions, obligations and changes. Keep shared business knowledge separate from individual preferences and private memories. Every material fact links to the actual source identity and exact version, with document type, date or business reference, supporting excerpt and page, clause, table, cell or other precise location. A filename alone is insufficient.
+
+Preserve how facts change, when each was effective, when SAVEN learned it, and whether an old fact was corrected or superseded. Track changes from authorized records, documents and user inputs. Show conflicts, incomplete source coverage and stale information; the system cannot know facts the business has not provided. Current accounting records remain authoritative for balances and transaction status.
+
+Authorized company administrators can enable or disable shared knowledge themselves, and users can control their own optional personal memory. Provider administrators can manage the capability under recorded operator authority. Company disablement stops capture, refresh and AI use, including queued work and retained context; retention and deletion are separate controls. Provider availability does not override a company's explicit disabled selection or evidence permissions. See [Company knowledge and memory](10-company-knowledge-and-memory.md) for source linkage, change history, access, operator controls and acceptance cases. This capability is included in launch scope while customer use remains optional.
+
+### Portals storage and extensions
 
 The application portal collects account details, selected package, and bank-transfer evidence. An operator verifies the payment and application before provisioning. Receipt of a payment screenshot never automatically activates a company. The operator portal manages plans, companies, users, nominated company administrators, quotas, AI entitlements, subscription dates, backups, system health, and scoped support access.
 

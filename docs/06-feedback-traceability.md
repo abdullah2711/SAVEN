@@ -1,6 +1,6 @@
 # SAVEN Feedback Traceability
 
-11 November 2026 | Baseline 1.0
+11 November 2026 | Baseline 1.1
 
 The attached Saven discussion supersedes conflicting sections of the old SIMBA blueprint. This register records how each material direction is treated. Specified means documented for review, not implemented. Requirement ranges refer to the feature catalog. Source fingerprints are in `source-manifest.json`.
 
@@ -29,6 +29,10 @@ The attached Saven discussion supersedes conflicting sections of the old SIMBA b
 | FBR and QR integration through apps and invoices | Canonical invoice adapter; mandatory applicability cannot be optional | APP-007; product section 9 |
 | Complete accounting and country readiness | Policy-specific revenue leases provisions instruments tax and statutory schedules | ACC-013 through ACC-017; TAX-001 through TAX-008 |
 | Memory in our own storage shared and private | Structured scoped facts provenance correction and retrieval authorization | AI-011 AI-012 |
+| Company brain containing supplied business context and document-backed facts | Company entities relationships facts source coverage and inspectable knowledge views | AI-017 AI-020 AI-025; company knowledge specification |
+| Reference the actual document and supporting content rather than filename alone | Stable source identity immutable version source description excerpt and precise location | AI-018; company knowledge section 3 |
+| Track business changes over time | Valid and observation times corrections supersession and conflicting evidence | AI-019 AI-021 |
+| Customer and provider administrators can turn company knowledge on and off | Role-aware operator company and personal controls with audited authority and lifecycle rules | AI-022 AI-023 AI-024 |
 | Replace models without retraining our own | Provider capability adapters and mandatory regression | AI-013; D08 |
 | Separate application payment and operational portals | Manual verification and provisioning with company admin delegation | OPS-001 through OPS-003; FND-008 |
 | Operator controls users plans storage AI backups and logs | Technical administration with scoped customer support access | OPS-003 OPS-005 OPS-006 OPS-007 |

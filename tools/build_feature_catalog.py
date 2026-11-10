@@ -3,6 +3,17 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+KNOWLEDGE_DEPENDENCIES = {
+    'AI-017': ['FND-001', 'AI-011', 'DOC-002'],
+    'AI-018': ['AI-017', 'DOC-002'],
+    'AI-019': ['AI-017', 'AI-018', 'SEC-003'],
+    'AI-020': ['AI-018', 'APP-006'],
+    'AI-021': ['AI-019'],
+    'AI-022': ['AI-011', 'OPS-003', 'FND-007'],
+    'AI-023': ['AI-020', 'AI-022', 'DOC-005'],
+    'AI-024': ['AI-012', 'AI-018', 'FND-007'],
+    'AI-025': ['AI-017', 'AI-019', 'AI-020'],
+}
 GROUPS = [
 ('FND', 'Business foundation', None, '''
 Tenant and company identity|Organization subscription and explicit legal-company membership|A user in company A cannot read or reference company B records
@@ -206,12 +217,21 @@ Forms and workflows|Builder commands simulation and administrator publication|AI
 Print and reports|Reference-based print schema BI and statement specification|Output uses permitted components and metrics and passes preview checks
 Reconciliation assistance|Suggested bank matches close checklist and exception priorities|Suggestion cannot conceal unresolved differences or auto-certify correctness
 Finance assistance|Scenario inputs commentary and evidence-linked recommendations|Calculations use deterministic engines and distinguish assumptions
-Memory scopes|Private team company and approved-policy memories with provenance|Private facts never enter another user or company's context
-Memory lifecycle|Inspection correction expiry retention deletion and permission revocation|Retrieval and derived indexes honor current access and corrected facts
+Memory scopes|Private team company and approved-policy memories separate from evidence-linked company knowledge|Private facts never enter another user or company's context and shared facts preserve source sensitivity
+Memory lifecycle|Inspection correction expiry retention deletion permission revocation and independent personal controls|Retrieval derived indexes cached context and in-flight answers honor current access corrected facts and disabled settings
 Provider adapters|Capability matrix prompt tool and model versions regression|A provider switch cannot bypass task quality and permission gates
 Cost governance|Tokens pages steps runtime concurrency and full-cost metering|Budget exhaustion stops visibly without leaving partial financial effects
 Rollout controls|Internal opted-in general suspended and retired task flags|Kill switch preserves drafts audit and manual completion
 Adversarial safety|Untrusted files prompts tool responses and memory injection tests|Injected instructions cannot authorize or expand a business action
+Company knowledge model|Business identity activities people products relationships processes agreements decisions obligations and scoped facts|A company profile connects retained facts to permitted sources and identifies unprovided or unknown information
+Exact evidence linkage|Stable source ID immutable version hash document identity protected excerpt and precise supporting location|Renaming or reusing a filename cannot redirect a fact's citation to a different document or version
+Business change history|Fact versions valid times observation times correction supersession and actor or source history|Current and historical questions distinguish a corrected error from a genuine later business change
+Knowledge refresh and coverage|Committed records eligible document versions source selection event retries processing failures and freshness|Changed sources refresh dependent knowledge without duplicate facts and incomplete or stale coverage is visible
+Conflicting knowledge|Candidate inferred asserted accepted disputed and superseded facts with authorized review|A newer upload or remembered claim cannot silently override a governing contract or published policy
+Knowledge enablement controls|Self-service authorized company controls independent personal controls and audited provider administration|Effective use respects operator availability company selection user authority and evidence permissions without entitlement overriding company-off
+Knowledge disable and recovery|Stop capture refresh retrieval and context use with separate retention deletion and reactivation workflows|Disable invalidates queued cached and in-flight use and reactivation reconciles current versions and permissions without deleting source records
+Derived knowledge protection|Source-sensitive facts relationships summaries citations and delivery-time authorization|Revoked or restricted evidence cannot leak through answers titles counts excerpts caches or historical knowledge
+Knowledge inspection|Permitted company fact source and timeline views correction tasks and coverage diagnostics|Authorized user can inspect what is retained why it is believed and what remains incomplete without operator settings granting content access
 '''),
 ('OPS', 'Portals subscription and operations', 'FND-001', '''
 Application portal|Package selection company details bank-transfer evidence and status|Submission or screenshot alone cannot activate an app account
@@ -253,13 +273,13 @@ def build():
             title,scope,acceptance=line.split('|')
             requirements.append(dict(id=f'{prefix}-{n:03d}',family=family,title=title,
                 supported_scope=scope,acceptance=acceptance,commercial_release='required',
-                status='specified',dependencies=[dependency] if dependency else [],
+                status='specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
                 evidence=[],approval='Subject to review baseline and decisions D01 to D12'))
-    data={'product':'SAVEN','pronunciation':'seven','baseline':'1.0','date':'2026-11-11',
+    data={'product':'SAVEN','pronunciation':'seven','baseline':'1.1','date':'2026-11-11',
           'meaning':'Specified requirements are not implemented features. Public launch requires agreed family gates.',
           'requirements':requirements}
     (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n')
-    lines=['# SAVEN Feature and Acceptance Library','','11 November 2026 | Baseline 1.0','',
+    lines=['# SAVEN Feature and Acceptance Library','','11 November 2026 | Baseline 1.1','',
            f'{len(requirements)} requirements across {len(GROUPS)} families. All begin as specified, with no implementation evidence. This catalog and decisions D01 to D12 define supported scope for review.','',
            'Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.','']
     for _,family,_,_ in GROUPS:

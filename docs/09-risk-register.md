@@ -12,6 +12,8 @@ Likelihood and impact below are planning judgments rather than measured frequenc
 | Duplicate stock or financial effects | Medium and high | Atomic commands, idempotency, concurrency and failure tests | Backend lead |
 | Migration duplicates existing values | High and high | Staging, control-account reconciliation and cutover signoff | Implementation lead |
 | AI authority or prompt injection escape | High and high | External policy enforcement, bounded tools, source isolation and adversarial tests | AI and security leads |
+| Company knowledge repeats stale or conflicting facts | High and high | Exact source versions, effective dates, conflict review and freshness checks | AI and business knowledge leads |
+| Memory exposes restricted information or continues after disablement | Medium and high | Derived-data permissions, audited controls, cache and in-flight invalidation, and lifecycle tests | AI and security leads |
 | Manufacturing fit is assumed | High and high | Actual jeweller, batch, subcontract and WIP examples before sales promises | Manufacturing analyst |
 | Payroll or tax rules are incomplete | High and high | Jurisdiction matrix, current rules, effective dates and customer-profile gate | Localization lead |
 | Low subscription hides heavy support | High and high | Contribution by cohort including implementation, review and direct support | Commercial lead |

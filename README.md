@@ -16,6 +16,9 @@ This repository contains a planning baseline prepared from the supplied inputs. 
 6. [Feedback traceability](docs/06-feedback-traceability.md) and [architecture decisions](docs/07-architecture-decisions.md).
 7. [Competitive review](docs/08-competitive-review.md), based on current official documentation.
 8. [Risk register](docs/09-risk-register.md).
+9. [Company knowledge and memory](docs/10-company-knowledge-and-memory.md) — the optional company brain, exact document evidence, business change history, personal memory and customer/operator controls.
+
+The 1.1 knowledge update adds AI-017 through AI-025 without renumbering the original requirements. Product capability is required in the launch plan; each customer's use of company knowledge is optional. The GitHub documents are the current review baseline; the earlier Word exports remain the 1.0 snapshot.
 
 ## Branch policy
 

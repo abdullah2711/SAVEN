@@ -2,11 +2,11 @@
 
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
-11 November 2026 | Delivery baseline 1.0
+11 November 2026 | Delivery baseline 1.1
 
 ## 1 Current state and next authorized step
 
-The connected GitHub repository is abdullah2711/SAVEN. The verified branches are main and testing-1. At inspection, both pointed to bdf418ca3bf6ebac49115f45119cbe0f6548e907. This package is planning work for testing-1. No merge to main, production deployment, database creation, paid infrastructure purchase, or working accounting implementation is represented by these documents.
+The connected GitHub repository is abdullah2711/SAVEN. The verified branches are main and testing-1. The original 1.0 baseline began with both branches at bdf418ca3bf6ebac49115f45119cbe0f6548e907; subsequent planning updates are committed only to testing-1. No merge to main, production deployment, database creation, paid infrastructure purchase, or working accounting implementation is represented by these documents.
 
 The supplied discussion explicitly requests the documents before software construction and review before coding. The next step after review is a foundation implementation on testing-1. Unresolved choices below have recommended defaults so review can be concrete; they are not silently treated as approved commercial commitments.
 
@@ -21,7 +21,7 @@ The documents supersede the old SIMBA blueprint where the feedback changes it. S
 | 2 First connected workflows | Direct service invoice and stock issue with approvals and import staging | End-to-end records and reconciliation |
 | 3 Operating suite | Sales, purchases, POS, assets, projects, CRM, manufacturing and workforce | Catalog cases for supported depth |
 | 4 Finance and platform | Finance, statement packs, BI, Drive, forms, Apps and portals | Reproducible reports and secure integration cases |
-| 5 AI capability completion | Setup, extraction, entry, reports, configuration and memory tools | Task evaluations and permission regression |
+| 5 AI capability completion | Setup, extraction, entry, reports, configuration, personal memory and evidence-linked company knowledge | Task evaluations, source-version and change-history checks, toggle behaviour and permission regression |
 | 6 Controlled validation | Internal operation, opted-in pilots, migration rehearsal and security assessment | Pilot, recovery, usability and quality gates |
 | 7 Commercial release | Agreed suite and supported rollout | No unresolved release blocker and explicit release decision |
 
@@ -99,12 +99,17 @@ Measure extraction accuracy on material fields separately from overall field acc
 | Financial treatment | All automatic effects disabled initially; proposed treatments require review and class-specific evaluation |
 | Configuration | Permission, schema and workflow simulation tests pass before administrator publication |
 | Memory | Revoked access, private scope and correction tests pass across retrieval and caches |
+| Company knowledge provenance | Renames, reused filenames, document versions and exact locations resolve to the correct supporting evidence |
+| Knowledge change tracking | Effective dates, observation dates, corrected facts, superseded facts, conflicts and incomplete coverage remain distinguishable |
+| Knowledge controls | Company, user and operator controls pass authority, disable, in-flight cancellation, retention, deletion and reactivation cases |
 | Cost | Task budgets enforced and cost per accepted workflow recorded for each enabled task |
 | Provider switch | Same gates pass on held-out cases and supported capability matrix is documented |
 
 The 99 percent extraction target is a proposed benchmark and does not authorize automatic posting. Confidence reported by the model is not a reliable approval mechanism. Initially all financial AI effects need explicit human execution and configured approvals. Later bounded automatic routines require a new reviewed authority policy and stronger task-specific evidence.
 
 Feature states are implemented disabled, internal only, opted-in pilot, generally available, suspended, and retired. Each state has an owner, evaluation version, eligible tenants, fallback, support instructions, and a kill switch. Turning off an AI task must preserve its drafts, audit history, and manual completion path.
+
+Company knowledge has additional acceptance cases in the [company knowledge and memory specification](10-company-knowledge-and-memory.md). The optional capture default is disabled until the company chooses its authorized sources. Knowledge use and refresh stop when disabled; retention and purge follow their separate stated rules. This does not disable mandatory financial audit logging. Include permission changes between retrieval and answer delivery, cached and in-flight context, conflicting contracts, future effective dates, and catch-up after reactivation in the evaluation set.
 
 ## 7 Usability performance and recovery gates
 

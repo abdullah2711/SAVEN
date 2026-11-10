@@ -2,7 +2,7 @@
 
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
-11 November 2026 | Technical proposal 1.0
+11 November 2026 | Technical proposal 1.1
 
 ## 1 Architecture decision
 
@@ -92,6 +92,12 @@ Field candidates enter staging with original and normalized values, confidence s
 Store structured memory facts and action summaries in PostgreSQL with tenant, company, user or team scope, provenance, sensitivity, owner, effective time, expiry, and correction history. Store permitted conversation or document bodies as protected objects where appropriate. An optional vector index is a derived retrieval aid, never the authoritative record.
 
 Separate private preferences, shared business facts, approved accounting policies, and transaction evidence. A user's preference cannot become a company policy automatically. Facts inferred from conversation remain marked as proposals until accepted where material. Current approved records override stale summaries. Permission changes and deletion must affect retrieval immediately, including caches and embeddings. No cross-tenant memory or model training on customer information without a separate explicit agreement. Customers can inspect and correct retained memories subject to evidence retention requirements.
+
+Extend this to a company knowledge model with stable entity and relationship identifiers, fact versions, valid-from and valid-to dates, recorded-at times, review states and supersession links. Evidence records identify the actual document or business record, immutable version, content hash, type, date and business reference, and exact supporting page, clause, region, table, cell or timestamp. Preserve protected excerpts or structured values sufficient to inspect support. Filename changes must not alter provenance; direct user assertions remain explicitly attributed when no documentary source exists.
+
+Use committed business events and eligible object-version events to refresh knowledge through idempotent workers. Track source coverage, processing failures, dependency invalidation and last synchronization time. Conflicting evidence creates a review task; a newer upload does not automatically become the operative policy. Queries distinguish current knowledge from authorized historical as-of knowledge. Fetch changing balances and other critical states from their authoritative services.
+
+Evaluate operator availability, company selection, user permissions and source permissions for capture, retrieval, generation, result delivery and tool execution. Company disablement halts indexing and knowledge use, invalidates queued and cached context, and stops or restarts affected in-flight tasks without that context. Personal-memory controls are independent. Retention, deletion and reactivation have distinct workflows; a knowledge purge cannot delete source accounting records. The [company knowledge specification](10-company-knowledge-and-memory.md) defines the enablement authority and full lifecycle contract. Retrieval assembles relevant evidence within task budgets rather than injecting an entire company history into every model call.
 
 ## 8 AI cost and quality controls
 

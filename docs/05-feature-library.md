@@ -1,8 +1,8 @@
 # SAVEN Feature and Acceptance Library
 
-11 November 2026 | Baseline 1.0
+11 November 2026 | Baseline 1.1
 
-200 requirements across 20 families. All begin as specified, with no implementation evidence. This catalog and decisions D01 to D12 define supported scope for review.
+209 requirements across 20 families. All begin as specified, with no implementation evidence. This catalog and decisions D01 to D12 define supported scope for review.
 
 Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.
 
@@ -259,12 +259,21 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | AI-008 | Print and reports: Reference-based print schema BI and statement specification | Output uses permitted components and metrics and passes preview checks |
 | AI-009 | Reconciliation assistance: Suggested bank matches close checklist and exception priorities | Suggestion cannot conceal unresolved differences or auto-certify correctness |
 | AI-010 | Finance assistance: Scenario inputs commentary and evidence-linked recommendations | Calculations use deterministic engines and distinguish assumptions |
-| AI-011 | Memory scopes: Private team company and approved-policy memories with provenance | Private facts never enter another user or company's context |
-| AI-012 | Memory lifecycle: Inspection correction expiry retention deletion and permission revocation | Retrieval and derived indexes honor current access and corrected facts |
+| AI-011 | Memory scopes: Private team company and approved-policy memories separate from evidence-linked company knowledge | Private facts never enter another user or company's context and shared facts preserve source sensitivity |
+| AI-012 | Memory lifecycle: Inspection correction expiry retention deletion permission revocation and independent personal controls | Retrieval derived indexes cached context and in-flight answers honor current access corrected facts and disabled settings |
 | AI-013 | Provider adapters: Capability matrix prompt tool and model versions regression | A provider switch cannot bypass task quality and permission gates |
 | AI-014 | Cost governance: Tokens pages steps runtime concurrency and full-cost metering | Budget exhaustion stops visibly without leaving partial financial effects |
 | AI-015 | Rollout controls: Internal opted-in general suspended and retired task flags | Kill switch preserves drafts audit and manual completion |
 | AI-016 | Adversarial safety: Untrusted files prompts tool responses and memory injection tests | Injected instructions cannot authorize or expand a business action |
+| AI-017 | Company knowledge model: Business identity activities people products relationships processes agreements decisions obligations and scoped facts | A company profile connects retained facts to permitted sources and identifies unprovided or unknown information |
+| AI-018 | Exact evidence linkage: Stable source ID immutable version hash document identity protected excerpt and precise supporting location | Renaming or reusing a filename cannot redirect a fact's citation to a different document or version |
+| AI-019 | Business change history: Fact versions valid times observation times correction supersession and actor or source history | Current and historical questions distinguish a corrected error from a genuine later business change |
+| AI-020 | Knowledge refresh and coverage: Committed records eligible document versions source selection event retries processing failures and freshness | Changed sources refresh dependent knowledge without duplicate facts and incomplete or stale coverage is visible |
+| AI-021 | Conflicting knowledge: Candidate inferred asserted accepted disputed and superseded facts with authorized review | A newer upload or remembered claim cannot silently override a governing contract or published policy |
+| AI-022 | Knowledge enablement controls: Self-service authorized company controls independent personal controls and audited provider administration | Effective use respects operator availability company selection user authority and evidence permissions without entitlement overriding company-off |
+| AI-023 | Knowledge disable and recovery: Stop capture refresh retrieval and context use with separate retention deletion and reactivation workflows | Disable invalidates queued cached and in-flight use and reactivation reconciles current versions and permissions without deleting source records |
+| AI-024 | Derived knowledge protection: Source-sensitive facts relationships summaries citations and delivery-time authorization | Revoked or restricted evidence cannot leak through answers titles counts excerpts caches or historical knowledge |
+| AI-025 | Knowledge inspection: Permitted company fact source and timeline views correction tasks and coverage diagnostics | Authorized user can inspect what is retained why it is believed and what remains incomplete without operator settings granting content access |
 
 ## Portals subscription and operations
 

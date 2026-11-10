@@ -2,7 +2,7 @@
 
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
-11 November 2026 | Commercial proposal 1.0
+11 November 2026 | Commercial proposal 1.1
 
 ## 1 Commercial position
 
@@ -58,6 +58,7 @@ The sales process advances from qualified need to a representative demonstration
 | Statements are rebuilt in Excel | Linked statements and narrative notes | Preparation and review hours | Reproducible report pack |
 | Finance stays outside the system | Cash scenarios and facility schedules | Forecast coverage and accuracy | Versioned assumptions |
 | AI seems unreliable | Show source, uncertainty and review | Harmful actions and reviewer time | Labelled evaluation results |
+| Business context must be repeated to each staff member or AI session | Optional company knowledge with precise evidence and change history | Repeated explanation time and evidence retrieval accuracy | Fact to exact source version and change timeline |
 | Cheap subscription hides support costs | Itemized total cost | Cost per active company | Actual cohort economics |
 | Shared hosting causes distrust | Explain access, recovery and export | Security objections resolved | Evidence pack |
 | Fear of lock-in | Usable full export and terms | Reconciliation of export | Exit rehearsal |
@@ -86,6 +87,10 @@ Open a cash forecast with visible actuals, commitments, and assumptions. Change 
 ### The administrator demonstration
 
 Describe an approval threshold, inspect the proposed rule, simulate a transaction above and below the limit, publish the version, and inspect the in-flight policy. Then attempt to retire Inventory while Manufacturing depends on it. The system must explain the dependency and transition route. This is the direct answer to the user's module-conflict experience.
+
+### The company knowledge demonstration
+
+Ask a business-context question, open the answer's supporting contract or policy at the cited clause and version, then inspect the history after an approved source change. Rename the file and verify that the citation still resolves correctly. Show a private fact staying private, a missing-source answer explaining its gap, and a company administrator disabling the feature. Position this as retained, traceable business knowledge from authorized information; do not claim the assistant knows everything about the company or treats remembered statements as approval authority.
 
 ## 6 Objections and responsible responses
 

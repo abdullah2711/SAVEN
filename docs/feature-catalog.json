@@ -1,7 +1,7 @@
 {
   "product": "SAVEN",
   "pronunciation": "seven",
-  "baseline": "1.0",
+  "baseline": "1.1",
   "date": "2026-11-11",
   "meaning": "Specified requirements are not implemented features. Public launch requires agreed family gates.",
   "requirements": [
@@ -2355,8 +2355,8 @@
       "id": "AI-011",
       "family": "AI tools memory and evaluation",
       "title": "Memory scopes",
-      "supported_scope": "Private team company and approved-policy memories with provenance",
-      "acceptance": "Private facts never enter another user or company's context",
+      "supported_scope": "Private team company and approved-policy memories separate from evidence-linked company knowledge",
+      "acceptance": "Private facts never enter another user or company's context and shared facts preserve source sensitivity",
       "commercial_release": "required",
       "status": "specified",
       "dependencies": [
@@ -2369,8 +2369,8 @@
       "id": "AI-012",
       "family": "AI tools memory and evaluation",
       "title": "Memory lifecycle",
-      "supported_scope": "Inspection correction expiry retention deletion and permission revocation",
-      "acceptance": "Retrieval and derived indexes honor current access and corrected facts",
+      "supported_scope": "Inspection correction expiry retention deletion permission revocation and independent personal controls",
+      "acceptance": "Retrieval derived indexes cached context and in-flight answers honor current access corrected facts and disabled settings",
       "commercial_release": "required",
       "status": "specified",
       "dependencies": [
@@ -2431,6 +2431,146 @@
       "status": "specified",
       "dependencies": [
         "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-017",
+      "family": "AI tools memory and evaluation",
+      "title": "Company knowledge model",
+      "supported_scope": "Business identity activities people products relationships processes agreements decisions obligations and scoped facts",
+      "acceptance": "A company profile connects retained facts to permitted sources and identifies unprovided or unknown information",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001",
+        "AI-011",
+        "DOC-002"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-018",
+      "family": "AI tools memory and evaluation",
+      "title": "Exact evidence linkage",
+      "supported_scope": "Stable source ID immutable version hash document identity protected excerpt and precise supporting location",
+      "acceptance": "Renaming or reusing a filename cannot redirect a fact's citation to a different document or version",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-017",
+        "DOC-002"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-019",
+      "family": "AI tools memory and evaluation",
+      "title": "Business change history",
+      "supported_scope": "Fact versions valid times observation times correction supersession and actor or source history",
+      "acceptance": "Current and historical questions distinguish a corrected error from a genuine later business change",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-017",
+        "AI-018",
+        "SEC-003"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-020",
+      "family": "AI tools memory and evaluation",
+      "title": "Knowledge refresh and coverage",
+      "supported_scope": "Committed records eligible document versions source selection event retries processing failures and freshness",
+      "acceptance": "Changed sources refresh dependent knowledge without duplicate facts and incomplete or stale coverage is visible",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-018",
+        "APP-006"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-021",
+      "family": "AI tools memory and evaluation",
+      "title": "Conflicting knowledge",
+      "supported_scope": "Candidate inferred asserted accepted disputed and superseded facts with authorized review",
+      "acceptance": "A newer upload or remembered claim cannot silently override a governing contract or published policy",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-019"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-022",
+      "family": "AI tools memory and evaluation",
+      "title": "Knowledge enablement controls",
+      "supported_scope": "Self-service authorized company controls independent personal controls and audited provider administration",
+      "acceptance": "Effective use respects operator availability company selection user authority and evidence permissions without entitlement overriding company-off",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-011",
+        "OPS-003",
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-023",
+      "family": "AI tools memory and evaluation",
+      "title": "Knowledge disable and recovery",
+      "supported_scope": "Stop capture refresh retrieval and context use with separate retention deletion and reactivation workflows",
+      "acceptance": "Disable invalidates queued cached and in-flight use and reactivation reconciles current versions and permissions without deleting source records",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-020",
+        "AI-022",
+        "DOC-005"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-024",
+      "family": "AI tools memory and evaluation",
+      "title": "Derived knowledge protection",
+      "supported_scope": "Source-sensitive facts relationships summaries citations and delivery-time authorization",
+      "acceptance": "Revoked or restricted evidence cannot leak through answers titles counts excerpts caches or historical knowledge",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-012",
+        "AI-018",
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Subject to review baseline and decisions D01 to D12"
+    },
+    {
+      "id": "AI-025",
+      "family": "AI tools memory and evaluation",
+      "title": "Knowledge inspection",
+      "supported_scope": "Permitted company fact source and timeline views correction tasks and coverage diagnostics",
+      "acceptance": "Authorized user can inspect what is retained why it is believed and what remains incomplete without operator settings granting content access",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "AI-017",
+        "AI-019",
+        "AI-020"
       ],
       "evidence": [],
       "approval": "Subject to review baseline and decisions D01 to D12"
