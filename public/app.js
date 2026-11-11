@@ -22,7 +22,7 @@ function signIn(message='') {
   app.innerHTML=`<main class="sign-in"><section class="glass refractive sign-in-card"><header class="sign-in-brand"><div class="brand-logo" role="img" aria-label="Economic Systems"></div><span class="wordmark">SAVEN</span><span class="brand-caption">Economic Systems</span></header><div class="sign-in-intro"><h1>Your business, clearly.</h1><p>Enter your one-time invitation to open your workspace. Your company records stay private.</p></div><form id="sign-in-form"><label for="invitation">Invitation token</label><input id="invitation" name="token" type="password" required autocomplete="off" spellcheck="false" placeholder="Paste your invitation token"><button class="button primary" type="submit">Open workspace ${icon('arrow')}</button><div id="sign-in-error" class="error-message" role="alert">${e(message)}</div></form><div class="footer-note">Private workspace · Access by invitation</div></section></main>`;
   document.querySelector('#sign-in-form').addEventListener('submit',async event=>{
     event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;
-    try{await call('/api/session',{method:'POST',body:{token:event.target.elements.token.value.trim()}});await start();}
+    try{history.replaceState(null,'',location.pathname);await call('/api/session',{method:'POST',body:{token:event.target.elements.token.value.trim()}});await start();}
     catch(error){document.querySelector('#sign-in-error').textContent=error.message;button.disabled=false;}
   });
 }
@@ -72,8 +72,11 @@ function pageContent(){
   return heading(title,description)+`<section class="glass planned"><div class="eyebrow">Build backlog · not yet available</div><h2>${title==='Apps'?'No apps installed':`${title} is being built`}</h2><p>The foundation is in place. These capabilities remain required for the planned launch; they do not execute in this build.</p><ul class="planned-list">${items.map(item=>`<li>${e(item)}<small>Specified · implementation pending</small></li>`).join('')}</ul></section>`;
 }
 function options(rows){return rows.map(row=>`<option value="${e(row.id)}">${e(row.name)}</option>`).join('');}
-function previewMarkup(effect){
-  return `<h3>Accounting entry preview</h3><p>PKR · these exact effects will be posted after approval.</p><table><thead><tr><th>Account</th><th class="amount">Debit</th><th class="amount">Credit</th></tr></thead><tbody>${effect.lines.map(line=>`<tr><td>${e(line.name)}<span class="table-secondary">${e(line.code)}</span></td><td class="amount">${line.debit==='0.00'?'—':amount(line.debit)}</td><td class="amount">${line.credit==='0.00'?'—':amount(line.credit)}</td></tr>`).join('')}</tbody></table><div class="balance-total"><span>Balanced entry</span><span>${icon('check')}</span></div>${effect.stock?`<div class="preview-caption">${e(effect.stock.quantity)} ${e(effect.stock.unit)} reserved from ${e(effect.stock.store)} on submission. Stock and accounting change together on approval.</div>`:''}`;
+function previewMarkup(effect,state='pending'){
+  const heading=state==='posted'?'Accounting entry':state==='rejected'?'Proposed accounting entry':'Accounting entry preview';
+  const description=state==='posted'?'These accounting effects are posted.':state==='rejected'?'This request was returned. These effects were not posted.':'These exact effects will be posted after approval.';
+  const stockEffect=state==='posted'?'issued':state==='rejected'?'reservation released':'reserved';
+  return `<h3>${heading}</h3><p>PKR · ${description}</p><table><thead><tr><th>Account</th><th class="amount">Debit</th><th class="amount">Credit</th></tr></thead><tbody>${effect.lines.map(line=>`<tr><td>${e(line.name)}<span class="table-secondary">${e(line.code)}</span></td><td class="amount">${line.debit==='0.00'?'—':amount(line.debit)}</td><td class="amount">${line.credit==='0.00'?'—':amount(line.credit)}</td></tr>`).join('')}</tbody></table><div class="balance-total"><span>Balanced entry</span><span>${icon('check')}</span></div>${effect.stock?`<div class="preview-caption">${e(effect.stock.quantity)} ${e(effect.stock.unit)} · ${stockEffect} · ${e(effect.stock.store)}. ${state==='pending'?'Stock and accounting change together on approval.':state==='posted'?'Stock release and accounting were posted together.':'Physical stock and the ledger were not changed.'}</div>`:''}`;
 }
 function formDocument(form){
   const values=Object.fromEntries(new FormData(form));
@@ -103,7 +106,7 @@ function openCreate(kind){
   form.addEventListener('input',update);form.addEventListener('change',update);
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(!currentPreview||sending)return;sending=true;const button=document.querySelector('#submit-transaction');button.disabled=true;
-    try{await call(endpoint('documents'),{method:'POST',body:{document:currentPreview.document,expectedRevision:currentPreview.revision,previewDigest:currentPreview.digest},key:commandKey});dialog.close();await refresh();toast('Submitted for approval. No ledger entry has been posted.');}
+    try{await call(endpoint('documents'),{method:'POST',body:{document:currentPreview.document,expectedRevision:currentPreview.revision,previewDigest:currentPreview.digest},key:commandKey});await refresh();dialog.close();toast('Submitted for approval. No ledger entry has been posted.');}
     catch(error){document.querySelector('#transaction-error').textContent=error.message;if(error.code==='STALE_PREVIEW'){currentPreview=null;update();}else button.disabled=false;}
     finally{sending=false;}
   });
@@ -111,7 +114,7 @@ function openCreate(kind){
 function openDocument(id){
   const document=data.documents.find(d=>d.id===id);if(!document)return;
   const canReview=data.permissions.review&&document.status==='pending'&&document.preparedBy!==me.user.id;
-  dialog.innerHTML=`<div class="dialog-head"><div><div class="eyebrow">${e(data.company.name)} · ${document.kind==='invoice'?'Service invoice':'Stock issue'}</div><h2 id="dialog-title">${e(document.reference)}</h2><p>${e(document.description)}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Close">${icon('close')}</button></div><div class="dialog-body"><div class="document-meta"><div><small>Accounting date</small><strong>${e(document.date)}</strong></div><div><small>Prepared by</small><strong>${e(document.preparer)}</strong></div><div><small>State</small>${status(document.status)}</div><div><small>Total · PKR</small><strong>${amount(document.amount)}</strong></div>${document.reviewer?`<div><small>Reviewed by</small><strong>${e(document.reviewer)}</strong></div>`:''}</div><section class="entry-preview">${previewMarkup(document.preview)}</section><div class="note section-gap">${icon('shield')}<span>${document.status==='posted'?'Posted accounting entries are protected. A correction must be recorded through a linked adjustment workflow.':document.preparedBy===me.user.id?'You prepared this entry. Another authorized person must review it.':document.status==='pending'?'Approval posts these exact accounting effects. Review the details before confirming.':'This request was returned and has no posted financial effect.'}</span></div><div id="review-error" class="error-message" role="alert"></div></div><div class="dialog-footer"><button class="button" data-action="print">${icon('print')}Print</button>${canReview?`<button class="button danger" data-review="reject" data-id="${e(document.id)}" data-version="${document.version}">Return request</button><button class="button primary" data-review="approve" data-id="${e(document.id)}" data-version="${document.version}">${icon('check')}Approve & post</button>`:'<button class="button" data-action="close-dialog">Close</button>'}</div>`;
+  dialog.innerHTML=`<div class="dialog-head"><div><div class="eyebrow">${e(data.company.name)} · ${document.kind==='invoice'?'Service invoice':'Stock issue'}</div><h2 id="dialog-title">${e(document.reference)}</h2><p>${e(document.description)}</p></div><button class="icon-button" data-action="close-dialog" aria-label="Close">${icon('close')}</button></div><div class="dialog-body"><div class="document-meta"><div><small>Accounting date</small><strong>${e(document.date)}</strong></div><div><small>Prepared by</small><strong>${e(document.preparer)}</strong></div><div><small>State</small>${status(document.status)}</div><div><small>Total · PKR</small><strong>${amount(document.amount)}</strong></div>${document.reviewer?`<div><small>Reviewed by</small><strong>${e(document.reviewer)}</strong></div>`:''}</div><section class="entry-preview">${previewMarkup(document.preview,document.status)}</section><div class="note section-gap">${icon('shield')}<span>${document.status==='posted'?'Posted accounting entries are protected. A correction must be recorded through a linked adjustment workflow.':document.preparedBy===me.user.id?'You prepared this entry. Another authorized person must review it.':document.status==='pending'?'Approval posts these exact accounting effects. Review the details before confirming.':'This request was returned and has no posted financial effect.'}</span></div><div id="review-error" class="error-message" role="alert"></div></div><div class="dialog-footer"><button class="button" data-action="print">${icon('print')}Print</button>${canReview?`<button class="button danger" data-review="reject" data-id="${e(document.id)}" data-version="${document.version}">Return request</button><button class="button primary" data-review="approve" data-id="${e(document.id)}" data-version="${document.version}">${icon('check')}Approve & post</button>`:'<button class="button" data-action="close-dialog">Close</button>'}</div>`;
   commandKey=crypto.randomUUID();dialog.showModal();
 }
 document.addEventListener('click',async event=>{
@@ -122,7 +125,7 @@ document.addEventListener('click',async event=>{
     if(button.dataset.document){openDocument(button.dataset.document);return;}
     if(button.dataset.review){
       if(sending)return;sending=true;const buttons=dialog.querySelectorAll('button');buttons.forEach(b=>b.disabled=true);
-      try{await call(endpoint(`documents/${encodeURIComponent(button.dataset.id)}/${button.dataset.review}`),{method:'POST',body:{expectedVersion:Number(button.dataset.version)},key:commandKey});dialog.close();await refresh();toast(button.dataset.review==='approve'?'Approved and posted. Accounting and stock are up to date.':'Returned. Any stock reservation has been released.');}
+      try{await call(endpoint(`documents/${encodeURIComponent(button.dataset.id)}/${button.dataset.review}`),{method:'POST',body:{expectedVersion:Number(button.dataset.version)},key:commandKey});await refresh();dialog.close();toast(button.dataset.review==='approve'?'Approved and posted. Accounting and stock are up to date.':'Returned. Any stock reservation has been released.');}
       catch(error){document.querySelector('#review-error').textContent=error.message;buttons.forEach(b=>b.disabled=false);}finally{sending=false;}return;
     }
     switch(button.dataset.action){
@@ -138,6 +141,15 @@ document.addEventListener('click',async event=>{
 });
 dialog.addEventListener('cancel',event=>{if(sending)event.preventDefault();});
 dialog.addEventListener('close',()=>{clearTimeout(previewTimer);previewSequence++;currentPreview=null;});
-const invitation=new URLSearchParams(location.hash.slice(1)).get('invite');
-if(invitation){history.replaceState(null,'',location.pathname);try{await call('/api/session',{method:'POST',body:{token:invitation}});await start();}catch(error){signIn(error.message);}}
-else await start();
+async function consumeInvitation(){
+  const invitation=new URLSearchParams(location.hash.slice(1)).get('invite');
+  if(!invitation)return false;
+  if(sending){toast('Finish the current action before switching accounts.');return true;}
+  history.replaceState(null,'',location.pathname);
+  dialog.close();activeCompany='';page='overview';
+  try{await call('/api/session',{method:'POST',body:{token:invitation}});await start();}
+  catch(error){signIn(error.message);}
+  return true;
+}
+window.addEventListener('hashchange',()=>{void consumeInvitation();});
+if(!await consumeInvitation())await start();

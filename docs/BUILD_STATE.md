@@ -49,3 +49,19 @@ Resume: restore an execution environment; pull the latest testing-1 source; veri
 Visual rendering, schema import and hosted login remain unverified. CI must verify the additional readiness test and source syntax before reporting them as passed. Main remains the owner's later promotion decision.
 
 Deployment evidence: Cloudflare reported a successful saven-testing deployment for 64cc239a020d191eaeba033d4640e66b3818c6f3, including the DB binding and sign-in branding source. The schema is still uninitialized. Activation readiness also covers anonymous startup: a missing cookie returns 401 before touching the database, so readiness must be checked on that path as well. Browser rendering remains unverified; the new GitHub Actions run was still queued at the last inspection.
+
+## Hosted testing activation completed — 12 November 2026
+
+This section supersedes the earlier activation blockers. The owner also signed into Cloudflare in the in-app browser. Used the existing isolated saven-testing-db only. Before import, sqlite_master showed only Cloudflare's internal table. Imported the canonical schema and synthetic fixtures plus hashed single-use invitations through its SQL console. Verified 16 application tables, 18 control triggers, two companies, five users and six memberships.
+
+All 23 local tests, syntax checks and the 239-record planning validator pass against the current source. Hosted browser checks succeeded for preparer sign-in, company switching, the credit/full-receipt/direct-cash accounting variants, invoice submission, stock reservation and the preparer's lack of approval authority. Signed into the independent reviewer and posted the invoice and one stock issue; returned a second two-box issue.
+
+Independent D1 reconciliation: two posted journals, six journal lines, total debits and credits both 275100 minor units, six audit events, one returned request, tissue on-hand 119 and reserved zero. These are synthetic QA-INV-001, QA-ISS-001 and QA-ISS-002 records, retained for the owner to inspect. No customer data was imported.
+
+Browser testing exposed two UI issues now fixed in source: same-page invitation fragments must be consumed on hashchange; and successful submission/review keeps the modal disabled until workspace refresh completes before closing. Posted and returned entries now show state-appropriate accounting captions. Reverify these small changes after the source deployment.
+
+Verified the testing Worker has the two testing-domain aliases (.cc and .com) and its production branch is testing-1. The production-named saven Worker's configured production branch is main. Its extra failed checks did not demonstrate a main promotion; no production configuration, routing or code was changed.
+
+Private owner/preparer/reviewer invitations are generated under ignored var/ and remain unused for the owner's handoff. QA invitations are separate. Do not commit or print raw invitations into this checkpoint. Initial invitations work once and expire after 24 hours; sessions last eight hours. Persistent identity/recovery and operator onboarding remain required release work.
+
+Next: finish the post-deployment UI confirmation and hand off working testing links; then implement full operator onboarding/identity, company setup and opening reconciliation, protected attachments and the remaining catalog. The completed access setup is not the complete commercial product.
