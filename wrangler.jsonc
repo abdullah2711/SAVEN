@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "saven-testing",
+  "main": "src/worker.mjs",
+  "compatibility_date": "2026-11-11",
+  "workers_dev": false,
+  "build": { "command": "node scripts/deployment-guard.mjs && node scripts/check.mjs" },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "vars": { "ENVIRONMENT": "testing" },
+  "observability": { "enabled": false }
+  // Bind a separate testing D1 database as DB in the Cloudflare dashboard.
+  // Apply migrations/0001_foundation.sql before provisioning any users.
+  // No database ID or production binding is invented in this file.
+}

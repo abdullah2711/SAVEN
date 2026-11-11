@@ -8,8 +8,9 @@
 
 ## Current project stage
 
-- The owner requested review of the planning package before software implementation.
+- The owner authorized construction on 11 November 2026. Read docs/BUILD_STATE.md, docs/11-additional-input.md and docs/12-foundation.md before continuing implementation.
 - Requirements in this baseline are specified, not implemented. Do not describe prototype behaviour or planning checks as production functionality.
+- Foundation code now exists. Catalog items marked in progress remain partial until all supported-scope and release evidence passes. Keep build checkpoints current after interruptions and handoffs.
 - Preserve the requested commercial breadth. Propose scope changes explicitly and update traceability rather than silently postponing features.
 
 ## Financial and security boundaries
@@ -24,3 +25,4 @@
 - Run `python3 tools/validate_plan.py` after changing the planning package.
 - Keep the catalog JSON, feature library and explicit generator records consistent.
 - Record unresolved decisions, unsupported depth and required evidence honestly.
+

@@ -266,21 +266,77 @@ Responsive and weak network|Small screens long values errors progress and safe r
 '''),
 ]
 
+ADDITIONAL = {
+'FND': '''
+Ultimate business ownership|One protected ultimate owner and controlled delegated administration|Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority
+Resource-level controls|Customer supplier item account store and action-specific grants with preview and execution checks|A forbidden resource remains forbidden through forms APIs AI approvals and offline synchronization
+''',
+'ACC': '''
+Accounting effects preview|Every journal-producing action previews debits credits and affected subledgers using current selected options|Credit invoice full receipt and bypass-receivable sale show different correct entries and stale previews cannot execute
+Locked-entry correction oversight|Ultimate-owner controlled period exceptions with reason immutable correction history customer notification and email outbox|A locked entry cannot be silently overwritten and interrupted notification delivery cannot lose the audit event
+''',
+'DOC': '''
+Transaction print templates|Versioned defaults for every transaction with copy edit and AI-assisted format creation|An edited copy preserves the original template and historical prints identify their template version
+Email and scheduled delivery|Customer supplier document sharing reminders future delivery and cancellation|A retry sends no duplicate external message and permissions are rechecked at dispatch
+Protected transaction evidence|Any allowed support type including spreadsheet workings becomes a protected versioned attachment|Folder delete permission cannot remove attached evidence and an authorized admin deletion logs and notifies the company
+Drive space allocation|Business subscription quota user personal allocations and business-admin visibility within the company|Allocations cannot exceed the company limit and user access cannot escape the company
+External file sharing|Revocable expiring public or password-protected links with optional download controls|Expired or revoked links fail and download restrictions do not imply protection against screenshots
+''',
+'POS': '''
+Recipe-linked production sales|POS sale consumes designated recipe inputs records production and sells finished output in one controlled process|A burger sale consumes the correct ingredients once and insufficient ingredients or retry cannot partially post
+Device connectors|Configured barcode scanners scales counters printers and other supported store or POS devices through scoped adapters|Duplicate or malformed device events cannot bypass quantity unit authority or posting validation
+''',
+'INV': '''
+Retroactive costing|Explicit item policy for provisional issue costs later purchase costs and traceable cost adjustments|Later costs reconcile by linked adjustments with closed-period and historical-report handling rather than silent rewrites
+Item valuation selection|Company defaults and item-category policies for FIFO weighted average and a requested separately governed LIFO option|Unsupported reporting-policy combinations are blocked and policy changes retain reproducible history
+''',
+'PRJ': '''
+Project and product financial planning|Tasks milestones project and product budgets forecasts scenarios financials and performance|Forecast changes retain assumption versions and actuals reconcile to posted records without executing investments
+''',
+'OPS': '''
+Submission conversion|Application frontend feeds operator review billing status and idempotent company and nominated-user provisioning|Accepted submitted data converts without re-entry and concurrent provisioning cannot create duplicate accounts
+Prorated package changes|Immediate next-period or selected-date plan changes with versioned daily or period allocation rules|A mid-period example reconciles old and new charges using explicit timezone rounding tax and credit treatment
+Manual and future card billing|Manual-transfer operation now with payment-adapter boundaries for later mixed card and manual customers|Repeated provider events cannot activate twice and manual receipt review cannot expose payment-card details
+Entitlement administration|Operator controls for business user group and global features modules AI access and package gates|Effective access is the intersection of entitlement company choice user permission and operator availability with comprehensive logs
+Support identity administration|Case-scoped attributed impersonation reset or invitation flows with customer visibility and no recoverable password access|Support cannot retrieve existing passwords and sensitive actions preserve real operator and represented user identities
+Hosting portability|Cloudflare Workers database and buckets behind adapters with a supported self-hosted container path|The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use
+Resumable development|Durable build state changed-file records check outcomes blockers and remaining actions|A resumed development agent locates the current branch and incomplete work without repeating completed effects
+Controlled offline application|Selected POS accounting inventory assets and manufacturing functions with signed grants scoped master-data creation and bidirectional sync|Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested
+''',
+'AI': '''
+Fixed named AI seats|Business seat allocation by named user with reassignment only after membership removal or approved period-end operator change|Four seats cannot be rotated between more than four active named users during the period
+User and business usage|Per-request provider-reported tokens costs and separate daily user and company budgets across shared provider keys|Retries failures vision voice and unreported usage are distinguished and limits reserve budget before dispatch
+Key and model routing|Platform business or user managed provider credentials multi-model adapters and custom-plan routing|Secrets remain server-side and a provider or customer key cannot expand tool authority or bypass evaluation gates
+Document and voice inputs|Raw document and picture evidence plus speech-to-text with operator company and user controls|Transcription and extraction retain source links missing facts are flagged and disabled inputs cannot be invoked
+Private operational metrics|Redacted task performance success failure latency cost and model/tool version reporting|Operators can improve the service without routine exposure of complete customer prompts files or payroll
+Bounded business tool authority|Agent operations use the same authenticated business commands as the user with deterministic validation and approvals|A model or document instruction cannot inject a different actor company account grant or approval
+''',
+'SEC': '''
+Single active account session|A successful new login replaces the previous active session across companies|The previous cookie fails on its next request and revocation is rechecked when a command executes
+Password and login data design|Server-side one-way password hashing or a vetted identity provider secure recovery and no plaintext password storage|Database backups logs operator tools and the browser never expose recoverable user passwords
+''',
+}
+GROUPS = [(prefix,family,dependency,rows+ADDITIONAL.get(prefix,'')) for prefix,family,dependency,rows in GROUPS]
+IN_PROGRESS = {'FND-001','FND-003','FND-004','FND-006','FND-007','FND-008','FND-009',
+               'FND-011','FND-012','ACC-001','ACC-004','ACC-005','ACC-018','SAL-003','SAL-007',
+               'INV-003','INV-004','INV-005','INV-011','AI-031','OPS-016','OPS-017','SEC-001',
+               'SEC-002','SEC-003','SEC-010','UX-001','UX-002','UX-003','UX-004','UX-006'}
+
 def build():
     requirements=[]
     for prefix,family,dependency,rows in GROUPS:
-        for n,line in enumerate(rows.strip().splitlines(),1):
+        for n,line in enumerate((row for row in rows.strip().splitlines() if row.strip()),1):
             title,scope,acceptance=line.split('|')
             requirements.append(dict(id=f'{prefix}-{n:03d}',family=family,title=title,
                 supported_scope=scope,acceptance=acceptance,commercial_release='required',
-                status='specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
-                evidence=[],approval='Subject to review baseline and decisions D01 to D12'))
-    data={'product':'SAVEN','pronunciation':'seven','baseline':'1.1','date':'2026-11-11',
+                status='in progress' if f'{prefix}-{n:03d}' in IN_PROGRESS else 'specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
+                evidence=['docs/12-foundation.md'] if f'{prefix}-{n:03d}' in IN_PROGRESS else [],approval='Scope includes owner additions of 11 November; unresolved policy decisions remain explicit'))
+    data={'product':'SAVEN','pronunciation':'seven','baseline':'1.2','date':'2026-11-11',
           'meaning':'Specified requirements are not implemented features. Public launch requires agreed family gates.',
           'requirements':requirements}
-    (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n')
-    lines=['# SAVEN Feature and Acceptance Library','','11 November 2026 | Baseline 1.1','',
-           f'{len(requirements)} requirements across {len(GROUPS)} families. All begin as specified, with no implementation evidence. This catalog and decisions D01 to D12 define supported scope for review.','',
+    (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+    lines=['# SAVEN Feature and Acceptance Library','','11 November 2026 | Baseline 1.2','',
+           f'{len(requirements)} requirements across {len(GROUPS)} families. The JSON tracks specified and in-progress work. In-progress foundation work is partial, not release verification; see docs/12-foundation.md for evidence and limits. This catalog and decisions D01 to D12 define supported scope for review.','',
            'Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.','']
     for _,family,_,_ in GROUPS:
         lines += ['## '+family,'','| ID | Capability and supported scope | Acceptance condition |','| --- | --- | --- |']
@@ -288,8 +344,9 @@ def build():
             if r['family']==family:
                 lines.append(f"| {r['id']} | {r['title']}: {r['supported_scope']} | {r['acceptance']} |")
         lines.append('')
-    (ROOT/'docs/05-feature-library.md').write_text('\n'.join(lines))
+    (ROOT/'docs/05-feature-library.md').write_text('\n'.join(lines),encoding='utf-8')
     print(f'{len(requirements)} requirements across {len(GROUPS)} families')
 
 if __name__=='__main__':
     build()
+

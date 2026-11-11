@@ -1,5 +1,7 @@
 # SAVEN Product Blueprint
 
+**Implementation update, 11 November 2026:** the owner's [additional input](11-additional-input.md) extends this baseline. The catalog now includes these requirements, and [the first foundation](12-foundation.md) has begun on testing-1. Broad launch scope remains required; initial working paths are explicitly limited and do not constitute release completion.
+
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
 11 November 2026 | Product baseline 1.1 | Pronounced seven
@@ -159,3 +161,4 @@ Approve the supported depth in the feature catalog, the policy defaults and unre
 [R4] FBR digital invoicing FAQs and technical assistance. https://www.fbr.gov.pk/faqs/173967/173969 and https://fbr.gov.pk/di-technical-assistance/173967/173970
 
 [R5] W3C, WCAG 2.2. https://www.w3.org/TR/WCAG22/
+

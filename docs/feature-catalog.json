@@ -1,7 +1,7 @@
 {
   "product": "SAVEN",
   "pronunciation": "seven",
-  "baseline": "1.1",
+  "baseline": "1.2",
   "date": "2026-11-11",
   "meaning": "Specified requirements are not implemented features. Public launch requires agreed family gates.",
   "requirements": [
@@ -12,10 +12,12 @@
       "supported_scope": "Organization subscription and explicit legal-company membership",
       "acceptance": "A user in company A cannot read or reference company B records",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-002",
@@ -27,7 +29,7 @@
       "status": "specified",
       "dependencies": [],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-003",
@@ -36,10 +38,12 @@
       "supported_scope": "Decimal money quantities exchange rates and rounding policies",
       "acceptance": "Boundary and conversion examples agree to independently calculated results",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-004",
@@ -48,10 +52,12 @@
       "supported_scope": "Financial years business dates timezones and locks",
       "acceptance": "Every entry route rejects a locked period",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-005",
@@ -63,7 +69,7 @@
       "status": "specified",
       "dependencies": [],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-006",
@@ -72,10 +78,12 @@
       "supported_scope": "Invite suspend revoke recover and switch companies",
       "acceptance": "Revocation blocks new requests queued actions and downloads",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-007",
@@ -84,10 +92,12 @@
       "supported_scope": "Roles row scopes field sensitivity and effective-access preview",
       "acceptance": "Preview agrees with allow and deny tests",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-008",
@@ -96,10 +106,12 @@
       "supported_scope": "Company superadmin and module administrator grants",
       "acceptance": "Delegation cannot exceed grantor authority or cross companies",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-009",
@@ -108,10 +120,12 @@
       "supported_scope": "Role navigation quick actions and personal preferences",
       "acceptance": "Hidden menus do not grant or revoke business authority",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FND-010",
@@ -123,7 +137,35 @@
       "status": "specified",
       "dependencies": [],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "FND-011",
+      "family": "Business foundation",
+      "title": "Ultimate business ownership",
+      "supported_scope": "One protected ultimate owner and controlled delegated administration",
+      "acceptance": "Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "FND-012",
+      "family": "Business foundation",
+      "title": "Resource-level controls",
+      "supported_scope": "Customer supplier item account store and action-specific grants with preview and execution checks",
+      "acceptance": "A forbidden resource remains forbidden through forms APIs AI approvals and offline synchronization",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-001",
@@ -132,12 +174,14 @@
       "supported_scope": "Templates hierarchy account types control accounts and effective-dated changes",
       "acceptance": "Used accounts cannot be deleted or retyped without controlled treatment",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-002",
@@ -151,7 +195,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-003",
@@ -165,7 +209,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-004",
@@ -174,12 +218,14 @@
       "supported_scope": "Balanced atomic immutable effects and linked correction",
       "acceptance": "Failure produces no partial journal and retries post once",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-005",
@@ -188,12 +234,14 @@
       "supported_scope": "Close checklist lock authorized reopening and subsequent adjustment",
       "acceptance": "Reopening leaves reason actor approval and previous report version",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-006",
@@ -207,7 +255,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-007",
@@ -221,7 +269,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-008",
@@ -235,7 +283,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-009",
@@ -249,7 +297,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-010",
@@ -263,7 +311,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-011",
@@ -277,7 +325,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-012",
@@ -291,7 +339,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-013",
@@ -305,7 +353,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-014",
@@ -319,7 +367,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-015",
@@ -333,7 +381,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-016",
@@ -347,7 +395,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "ACC-017",
@@ -361,7 +409,37 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "ACC-018",
+      "family": "Accounting and close",
+      "title": "Accounting effects preview",
+      "supported_scope": "Every journal-producing action previews debits credits and affected subledgers using current selected options",
+      "acceptance": "Credit invoice full receipt and bypass-receivable sale show different correct entries and stale previews cannot execute",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "ACC-019",
+      "family": "Accounting and close",
+      "title": "Locked-entry correction oversight",
+      "supported_scope": "Ultimate-owner controlled period exceptions with reason immutable correction history customer notification and email outbox",
+      "acceptance": "A locked entry cannot be silently overwritten and interrupted notification delivery cannot lose the audit event",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-001",
@@ -375,7 +453,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-002",
@@ -389,7 +467,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-003",
@@ -398,12 +476,14 @@
       "supported_scope": "Direct and linked invoices with tax discounts and dimensions",
       "acceptance": "One invoice creates the expected receivable revenue tax and stock effects",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-004",
@@ -417,7 +497,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-005",
@@ -431,7 +511,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-006",
@@ -445,7 +525,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-007",
@@ -454,12 +534,14 @@
       "supported_scope": "Partial receipts advances withholding and unapplied balances",
       "acceptance": "Customer balance agrees to invoices credits and allocations",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SAL-008",
@@ -473,7 +555,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-001",
@@ -487,7 +569,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-002",
@@ -501,7 +583,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-003",
@@ -515,7 +597,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-004",
@@ -529,7 +611,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-005",
@@ -543,7 +625,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-006",
@@ -557,7 +639,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-007",
@@ -571,7 +653,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PUR-008",
@@ -585,7 +667,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-001",
@@ -599,7 +681,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-002",
@@ -613,7 +695,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-003",
@@ -627,7 +709,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-004",
@@ -641,7 +723,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-005",
@@ -655,7 +737,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-006",
@@ -669,7 +751,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-007",
@@ -683,7 +765,7 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "POS-008",
@@ -697,7 +779,35 @@
         "SAL-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "POS-009",
+      "family": "Point of sale",
+      "title": "Recipe-linked production sales",
+      "supported_scope": "POS sale consumes designated recipe inputs records production and sells finished output in one controlled process",
+      "acceptance": "A burger sale consumes the correct ingredients once and insufficient ingredients or retry cannot partially post",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "POS-010",
+      "family": "Point of sale",
+      "title": "Device connectors",
+      "supported_scope": "Configured barcode scanners scales counters printers and other supported store or POS devices through scoped adapters",
+      "acceptance": "Duplicate or malformed device events cannot bypass quantity unit authority or posting validation",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-001",
@@ -711,7 +821,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-002",
@@ -725,7 +835,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-003",
@@ -734,12 +844,14 @@
       "supported_scope": "Opening receipt issue return adjustment and transfer",
       "acceptance": "Each event produces the correct quantity and accounting effect once",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-004",
@@ -748,12 +860,14 @@
       "supported_scope": "Default store unit cost mapping destination and scan",
       "acceptance": "An unfamiliar user issues one tissue box without choosing accounts",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-005",
@@ -762,12 +876,14 @@
       "supported_scope": "Approval-before-release or authorized immediate issue policy",
       "acceptance": "Pending release does not silently consume physical stock",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-006",
@@ -781,7 +897,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-007",
@@ -795,7 +911,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-008",
@@ -809,7 +925,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-009",
@@ -823,7 +939,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-010",
@@ -837,7 +953,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-011",
@@ -846,12 +962,14 @@
       "supported_scope": "Negative-stock policy concurrency and reservations",
       "acceptance": "Two users cannot release the same last unit under no-negative policy",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "INV-012",
@@ -865,7 +983,35 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "INV-013",
+      "family": "Inventory",
+      "title": "Retroactive costing",
+      "supported_scope": "Explicit item policy for provisional issue costs later purchase costs and traceable cost adjustments",
+      "acceptance": "Later costs reconcile by linked adjustments with closed-period and historical-report handling rather than silent rewrites",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "INV-014",
+      "family": "Inventory",
+      "title": "Item valuation selection",
+      "supported_scope": "Company defaults and item-category policies for FIFO weighted average and a requested separately governed LIFO option",
+      "acceptance": "Unsupported reporting-policy combinations are blocked and policy changes retain reproducible history",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-001",
@@ -879,7 +1025,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-002",
@@ -893,7 +1039,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-003",
@@ -907,7 +1053,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-004",
@@ -921,7 +1067,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-005",
@@ -935,7 +1081,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-006",
@@ -949,7 +1095,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AST-007",
@@ -963,7 +1109,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-001",
@@ -977,7 +1123,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-002",
@@ -991,7 +1137,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-003",
@@ -1005,7 +1151,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-004",
@@ -1019,7 +1165,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-005",
@@ -1033,7 +1179,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-006",
@@ -1047,7 +1193,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-007",
@@ -1061,7 +1207,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-008",
@@ -1075,7 +1221,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-009",
@@ -1089,7 +1235,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-010",
@@ -1103,7 +1249,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-011",
@@ -1117,7 +1263,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "MFG-012",
@@ -1131,7 +1277,7 @@
         "INV-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-001",
@@ -1145,7 +1291,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-002",
@@ -1159,7 +1305,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-003",
@@ -1173,7 +1319,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-004",
@@ -1187,7 +1333,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-005",
@@ -1201,7 +1347,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-006",
@@ -1215,7 +1361,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-007",
@@ -1229,7 +1375,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-008",
@@ -1243,7 +1389,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-009",
@@ -1257,7 +1403,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-010",
@@ -1271,7 +1417,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-011",
@@ -1285,7 +1431,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-012",
@@ -1299,7 +1445,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-013",
@@ -1313,7 +1459,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-014",
@@ -1327,7 +1473,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-015",
@@ -1341,7 +1487,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-016",
@@ -1355,7 +1501,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-017",
@@ -1369,7 +1515,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "HR-018",
@@ -1383,7 +1529,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PRJ-001",
@@ -1397,7 +1543,7 @@
         "SAL-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PRJ-002",
@@ -1411,7 +1557,7 @@
         "SAL-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PRJ-003",
@@ -1425,7 +1571,7 @@
         "SAL-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PRJ-004",
@@ -1439,7 +1585,7 @@
         "SAL-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "PRJ-005",
@@ -1453,7 +1599,21 @@
         "SAL-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "PRJ-006",
+      "family": "Projects and basic CRM",
+      "title": "Project and product financial planning",
+      "supported_scope": "Tasks milestones project and product budgets forecasts scenarios financials and performance",
+      "acceptance": "Forecast changes retain assumption versions and actuals reconcile to posted records without executing investments",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "SAL-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-001",
@@ -1467,7 +1627,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-002",
@@ -1481,7 +1641,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-003",
@@ -1495,7 +1655,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-004",
@@ -1509,7 +1669,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-005",
@@ -1523,7 +1683,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-006",
@@ -1537,7 +1697,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-007",
@@ -1551,7 +1711,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-008",
@@ -1565,7 +1725,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-009",
@@ -1579,7 +1739,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-010",
@@ -1593,7 +1753,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-011",
@@ -1607,7 +1767,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "FIN-012",
@@ -1621,7 +1781,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-001",
@@ -1635,7 +1795,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-002",
@@ -1649,7 +1809,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-003",
@@ -1663,7 +1823,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-004",
@@ -1677,7 +1837,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-005",
@@ -1691,7 +1851,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-006",
@@ -1705,7 +1865,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-007",
@@ -1719,7 +1879,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "TAX-008",
@@ -1733,7 +1893,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-001",
@@ -1747,7 +1907,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-002",
@@ -1761,7 +1921,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-003",
@@ -1775,7 +1935,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-004",
@@ -1789,7 +1949,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-005",
@@ -1803,7 +1963,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-006",
@@ -1817,7 +1977,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-007",
@@ -1831,7 +1991,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-008",
@@ -1845,7 +2005,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-009",
@@ -1859,7 +2019,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "RPT-010",
@@ -1873,7 +2033,7 @@
         "ACC-004"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-001",
@@ -1887,7 +2047,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-002",
@@ -1901,7 +2061,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-003",
@@ -1915,7 +2075,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-004",
@@ -1929,7 +2089,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-005",
@@ -1943,7 +2103,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-006",
@@ -1957,7 +2117,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-007",
@@ -1971,7 +2131,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "CFG-008",
@@ -1985,7 +2145,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "DOC-001",
@@ -1999,7 +2159,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "DOC-002",
@@ -2013,7 +2173,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "DOC-003",
@@ -2027,7 +2187,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "DOC-004",
@@ -2041,7 +2201,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "DOC-005",
@@ -2055,7 +2215,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "DOC-006",
@@ -2069,7 +2229,77 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "DOC-007",
+      "family": "Company Drive and evidence",
+      "title": "Transaction print templates",
+      "supported_scope": "Versioned defaults for every transaction with copy edit and AI-assisted format creation",
+      "acceptance": "An edited copy preserves the original template and historical prints identify their template version",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "DOC-008",
+      "family": "Company Drive and evidence",
+      "title": "Email and scheduled delivery",
+      "supported_scope": "Customer supplier document sharing reminders future delivery and cancellation",
+      "acceptance": "A retry sends no duplicate external message and permissions are rechecked at dispatch",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "DOC-009",
+      "family": "Company Drive and evidence",
+      "title": "Protected transaction evidence",
+      "supported_scope": "Any allowed support type including spreadsheet workings becomes a protected versioned attachment",
+      "acceptance": "Folder delete permission cannot remove attached evidence and an authorized admin deletion logs and notifies the company",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "DOC-010",
+      "family": "Company Drive and evidence",
+      "title": "Drive space allocation",
+      "supported_scope": "Business subscription quota user personal allocations and business-admin visibility within the company",
+      "acceptance": "Allocations cannot exceed the company limit and user access cannot escape the company",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "DOC-011",
+      "family": "Company Drive and evidence",
+      "title": "External file sharing",
+      "supported_scope": "Revocable expiring public or password-protected links with optional download controls",
+      "acceptance": "Expired or revoked links fail and download restrictions do not imply protection against screenshots",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-001",
@@ -2083,7 +2313,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-002",
@@ -2097,7 +2327,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-003",
@@ -2111,7 +2341,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-004",
@@ -2125,7 +2355,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-005",
@@ -2139,7 +2369,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-006",
@@ -2153,7 +2383,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-007",
@@ -2167,7 +2397,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-008",
@@ -2181,7 +2411,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-009",
@@ -2195,7 +2425,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "APP-010",
@@ -2209,7 +2439,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-001",
@@ -2223,7 +2453,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-002",
@@ -2237,7 +2467,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-003",
@@ -2251,7 +2481,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-004",
@@ -2265,7 +2495,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-005",
@@ -2279,7 +2509,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-006",
@@ -2293,7 +2523,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-007",
@@ -2307,7 +2537,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-008",
@@ -2321,7 +2551,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-009",
@@ -2335,7 +2565,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-010",
@@ -2349,7 +2579,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-011",
@@ -2363,7 +2593,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-012",
@@ -2377,7 +2607,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-013",
@@ -2391,7 +2621,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-014",
@@ -2405,7 +2635,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-015",
@@ -2419,7 +2649,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-016",
@@ -2433,7 +2663,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-017",
@@ -2449,7 +2679,7 @@
         "DOC-002"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-018",
@@ -2464,7 +2694,7 @@
         "DOC-002"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-019",
@@ -2480,7 +2710,7 @@
         "SEC-003"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-020",
@@ -2495,7 +2725,7 @@
         "APP-006"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-021",
@@ -2509,7 +2739,7 @@
         "AI-019"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-022",
@@ -2525,7 +2755,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-023",
@@ -2541,7 +2771,7 @@
         "DOC-005"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-024",
@@ -2557,7 +2787,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "AI-025",
@@ -2573,7 +2803,93 @@
         "AI-020"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AI-026",
+      "family": "AI tools memory and evaluation",
+      "title": "Fixed named AI seats",
+      "supported_scope": "Business seat allocation by named user with reassignment only after membership removal or approved period-end operator change",
+      "acceptance": "Four seats cannot be rotated between more than four active named users during the period",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AI-027",
+      "family": "AI tools memory and evaluation",
+      "title": "User and business usage",
+      "supported_scope": "Per-request provider-reported tokens costs and separate daily user and company budgets across shared provider keys",
+      "acceptance": "Retries failures vision voice and unreported usage are distinguished and limits reserve budget before dispatch",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AI-028",
+      "family": "AI tools memory and evaluation",
+      "title": "Key and model routing",
+      "supported_scope": "Platform business or user managed provider credentials multi-model adapters and custom-plan routing",
+      "acceptance": "Secrets remain server-side and a provider or customer key cannot expand tool authority or bypass evaluation gates",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AI-029",
+      "family": "AI tools memory and evaluation",
+      "title": "Document and voice inputs",
+      "supported_scope": "Raw document and picture evidence plus speech-to-text with operator company and user controls",
+      "acceptance": "Transcription and extraction retain source links missing facts are flagged and disabled inputs cannot be invoked",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AI-030",
+      "family": "AI tools memory and evaluation",
+      "title": "Private operational metrics",
+      "supported_scope": "Redacted task performance success failure latency cost and model/tool version reporting",
+      "acceptance": "Operators can improve the service without routine exposure of complete customer prompts files or payroll",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AI-031",
+      "family": "AI tools memory and evaluation",
+      "title": "Bounded business tool authority",
+      "supported_scope": "Agent operations use the same authenticated business commands as the user with deterministic validation and approvals",
+      "acceptance": "A model or document instruction cannot inject a different actor company account grant or approval",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-001",
@@ -2587,7 +2903,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-002",
@@ -2601,7 +2917,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-003",
@@ -2615,7 +2931,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-004",
@@ -2629,7 +2945,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-005",
@@ -2643,7 +2959,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-006",
@@ -2657,7 +2973,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-007",
@@ -2671,7 +2987,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-008",
@@ -2685,7 +3001,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-009",
@@ -2699,7 +3015,7 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "OPS-010",
@@ -2713,7 +3029,123 @@
         "FND-001"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-011",
+      "family": "Portals subscription and operations",
+      "title": "Submission conversion",
+      "supported_scope": "Application frontend feeds operator review billing status and idempotent company and nominated-user provisioning",
+      "acceptance": "Accepted submitted data converts without re-entry and concurrent provisioning cannot create duplicate accounts",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-012",
+      "family": "Portals subscription and operations",
+      "title": "Prorated package changes",
+      "supported_scope": "Immediate next-period or selected-date plan changes with versioned daily or period allocation rules",
+      "acceptance": "A mid-period example reconciles old and new charges using explicit timezone rounding tax and credit treatment",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-013",
+      "family": "Portals subscription and operations",
+      "title": "Manual and future card billing",
+      "supported_scope": "Manual-transfer operation now with payment-adapter boundaries for later mixed card and manual customers",
+      "acceptance": "Repeated provider events cannot activate twice and manual receipt review cannot expose payment-card details",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-014",
+      "family": "Portals subscription and operations",
+      "title": "Entitlement administration",
+      "supported_scope": "Operator controls for business user group and global features modules AI access and package gates",
+      "acceptance": "Effective access is the intersection of entitlement company choice user permission and operator availability with comprehensive logs",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-015",
+      "family": "Portals subscription and operations",
+      "title": "Support identity administration",
+      "supported_scope": "Case-scoped attributed impersonation reset or invitation flows with customer visibility and no recoverable password access",
+      "acceptance": "Support cannot retrieve existing passwords and sensitive actions preserve real operator and represented user identities",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-016",
+      "family": "Portals subscription and operations",
+      "title": "Hosting portability",
+      "supported_scope": "Cloudflare Workers database and buckets behind adapters with a supported self-hosted container path",
+      "acceptance": "The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-017",
+      "family": "Portals subscription and operations",
+      "title": "Resumable development",
+      "supported_scope": "Durable build state changed-file records check outcomes blockers and remaining actions",
+      "acceptance": "A resumed development agent locates the current branch and incomplete work without repeating completed effects",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-018",
+      "family": "Portals subscription and operations",
+      "title": "Controlled offline application",
+      "supported_scope": "Selected POS accounting inventory assets and manufacturing functions with signed grants scoped master-data creation and bidirectional sync",
+      "acceptance": "Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-001",
@@ -2722,12 +3154,14 @@
       "supported_scope": "MFA operator sessions recovery step-up and secure cookies",
       "acceptance": "Account recovery and privilege actions resist defined takeover tests",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-007"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-002",
@@ -2736,12 +3170,14 @@
       "supported_scope": "Database files cache jobs search exports and AI context",
       "acceptance": "Cross-tenant and pooled-connection tests deny all defined attempts",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-007"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-003",
@@ -2750,12 +3186,14 @@
       "supported_scope": "Actor initiator source reason before-after reference approval and outcome",
       "acceptance": "Company reviewer traces a sample financial and configuration action",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-007"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-004",
@@ -2769,7 +3207,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-005",
@@ -2783,7 +3221,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-006",
@@ -2797,7 +3235,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-007",
@@ -2811,7 +3249,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-008",
@@ -2825,7 +3263,7 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "SEC-009",
@@ -2839,7 +3277,37 @@
         "FND-007"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "SEC-010",
+      "family": "Security audit and assurance",
+      "title": "Single active account session",
+      "supported_scope": "A successful new login replaces the previous active session across companies",
+      "acceptance": "The previous cookie fails on its next request and revocation is rechecked when a command executes",
+      "commercial_release": "required",
+      "status": "in progress",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "SEC-011",
+      "family": "Security audit and assurance",
+      "title": "Password and login data design",
+      "supported_scope": "Server-side one-way password hashing or a vetted identity provider secure recovery and no plaintext password storage",
+      "acceptance": "Database backups logs operator tools and the browser never expose recoverable user passwords",
+      "commercial_release": "required",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "UX-001",
@@ -2848,12 +3316,14 @@
       "supported_scope": "Polished visible glass chrome with readable stable data surfaces",
       "acceptance": "Light and dark review shows no gradient seam or contrast loss",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-009"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "UX-002",
@@ -2862,12 +3332,14 @@
       "supported_scope": "Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps",
       "acceptance": "User can locate each destination in both sidebar states",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-009"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "UX-003",
@@ -2876,12 +3348,14 @@
       "supported_scope": "SAVEN name official ESC emblem plum and ivory tokens",
       "acceptance": "No provisional lion or obsolete product name appears in current application branding",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-009"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "UX-004",
@@ -2890,12 +3364,14 @@
       "supported_scope": "Keyboard scanning touch quick actions drafts and visible states",
       "acceptance": "Frequent small issue requires no AI chat or specialist instruction",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-009"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "UX-005",
@@ -2909,7 +3385,7 @@
         "FND-009"
       ],
       "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
       "id": "UX-006",
@@ -2918,12 +3394,14 @@
       "supported_scope": "Small screens long values errors progress and safe retry",
       "acceptance": "Interrupted submissions preserve intent without duplicate effects",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-009"
       ],
-      "evidence": [],
-      "approval": "Subject to review baseline and decisions D01 to D12"
+      "evidence": [
+        "docs/12-foundation.md"
+      ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     }
   ]
 }

@@ -35,3 +35,8 @@ Financial AI prepares and submits. A human explicitly executes through configure
 ## ADR 008 Recommended stack subject to foundation evidence
 
 Recommend React TypeScript Django PostgreSQL object storage and durable workers. The permanent team and a foundation spike must validate migrations tenant scope decimal arithmetic contracts private packaging and recovery. Exact versions remain implementation decisions. This recommendation is not evidence that a production scaffold exists.
+
+## ADR 009 Cloudflare foundation experiment — 11 November 2026
+
+The owner's new input prefers Cloudflare Workers, database and buckets while preserving a self-hosted path. The first foundation now uses native Worker ES modules, D1-compatible prepared statements and batches, fixed-point BigInt financial calculation, a local Node/SQLite adapter, and a buildless browser workspace. This supersedes ADR 008 as the immediate spike choice, not as an irrevocable production database decision. ADR 003's PostgreSQL row-level security is not available in D1 and has not been claimed. The complete suite still requires a database/capacity/security decision supported by measured evidence. See [foundation implementation](12-foundation.md).
+

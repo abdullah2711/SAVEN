@@ -1,5 +1,7 @@
 # SAVEN Feedback Traceability
 
+**Latest source:** the owner's additional “Input, Suggestions & Feedback” is mapped individually in [the additional implementation contract](11-additional-input.md). It adds 30 catalog records without renumbering the prior 209. [Foundation evidence](12-foundation.md) records partial implementation; all remaining launch scope is preserved.
+
 11 November 2026 | Baseline 1.1
 
 The attached Saven discussion supersedes conflicting sections of the old SIMBA blueprint. This register records how each material direction is treated. Specified means documented for review, not implemented. Requirement ranges refer to the feature catalog. Source fingerprints are in `source-manifest.json`.
@@ -56,3 +58,4 @@ The original expansion-only treatment of extraction and report-building AI is su
 ## Remaining specification work
 
 This baseline is sufficient to review direction and start a foundation after approval. It does not pretend that hundreds of screen designs, every payroll rule, every production formula, tax onboarding, threat assessment, or every API schema have already been completed. Each feature must acquire those concrete contracts and evidence before being called verified or sold as supported.
+

@@ -6,6 +6,8 @@ Prepared for Abdullah Nauman and Economic Systems Consulting
 
 ## 1 Current state and next authorized step
 
+**Construction update, 11 November 2026:** the owner has authorized building after supplying additional input. The historical review-only pause below is superseded. The [additional implementation contract](11-additional-input.md), [foundation implementation and limits](12-foundation.md), and [build checkpoint](BUILD_STATE.md) record current work. Only testing-1 is authorized for source publication; main remains a release decision.
+
 The connected GitHub repository is abdullah2711/SAVEN. The verified branches are main and testing-1. The original 1.0 baseline began with both branches at bdf418ca3bf6ebac49115f45119cbe0f6548e907; subsequent planning updates are committed only to testing-1. No merge to main, production deployment, database creation, paid infrastructure purchase, or working accounting implementation is represented by these documents.
 
 The supplied discussion explicitly requests the documents before software construction and review before coding. The next step after review is a foundation implementation on testing-1. Unresolved choices below have recommended defaults so review can be concrete; they are not silently treated as approved commercial commitments.
@@ -155,3 +157,4 @@ The repository contains the four narrative documents, machine-readable feature c
 Maintain requirement states as specified, in progress, implemented, verified, released, and changed. A verified record links to a test or review result at a commit and relevant environment. Commercial release records the exact included requirement set and known limitations. Add acceptance evidence as software is built rather than backfilling claims after launch.
 
 The scope review should resolve the decisions above and then authorize the Stage 1 foundation. Review does not require approving every screen pixel or predicting every future feature. It must establish financial rules, supported processes, AI authority, data boundaries, operating responsibilities, and the criteria for a safe first customer.
+

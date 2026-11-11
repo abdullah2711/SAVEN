@@ -49,6 +49,8 @@ Apply tenant scope to object keys, signed downloads, caches, search indexes, ana
 
 ## 5 Business command and posting contract
 
+**Implementation note:** [the first foundation](12-foundation.md) now implements a limited version of this command contract with a Cloudflare Worker/D1-compatible adapter and local Node/SQLite tests, following the owner's [additional input](11-additional-input.md). This does not establish the complete architecture or PostgreSQL row-security controls described elsewhere in this baseline. See ADR 009 in the [decision register](07-architecture-decisions.md).
+
 Each mutating command contains a schema version, company, authenticated actor, source channel, idempotency key, expected record version, structured payload, and correlation identifier. Server-side authority derives from the session or scoped credential, not an editable actor field. Money and quantity are decimal strings at API boundaries.
 
 Execution resolves membership and entitlement, validates the document and current policy, checks concurrency and locks, calculates financial effects, and either saves a draft or creates an approval case. Approval binds the exact payload digest, relevant policy version, and evidence version. Any material edit invalidates approval. Execution rechecks authority, accounting period, stock availability, and relevant business constraints.
@@ -154,3 +156,4 @@ Before public launch, commission a scoped independent penetration test, remediat
 [R3] OWASP LLM Prompt Injection Prevention Cheat Sheet. https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html
 
 [R4] OpenAPI Specification. https://spec.openapis.org/oas/latest.html
+

@@ -1,8 +1,8 @@
 # SAVEN Feature and Acceptance Library
 
-11 November 2026 | Baseline 1.1
+11 November 2026 | Baseline 1.2
 
-209 requirements across 20 families. All begin as specified, with no implementation evidence. This catalog and decisions D01 to D12 define supported scope for review.
+239 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress foundation work is partial, not release verification; see docs/12-foundation.md for evidence and limits. This catalog and decisions D01 to D12 define supported scope for review.
 
 Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.
 
@@ -20,6 +20,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | FND-008 | Delegated administration: Company superadmin and module administrator grants | Delegation cannot exceed grantor authority or cross companies |
 | FND-009 | Workspace configuration: Role navigation quick actions and personal preferences | Hidden menus do not grant or revoke business authority |
 | FND-010 | Localization packs: Versioned language reporting tax and employment configuration | Unsupported pack rules are visible before activation |
+| FND-011 | Ultimate business ownership: One protected ultimate owner and controlled delegated administration | Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority |
+| FND-012 | Resource-level controls: Customer supplier item account store and action-specific grants with preview and execution checks | A forbidden resource remains forbidden through forms APIs AI approvals and offline synchronization |
 
 ## Accounting and close
 
@@ -42,6 +44,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | ACC-015 | Lease schedules: Supported lessee contracts interest depreciation modifications and disclosures | Schedule agrees to approved reporting-policy examples and GL |
 | ACC-016 | Tax accounting schedules: Current and deferred tax workpapers temporary differences and reviewed entries | Schedules reconcile to approved tax calculations without an automatic compliance claim |
 | ACC-017 | Financial and equity schedules: Supported investments debt equity movements and distributions | Classification measurement basis and approval are explicit for each supported instrument |
+| ACC-018 | Accounting effects preview: Every journal-producing action previews debits credits and affected subledgers using current selected options | Credit invoice full receipt and bypass-receivable sale show different correct entries and stale previews cannot execute |
+| ACC-019 | Locked-entry correction oversight: Ultimate-owner controlled period exceptions with reason immutable correction history customer notification and email outbox | A locked entry cannot be silently overwritten and interrupted notification delivery cannot lose the audit event |
 
 ## Sales and receivables
 
@@ -81,6 +85,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | POS-006 | Tax receipt: Applicable tax identifiers QR and fiscal status | Required tax data and acceptance state appear on receipt |
 | POS-007 | Connectivity: Connected operation draft recovery and safe retry | Interrupted submission cannot duplicate sale stock or tender |
 | POS-008 | Offline scope decision: Offline operating contract subject to D05 review | No offline promise is made before tax sync tender and oversell policies pass |
+| POS-009 | Recipe-linked production sales: POS sale consumes designated recipe inputs records production and sells finished output in one controlled process | A burger sale consumes the correct ingredients once and insufficient ingredients or retry cannot partially post |
+| POS-010 | Device connectors: Configured barcode scanners scales counters printers and other supported store or POS devices through scoped adapters | Duplicate or malformed device events cannot bypass quantity unit authority or posting validation |
 
 ## Inventory
 
@@ -98,6 +104,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | INV-010 | Landed cost and valuation: Cost allocation NRV review slow stock and ageing | Inventory valuation agrees to GL with explained timing differences |
 | INV-011 | Availability controls: Negative-stock policy concurrency and reservations | Two users cannot release the same last unit under no-negative policy |
 | INV-012 | Replenishment: Minimum levels lead times reorder proposals and commitments | Proposed supply accounts for approved open orders and reservations |
+| INV-013 | Retroactive costing: Explicit item policy for provisional issue costs later purchase costs and traceable cost adjustments | Later costs reconcile by linked adjustments with closed-period and historical-report handling rather than silent rewrites |
+| INV-014 | Item valuation selection: Company defaults and item-category policies for FIFO weighted average and a requested separately governed LIFO option | Unsupported reporting-policy combinations are blocked and policy changes retain reproducible history |
 
 ## Fixed assets
 
@@ -160,6 +168,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | PRJ-003 | Time and expenses: Timesheets billable status approvals and cost allocation | Approved entries flow once into project cost or billing |
 | PRJ-004 | Budgets and commitments: Project budgets purchasing retention and variations | Actual committed and remaining amounts reconcile by dimension |
 | PRJ-005 | Billing and margin: Milestone progress time billing and profitability | Revenue and cost reconcile to the ledger with stated recognition basis |
+| PRJ-006 | Project and product financial planning: Tasks milestones project and product budgets forecasts scenarios financials and performance | Forecast changes retain assumption versions and actuals reconcile to posted records without executing investments |
 
 ## Financial management
 
@@ -229,6 +238,11 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | DOC-004 | Quotas: Plan storage metering retained versions warnings and limits | Quota enforcement is race safe and explains what counts |
 | DOC-005 | Deletion and retention: Soft delete holds recovery and authorized purge | Delete preview identifies affected records and legal or evidence holds |
 | DOC-006 | Search and retrieval: Permitted metadata content and document versions | Search snippets and AI retrieval respect the same access rules |
+| DOC-007 | Transaction print templates: Versioned defaults for every transaction with copy edit and AI-assisted format creation | An edited copy preserves the original template and historical prints identify their template version |
+| DOC-008 | Email and scheduled delivery: Customer supplier document sharing reminders future delivery and cancellation | A retry sends no duplicate external message and permissions are rechecked at dispatch |
+| DOC-009 | Protected transaction evidence: Any allowed support type including spreadsheet workings becomes a protected versioned attachment | Folder delete permission cannot remove attached evidence and an authorized admin deletion logs and notifies the company |
+| DOC-010 | Drive space allocation: Business subscription quota user personal allocations and business-admin visibility within the company | Allocations cannot exceed the company limit and user access cannot escape the company |
+| DOC-011 | External file sharing: Revocable expiring public or password-protected links with optional download controls | Expired or revoked links fail and download restrictions do not imply protection against screenshots |
 
 ## APIs and Apps
 
@@ -274,6 +288,12 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | AI-023 | Knowledge disable and recovery: Stop capture refresh retrieval and context use with separate retention deletion and reactivation workflows | Disable invalidates queued cached and in-flight use and reactivation reconciles current versions and permissions without deleting source records |
 | AI-024 | Derived knowledge protection: Source-sensitive facts relationships summaries citations and delivery-time authorization | Revoked or restricted evidence cannot leak through answers titles counts excerpts caches or historical knowledge |
 | AI-025 | Knowledge inspection: Permitted company fact source and timeline views correction tasks and coverage diagnostics | Authorized user can inspect what is retained why it is believed and what remains incomplete without operator settings granting content access |
+| AI-026 | Fixed named AI seats: Business seat allocation by named user with reassignment only after membership removal or approved period-end operator change | Four seats cannot be rotated between more than four active named users during the period |
+| AI-027 | User and business usage: Per-request provider-reported tokens costs and separate daily user and company budgets across shared provider keys | Retries failures vision voice and unreported usage are distinguished and limits reserve budget before dispatch |
+| AI-028 | Key and model routing: Platform business or user managed provider credentials multi-model adapters and custom-plan routing | Secrets remain server-side and a provider or customer key cannot expand tool authority or bypass evaluation gates |
+| AI-029 | Document and voice inputs: Raw document and picture evidence plus speech-to-text with operator company and user controls | Transcription and extraction retain source links missing facts are flagged and disabled inputs cannot be invoked |
+| AI-030 | Private operational metrics: Redacted task performance success failure latency cost and model/tool version reporting | Operators can improve the service without routine exposure of complete customer prompts files or payroll |
+| AI-031 | Bounded business tool authority: Agent operations use the same authenticated business commands as the user with deterministic validation and approvals | A model or document instruction cannot inject a different actor company account grant or approval |
 
 ## Portals subscription and operations
 
@@ -289,6 +309,14 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-008 | Private deployment: Same artifacts migrations entitlements grace and responsibility matrix | Upgrade and expiry tests match documented supported behaviour |
 | OPS-009 | Performance and cells: Per-tenant limits asynchronous BI regional home and capacity measurement | Noisy neighbour and declared-load tests meet agreed budgets |
 | OPS-010 | Migration and releases: Expand migrate contract canary compatibility and recovery | Old records remain interpretable and destructive changes have verified recovery |
+| OPS-011 | Submission conversion: Application frontend feeds operator review billing status and idempotent company and nominated-user provisioning | Accepted submitted data converts without re-entry and concurrent provisioning cannot create duplicate accounts |
+| OPS-012 | Prorated package changes: Immediate next-period or selected-date plan changes with versioned daily or period allocation rules | A mid-period example reconciles old and new charges using explicit timezone rounding tax and credit treatment |
+| OPS-013 | Manual and future card billing: Manual-transfer operation now with payment-adapter boundaries for later mixed card and manual customers | Repeated provider events cannot activate twice and manual receipt review cannot expose payment-card details |
+| OPS-014 | Entitlement administration: Operator controls for business user group and global features modules AI access and package gates | Effective access is the intersection of entitlement company choice user permission and operator availability with comprehensive logs |
+| OPS-015 | Support identity administration: Case-scoped attributed impersonation reset or invitation flows with customer visibility and no recoverable password access | Support cannot retrieve existing passwords and sensitive actions preserve real operator and represented user identities |
+| OPS-016 | Hosting portability: Cloudflare Workers database and buckets behind adapters with a supported self-hosted container path | The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use |
+| OPS-017 | Resumable development: Durable build state changed-file records check outcomes blockers and remaining actions | A resumed development agent locates the current branch and incomplete work without repeating completed effects |
+| OPS-018 | Controlled offline application: Selected POS accounting inventory assets and manufacturing functions with signed grants scoped master-data creation and bidirectional sync | Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested |
 
 ## Security audit and assurance
 
@@ -303,6 +331,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | SEC-007 | Incident response: Detection containment evidence recovery reconciliation and communication | A tabletop and restore exercise produces actionable evidence |
 | SEC-008 | Independent assurance: Scoped penetration test remediation and certification roadmap | Only obtained assurance is advertised and critical findings are resolved |
 | SEC-009 | Export and exit: Structured records attachments mappings and reconciliation | A sample export independently reconstructs accepted balances and evidence |
+| SEC-010 | Single active account session: A successful new login replaces the previous active session across companies | The previous cookie fails on its next request and revocation is rechecked when a command executes |
+| SEC-011 | Password and login data design: Server-side one-way password hashing or a vetted identity provider secure recovery and no plaintext password storage | Database backups logs operator tools and the browser never expose recoverable user passwords |
 
 ## Interface and accessibility
 

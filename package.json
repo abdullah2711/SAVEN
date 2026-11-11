@@ -1,0 +1,14 @@
+{
+  "name": "saven",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.13 <25" },
+  "scripts": {
+    "dev": "node scripts/server.mjs",
+    "demo": "node scripts/server.mjs --demo",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/check.mjs"
+  }
+}
