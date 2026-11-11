@@ -30,4 +30,8 @@ Browser blockers: in-app browser navigation timed out, shell loopback connection
 
 Publication: this source snapshot targets testing-1 only, using a lease against the inspected branch head. Inspect GitHub checks for the current head; a source commit does not establish a working live environment. No main update, customer import, production binding, live database provisioning or billing action has been performed.
 
+Remote evidence for implementation commit c0dc98aa73905b98247bf55499ef46052da3fbc1: GitHub foundation job passed all 22 tests plus source/catalog checks; Cloudflare Workers Builds saven-testing completed successfully. Main was independently checked and remained bdf418ca3bf6ebac49115f45119cbe0f6548e907. The production-named saven Worker also triggered a build from the testing commit and failed. Its dashboard branch mapping needs review before further deployment work. The successful testing build does not prove DB binding/migrations or live financial availability; HTTP/visual inspection of the custom domain was unavailable.
+
+CI maintenance: the first remote run warned that older action versions used deprecated Node 20 entrypoints. The workflow now pins the official checkout v7.0.1, setup-node v7.1.0 and setup-python v7.1.0 commit SHAs and disables checkout credential persistence. The financial application code is unchanged from the tested implementation commit. The local QA server has been stopped.
+
 Next actions: confirm testing Worker branch and DB binding, run D1 contract tests and provision isolated test identities through a controlled operator path; complete browser QA; then implement real operator onboarding, identity/MFA, company setup/opening reconciliation and protected attachments. Preserve all other catalog requirements.
