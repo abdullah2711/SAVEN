@@ -65,3 +65,10 @@ Verified the testing Worker has the two testing-domain aliases (.cc and .com) an
 Private owner/preparer/reviewer invitations are generated under ignored var/ and remain unused for the owner's handoff. QA invitations are separate. Do not commit or print raw invitations into this checkpoint. Initial invitations work once and expire after 24 hours; sessions last eight hours. Persistent identity/recovery and operator onboarding remain required release work.
 
 Next: finish the post-deployment UI confirmation and hand off working testing links; then implement full operator onboarding/identity, company setup and opening reconciliation, protected attachments and the remaining catalog. The completed access setup is not the complete commercial product.
+
+
+## Final hosted confirmation — 12 November 2026
+
+Cloudflare successfully deployed application commit b5b50ba427fcd3295ab6067e5f9b8890f9db06a0. After deployment, a same-page invitation link signed the separate QA owner into the hosted workspace. Confirmed the posted invoice caption now states its effects are posted, and verified light/dark appearance and sidebar collapse/expand. The sign-in logo, wordmark, caption and introductory text share the same center axis, visually checked and confirmed by rendered geometry. The owner workspace remains open with the synthetic reconciliation records for inspection. All user-handoff invitations remain unused.
+
+Latest GitHub Actions was still queued at inspection; the earlier foundation run passed and all 23 current local tests passed. Do not describe the latest remote CI run as passed without checking it. The next implementation work remains operator onboarding/identity, company setup/openings, protected attachments and the remaining catalog. No main or production change was made.
