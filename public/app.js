@@ -36,7 +36,7 @@ async function start(){
     if(!activeCompany){app.innerHTML=`<main class="sign-in"><section class="glass sign-in-card"><span class="wordmark">SAVEN</span><h1>No active companies</h1><p>Your account is signed in. Contact support if your business subscription needs to be resumed.</p><button class="button" data-action="logout">Sign out</button></section></main>`;return;}
     await refresh();
   }catch(error){
-    if(error.status===500||error.status===503){
+    if([401,500,503].includes(error.status)){
       try{const health=await call('/api/health');if(!health.schemaReady){activationPending();return;}}catch{}
     }
     signIn(error.status===401?'':error.message);
