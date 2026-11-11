@@ -19,19 +19,28 @@ const endpoint=area=>`/api/companies/${encodeURIComponent(activeCompany)}/${area
 async function refresh(){data=await call(endpoint('workspace'));render();}
 function signIn(message='') {
   me=null;data=null;dialog.close();
-  app.innerHTML=`<main class="sign-in"><section class="glass refractive sign-in-card"><div class="brand-logo" role="img" aria-label="Economic Systems"></div><span class="wordmark">SAVEN</span><h1>Your business, clearly.</h1><p>Enter your one-time invitation to open your workspace. Your company records stay private.</p><form id="sign-in-form"><label for="invitation">Invitation token</label><input id="invitation" name="token" type="password" required autocomplete="off" spellcheck="false" placeholder="Paste your invitation token"><button class="button primary" type="submit">Open workspace ${icon('arrow')}</button><div id="sign-in-error" class="error-message" role="alert">${e(message)}</div></form><div class="footer-note">Foundation build · Access by invitation</div></section></main>`;
+  app.innerHTML=`<main class="sign-in"><section class="glass refractive sign-in-card"><header class="sign-in-brand"><div class="brand-logo" role="img" aria-label="Economic Systems"></div><span class="wordmark">SAVEN</span><span class="brand-caption">Economic Systems</span></header><div class="sign-in-intro"><h1>Your business, clearly.</h1><p>Enter your one-time invitation to open your workspace. Your company records stay private.</p></div><form id="sign-in-form"><label for="invitation">Invitation token</label><input id="invitation" name="token" type="password" required autocomplete="off" spellcheck="false" placeholder="Paste your invitation token"><button class="button primary" type="submit">Open workspace ${icon('arrow')}</button><div id="sign-in-error" class="error-message" role="alert">${e(message)}</div></form><div class="footer-note">Private workspace · Access by invitation</div></section></main>`;
   document.querySelector('#sign-in-form').addEventListener('submit',async event=>{
     event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;
     try{await call('/api/session',{method:'POST',body:{token:event.target.elements.token.value.trim()}});await start();}
     catch(error){document.querySelector('#sign-in-error').textContent=error.message;button.disabled=false;}
   });
 }
+function activationPending(){
+  me=null;data=null;dialog.close();
+  app.innerHTML=`<main class="sign-in"><section class="glass refractive sign-in-card"><header class="sign-in-brand"><div class="brand-logo" role="img" aria-label="Economic Systems"></div><span class="wordmark">SAVEN</span><span class="brand-caption">Economic Systems</span></header><div class="sign-in-intro"><h1>Workspace activation</h1><p>Your testing workspace has not finished activation. Sign-in will be available once setup is complete.</p></div><button class="button primary" data-action="check-activation">Check again ${icon('refresh')}</button><div class="footer-note">Private workspace</div></section></main>`;
+}
 async function start(){
   try{
     me=await call('/api/me');activeCompany=me.companies.some(c=>c.id===activeCompany)?activeCompany:(me.companies[0]?.id??'');
     if(!activeCompany){app.innerHTML=`<main class="sign-in"><section class="glass sign-in-card"><span class="wordmark">SAVEN</span><h1>No active companies</h1><p>Your account is signed in. Contact support if your business subscription needs to be resumed.</p><button class="button" data-action="logout">Sign out</button></section></main>`;return;}
     await refresh();
-  }catch(error){signIn(error.status===401?'':error.message);}
+  }catch(error){
+    if(error.status===500||error.status===503){
+      try{const health=await call('/api/health');if(!health.schemaReady){activationPending();return;}}catch{}
+    }
+    signIn(error.status===401?'':error.message);
+  }
 }
 function nav(name){return `<button class="nav-button" data-page="${name}" title="${titles[name]}" ${page===name?'aria-current="page"':''}>${icon(name)}<span class="nav-label">${titles[name]}</span>${name==='approvals'&&data.documents.some(d=>d.status==='pending')?`<span class="count">${data.documents.filter(d=>d.status==='pending').length}</span>`:''}</button>`;}
 function render(){
@@ -117,6 +126,7 @@ document.addEventListener('click',async event=>{
       catch(error){document.querySelector('#review-error').textContent=error.message;buttons.forEach(b=>b.disabled=false);}finally{sending=false;}return;
     }
     switch(button.dataset.action){
+      case 'check-activation':await start();break;
       case 'collapse':collapsed=!collapsed;localStorage.setItem('saven-sidebar',collapsed?'collapsed':'expanded');render();break;
       case 'theme':theme=theme==='light'?'dark':'light';localStorage.setItem('saven-theme',theme);document.documentElement.dataset.theme=theme;render();break;
       case 'logout':await call('/api/session',{method:'DELETE'});activeCompany='';signIn();break;

@@ -35,3 +35,15 @@ Remote evidence for implementation commit c0dc98aa73905b98247bf55499ef46052da3fb
 CI maintenance: the first remote run warned that older action versions used deprecated Node 20 entrypoints. The workflow now pins the official checkout v7.0.1, setup-node v7.1.0 and setup-python v7.1.0 commit SHAs and disables checkout credential persistence. The financial application code is unchanged from the tested implementation commit. The local QA server has been stopped.
 
 Next actions: confirm testing Worker branch and DB binding, run D1 contract tests and provision isolated test identities through a controlled operator path; complete browser QA; then implement real operator onboarding, identity/MFA, company setup/opening reconciliation and protected attachments. Preserve all other catalog requirements.
+
+## Testing activation update — 12 November 2026 (Asia/Karachi)
+
+The logged-in Helium session became accessible after the owner selected Cloudflare. Verified the testing Worker builds testing-1, and confirmed it had no database bindings. Created a separate empty D1 database, saven-testing-db, ID 42a1463c-40d9-4f23-9ecb-50265eb07bb1, within the existing free database quota. Ran a read-only console connection/batch query successfully. No pre-existing database was modified.
+
+The execution environment then disconnected, Notepad access approval expired, and browser tools were removed. The database schema import did NOT complete. No hosted user, invitation, session, journal, or customer record has been created. Do not issue a local token as if it were valid on the hosted site.
+
+The source now declares the actual DB binding and centers the ESC logo, SAVEN name, caption and introductory copy on one axis. Added a separate sign-in stylesheet, a health readiness distinction, and an activation-pending state so an uninitialized database does not present a misleading invitation form. The private bootstrap preparer writes schema/fixture SQL plus token hashes and a separate private invitation handoff under ignored var/. It is not called by the Worker and exposes no public bootstrap endpoint.
+
+Resume: restore an execution environment; pull the latest testing-1 source; verify the empty database schema and console state; generate fresh invitations with node scripts/prepare-testing.mjs; import the SQL into THIS testing database; verify all tables/triggers and user membership; confirm /api/health schemaReady; test hosted login, invoice payment variants and stock approval/retry. Do not reuse expired private output files or duplicate an uncertain import. Then hand the owner a fresh hosted invitation. The production-named Worker's additional build trigger remains unresolved.
+
+Visual rendering, schema import and hosted login remain unverified. CI must verify the additional readiness test and source syntax before reporting them as passed. Main remains the owner's later promotion decision.

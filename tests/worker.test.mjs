@@ -39,3 +39,16 @@ test('Worker serves static assets with security headers and fails closed without
   const api=await worker.fetch(new Request('https://saven.test/api/me'),env);
   assert.equal(api.status,503);assert.equal((await api.json()).error.code,'SETUP_REQUIRED');
 });
+
+test('health distinguishes an absent binding, an empty database and the full schema',async t=>{
+  const request=()=>new Request('https://saven.test/api/health');
+  const absent=await worker.fetch(request(),{});
+  assert.equal((await absent.json()).schemaReady,false);
+  const db=new LocalDatabase();t.after(()=>db.close());
+  const empty=await worker.fetch(request(),{DB:db});
+  const emptyHealth=await empty.json();
+  assert.equal(emptyHealth.databaseConfigured,true);assert.equal(emptyHealth.schemaReady,false);
+  db.migrate();
+  const initialized=await worker.fetch(request(),{DB:db});
+  assert.equal((await initialized.json()).schemaReady,true);
+});

@@ -34,7 +34,16 @@ export async function api(request,env) {
   const requestId=crypto.randomUUID();
   try {
     const url=new URL(request.url),method=request.method;
-    if(url.pathname==='/api/health' && method==='GET') return json({service:'saven',stage:'foundation',databaseConfigured:!!env.DB,environment:env.ENVIRONMENT??'local'});
+    if(url.pathname==='/api/health' && method==='GET') {
+      let schemaReady=false;
+      if(env.DB) {
+        try {
+          const schema=await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('users','companies','memberships','accounts','parties','periods','items','resource_denials','operations','documents','journals','journal_lines','audit_events','outbox','login_grants','sessions')").first();
+          schemaReady=Number(schema?.n)===16;
+        }catch{}
+      }
+      return json({service:'saven',stage:'foundation',databaseConfigured:!!env.DB,schemaReady,environment:env.ENVIRONMENT??'local'});
+    }
     requireThat(env.DB,503,'SETUP_REQUIRED','The testing database has not been connected. No business data can be read or posted until setup is complete.');
     // Same-origin JSON mutations plus Strict HttpOnly cookies. No CORS grants.
     if(!['GET','HEAD'].includes(method)) {
