@@ -10,7 +10,12 @@ flock -n 9 || { echo 'A SAVEN backup is already running.' >&2; exit 1; }
 file="$directory/saven-testing-$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
 test ! -e "$file"
 if [ "$(id -u)" = 0 ]; then
- setpriv --reuid=postgres --regid=postgres --init-groups pg_dump --format=custom --no-owner --no-acl --lock-wait-timeout=5s --dbname="$database" > "$file.partial"
+ # PID 1 creates the unprivileged dump process outside this unit's restrictive
+ # mount namespace; neither unit needs to relax NoNewPrivileges.
+ systemd-run --quiet --wait --pipe --collect -p User=postgres -p Group=postgres \
+  -p NoNewPrivileges=yes -p ProtectSystem=strict -p ProtectHome=yes \
+  -p PrivateTmp=yes -p RestrictAddressFamilies=AF_UNIX -p MemoryMax=512M \
+  pg_dump --format=custom --no-owner --no-acl --lock-wait-timeout=5s --dbname="$database" > "$file.partial"
 else
  pg_dump --format=custom --no-owner --no-acl --lock-wait-timeout=5s --dbname="$database" > "$file.partial"
 fi
