@@ -179,7 +179,9 @@
         "FND-001"
       ],
       "evidence": [
-        "docs/12-foundation.md"
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
@@ -204,11 +206,15 @@
       "supported_scope": "Manual recurring accrual prepayment allocation and reversal",
       "acceptance": "Required evidence and allowed dimensions are validated",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -223,7 +229,9 @@
         "FND-001"
       ],
       "evidence": [
-        "docs/12-foundation.md"
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
@@ -239,7 +247,9 @@
         "FND-001"
       ],
       "evidence": [
-        "docs/12-foundation.md"
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
@@ -250,11 +260,15 @@
       "supported_scope": "Cashbooks transfers petty cash receipts and payment records",
       "acceptance": "Both sides of a transfer reconcile without duplicate cash",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -264,11 +278,15 @@
       "supported_scope": "Statement import matching exceptions and duplicate checks",
       "acceptance": "Statement balance agrees to reconciled book balance with explained items",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -320,11 +338,15 @@
       "supported_scope": "Control accounts suspense unusual entries and missing evidence",
       "acceptance": "Reviewer can resolve or explain every close blocker",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -334,11 +356,15 @@
       "supported_scope": "Reversal credit adjustment and audit references",
       "acceptance": "Original entry remains readable and all later effects are traceable",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -423,7 +449,9 @@
         "FND-001"
       ],
       "evidence": [
-        "docs/12-foundation.md"
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
@@ -520,11 +548,15 @@
       "supported_scope": "Linked credit notes returns and authorized refund records",
       "acceptance": "Credit cannot silently exceed permitted original value or quantity",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -539,7 +571,9 @@
         "ACC-004"
       ],
       "evidence": [
-        "docs/12-foundation.md"
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
@@ -606,11 +640,15 @@
       "supported_scope": "Direct or matched bills duplicate checks and evidence",
       "acceptance": "Duplicate supplier reference is flagged before a second liability",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -634,11 +672,15 @@
       "supported_scope": "Supplier credits returns landed costs and price differences",
       "acceptance": "Inventory or expense and payable adjustments reconcile",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -662,11 +704,15 @@
       "supported_scope": "Ageing statements advances retention and reconciliation",
       "acceptance": "Supplier schedule agrees to the payable control account",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -1902,11 +1948,15 @@
       "supported_scope": "GL trial balance cash flow balances ageing and registers",
       "acceptance": "Reports agree to ledger at the specified cutoff",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/16-accounting-delivery.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {

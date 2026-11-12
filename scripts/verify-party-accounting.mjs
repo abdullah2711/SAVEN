@@ -47,6 +47,12 @@ try{
  pass('competing credits and settlements serialize and rejection releases reserved capacity');
  const close=await invoke(owner,path('close-review')+'?from=2026-11-01&to=2026-11-30');assert.equal(close.status,200,JSON.stringify(close));assert.equal(close.value.receivables.ledger,'40.00');assert.equal(close.value.receivables.balanced,true);assert.equal(close.value.payables.ledger,'50.00');assert.equal(close.value.payables.balanced,true);assert.equal(close.value.unbalanced,0);assert(close.value.missingEvidence>0);assert(close.value.unmatchedBank>0);assert.equal(close.value.humanReviewRequired,true);
  pass('close review reconciles AR/AP controls and surfaces missing evidence and unmatched cash entries');
+ const originalDetail=(await invoke(owner,path('documents/'+invoice))).value;assert(originalDetail.related.some(d=>d.id===credit));assert(originalDetail.related.some(d=>d.kind==='receipt'));
+ const creditDetail=(await invoke(owner,path('documents/'+credit))).value;assert(creditDetail.related.some(d=>d.id===invoice&&d.relationship==='original'));
+ await admin.prepare("INSERT INTO resource_denials(company_id,user_id,resource_type,resource_id) VALUES(?,?,'account','bank')").bind(cid,(await admin.prepare('SELECT user_id FROM sessions WHERE token_hash=?').bind(await hash(reviewer.raw)).first()).user_id).run();
+ const restrictedDetail=await invoke(reviewer,path('documents/'+invoice));assert.equal(restrictedDetail.status,200);assert(!restrictedDetail.value.related.some(d=>d.kind==='receipt'));assert(restrictedDetail.value.related.some(d=>d.id===credit));
+ await admin.prepare("INSERT INTO resource_denials(company_id,user_id,resource_type,resource_id) VALUES(?,?,'account','revenue')").bind(cid,'outsider').run();assert.equal((await invoke(owner,path('documents/'+originalDetail.related.find(d=>d.kind==='receipt').id))).status,403);
+ assert(!(await workspace()).documents.some(d=>d.kind==='receipt'));
  await admin.prepare("INSERT INTO resource_denials(company_id,user_id,resource_type,resource_id) VALUES(?,?,'party',?)").bind(cid,'outsider',customer).run();assert.equal((await report('customer','2026-01-01','2026-11-30',customer)).status,403);assert.equal((await invoke(owner,path('close-review'))).status,403);assert.equal((await invoke(reviewer,'/api/companies/alpha/party-ledger')).status,403);
  pass('party restrictions and company scope protect statements and ageing totals');
  console.log('PARTY ACCOUNTING CONTRACT PASSED: '+passed+' groups');

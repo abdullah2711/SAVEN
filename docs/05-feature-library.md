@@ -2,7 +2,7 @@
 
 11 November 2026 | Baseline 1.2
 
-239 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress foundation work is partial, not release verification; see docs/12-foundation.md for evidence and limits. This catalog and decisions D01 to D12 define supported scope for review.
+239 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. This catalog and decisions D01 to D12 define supported scope for review.
 
 Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.
 

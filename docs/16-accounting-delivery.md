@@ -48,6 +48,8 @@ Native contracts independently expect customer invoice 100 less receipt 40 and c
 
 The accounting close review derives the trial balance and balance-sheet checks, unbalanced-journal count, pending dated transactions, open bank statements, uncleared cash-book movements and posted documents without current retained attachments. Missing attachments are review warnings under company policy, not an invented universal evidence requirement.
 
+Document details reload the current record and show permitted linked originals, settlements and corrections. A newly restricted original account also removes access to dependent settlements and their evidence, even where the settlement's own cash/control lines alone would otherwise be permitted. Related rows apply current resource restrictions rather than exposing a hidden document through its link.
+
 It reconciles the trade-receivable and trade-payable control balances to the independently calculated open subledgers at the selected cutoff. It exposes differences rather than plugging a control account. Current resource permissions apply to the complete report, including its counts.
 
 This is a review workbench, not a certification that all accounting is complete. Inventory historical reconciliation, tax and policy schedules, year-end transfer, signed report versions and a formal close snapshot remain outstanding and are displayed explicitly. The ultimate owner separately locks the posting period through the reasoned period-administration workflow.

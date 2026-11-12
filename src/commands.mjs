@@ -187,11 +187,11 @@ export async function workspace(db,actor,companyId) {
   const [parties,items,documents,accounts,audit]=await Promise.all([
     db.prepare('SELECT id,name FROM parties WHERE company_id=? ORDER BY name').bind(companyId).all(),
     db.prepare('SELECT id,name,store,unit,on_hand,reserved,unit_cost_minor FROM items WHERE company_id=? ORDER BY name').bind(companyId).all(),
-    db.prepare('SELECT d.*,'+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? ORDER BY d.created_at DESC,d.id DESC LIMIT 100').bind(companyId).all(),
+    db.prepare('SELECT d.*,'+allocationVisibility(db)+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? ORDER BY d.created_at DESC,d.id DESC LIMIT 100').bind(companyId).all(),
     db.prepare('SELECT id,code,name FROM accounts WHERE company_id=? ORDER BY code').bind(companyId).all(),
     db.prepare('SELECT a.*,u.name AS actor_name,d.reference FROM audit_events a JOIN users u ON u.id=a.actor_id JOIN documents d ON d.company_id=a.company_id AND d.id=a.document_id WHERE a.company_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 100').bind(companyId).all()
   ]);
-  const visibleDocs=documents.results.filter(row=>!deniedSet.has(`party:${row.party_id}`)&&!deniedSet.has(`item:${row.item_id}`)&&JSON.parse(row.preview_json).lines.every(line=>!deniedSet.has(`account:${line.accountId}`)));
+  const visibleDocs=documents.results.filter(row=>!deniedSet.has(`party:${row.party_id}`)&&!deniedSet.has(`item:${row.item_id}`)&&[...JSON.parse(row.preview_json).lines,...(row.target_preview_json?JSON.parse(row.target_preview_json).lines:[])].every(line=>!deniedSet.has(`account:${line.accountId}`)));
   const docIds=new Set(visibleDocs.map(row=>row.id));
   return {company,permissions:{prepare:canPrepare(company.role),review:canReview(company.role)},
     parties:parties.results.filter(row=>!deniedSet.has(`party:${row.id}`)),
@@ -202,13 +202,19 @@ export async function workspace(db,actor,companyId) {
   };
 }
 
+function allocationVisibility(db){return db.schemaVersion>=4?'(SELECT t.preview_json FROM document_allocations a JOIN documents t ON t.company_id=a.company_id AND t.id=a.target_id WHERE a.company_id=d.company_id AND a.settlement_id=d.id) AS target_preview_json,':'';}
 export async function documentDetail(db,actor,companyId,id){
   await companyAccess(db,actor,companyId);
-  const row=await db.prepare('SELECT d.*,'+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
+  const row=await db.prepare('SELECT d.*,'+allocationVisibility(db)+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
   requireThat(row,404,'NOT_FOUND','The transaction is unavailable.');
   const restrictions=await denied(db,companyId,actor.id),effect=JSON.parse(row.preview_json);
   if(row.party_id)allowedResource(restrictions,'party',row.party_id);
   if(row.item_id)allowedResource(restrictions,'item',row.item_id);
   for(const line of effect.lines)allowedResource(restrictions,'account',line.accountId);
-  return {id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,evidenceRevision:row.evidence_revision??0,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:effect};
+  if(row.target_preview_json)for(const line of JSON.parse(row.target_preview_json).lines)allowedResource(restrictions,'account',line.accountId);
+  let related=[];
+  if(db.schemaVersion>=6){const parent=effect.document.originalDocumentId??effect.allocation?.targetDocumentId??null;const rows=(await db.prepare("SELECT d.id,d.kind,d.date,d.reference,d.description,d.status,d.amount_minor,d.party_id,d.item_id,d.preview_json FROM documents d WHERE d.company_id=? AND(d.id=? OR(d.kind='reversal' AND d.payload_json::jsonb->>'originalDocumentId'=?) OR EXISTS(SELECT 1 FROM document_allocations a WHERE a.company_id=d.company_id AND a.settlement_id=d.id AND a.target_id=?)) ORDER BY d.date,d.created_at,d.id LIMIT 200").bind(companyId,parent,id,id).all()).results;
+   related=rows.filter(d=>!restrictions.some(r=>r.resource_type==='party'&&r.resource_id===d.party_id||r.resource_type==='item'&&r.resource_id===d.item_id||r.resource_type==='account'&&JSON.parse(d.preview_json).lines.some(l=>l.accountId===r.resource_id))).map(d=>({id:d.id,kind:d.kind,date:d.date,reference:d.reference,description:d.description,status:d.status,amount:decimal(d.amount_minor),relationship:d.id===parent?'original':'related'}));
+  }
+  return {id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,evidenceRevision:row.evidence_revision??0,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:effect,related};
 }

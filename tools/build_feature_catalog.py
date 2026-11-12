@@ -321,6 +321,9 @@ IN_PROGRESS = {'FND-001','FND-003','FND-004','FND-006','FND-007','FND-008','FND-
                'FND-011','FND-012','ACC-001','ACC-004','ACC-005','ACC-018','SAL-003','SAL-007',
                'INV-003','INV-004','INV-005','INV-011','AI-031','OPS-016','OPS-017','SEC-001',
                'SEC-002','SEC-003','SEC-010','UX-001','UX-002','UX-003','UX-004','UX-006'}
+ACCOUNTING_EVIDENCE = {rid: ['docs/16-accounting-delivery.md','docs/17-accounting-requirement-status.md','docs/BUILD_STATE.md'] for rid in
+                      ['ACC-001','ACC-003','ACC-004','ACC-005','ACC-006','ACC-007','ACC-011','ACC-012','ACC-018','SAL-006','SAL-007','PUR-004','PUR-006','PUR-008','RPT-001']}
+IN_PROGRESS.update(ACCOUNTING_EVIDENCE)
 
 def build():
     requirements=[]
@@ -330,13 +333,13 @@ def build():
             requirements.append(dict(id=f'{prefix}-{n:03d}',family=family,title=title,
                 supported_scope=scope,acceptance=acceptance,commercial_release='required',
                 status='in progress' if f'{prefix}-{n:03d}' in IN_PROGRESS else 'specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
-                evidence=['docs/12-foundation.md'] if f'{prefix}-{n:03d}' in IN_PROGRESS else [],approval='Scope includes owner additions of 11 November; unresolved policy decisions remain explicit'))
+                evidence=ACCOUNTING_EVIDENCE.get(f'{prefix}-{n:03d}',['docs/12-foundation.md']) if f'{prefix}-{n:03d}' in IN_PROGRESS else [],approval='Scope includes owner additions of 11 November; unresolved policy decisions remain explicit'))
     data={'product':'SAVEN','pronunciation':'seven','baseline':'1.2','date':'2026-11-11',
           'meaning':'Specified requirements are not implemented features. Public launch requires agreed family gates.',
           'requirements':requirements}
     (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
     lines=['# SAVEN Feature and Acceptance Library','','11 November 2026 | Baseline 1.2','',
-           f'{len(requirements)} requirements across {len(GROUPS)} families. The JSON tracks specified and in-progress work. In-progress foundation work is partial, not release verification; see docs/12-foundation.md for evidence and limits. This catalog and decisions D01 to D12 define supported scope for review.','',
+           f'{len(requirements)} requirements across {len(GROUPS)} families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. This catalog and decisions D01 to D12 define supported scope for review.','',
            'Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.','']
     for _,family,_,_ in GROUPS:
         lines += ['## '+family,'','| ID | Capability and supported scope | Acceptance condition |','| --- | --- | --- |']
