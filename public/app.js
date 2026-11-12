@@ -43,7 +43,7 @@ async function start(){
   try{
     me=await call('/api/me');activeCompany=me.companies.some(c=>c.id===activeCompany)?activeCompany:(me.companies[0]?.id??'');
     if(!activeCompany){data=null;app.innerHTML=`<main class="sign-in"><section class="glass sign-in-card"><span class="wordmark">SAVEN</span><h1>No active companies</h1><p>Your account is signed in. You can manage your account and accept a company invitation.</p><div class="section-actions"><button class="button" data-manage="password">Set or change password</button><button class="button" data-manage="profile">Your profile</button></div><button class="button" data-action="logout">Sign out</button></section></main>`;await showCompanyInvitation();return;}
-    await refresh();await management.load(page);await transactions.load(page);render();await showCompanyInvitation();
+    await refresh();await management.load(page);await transactions.load(page);await assistantView.load(page);render();await showCompanyInvitation();
   }catch(error){
     if([401,500,503].includes(error.status)){
       try{const health=await call('/api/health');if(!health.schemaReady){activationPending();return;}}catch{}
@@ -56,7 +56,7 @@ function render(){
   if(!data)return;
   const initials=me.user.name.split(' ').slice(0,2).map(p=>p[0]).join('');
   app.innerHTML=`<div class="shell ${collapsed?'collapsed':''}"><aside class="sidebar" aria-label="Main navigation"><div class="brand-row"><div class="brand-logo" role="img" aria-label="Economic Systems"></div><div class="brand-name"><span class="wordmark">SAVEN</span><small>Economic Systems</small></div></div>${nav('overview')}<div class="nav-group-label">Business</div>${['sales','purchases','inventory','accounting','approvals'].map(nav).join('')}<div class="nav-group-label">Intelligence</div>${['assistant','reports','finance','projects'].map(nav).join('')}<div class="nav-group-label">Workspace</div>${['drive','apps','settings'].map(nav).join('')}<div class="sidebar-footer"><div class="profile"><div class="avatar">${e(initials)}</div><div class="profile-text"><div class="profile-name">${e(me.user.name)}</div><div class="profile-role">${e(data.company.role==='owner'?'Ultimate business admin':data.company.role)}</div></div></div></div></aside><div class="main"><header class="topbar"><div class="crumb"><button class="icon-button" data-action="collapse" aria-label="${collapsed?'Expand':'Collapse'} sidebar" aria-expanded="${!collapsed}">${icon('menu')}</button><span>Workspace</span><span>/</span><strong>${titles[page]}</strong></div><div class="topbar-actions"><label class="sr-only" for="company-select" hidden>Current company</label><select id="company-select" class="company-select" aria-label="Current company">${me.companies.map(c=>`<option value="${e(c.id)}" ${c.id===activeCompany?'selected':''}>${e(c.name)}</option>`).join('')}</select><span class="environment">TESTING</span><button class="icon-button" data-action="theme" aria-label="Switch to ${theme==='light'?'dark':'light'} theme">${icon(theme==='light'?'moon':'sun')}</button><button class="icon-button" data-action="logout" aria-label="Sign out">${icon('logout')}</button></div></header><main id="content" class="workspace" tabindex="-1">${pageContent()}</main></div></div>`;
-  document.querySelector('#company-select').addEventListener('change',async event=>{activeCompany=event.target.value;data=null;app.querySelector('#content').innerHTML='<div class="empty">Opening company…</div>';try{await refresh();await management.load(page);await transactions.load(page);render();}catch(error){toast(error.message);await start();}});
+  document.querySelector('#company-select').addEventListener('change',async event=>{activeCompany=event.target.value;data=null;app.querySelector('#content').innerHTML='<div class="empty">Opening company…</div>';try{await refresh();await management.load(page);await transactions.load(page);await assistantView.load(page);render();}catch(error){toast(error.message);await start();}});
   management.bindPage();assistantView.bind();
 }
 function heading(title,description,actions=''){return `<div class="page-heading"><div><div class="eyebrow">${e(data.company.name)} · ${new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'long',year:'numeric'}).format(new Date())}</div><h1>${e(title)}</h1><p>${e(description)}</p></div>${actions?`<div class="heading-actions">${actions}</div>`:''}</div>`;}
@@ -136,7 +136,7 @@ document.addEventListener('click',async event=>{
   try{
     if(await assistantView.handleClick(button))return;
     if(await management.handleClick(button))return;
-    if(button.dataset.page){page=button.dataset.page;if(innerWidth<850)collapsed=true;await management.load(page);await transactions.load(page);render();return;}
+    if(button.dataset.page){page=button.dataset.page;if(innerWidth<850)collapsed=true;await management.load(page);await transactions.load(page);await assistantView.load(page);render();return;}
     if(button.dataset.create){await openCreate(button.dataset.create);return;}
     if(button.dataset.settle){await transactions.open(button.dataset.kind,button.dataset.settle);return;}
     if(button.dataset.document){await openDocument(button.dataset.document);return;}

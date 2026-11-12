@@ -4,13 +4,22 @@ import {responseSchema,assistantSystem} from './assistant-contract.mjs';
 import {hash,canonical} from './crypto.mjs';
 
 // Operational cost coordination only. This stores counters and reservations,
-// never a password, prompt, business record, transaction or file. PostgreSQL
+// never a password, prompt, business record, transaction or file. Company
+// consent and its attributed changes are platform privacy settings. PostgreSQL
 // remains the sole business writer and the authority for every tool call.
 export class AiBudget{
  constructor(ctx){this.ctx=ctx;}
  async fetch(request){
   const input=await request.json(),day=new Date().toISOString().slice(0,10);
   return this.ctx.storage.transaction(async storage=>{
+   if(['consent_get','consent_set'].includes(input.action)){
+    if(typeof input.company!=='string'||!/^[a-f0-9]{64}$/.test(input.company))return json({error:{code:'INVALID_CONSENT'}},400);
+    const key='consent:'+input.company,current=await storage.get(key)??{enabled:false,policyVersion:'cloudflare-ai-v1',changes:[]};
+    if(input.action==='consent_get')return json(current);
+    if(typeof input.enabled!=='boolean'||typeof input.actor!=='string'||!/^[a-f0-9]{64}$/.test(input.actor))return json({error:{code:'INVALID_CONSENT'}},400);
+    const change={enabled:input.enabled,actor:input.actor,at:Date.now(),policyVersion:'cloudflare-ai-v1',model};
+    const next={...change,changes:[change,...current.changes].slice(0,20)};await storage.put(key,next);await storage.put('consent-audit:'+input.company+':'+crypto.randomUUID(),change);return json(next);
+   }
    let state=await storage.get('daily');if(!state||state.day!==day)state={day,reserved:0,users:{},pending:{}};
    if(input.action==='settle'){
     const reservation=state.pending[input.id];if(!reservation)return json({settled:false});
@@ -33,9 +42,10 @@ async function backend(env,request,path,method='GET',input){
 }
 function scopeFingerprint(workspace){return canonical({role:workspace.company.role,accounts:workspace.accounts.map(x=>x.id).sort(),parties:workspace.parties.map(x=>x.id).sort(),items:workspace.items.map(x=>x.id).sort()});}
 function validate(answer){requireThat(answer&&typeof answer==='object'&&!Array.isArray(answer)&&Object.keys(answer).every(k=>responseSchema.required.includes(k))&&responseSchema.required.every(k=>k in answer)&&['reply','tool','arguments','document','configuration','page'].every(k=>typeof answer[k]==='string')&&answer.reply.length<=6000&&responseSchema.properties.tool.enum.includes(answer.tool)&&responseSchema.properties.page.enum.includes(answer.page)&&Array.isArray(answer.citations)&&answer.citations.length<=20&&answer.citations.every(x=>typeof x==='string'&&x.length<=100),502,'AI_RESPONSE','The model response was not valid. No records were changed.');}
-async function inference(env,user,messages){
+async function inference(env,user,messages,companyKey){
  const bytes=new TextEncoder().encode(JSON.stringify(messages)).byteLength;requireThat(bytes<=80000,422,'AI_CONTEXT','The selected context is too large. Ask a narrower question.');
  const budget=env.AI_BUDGET.get(env.AI_BUDGET.idFromName('testing-global'));
+ const consent=await(await budget.fetch(new Request('https://budget/consent',{method:'POST',body:JSON.stringify({action:'consent_get',company:companyKey})}))).json();requireThat(consent.enabled,403,'AI_CONSENT_REQUIRED','Company AI processing was disabled.');
  const reserved=await budget.fetch(new Request('https://budget/reserve',{method:'POST',body:JSON.stringify({user,cost:Math.ceil((bytes+1024)*0.027+1100*0.21)})}));
  requireThat(reserved.ok,429,'AI_BUDGET','The assistant has reached its testing usage limit. No records were changed.');const reservation=await reserved.json();requireThat(reservation.allowed,429,'AI_BUDGET','The assistant usage allowance is temporarily exhausted.');
  let result;try{result=await env.AI.run(model,{messages,stream:false,max_tokens:1100,temperature:0.1,response_format:{type:'json_schema',json_schema:responseSchema}});}catch{throw new AppError(503,'AI_PROVIDER_ERROR','The model service could not finish this request. No business records were changed.');}
@@ -44,19 +54,28 @@ async function inference(env,user,messages){
  let answer;try{answer=typeof result.response==='string'?JSON.parse(result.response):result.response;}catch{throw new AppError(502,'AI_RESPONSE','The model returned an unusable response. No records were changed.');}validate(answer);return {answer,inputTokens:Number.isSafeInteger(inputTokens)?inputTokens:0,outputTokens:Number.isSafeInteger(outputTokens)?outputTokens:0};
 }
 export async function edgeAssistant(request,env){
- const url=new URL(request.url),match=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/assistant\/chat$/);if(!match)return null;
+ const url=new URL(request.url),match=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/assistant\/(chat|consent)$/);if(!match)return null;
  try{
-  requireThat(request.method==='POST',405,'METHOD_NOT_ALLOWED','Send an assistant message as JSON.');
-  requireThat(request.headers.get('origin')===url.origin&&['same-origin','none',null].includes(request.headers.get('sec-fetch-site')),403,'ORIGIN_DENIED','Open the assistant from SAVEN.');
+  requireThat(request.method==='POST'||match[2]==='consent'&&request.method==='GET',405,'METHOD_NOT_ALLOWED','Use the supported assistant action.');
+  if(request.method==='POST')requireThat(request.headers.get('origin')===url.origin&&['same-origin','none',null].includes(request.headers.get('sec-fetch-site')),403,'ORIGIN_DENIED','Open the assistant from SAVEN.');
   requireThat(env.AI&&env.AI_BUDGET&&env.SAVEN_API,503,'AI_UNAVAILABLE','The Cloudflare model service is not connected.');
-  const companyId=match[1],prefix='/api/companies/'+companyId,me=await backend(env,request,'/api/me'),workspace=await backend(env,request,prefix+'/workspace'),scope=scopeFingerprint(workspace);
+  const companyId=match[1],prefix='/api/companies/'+companyId,me=await backend(env,request,'/api/me'),membership=me.companies.find(c=>c.id===companyId);requireThat(membership,403,'COMPANY_DENIED','Your account does not have access to this company.');
+  const budget=env.AI_BUDGET.get(env.AI_BUDGET.idFromName('testing-global')),companyKey=await hash(companyId);
+  if(match[2]==='consent'&&request.method==='POST'){
+   requireThat(['owner','admin'].includes(membership.role),403,'ADMIN_REQUIRED','A company administrator must authorize model processing.');const input=await body(request);requireThat(input&&typeof input.enabled==='boolean'&&input.policyVersion==='cloudflare-ai-v1'&&Object.keys(input).every(k=>['enabled','policyVersion'].includes(k)),422,'AI_CONSENT','Review and accept the displayed Cloudflare processing scope.');
+   const result=await(await budget.fetch(new Request('https://budget/consent',{method:'POST',body:JSON.stringify({action:'consent_set',company:companyKey,actor:await hash(me.user.id),enabled:input.enabled})}))).json();return json({...result,provider:'Cloudflare Workers AI',canAdminister:true});
+  }
+  const consent=await(await budget.fetch(new Request('https://budget/consent',{method:'POST',body:JSON.stringify({action:'consent_get',company:companyKey})}))).json();
+  if(match[2]==='consent')return json({...consent,provider:'Cloudflare Workers AI',model,canAdminister:['owner','admin'].includes(membership.role)});
+  requireThat(consent.enabled&&consent.policyVersion==='cloudflare-ai-v1',403,'AI_CONSENT_REQUIRED','A company administrator must first authorize Cloudflare AI to process permitted company records.');
+  const workspace=await backend(env,request,prefix+'/workspace'),scope=scopeFingerprint(workspace);
   const input=await body(request);requireThat(input&&typeof input==='object'&&!Array.isArray(input)&&Object.keys(input).every(k=>['message','history'].includes(k))&&typeof input.message==='string'&&input.message.trim().length>0&&input.message.length<=6000,422,'AI_MESSAGE','Enter a message of up to 6,000 characters.');
   const history=input.history??[];requireThat(Array.isArray(history)&&history.length<=4&&history.every(m=>m&&['user','assistant'].includes(m.role)&&typeof m.content==='string'&&m.content.length<=1500&&Object.keys(m).every(k=>['role','content'].includes(k))),422,'AI_HISTORY','The conversation context is invalid.');
   const context={company:{id:companyId,name:workspace.company.name,currency:workspace.company.currency,role:workspace.company.role,date:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Karachi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())},accounts:workspace.accounts.slice(0,40),contacts:workspace.parties.slice(0,40),items:workspace.items.slice(0,40),recentDocuments:workspace.documents.slice(0,15).map(d=>({id:d.id,kind:d.kind,reference:d.reference,date:d.date,status:d.status,amount:d.amount})),coverage:'Bounded permitted records only. A missing record may be outside this context.'};
   const sources=[{id:'workspace',title:'Current permitted company records',asOf:Date.now()}],trace=[],messages=[{role:'system',content:assistantSystem+'\nUse this exact JSON schema: '+JSON.stringify(responseSchema)+'\nCurrent context: '+JSON.stringify(context)},...history,{role:'user',content:input.message.trim()}];
   const user=await hash(companyId+':'+me.user.id);let answer,inputTokens=0,outputTokens=0;
   for(let step=0;step<4;step++){
-   const result=await inference(env,user,messages);answer=result.answer;inputTokens+=result.inputTokens;outputTokens+=result.outputTokens;if(answer.tool==='none')break;
+   const result=await inference(env,user,messages,companyKey);answer=result.answer;inputTokens+=result.inputTokens;outputTokens+=result.outputTokens;if(answer.tool==='none')break;
    requireThat(step<3,422,'AI_TOOL_LIMIT','The assistant reached its tool limit. Ask a narrower question.');let args;try{args=JSON.parse(answer.arguments||'{}');}catch{throw new AppError(422,'AI_ARGUMENTS','The assistant proposed an invalid read.');}requireThat(args&&typeof args==='object'&&!Array.isArray(args),422,'AI_ARGUMENTS','Invalid tool arguments.');
    let value,sourceId;
    if(answer.tool==='workspace'){requireThat(Object.keys(args).length===0,422,'AI_ARGUMENTS','Workspace reads have no selectors.');value=context;sourceId='workspace';}
@@ -65,6 +84,7 @@ export async function edgeAssistant(request,env){
    trace.push({tool:answer.tool,sourceId});messages.push({role:'assistant',content:JSON.stringify(answer)},{role:'user',content:JSON.stringify({toolResult:{sourceId,value}})});
   }
   const current=await backend(env,request,prefix+'/workspace');requireThat(scopeFingerprint(current)===scope,409,'ACCESS_CHANGED','Your permitted records changed. Ask again with the current access.');
+  const finalConsent=await(await budget.fetch(new Request('https://budget/consent',{method:'POST',body:JSON.stringify({action:'consent_get',company:companyKey})}))).json();requireThat(finalConsent.enabled,403,'AI_CONSENT_REQUIRED','Company AI processing was disabled during this request.');
   for(const source of sources.filter(s=>s.documentId))await backend(env,request,prefix+'/documents/'+source.documentId);
   const output={reply:answer.reply,page:answer.page,sources:sources.filter(s=>answer.citations.includes(s.id)),tools:trace,proposal:null,configuration:null,validationError:null,model,inputTokens,outputTokens,mode:'cloudflare',asOf:Date.now()};
   if(answer.document){try{const document=JSON.parse(answer.document);output.proposal=await backend(env,request,prefix+'/preview','POST',document);}catch(error){output.validationError=error instanceof AppError?error.message:'The proposed document could not be validated.';}}
