@@ -21,5 +21,7 @@ export function createPaymentsView({getData,call,endpoint,dialog,render,refresh,
  }
  async function handleClick(b){if(b.dataset.paymentNew){await open(b.dataset.paymentNew);return true;}if(b.dataset.paymentPage){state.page=Number(b.dataset.paymentPage);await load('payments');render();return true;}if(b.hasAttribute('data-payment-export')){await downloadAccountingExport(endpoint('accounting-export'),{type:'payments',from:state.from,to:state.to,party:state.party,search:state.search});return true;}return false;}
  function bind(){document.querySelector('#payments-filter')?.addEventListener('submit',async event=>{event.preventDefault();Object.assign(state,Object.fromEntries(new FormData(event.target)),{page:1});await load('payments');render();});}
- return {load,page,handleClick,bind};
+ function navigationState(){ensure();return Object.fromEntries(['company','from','to','search','party','page'].map(k=>[k,state[k]]));}
+ function restoreNavigation(saved){ensure();if(saved?.company===state.company)Object.assign(state,saved,{result:null,error:''});}
+ return {load,page,handleClick,bind,navigationState,restoreNavigation};
 }
