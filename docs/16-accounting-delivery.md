@@ -43,3 +43,11 @@ Ageing and statements use only posted records dated through the selected end dat
 An interactive ageing selection supports up to 5,000 open documents and a contact statement up to 10,000 historical movements. Larger selections stop with an explicit limit instead of silently omitting records. Full company transaction/account access is required for these aggregate financial reports; resource restrictions cannot leak through totals or contact selectors.
 
 Native contracts independently expect customer invoice 100 less receipt 40 and credit 20 to leave 40 at 30 November, with a later December receipt excluded. A statement beginning 11 November opens at 60 and closes at 40; the amount is 15 days overdue on the actual 15 November due date. Supplier bill 80 less credit 5 and payment 25 leaves 50. The reconciled GL at 30 November has assets 55, liabilities 50 and profit 5. These are synthetic expected values, not the owner's financial records.
+
+## Close review workbench
+
+The accounting close review derives the trial balance and balance-sheet checks, unbalanced-journal count, pending dated transactions, open bank statements, uncleared cash-book movements and posted documents without current retained attachments. Missing attachments are review warnings under company policy, not an invented universal evidence requirement.
+
+It reconciles the trade-receivable and trade-payable control balances to the independently calculated open subledgers at the selected cutoff. It exposes differences rather than plugging a control account. Current resource permissions apply to the complete report, including its counts.
+
+This is a review workbench, not a certification that all accounting is complete. Inventory historical reconciliation, tax and policy schedules, year-end transfer, signed report versions and a formal close snapshot remain outstanding and are displayed explicitly. The ultimate owner separately locks the posting period through the reasoned period-administration workflow.

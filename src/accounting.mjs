@@ -1,6 +1,6 @@
 import {AppError,requireThat} from './errors.mjs';
 import {companyAccess} from './auth.mjs';
-import {object,text,date,databaseError} from './operating.mjs';
+import {object,text,date,databaseError,reports} from './operating.mjs';
 import {decimal,minor} from './money.mjs';
 export function signedMinor(value){requireThat(typeof value==='string'&&/^-?\d+(\.\d{1,2})?$/.test(value),422,'INVALID_AMOUNT','Use a signed decimal amount without separators.');return String((value.startsWith('-')?-1n:1n)*BigInt(minor(value.replace(/^-/ ,''))));}
 export function bankInput(action,p){
@@ -34,6 +34,21 @@ export async function partyAccounting(db,actor,cid,q){
  for(const d of docs){const amount=BigInt(d.amount_minor),charge=d.kind===original,net=charge?amount:-amount;balance+=net;if(d.date<from){opening+=net;continue;}if(charge)charges+=amount;else credits+=amount;movements.push({id:d.id,date:d.date,reference:d.reference,description:d.description,kind:d.kind,originalDocumentId:d.target_id,charge:decimal(charge?amount:0n),credit:decimal(charge?0n:amount),balance:decimal(balance)});}
  statement={partyId,partyName:parties.find(p=>p.id===partyId).name,opening:decimal(opening),charges:decimal(charges),credits:decimal(credits),closing:decimal(balance),movements};}
  return {kind,from,to,partyId,parties,ageing,totals:Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,decimal(v)])),statement,asOf:Date.now()};
+}
+export async function closeChecklist(db,actor,cid,q){
+ await access(db,actor,cid);requireThat(db.schemaVersion>=7,503,'UPGRADE_REQUIRED','The close review requires the receivables/payables upgrade.');
+ const from=date(q.get('from')||'2026-01-01'),to=date(q.get('to')||'2026-12-31');requireThat(from<=to,422,'INVALID_DATE','Choose a valid closing date range.');
+ const query=new URLSearchParams({from,to}),financial=await reports(db,actor,cid,query),receivables=await partyAccounting(db,actor,cid,new URLSearchParams({from,to,kind:'customer'})),payables=await partyAccounting(db,actor,cid,new URLSearchParams({from,to,kind:'supplier'}));
+ const scalar=async(sql,...args)=>Number((await db.prepare(sql).bind(...args).first()).n);
+ const [pending,unbalanced,missingEvidence,openStatements,unmatchedBank]=await Promise.all([
+  scalar("SELECT count(*) AS n FROM documents WHERE company_id=? AND date<=? AND status='pending'",cid,to),
+  scalar("SELECT count(*) AS n FROM(SELECT j.id FROM journals j JOIN journal_lines l ON l.company_id=j.company_id AND l.journal_id=j.id WHERE j.company_id=? AND j.status='posted' AND j.date<=? GROUP BY j.id HAVING sum(l.debit_minor-l.credit_minor)!=0) q",cid,to),
+  scalar("SELECT count(*) AS n FROM documents d WHERE d.company_id=? AND d.status='posted' AND d.date BETWEEN ? AND ? AND NOT EXISTS(SELECT 1 FROM document_attachments a WHERE a.company_id=d.company_id AND a.document_id=d.id AND NOT EXISTS(SELECT 1 FROM attachment_withdrawals w WHERE w.company_id=a.company_id AND w.document_id=a.document_id AND w.file_id=a.file_id))",cid,from,to),
+  scalar("SELECT count(*) AS n FROM bank_statements WHERE company_id=? AND status='open' AND end_date<=?",cid,to),
+  scalar("SELECT count(*) AS n FROM(SELECT j.id,l.account_id FROM journals j JOIN journal_lines l ON l.company_id=j.company_id AND l.journal_id=j.id JOIN accounts a ON a.company_id=l.company_id AND a.id=l.account_id WHERE j.company_id=? AND j.status='posted' AND j.date<=? AND a.category='cash_bank' AND j.date>=coalesce((SELECT min(b.start_date) FROM bank_statements b WHERE b.company_id=j.company_id AND b.account_id=l.account_id),'1900-01-01') AND NOT EXISTS(SELECT 1 FROM bank_matches m JOIN bank_statements b ON b.company_id=m.company_id AND b.id=m.statement_id WHERE m.company_id=j.company_id AND m.account_id=l.account_id AND m.journal_id=j.id AND b.status='closed' AND b.end_date<=?) GROUP BY j.id,l.account_id HAVING sum(l.debit_minor-l.credit_minor)!=0) q",cid,to,to)
+ ]);
+ const control=(id,subledger,credit=false)=>{const gl=financial.accounts.find(a=>a.id===id)?.net??'0.00',balance=BigInt(signedMinor(gl))*(credit?-1n:1n),expected=BigInt(signedMinor(subledger));return {ledger:decimal(balance),subledger,difference:decimal(balance-expected),balanced:balance===expected};};
+ return {from,to,asOf:Date.now(),financial:{balanced:financial.totals.balanced,balanceSheetBalanced:financial.totals.balanceSheetBalanced,profit:financial.totals.profit,assets:financial.totals.assets},receivables:control('receivable',receivables.totals.total),payables:control('payable',payables.totals.total,true),pending,unbalanced,missingEvidence,openStatements,unmatchedBank,humanReviewRequired:true,manualReviews:['Inventory opening reconciliation and historical costing are not implemented.','Tax, accrual/prepayment and policy schedules require separate preparation and review.','Year-end transfer, professional statement packs and a signed close snapshot are not implemented.']};
 }
 export async function accountingWorkspace(db,actor,cid,q){
  const company=await access(db,actor,cid),from=date(q.get('from')||'2026-01-01'),to=date(q.get('to')||'2026-12-31');requireThat(from<=to,422,'INVALID_DATE','Choose a valid date range.');const accountId=q.get('account')||'',page=Number(q.get('page')||1),search=(q.get('search')||'').slice(0,100),state=q.get('status')||'';requireThat(Number.isInteger(page)&&page>=1&&page<=10000&&['','pending','posted','rejected'].includes(state),422,'INVALID_PAGE','Choose a valid page and status.');
