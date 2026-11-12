@@ -10,7 +10,7 @@ flock -n 9 || { echo 'A SAVEN backup is already running.' >&2; exit 1; }
 file="$directory/saven-testing-$(date -u +%Y%m%dT%H%M%SZ)-$$.dump"
 test ! -e "$file"
 if [ "$(id -u)" = 0 ]; then
- runuser -u postgres -- pg_dump --format=custom --no-owner --no-acl --lock-wait-timeout=5s --dbname="$database" > "$file.partial"
+ setpriv --reuid=postgres --regid=postgres --init-groups pg_dump --format=custom --no-owner --no-acl --lock-wait-timeout=5s --dbname="$database" > "$file.partial"
 else
  pg_dump --format=custom --no-owner --no-acl --lock-wait-timeout=5s --dbname="$database" > "$file.partial"
 fi

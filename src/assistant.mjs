@@ -7,7 +7,7 @@ import {pdfText} from './assistant-provider.mjs';
 import {canonical,hash} from './crypto.mjs';
 import {AppError,requireThat} from './errors.mjs';
 
-import {assistantSystem as system} from './assistant-contract.mjs';
+import {assistantSystem as system,modelDocument} from './assistant-contract.mjs';
 export class Assistant{
  constructor({provider,bucket,extractPdf=pdfText}={}){Object.assign(this,{provider,bucket,extractPdf});this.active=new Map();}
  async create(db,actor,companyId,input,key){
@@ -67,7 +67,7 @@ export class Assistant{
    }
    await companyAccess(db,actor,companyId);for(const fileId of claimed.request_json.fileIds)await fileRecord(db,actor,companyId,fileId);
    const output={reply:answer.reply,page:answer.page,sources:sources.filter(s=>answer.citations.includes(s.id)),tools:trace,proposal:null,configuration:null,validationError:null};
-   if(answer.document){try{output.proposal=await preview(db,actor,companyId,JSON.parse(answer.document));}catch(error){output.validationError=error instanceof AppError?error.message:'The proposed document could not be validated.';}}
+   if(answer.document){try{output.proposal=await preview(db,actor,companyId,modelDocument(answer.document));}catch(error){output.validationError=error instanceof AppError?error.message:'The proposed document could not be validated.';}}
    if(answer.configuration){try{const candidate=JSON.parse(answer.configuration);object(candidate,['entity','data']);requireThat(['owner','admin'].includes(company.role)&&['party','item','account','company','period','membership'].includes(candidate.entity),403,'CONFIGURATION_DENIED','Your role cannot propose this setup change.');output.configuration={...candidate,expectedRevision:company.revision};}catch(error){output.validationError=error instanceof AppError?error.message:'The proposed setup could not be validated.';}}
    await db.prepare("UPDATE assistant_tasks SET status='complete',response_json=?,model=?,input_tokens=?,output_tokens=?,finished_at=? WHERE company_id=? AND id=? AND status='running'").bind(JSON.stringify(output),model,inputTokens,outputTokens,now(),companyId,id).run();
   }catch(error){try{await db.prepare("UPDATE assistant_tasks SET status='failed',error_code=?,model=?,input_tokens=?,output_tokens=?,finished_at=? WHERE company_id=? AND id=? AND status='running'").bind(error instanceof AppError?error.code:'AI_FAILED',model,inputTokens,outputTokens,now(),companyId,id).run();}catch{} }

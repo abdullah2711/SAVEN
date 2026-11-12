@@ -1,6 +1,6 @@
 import {AppError,requireThat} from './errors.mjs';
 import {body,json} from './api.mjs';
-import {responseSchema,assistantSystem} from './assistant-contract.mjs';
+import {responseSchema,assistantSystem,modelDocument} from './assistant-contract.mjs';
 import {hash,canonical} from './crypto.mjs';
 
 // Operational cost coordination only. This stores counters and reservations,
@@ -87,7 +87,7 @@ export async function edgeAssistant(request,env){
   const finalConsent=await(await budget.fetch(new Request('https://budget/consent',{method:'POST',body:JSON.stringify({action:'consent_get',company:companyKey})}))).json();requireThat(finalConsent.enabled,403,'AI_CONSENT_REQUIRED','Company AI processing was disabled during this request.');
   for(const source of sources.filter(s=>s.documentId))await backend(env,request,prefix+'/documents/'+source.documentId);
   const output={reply:answer.reply,page:answer.page,sources:sources.filter(s=>answer.citations.includes(s.id)),tools:trace,proposal:null,configuration:null,validationError:null,model,inputTokens,outputTokens,mode:'cloudflare',asOf:Date.now()};
-  if(answer.document){try{const document=JSON.parse(answer.document);output.proposal=await backend(env,request,prefix+'/preview','POST',document);}catch(error){output.validationError=error instanceof AppError?error.message:'The proposed document could not be validated.';}}
+  if(answer.document){try{const document=modelDocument(answer.document);output.proposal=await backend(env,request,prefix+'/preview','POST',document);}catch(error){output.validationError=error instanceof AppError?error.message:'The proposed document could not be validated.';}}
   if(answer.configuration){try{requireThat(['owner','admin'].includes(current.company.role),403,'CONFIGURATION_DENIED','Only company administrators can apply setup changes.');const candidate=JSON.parse(answer.configuration);requireThat(candidate&&typeof candidate==='object'&&Object.keys(candidate).every(k=>['entity','data'].includes(k))&&['party','account','item','company','period','membership'].includes(candidate.entity),422,'AI_CONFIGURATION','The proposed setup is unsupported.');output.configuration={...candidate,expectedRevision:current.company.revision};}catch(error){output.validationError=error.message;}}
   return json(output);
  }catch(error){if(error instanceof AppError)return json({error:{code:error.code,message:error.message}},error.status);console.error(JSON.stringify({event:'edge_assistant_failed',requestId:crypto.randomUUID()}));return json({error:{code:'AI_FAILED',message:'The assistant could not complete this request. No records were changed.'}},503);}
