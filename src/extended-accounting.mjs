@@ -1,5 +1,6 @@
 import {requireThat} from './errors.mjs';
 import {minor,decimal} from './money.mjs';
+import {companyAccess} from './auth.mjs';
 
 export const extendedKinds=['bill','receipt','payment','journal'];
 const common=['kind','date','reference','description'];
@@ -53,4 +54,10 @@ export async function extendedEffect(db,companyId,document,line,allow){
   if(document.kind==='receipt'){line(document.cashAccountId,amount,0n);line('receivable',0n,amount);}
   else{line('payable',amount,0n);line(document.cashAccountId,0n,amount);}
   return {amount,allocation:{targetDocumentId:target.id,reference:target.reference,amount:decimal(amount),availableBefore:decimal(available),availableAfter:decimal(available-amount)}};
+}
+export async function outstandingBalances(db,actor,companyId){
+ await companyAccess(db,actor,companyId);requireThat(db.schemaVersion>=4,503,'UPGRADE_REQUIRED','Settlement reporting needs the accounting upgrade.');
+ const denied=(await db.prepare('SELECT resource_type,resource_id FROM resource_denials WHERE company_id=? AND user_id=?').bind(companyId,actor.id).all()).results;
+ const rows=(await db.prepare("SELECT d.id,d.kind,d.reference,d.date,d.party_id,d.amount_minor,d.preview_json,p.name AS party_name,coalesce(sum(CASE WHEN s.status='posted' THEN a.amount_minor ELSE 0 END),0)::text AS settled,coalesce(sum(CASE WHEN s.status='pending' THEN a.amount_minor ELSE 0 END),0)::text AS reserved FROM documents d JOIN parties p ON p.company_id=d.company_id AND p.id=d.party_id LEFT JOIN document_allocations a ON a.company_id=d.company_id AND a.target_id=d.id LEFT JOIN documents s ON s.company_id=a.company_id AND s.id=a.settlement_id WHERE d.company_id=? AND d.status='posted' AND (d.kind='bill' OR (d.kind='invoice' AND d.payload_json::jsonb->>'settlement'='credit')) GROUP BY d.id,d.kind,d.reference,d.date,d.party_id,d.amount_minor,d.preview_json,p.name ORDER BY d.date,d.reference LIMIT 501").bind(companyId).all()).results;
+ return {limited:rows.length>500,rows:rows.slice(0,500).filter(row=>!denied.some(d=>d.resource_type==='party'&&d.resource_id===row.party_id||d.resource_type==='account'&&JSON.parse(row.preview_json).lines.some(l=>l.accountId===d.resource_id))).map(row=>{const amount=BigInt(row.amount_minor),settled=BigInt(row.settled),reserved=BigInt(row.reserved);return {id:row.id,kind:row.kind,reference:row.reference,date:row.date,partyId:row.party_id,partyName:row.party_name,amount:decimal(amount),settled:decimal(settled),pending:decimal(reserved),open:decimal(amount-settled),available:decimal(amount-settled-reserved)};}).filter(row=>row.open!=='0.00')};
 }

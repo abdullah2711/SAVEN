@@ -18,5 +18,8 @@
   "observability": {
     "enabled": false
   },
+  "ai": {"binding":"AI"},
+  "durable_objects": {"bindings":[{"name":"AI_BUDGET","class_name":"AiBudget"}]},
+  "migrations": [{"tag":"ai-budget-v1","new_sqlite_classes":["AiBudget"]}],
   "vpc_services": [{"binding":"SAVEN_API","service_id":"01a1cd07-8d47-7bc0-a115-f8bf736614a2"}]
 }

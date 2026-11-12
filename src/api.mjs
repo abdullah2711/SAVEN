@@ -2,6 +2,7 @@ import { AppError, requireThat } from './errors.mjs';
 import { authenticate, redeemGrant } from './auth.mjs';
 import { preview, submit, review, workspace,documentDetail } from './commands.mjs';
 import {operatingContext,configure,createCompany,invite,reports,membershipInvitation} from './operating.mjs';
+import {outstandingBalances} from './extended-accounting.mjs';
 
 const LIMIT=16_384;
 export async function body(request) {
@@ -72,13 +73,14 @@ export async function api(request,env) {
       return json({user:{id:actor.id,name:actor.name,email:actor.email},companies:companies.results});
     }
     if(url.pathname==='/api/companies'&&method==='POST')return json(await createCompany(env.DB,actor,await body(request),request.headers.get('idempotency-key')),201);
-    const operating=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/(configure|invites|reports)$/);
+    const operating=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/(configure|invites|reports|balances)$/);
     if(operating){
       requireThat(env.DB.schemaVersion>=3,503,'UPGRADE_REQUIRED','This company capability is being activated.');
       const [,companyId,area]=operating;
       if(area==='configure'&&method==='POST')return json(await configure(env.DB,actor,companyId,await body(request),request.headers.get('idempotency-key')),201);
       if(area==='invites'&&method==='POST')return json(await invite(env.DB,actor,companyId,await body(request),request.headers.get('idempotency-key')),201);
       if(area==='reports'&&method==='GET')return json(await reports(env.DB,actor,companyId,url.searchParams));
+      if(area==='balances'&&method==='GET')return json(await outstandingBalances(env.DB,actor,companyId));
       throw new AppError(405,'METHOD_NOT_ALLOWED','This endpoint does not support that method.');
     }
     const detail=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/documents\/([a-zA-Z0-9_-]{1,80})$/);

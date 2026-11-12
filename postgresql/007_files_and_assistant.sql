@@ -64,6 +64,18 @@ END $$;
 CREATE TRIGGER attachment_control BEFORE INSERT ON document_attachments FOR EACH ROW EXECUTE FUNCTION saven_evidence_control();
 CREATE TRIGGER removal_control BEFORE INSERT ON file_removals FOR EACH ROW EXECUTE FUNCTION saven_evidence_control();
 CREATE TRIGGER withdrawal_control BEFORE INSERT ON attachment_withdrawals FOR EACH ROW EXECUTE FUNCTION saven_evidence_control();
+CREATE TABLE document_evidence_versions(company_id text NOT NULL,document_id text NOT NULL,revision bigint NOT NULL CHECK(revision>0),PRIMARY KEY(company_id,document_id),FOREIGN KEY(company_id,document_id) REFERENCES documents(company_id,id));
+ALTER TABLE document_evidence_versions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY company_scope ON document_evidence_versions USING(saven_member(company_id));
+GRANT SELECT ON document_evidence_versions TO saven_app;
+CREATE FUNCTION saven_evidence_revision() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
+BEGIN
+ INSERT INTO public.document_evidence_versions(company_id,document_id,revision) VALUES(NEW.company_id,NEW.document_id,1) ON CONFLICT(company_id,document_id) DO UPDATE SET revision=document_evidence_versions.revision+1;
+ UPDATE public.companies SET revision=revision+1 WHERE id=NEW.company_id;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER evidence_revision AFTER INSERT ON document_attachments FOR EACH ROW EXECUTE FUNCTION saven_evidence_revision();
+CREATE TRIGGER withdrawal_revision AFTER INSERT ON attachment_withdrawals FOR EACH ROW EXECUTE FUNCTION saven_evidence_revision();
 DO $$ DECLARE t text; BEGIN
  FOREACH t IN ARRAY ARRAY['file_events','file_removals','document_attachments','attachment_withdrawals'] LOOP
   EXECUTE format('CREATE TRIGGER immutable_update BEFORE UPDATE ON %I FOR EACH ROW EXECUTE FUNCTION saven_immutable(''EVIDENCE_IMMUTABLE'')',t);
@@ -99,6 +111,16 @@ BEGIN
 END $$;
 CREATE TRIGGER assistant_task_control BEFORE INSERT OR UPDATE ON assistant_tasks FOR EACH ROW EXECUTE FUNCTION saven_assistant_task_control();
 CREATE TRIGGER assistant_no_delete BEFORE DELETE ON assistant_tasks FOR EACH ROW EXECUTE FUNCTION saven_immutable('TASK_IMMUTABLE');
+ALTER TABLE operations ADD COLUMN assistant_task_id text;
+ALTER TABLE operations ADD FOREIGN KEY(company_id,assistant_task_id) REFERENCES assistant_tasks(company_id,id);
+CREATE FUNCTION saven_assistant_operation() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF NEW.assistant_task_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM assistant_tasks WHERE company_id=NEW.company_id AND id=NEW.assistant_task_id AND user_id=NEW.actor_id AND status='complete') THEN RAISE EXCEPTION 'AI_TASK_REQUIRED'; END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER assistant_operation BEFORE INSERT ON operations FOR EACH ROW EXECUTE FUNCTION saven_assistant_operation();
 REVOKE ALL ON FUNCTION saven_file_control(),saven_evidence_control(),saven_assistant_task_control() FROM PUBLIC;
+REVOKE ALL ON FUNCTION saven_assistant_operation() FROM PUBLIC;
+REVOKE ALL ON FUNCTION saven_evidence_revision() FROM PUBLIC;
 INSERT INTO schema_version(version) VALUES(5);
 COMMIT;

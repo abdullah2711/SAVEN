@@ -25,6 +25,7 @@ export async function servicesApi(request,{db,bucket,scanner,assistant}){
   if(attachment&&request.method==='POST')return json(attachment[2]?await withdrawAttachment(db,actor,companyId,attachment[1],attachment[2],await body(request)):await attachFile(db,actor,companyId,attachment[1],await body(request)),201);
   if(rest==='notifications'&&request.method==='GET')return json({notifications:(await db.prepare('SELECT id,event_type,record_id,message,created_at,read_at FROM notifications WHERE company_id=? AND user_id=? ORDER BY created_at DESC LIMIT 50').bind(companyId,actor.id).all()).results});
   if(rest==='assistant/tasks'&&request.method==='POST'){requireThat(assistant,503,'AI_UNAVAILABLE','The assistant service is unavailable.');return json(await assistant.create(db,actor,companyId,await body(request),request.headers.get('idempotency-key')),202);}
+  if(rest==='assistant/tasks'&&request.method==='GET')return json({tasks:(await db.prepare('SELECT id,status,request_json,response_json,error_code,model,input_tokens,output_tokens,created_at,started_at,finished_at FROM assistant_tasks WHERE company_id=? AND user_id=? ORDER BY created_at DESC,id DESC LIMIT 20').bind(companyId,actor.id).all()).results});
   const task=rest.match(/^assistant\/tasks\/([a-f0-9-]{36})$/);
   if(task&&request.method==='GET'){requireThat(assistant,503,'AI_UNAVAILABLE','The assistant service is unavailable.');return json(await assistant.get(db,actor,companyId,task[1]));}
   throw new AppError(405,'METHOD_NOT_ALLOWED','This endpoint does not support that action.');

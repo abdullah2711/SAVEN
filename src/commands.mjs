@@ -82,8 +82,8 @@ async function retryResult(db, actor, companyId, kind, key, payloadHash) {
   requireThat(row.actor_id===actor.id && row.payload_hash===payloadHash,409,'IDEMPOTENCY_CONFLICT','This command key was already used with different data or by another user.');
   return {...JSON.parse(row.result_json),replayed:true};
 }
-function guard(db,actor,companyId,kind,key,payloadHash,revision,result,operationId,time) {
-  return db.prepare('INSERT INTO operations(id,company_id,actor_id,session_hash,kind,idempotency_key,payload_hash,expected_revision,result_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)').bind(operationId,companyId,actor.id,actor.sessionHash,kind,key,payloadHash,revision,JSON.stringify(result),time);
+function guard(db,actor,companyId,kind,key,payloadHash,revision,result,operationId,time,assistantTaskId=null) {
+  return db.prepare('INSERT INTO operations(id,company_id,actor_id,session_hash,kind,idempotency_key,payload_hash,expected_revision,result_json,created_at'+(db.schemaVersion>=5?',assistant_task_id':'')+') VALUES(?,?,?,?,?,?,?,?,?,?'+(db.schemaVersion>=5?',?':'')+')').bind(operationId,companyId,actor.id,actor.sessionHash,kind,key,payloadHash,revision,JSON.stringify(result),time,...(db.schemaVersion>=5?[assistantTaskId]:[]));
 }
 function finish(db,actor,companyId,operationId,documentId,action,time) {
   return [
@@ -117,17 +117,22 @@ async function transact(db, statements, retry) {
   return null;
 }
 export async function submit(db,actor,companyId,input,key) {
-  fields(input,['document','previewDigest','expectedRevision']);
+  fields(input,['document','previewDigest','expectedRevision','assistantTaskId']);
   const company=await companyAccess(db,actor,companyId);
   requireThat(canPrepare(company.role),403,'PREPARATION_DENIED','Your role cannot prepare transactions.');
   const payloadHash=await hash(canonical(input));
   const retry=()=>retryResult(db,actor,companyId,'submit',key,payloadHash);
   const prior=await retry(); if(prior) return prior;
+  if(input.assistantTaskId){
+    requireThat(db.schemaVersion>=5&&typeof input.assistantTaskId==='string',422,'AI_TASK_REQUIRED','Use a validated assistant proposal.');
+    const task=await db.prepare("SELECT response_json FROM assistant_tasks WHERE company_id=? AND id=? AND user_id=? AND status='complete'").bind(companyId,input.assistantTaskId,actor.id).first();
+    requireThat(task?.response_json?.proposal&&canonical(task.response_json.proposal.document)===canonical(input.document),409,'AI_PROPOSAL_CHANGED','This document no longer matches the assistant proposal. Prepare and review it again.');
+  }
   const effect=await preview(db,actor,companyId,input.document);
   requireThat(input.expectedRevision===effect.revision && input.previewDigest===effect.digest,409,'STALE_PREVIEW','Review a fresh accounting preview before submitting.');
   const id=crypto.randomUUID(), operationId=crypto.randomUUID(), time=now(), document=effect.document;
   const result={id,status:'pending',version:1};
-  const statements=[guard(db,actor,companyId,'submit',key,payloadHash,effect.revision,result,operationId,time),
+  const statements=[guard(db,actor,companyId,'submit',key,payloadHash,effect.revision,result,operationId,time,input.assistantTaskId??null),
     db.prepare('INSERT INTO documents(company_id,id,kind,date,reference,description,party_id,item_id,quantity,amount_minor,payload_json,payload_hash,preview_json,prepared_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(companyId,id,document.kind,document.date,document.reference,document.description,document.partyId??null,document.itemId??null,document.quantity?Number(document.quantity):null,minor(effect.amount),JSON.stringify(document),await hash(canonical(document)),JSON.stringify(effect),actor.id,time)
   ];
   if(document.kind==='stock_issue') statements.push(db.prepare('UPDATE items SET reserved=reserved+? WHERE company_id=? AND id=?').bind(Number(document.quantity),companyId,document.itemId));
@@ -136,7 +141,7 @@ export async function submit(db,actor,companyId,input,key) {
   return await transact(db,statements,retry)??result;
 }
 export async function review(db,actor,companyId,documentId,input,key,action) {
-  fields(input,['expectedVersion']);
+  fields(input,['expectedVersion','expectedEvidenceRevision']);
   requireThat(Number.isSafeInteger(input.expectedVersion) && input.expectedVersion>0,422,'VERSION_REQUIRED','Provide the transaction version you reviewed.');
   const company=await companyAccess(db,actor,companyId);
   requireThat(canReview(company.role),403,'APPROVAL_DENIED','Your role cannot review transactions.');
@@ -147,6 +152,7 @@ export async function review(db,actor,companyId,documentId,input,key,action) {
   requireThat(document,404,'NOT_FOUND','The transaction is unavailable.');
   requireThat(document.prepared_by!==actor.id,403,'SELF_APPROVAL_DENIED','Another authorized person must review the transaction you prepared.');
   requireThat(document.status==='pending' && document.version===input.expectedVersion,409,'STALE_DOCUMENT','The transaction has already been reviewed or changed.');
+  if(db.schemaVersion>=5){const evidence=await db.prepare('SELECT revision FROM document_evidence_versions WHERE company_id=? AND document_id=?').bind(companyId,documentId).first();requireThat((input.expectedEvidenceRevision??0)===(evidence?.revision??0),409,'STALE_EVIDENCE','The attached evidence changed. Reopen and review the current evidence before deciding.');}
   const effect=JSON.parse(document.preview_json), denials=await denied(db,companyId,actor.id);
   if(document.party_id) allowedResource(denials,'party',document.party_id);
   if(document.item_id) allowedResource(denials,'item',document.item_id);
@@ -177,7 +183,7 @@ export async function workspace(db,actor,companyId) {
   const [parties,items,documents,accounts,audit]=await Promise.all([
     db.prepare('SELECT id,name FROM parties WHERE company_id=? ORDER BY name').bind(companyId).all(),
     db.prepare('SELECT id,name,store,unit,on_hand,reserved,unit_cost_minor FROM items WHERE company_id=? ORDER BY name').bind(companyId).all(),
-    db.prepare('SELECT d.*,u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? ORDER BY d.created_at DESC,d.id DESC LIMIT 100').bind(companyId).all(),
+    db.prepare('SELECT d.*,'+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? ORDER BY d.created_at DESC,d.id DESC LIMIT 100').bind(companyId).all(),
     db.prepare('SELECT id,code,name FROM accounts WHERE company_id=? ORDER BY code').bind(companyId).all(),
     db.prepare('SELECT a.*,u.name AS actor_name,d.reference FROM audit_events a JOIN users u ON u.id=a.actor_id JOIN documents d ON d.company_id=a.company_id AND d.id=a.document_id WHERE a.company_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 100').bind(companyId).all()
   ]);
@@ -187,18 +193,18 @@ export async function workspace(db,actor,companyId) {
     parties:parties.results.filter(row=>!deniedSet.has(`party:${row.id}`)),
     items:items.results.filter(row=>!deniedSet.has(`item:${row.id}`)),
     accounts:accounts.results.filter(row=>!deniedSet.has(`account:${row.id}`)),
-    documents:visibleDocs.map(row=>({id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:JSON.parse(row.preview_json)})),
+    documents:visibleDocs.map(row=>({id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,evidenceRevision:row.evidence_revision??0,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:JSON.parse(row.preview_json)})),
     audit:audit.results.filter(row=>docIds.has(row.document_id)).map(row=>({id:row.id,documentId:row.document_id,reference:row.reference,actor:row.actor_name,action:row.action,time:row.created_at}))
   };
 }
 
 export async function documentDetail(db,actor,companyId,id){
   await companyAccess(db,actor,companyId);
-  const row=await db.prepare('SELECT d.*,u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
+  const row=await db.prepare('SELECT d.*,'+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
   requireThat(row,404,'NOT_FOUND','The transaction is unavailable.');
   const restrictions=await denied(db,companyId,actor.id),effect=JSON.parse(row.preview_json);
   if(row.party_id)allowedResource(restrictions,'party',row.party_id);
   if(row.item_id)allowedResource(restrictions,'item',row.item_id);
   for(const line of effect.lines)allowedResource(restrictions,'account',line.accountId);
-  return {id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:effect};
+  return {id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,evidenceRevision:row.evidence_revision??0,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:effect};
 }

@@ -1,7 +1,8 @@
 import {spawn} from 'node:child_process';
 import {AppError,requireThat} from './errors.mjs';
 
-export const responseSchema={type:'object',additionalProperties:false,properties:{reply:{type:'string'},tool:{type:'string',enum:['none','workspace','reports','document']},arguments:{type:'string'},document:{type:'string'},configuration:{type:'string'},page:{type:'string',enum:['','overview','sales','purchases','inventory','accounting','approvals','reports','settings','drive']},citations:{type:'array',items:{type:'string'}}},required:['reply','tool','arguments','document','configuration','page','citations']};
+import {responseSchema} from './assistant-contract.mjs';
+export {responseSchema} from './assistant-contract.mjs';
 export class ModelProvider{
  constructor({url,model='qwen3:1.7b',visionModel='',protocol='ollama',apiKey='',fetcher=fetch,timeout=90000}={}){requireThat(url,503,'AI_UNAVAILABLE','The AI service has not been configured on the server.');const endpoint=new URL(url);requireThat(['https:','http:'].includes(endpoint.protocol)&&(!endpoint.username&&!endpoint.password),503,'AI_CONFIGURATION','The AI service address is invalid.');requireThat(endpoint.protocol==='https:'||['127.0.0.1','localhost','saven-ai'].includes(endpoint.hostname),503,'AI_CONFIGURATION','External model services require HTTPS.');requireThat(['ollama','openai-compatible'].includes(protocol),503,'AI_CONFIGURATION','Choose a supported model protocol.');Object.assign(this,{url:url.replace(/\/$/,''),model,visionModel,protocol,apiKey,fetcher,timeout});}
  async complete(messages,{images=[]}={}){
@@ -9,7 +10,7 @@ export class ModelProvider{
   const model=images.length?this.visionModel:this.model;
   const prepared=structuredClone(messages);
   if(images.length){const last=prepared.findLast(m=>m.role==='user');if(this.protocol==='ollama')last.images=images.map(image=>image.data);else last.content=[{type:'text',text:last.content},...images.map(image=>({type:'image_url',image_url:{url:'data:'+image.mediaType+';base64,'+image.data}}))];}
-  const payload=this.protocol==='ollama'?{model,messages:prepared,stream:false,think:false,format:responseSchema,keep_alive:0,options:{temperature:0.1,num_ctx:8192,num_predict:1100}}:{model,messages:prepared,stream:false,max_completion_tokens:1100,response_format:{type:'json_schema',json_schema:{name:'saven_response',strict:true,schema:responseSchema}}};
+  const payload=this.protocol==='ollama'?{model,messages:prepared,stream:false,think:false,format:responseSchema,keep_alive:0,options:{temperature:0.1,num_ctx:16384,num_predict:1100}}:{model,messages:prepared,stream:false,max_completion_tokens:1100,response_format:{type:'json_schema',json_schema:{name:'saven_response',strict:true,schema:responseSchema}}};
   let response;try{response=await this.fetcher(this.url+(this.protocol==='ollama'?'/api/chat':'/chat/completions'),{method:'POST',headers:{'content-type':'application/json',...(this.apiKey?{authorization:'Bearer '+this.apiKey}:{})},body:JSON.stringify(payload),signal:AbortSignal.timeout(this.timeout)});}catch{throw new AppError(503,'AI_UNAVAILABLE','The model service could not finish this request. Your business records were not changed.');}
   requireThat(response.ok,503,'AI_PROVIDER_ERROR','The model service rejected this request. Your business records were not changed.');
   const reader=response.body.getReader(),chunks=[];let size=0;while(true){const {value,done}=await reader.read();if(done)break;size+=value.byteLength;if(size>262144){await reader.cancel();throw new AppError(502,'AI_RESPONSE','The model response exceeded its limit.');}chunks.push(Buffer.from(value));}

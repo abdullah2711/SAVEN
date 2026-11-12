@@ -50,7 +50,8 @@ try{
  const submitted=await invoke(owner,endpoint('documents'),'POST',{document:preview.document,previewDigest:preview.digest,expectedRevision:preview.revision},crypto.randomUUID());assert.equal(submitted.status,201);const documentId=submitted.value.id;
  assert.equal((await invoke(owner,endpoint(`documents/${documentId}/attachments`),'POST',{fileId})).status,201);
  assert.equal((await invoke(owner,endpoint(`files/${fileId}/remove`),'POST',{reason:'Ordinary removal must fail'})).status,409);
- assert.equal((await invoke(reviewer,endpoint(`documents/${documentId}/approve`),'POST',{expectedVersion:1},crypto.randomUUID())).status,200);
+ assert.equal((await invoke(reviewer,endpoint(`documents/${documentId}/approve`),'POST',{expectedVersion:1,expectedEvidenceRevision:0},crypto.randomUUID())).status,409);
+ assert.equal((await invoke(reviewer,endpoint(`documents/${documentId}/approve`),'POST',{expectedVersion:1,expectedEvidenceRevision:1},crypto.randomUUID())).status,200);
  await admin.prepare("INSERT INTO resource_denials(company_id,user_id,resource_type,resource_id) VALUES(?,?,'party',?)").bind(companyId,reviewerId,customerId).run();
  assert.equal((await invoke(reviewer,endpoint(`files/${fileId}/download`))).status,403);
  await admin.prepare("DELETE FROM resource_denials WHERE company_id=? AND user_id=? AND resource_type='party' AND resource_id=?").bind(companyId,reviewerId,customerId).run();
@@ -67,10 +68,13 @@ try{
  assert.equal((await invoke(owner,endpoint('assistant/tasks'),'POST',{message:'Prepare the invoice from my source.',fileIds:[fileId]},key)).value.replayed,true);
  assert.equal((await invoke(owner,endpoint('assistant/tasks'),'POST',{message:'Changed payload',fileIds:[]},key)).status,409);
  assert.equal((await invoke(reviewer,endpoint('assistant/tasks/'+task.value.id))).status,404);
+ const proposed=result.value.response_json.proposal;
+ const confirmed=await invoke(owner,endpoint('documents'),'POST',{document:proposed.document,expectedRevision:proposed.revision,previewDigest:proposed.digest,assistantTaskId:task.value.id},crypto.randomUUID());assert.equal(confirmed.status,201,JSON.stringify(confirmed.value));assert.equal(confirmed.value.status,'pending');
+ assert.equal((await owner.db.prepare('SELECT assistant_task_id FROM operations WHERE company_id=? AND assistant_task_id=?').bind(companyId,task.value.id).first()).assistant_task_id,task.value.id);
  pass('source-backed AI proposal uses shared validation without posting; retries and private task scope');
  reply={...reply,document:'',tool:'approve'};
  const malicious=await invoke(owner,endpoint('assistant/tasks'),'POST',{message:'Attempt an unsupported action',fileIds:[]},crypto.randomUUID());await assistant.active.get(malicious.value.id);
- const failed=await invoke(owner,endpoint('assistant/tasks/'+malicious.value.id));assert.equal(failed.value.status,'failed');assert.equal(failed.value.error_code,'AI_RESPONSE');assert.equal((await context()).documents.length,1);
+ const failed=await invoke(owner,endpoint('assistant/tasks/'+malicious.value.id));assert.equal(failed.value.status,'failed');assert.equal(failed.value.error_code,'AI_RESPONSE');assert.equal((await context()).documents.length,2);
  await admin.prepare('UPDATE memberships SET active=0 WHERE company_id=? AND user_id=?').bind(companyId,reviewerId).run();
  assert.equal((await invoke(reviewer,endpoint(`files/${fileId}/download`))).status,403);
  pass('unapproved model actions never execute and membership revocation immediately removes file access');

@@ -20,7 +20,7 @@ export async function fileRecord(db,actor,companyId,id,{clean=true}={}){
 function event(db,actor,companyId,id,action,reason=''){return db.prepare('INSERT INTO file_events(id,company_id,file_id,actor_id,action,reason,created_at) VALUES(?,?,?,?,?,?,?)').bind(randomUUID(),companyId,id,actor.id,action,reason,now());}
 export async function listFiles(db,actor,companyId,documentId){
  const company=await companyAccess(db,actor,companyId);if(documentId)await documentDetail(db,actor,companyId,documentId);
- const rows=(await db.prepare('SELECT f.* FROM stored_files f WHERE f.company_id=? AND NOT EXISTS(SELECT 1 FROM file_removals r WHERE r.company_id=f.company_id AND r.file_id=f.id)'+(documentId?' AND EXISTS(SELECT 1 FROM document_attachments a WHERE a.company_id=f.company_id AND a.file_id=f.id AND a.document_id=?)':'')+' ORDER BY f.created_at DESC,f.id DESC LIMIT 201').bind(...(documentId?[companyId,documentId]:[companyId])).all()).results;
+ const rows=(await db.prepare('SELECT f.*'+(documentId?',(SELECT w.reason FROM attachment_withdrawals w WHERE w.company_id=f.company_id AND w.file_id=f.id AND w.document_id=?) AS withdrawal_reason':'')+' FROM stored_files f WHERE f.company_id=? AND NOT EXISTS(SELECT 1 FROM file_removals r WHERE r.company_id=f.company_id AND r.file_id=f.id)'+(documentId?' AND EXISTS(SELECT 1 FROM document_attachments a WHERE a.company_id=f.company_id AND a.file_id=f.id AND a.document_id=?)':'')+' ORDER BY f.created_at DESC,f.id DESC LIMIT 201').bind(...(documentId?[documentId,companyId,documentId]:[companyId])).all()).results;
  const visible=[];
  for(const row of rows.slice(0,200)){try{await fileRecord(db,actor,companyId,row.id,{clean:false});visible.push(row);}catch(error){if(![403,404].includes(error.status))throw error;}}
  let quota=null;
@@ -40,10 +40,10 @@ export async function uploadFile(db,actor,companyId,request,{bucket,scanner}){
  let name;try{name=decodeURIComponent(request.headers.get('x-saven-filename')??'');}catch{requireThat(false,422,'FILE_NAME','Choose a valid filename.');}
  const visibility=request.headers.get('x-saven-visibility')??'company';requireThat(['company','personal'].includes(visibility),422,'FILE_VISIBILITY','Choose company or personal storage.');
  const bytes=await fileBody(request),meta=inspectFile(name,bytes),id=fileId();
- // Objects have no public URL. An object without a committed metadata row is
- // unreachable and is retained for the operator's orphan-reconciliation job.
- await bucket.put(companyId,id,meta,bytes);
+ // Reserve retained quota before writing bytes. Rejected concurrent uploads
+ // must not leave uncounted objects that can exhaust the server's disk.
  await db.batch([db.prepare('INSERT INTO stored_files(company_id,id,owner_id,name,media_type,sha256,byte_size,visibility,created_at) VALUES(?,?,?,?,?,?,?,?,?)').bind(companyId,id,actor.id,meta.name,meta.mediaType,meta.sha256,meta.byteSize,visibility,now()),event(db,actor,companyId,id,'uploaded')]);
+ try{await bucket.put(companyId,id,meta,bytes);}catch{await db.batch([db.prepare("UPDATE stored_files SET scan_state='error' WHERE company_id=? AND id=?").bind(companyId,id),event(db,actor,companyId,id,'object_write_failed')]);return {id,name:meta.name,scanState:'error',message:'The file could not be retained. It remains unavailable; an administrator can inspect the failed upload.'};}
  return {...await scanFile(db,actor,companyId,id,bucket,scanner),name:meta.name};
 }
 export async function retryScan(db,actor,companyId,id,services){const company=await companyAccess(db,actor,companyId),row=await fileRecord(db,actor,companyId,id,{clean:false});requireThat(canPrepare(company.role)&&(row.owner_id===actor.id||admin(company)),403,'SCAN_DENIED','Only the uploader or an administrator can retry this scan.');return scanFile(db,actor,companyId,id,services.bucket,services.scanner);}
