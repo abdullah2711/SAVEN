@@ -4,7 +4,7 @@ const money=value=>Number(value).toLocaleString('en-PK',{minimumFractionDigits:2
 const options=rows=>rows.map(row=>`<option value="${escape(row.id)}">${escape(row.name)}</option>`).join('');
 export function createTransactions({getData,call,endpoint,dialog,refresh,previewMarkup,setBusy,toast}){
  let key='',balances=[],error='',sequence=0,timer;
- const data=()=>getData(),ready=()=>!!data()?.capabilities?.extendedAccounting;
+ const data=()=>getData(),ready=()=>!!data()?.capabilities?.accountingCycles;
  function ensure(){if(key!==data()?.company.id){key=data()?.company.id;balances=[];error='';}}
  async function load(page){if(!ready()||!['sales','purchases','accounting'].includes(page))return;ensure();const context=key;try{const result=await call(endpoint('balances'));if(context===data()?.company.id){balances=result.rows;error='';}}catch(reason){if(context===data()?.company.id)error=reason.message;}}
  function button(kind,label=labels[kind]){return ready()?`<button class="button" data-create="${kind}" ${data().permissions.prepare?'':'disabled'}>${label}</button>`:'';}
@@ -28,7 +28,7 @@ export function createTransactions({getData,call,endpoint,dialog,refresh,preview
   }
   if(targetId){form.elements.targetDocumentId.value=targetId;form.elements.amount.value=balances.find(r=>r.id===targetId)?.available??'';}
   form.addEventListener('input',update);form.addEventListener('change',update);
-  form.addEventListener('submit',async event=>{event.preventDefault();if(!effect)return;setBusy(true);const controls=[...form.querySelectorAll('button,input,select')];controls.forEach(x=>x.disabled=true);try{await call(endpoint('documents'),{method:'POST',body:{document:effect.document,expectedRevision:effect.revision,previewDigest:effect.digest},key:commandKey});await refresh();await load(kind==='receipt'?'sales':'purchases');dialog.close();toast('Submitted for independent approval. No journal has been posted yet.');}catch(error){errorNode.textContent=error.message;if(error.code==='STALE_PREVIEW'){update();}else controls.forEach(x=>x.disabled=false);}finally{setBusy(false);}});
+  form.addEventListener('submit',async event=>{event.preventDefault();if(!effect)return;setBusy(true);const controls=[...form.querySelectorAll('button,input,select')];controls.forEach(x=>x.disabled=true);try{await call(endpoint('documents'),{method:'POST',body:{document:effect.document,expectedRevision:effect.revision,previewDigest:effect.digest},key:commandKey});await refresh();await load(kind==='receipt'?'sales':'purchases');dialog.close();toast('Submitted for independent approval. No journal has been posted yet.');}catch(error){errorNode.textContent=error.message;controls.forEach(x=>x.disabled=false);if(error.code==='STALE_PREVIEW')update();}finally{setBusy(false);}});
  }
  return {ready,load,button,ledger,open,labels,supports:kind=>Object.hasOwn(labels,kind)&&!['invoice','stock_issue'].includes(kind)};
 }

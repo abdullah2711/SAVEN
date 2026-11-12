@@ -1,6 +1,9 @@
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 ENV NODE_ENV=production BIND_HOST=0.0.0.0 PORT=8788 PGUSER=saven_app
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils \
+ && dpkg-query -W poppler-utils > /app/runtime-packages.txt \
+ && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src

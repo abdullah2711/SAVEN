@@ -11,16 +11,22 @@ if [ "$label" != testing ] && [ "$current" != saven-testing:pg-20261112 ]; then
 fi
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 previous="saven-testing-api-previous-$stamp"
+set --
+if [ "$schema" -ge 5 ]; then
+ test -r /etc/saven-testing/runtime.env || { echo 'Install private file services before deploying schema 5.' >&2;exit 1; }
+ test -d /var/lib/saven-testing/objects
+ set -- --network saven-testing-private --env-file /etc/saven-testing/runtime.env -v /var/lib/saven-testing/objects:/data/objects
+fi
 sudo docker stop --time 15 saven-testing-api >/dev/null
 sudo docker rename saven-testing-api "$previous"
 started=0
 if sudo docker run -d --name saven-testing-api --label saven.service=testing --restart unless-stopped \
  --user "$(id -u saven_app):$(id -g saven_app)" --read-only --cap-drop ALL --security-opt no-new-privileges \
- --pids-limit 128 --memory 384m --cpus 1 --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+ --pids-limit 128 --memory 768m --cpus 1 --tmpfs /tmp:rw,noexec,nosuid,size=64m \
  -v /var/run/postgresql:/var/run/postgresql:ro -p 127.0.0.1:8788:8788 \
  --log-opt max-size=10m --log-opt max-file=3 \
  -e PUBLIC_ORIGIN=https://saventesting.economicsystems.cc \
- -e ADDITIONAL_ORIGINS=https://saventesting.economicsystemsglobal.com "$image"; then
+ -e ADDITIONAL_ORIGINS=https://saventesting.economicsystemsglobal.com "$@" "$image"; then
  for attempt in 1 2 3 4 5 6 7 8 9 10; do
   health=$(curl --silent --show-error --max-time 3 http://127.0.0.1:8788/api/health || true)
   if printf '%s' "$health" | grep -q '"schemaReady":true' && printf '%s' "$health" | grep -Eq '"schemaVersion":'"$schema"'[,}]'; then started=1;break;fi

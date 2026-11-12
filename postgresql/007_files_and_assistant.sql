@@ -3,9 +3,9 @@ CREATE TABLE stored_files(
  company_id text NOT NULL REFERENCES companies(id),id text NOT NULL,owner_id text NOT NULL REFERENCES users(id),
  name text NOT NULL CHECK(length(name) BETWEEN 1 AND 180),media_type text NOT NULL,
  sha256 text NOT NULL CHECK(sha256 ~ '^[a-f0-9]{64}$'),byte_size bigint NOT NULL CHECK(byte_size BETWEEN 1 AND 10485760),
- visibility text NOT NULL CHECK(visibility IN('company','personal')),
+ visibility text NOT NULL CHECK(visibility IN('company','personal')),command_key text NOT NULL,
  scan_state text NOT NULL DEFAULT 'pending' CHECK(scan_state IN('pending','clean','infected','error')),created_at bigint NOT NULL,
- PRIMARY KEY(company_id,id)
+ PRIMARY KEY(company_id,id),UNIQUE(company_id,owner_id,command_key)
 );
 CREATE TABLE file_events(id text PRIMARY KEY,company_id text NOT NULL,file_id text NOT NULL,actor_id text NOT NULL REFERENCES users(id),action text NOT NULL,reason text NOT NULL DEFAULT '',created_at bigint NOT NULL,FOREIGN KEY(company_id,file_id) REFERENCES stored_files(company_id,id));
 CREATE TABLE file_removals(company_id text NOT NULL,file_id text NOT NULL,actor_id text NOT NULL REFERENCES users(id),reason text NOT NULL CHECK(length(reason) BETWEEN 1 AND 500),created_at bigint NOT NULL,PRIMARY KEY(company_id,file_id),FOREIGN KEY(company_id,file_id) REFERENCES stored_files(company_id,id));

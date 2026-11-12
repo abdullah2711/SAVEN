@@ -1,4 +1,4 @@
-import {mkdir,open,realpath} from 'node:fs/promises';
+import {mkdir,open,realpath,statfs} from 'node:fs/promises';
 import {constants} from 'node:fs';
 import {resolve,sep} from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
@@ -27,7 +27,7 @@ export async function fileBody(request){
 export class LocalBucket{
  constructor(root){requireThat(typeof root==='string'&&root.length>0,503,'STORAGE_UNAVAILABLE','Private file storage is not configured.');this.root=resolve(root);}
  async location(company,id,sha){requireThat(/^[a-zA-Z0-9_-]{1,80}$/.test(company)&&/^[a-f0-9-]{36}$/.test(id)&&/^[a-f0-9]{64}$/.test(sha),422,'OBJECT_KEY','Invalid object reference.');await mkdir(this.root,{recursive:true,mode:0o700});const root=await realpath(this.root),dir=resolve(root,company,id);await mkdir(dir,{recursive:true,mode:0o700});const actual=await realpath(dir);requireThat(actual.startsWith(root+sep),403,'OBJECT_KEY','The object path is outside storage.');return resolve(actual,sha);}
- async put(company,id,meta,bytes){const path=await this.location(company,id,meta.sha256);requireThat(fingerprint(bytes)===meta.sha256,422,'OBJECT_HASH','The file content changed.');const file=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|(constants.O_NOFOLLOW??0),0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}return path;}
+ async put(company,id,meta,bytes){const path=await this.location(company,id,meta.sha256);requireThat(fingerprint(bytes)===meta.sha256,422,'OBJECT_HASH','The file content changed.');const disk=await statfs(this.root,{bigint:true});requireThat(disk.bavail*disk.bsize>BigInt(bytes.length)+2147483648n,503,'STORAGE_CAPACITY','The server needs at least 2 GB of free disk reserve. This upload cannot be retained.');const file=await open(path,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|(constants.O_NOFOLLOW??0),0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}return path;}
  async get(company,id,meta){const file=await open(await this.location(company,id,meta.sha256),constants.O_RDONLY|(constants.O_NOFOLLOW??0));try{const stat=await file.stat();requireThat(stat.isFile()&&stat.size===Number(meta.byte_size)&&stat.size<=FILE_LIMIT,409,'OBJECT_INTEGRITY','The retained file is unavailable or changed.');const bytes=await file.readFile();requireThat(fingerprint(bytes)===meta.sha256,409,'OBJECT_INTEGRITY','The retained file did not pass its integrity check.');return bytes;}finally{await file.close();}}
 }
 export function scanWithClamd(bytes,{host='saven-antivirus',port=3310,timeout=15000}={}){
