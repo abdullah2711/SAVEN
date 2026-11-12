@@ -14,9 +14,9 @@
 | ACC-008 Foreign currency | Decimal PKR amounts only | Currency rates, realized gains, settlement and period remeasurement |
 | ACC-009 Intercompany | Separate company access and ledgers | Reciprocal documents, due-to/from and cross-company reconciliation |
 | ACC-010 Consolidation | Individual-company financial reports | Group mappings, translation, eliminations and agreed consolidation scenarios |
-| ACC-011 Close controls | AR/AP control reconciliation, unbalanced journals, pending dated entries, bank backlog and missing retained-evidence counts | Suspense/unusual-entry analysis, resolved/explained sign-off, inventory and policy schedules, formal close record |
+| ACC-011 Close controls | AR/AP control reconciliation, unbalanced journals, pending dated entries, bank backlog, fixed-asset register/GL differences and missing retained-evidence counts | Suspense/unusual-entry analysis, resolved/explained sign-off, inventory and policy schedules, formal close record |
 | ACC-012 Correction history | Exact linked general/cash reversals; partial credit adjustments against unpaid service invoices and expense bills | Tax/goods corrections, paid-document refunds, settlement corrections and complete subledger reversal policies |
-| ACC-013 Revenue and contract balances | Simple non-taxable service recognition | Milestones, deferrals, retention and approved recognition schedules |
+| ACC-013 Revenue and contract balances | Line-based service recognition with configured simple tax source; legacy non-taxable records retained | Milestones, deferrals, retention and approved recognition schedules |
 | ACC-014 Provisions and credit losses | No evaluated provision engine | Impairment estimates, approval, utilization and reversals |
 | ACC-015 Lease schedules | No evaluated lease engine | Contracts, measurement schedules, modification, posting and disclosures |
 | ACC-016 Tax accounting schedules | Account placeholders do not implement tax | Current/deferred tax workpapers, temporary differences and reviewed postings |
