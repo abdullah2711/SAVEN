@@ -1,0 +1,17 @@
+[Unit]
+Description=SAVEN testing PostgreSQL backup
+After=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+ExecStart=/usr/local/lib/saven-testing/backup.sh
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/backups/saven-testing
+RestrictAddressFamilies=AF_UNIX
+Nice=10
+IOSchedulingClass=idle

@@ -13,7 +13,7 @@
   },
   "vars": {
     "ENVIRONMENT": "testing",
-    "API_MODE": "maintenance"
+    "API_MODE": "postgresql"
   },
   "observability": {
     "enabled": false

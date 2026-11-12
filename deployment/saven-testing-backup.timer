@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily SAVEN testing database backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=saven-testing-backup.service
+
+[Install]
+WantedBy=timers.target

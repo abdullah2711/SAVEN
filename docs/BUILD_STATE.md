@@ -89,3 +89,11 @@ Preserved a private D1 snapshot under ignored var/: all 16 tables, 66 records, i
 
 The edge source now supports an explicit maintenance window and a PostgreSQL VPC route. Tests prove it preserves command/cookie/idempotency data, replaces forged routing-origin metadata, and never falls back to D1 after an origin failure. The hosting and migration runbook is docs/13-hosting-postgresql-and-migration.md; ADR 010 restores PostgreSQL as the selected transaction database. No main or production update is authorized or performed. Next: finish controlled cutover, dump/restore rehearsal and real company/master/user/operating functionality.
 
+Cutover execution: application commit fa7cdbe936c6cba1360d915855e7d53566d1aa62 passed GitHub foundation/native PostgreSQL CI and the saven-testing Cloudflare build. Verified hosted API maintenance before exporting a final frozen snapshot: alpha revision 8, beta revision 1, 16 tables and 66 records. Imported into the empty PostgreSQL application database in one transaction and compared every field using canonical row hashes; all tables matched, posted journals balanced and stock reservations reconciled. The private source exports remain under ignored var/ only.
+
+Started saven-testing-api as saven_app with a read-only filesystem, no Linux capabilities/new privileges, bounded resources, a read-only PostgreSQL socket mount and host port 127.0.0.1:8788. Local health reports postgresql and schemaReady true. cloudflared is 2026.7.1. Main and existing server workloads remain unchanged.
+
+Installed the separate PostgreSQL-owned daily local backup timer/service. Corrected the newly created script directory's traversal permission before its successful run; the reproducible installer now sets directory permissions explicitly. Verified the first archive checksum, restored into isolated saven_restore_20261112_a, reapplied runtime grants and verified all 16 tables/66 records and journal balance again. The timer is local-only; no off-site or production RPO/RTO claim is made. Test/restore databases are retained, not silently deleted.
+
+This activation change selects API_MODE=postgresql. Verify its actual hosted VPC connection and sign-in after deployment before claiming cutover complete. Then continue operating functionality. The current narrow UI still is not the agreed complete MVP.
+

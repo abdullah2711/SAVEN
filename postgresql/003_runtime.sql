@@ -1,6 +1,7 @@
 -- Run after creating the isolated runtime LOGIN role saven_app. The production
 -- role and database are separate; do not reuse server or PostgreSQL root access.
 BEGIN;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO saven_app',current_database()); END $$;
 GRANT USAGE ON SCHEMA public TO saven_app;
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO saven_app;
