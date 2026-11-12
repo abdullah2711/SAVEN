@@ -53,8 +53,8 @@ export async function preview(db, actor, companyId, raw) {
   } else
   if(document.kind==='invoice') {
     allowedResource(denials,'party',document.partyId);
-    const party = await db.prepare('SELECT name FROM parties WHERE company_id=? AND id=?').bind(companyId,document.partyId).first();
-    requireThat(party,422,'CUSTOMER_NOT_FOUND','Select a customer in this company.');
+    const party = await db.prepare('SELECT name'+(db.schemaVersion>=3?',kind':'')+' FROM parties WHERE company_id=? AND id=?').bind(companyId,document.partyId).first();
+    requireThat(party&&party.kind!=='supplier',422,'CUSTOMER_NOT_FOUND','Select a customer in this company.');
     amount = minor(document.amount,{positive:true});
     if(document.settlement==='cash') { line(document.cashAccountId,amount,0); line('revenue',0,amount); }
     else {

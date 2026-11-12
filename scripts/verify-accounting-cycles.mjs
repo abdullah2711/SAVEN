@@ -32,6 +32,7 @@ try{
  const bill=await post({...base('bill'),partyId:supplier.value.id,expenseAccountId:'expense',amount:'1000.10'});
  assert.deepEqual(bill.effect.lines.map(l=>[l.accountId,l.debit,l.credit]),[['expense','1000.10','0.00'],['payable','0.00','1000.10']]);
  assert.equal((await preview({...base('bill'),partyId:customer.value.id,expenseAccountId:'expense',amount:'10.00'})).status,422);
+ assert.equal((await preview({...base('invoice'),partyId:supplier.value.id,settlement:'credit',amount:'10.00'})).status,422);
  pass('supplier bills post the independently expected expense and payable with contact validation');
  const invoice=await post({...base('invoice'),partyId:customer.value.id,settlement:'credit',amount:'250.25'});
  const firstReceipt=await post({...base('receipt'),targetDocumentId:invoice.id,cashAccountId:'bank',amount:'100.00'});

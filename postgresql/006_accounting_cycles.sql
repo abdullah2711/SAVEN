@@ -39,7 +39,7 @@ BEGIN
  IF target.id IS NULL OR settlement.id IS NULL OR target.status!='posted' OR settlement.status!='pending'
    OR NOT ((settlement.kind='receipt' AND target.kind='invoice') OR (settlement.kind='payment' AND target.kind='bill'))
    OR target.party_id!=settlement.party_id OR settlement.date<target.date OR settlement.amount_minor!=NEW.amount_minor
-   OR (target.kind='invoice' AND target.payload_json::jsonb->>'settlement'!='credit')
+   OR (target.kind='invoice' AND coalesce(target.payload_json::jsonb->>'settlement','')!='credit')
  THEN RAISE EXCEPTION 'SETTLEMENT_TARGET'; END IF;
  SELECT coalesce(sum(a.amount_minor),0) INTO used FROM public.document_allocations a JOIN public.documents s ON s.company_id=a.company_id AND s.id=a.settlement_id WHERE a.company_id=NEW.company_id AND a.target_id=NEW.target_id AND s.status IN('pending','posted');
  IF used+NEW.amount_minor>target.amount_minor THEN RAISE EXCEPTION 'OVER_ALLOCATION'; END IF;
