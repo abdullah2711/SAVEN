@@ -24,6 +24,7 @@ export function normalizeOpening(input){
 
 export async function openingEffect(db,actor,cid,document,line,{review=false,excludeId=''}={}){
  requireThat(db.schemaVersion>=8,503,'UPGRADE_REQUIRED','Opening reconciliation requires the database upgrade.');const company=await companyAccess(db,actor,cid);
+ const period=await db.prepare('SELECT locked FROM periods WHERE company_id=? AND ? BETWEEN start_date AND end_date').bind(cid,document.date).first();requireThat(period&&!period.locked,409,'PERIOD_LOCKED','The opening cutoff must remain in an open posting period.');
  requireThat((review?['owner','admin','approver']:['owner','admin']).includes(company.role),403,'OPENING_ADMIN','A company administrator must prepare opening balances; a separate authorized person reviews them.');
  requireThat(!(await db.prepare('SELECT resource_id FROM resource_denials WHERE company_id=? AND user_id=? LIMIT 1').bind(cid,actor.id).first()),403,'OPENING_ACCESS','Opening control reconciliation requires full company resource access.');
  const pending=await db.prepare("SELECT id FROM documents WHERE company_id=? AND status='pending' AND id<>? LIMIT 1").bind(cid,excludeId).first();requireThat(!pending,409,'OPENING_PENDING','Resolve pending transactions before preparing an opening snapshot.');

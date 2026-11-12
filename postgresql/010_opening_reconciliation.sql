@@ -43,6 +43,7 @@ BEGIN
  actor:=saven_actor();PERFORM 1 FROM companies WHERE id=cid FOR UPDATE;
  SELECT * INTO root FROM documents WHERE company_id=cid AND id=did;
  IF actor IS NULL OR root.kind IS DISTINCT FROM 'opening_balance' OR root.status IS DISTINCT FROM 'posted' OR root.reviewed_by IS DISTINCT FROM actor OR root.prepared_by=actor OR NOT saven_member(cid) OR NOT EXISTS(SELECT 1 FROM memberships WHERE company_id=cid AND user_id=actor AND active=1 AND role IN('owner','admin','approver')) OR EXISTS(SELECT 1 FROM resource_denials WHERE company_id=cid AND user_id IN(actor,root.prepared_by)) THEN RAISE EXCEPTION 'FORBIDDEN';END IF;
+ IF NOT EXISTS(SELECT 1 FROM periods WHERE company_id=cid AND root.date BETWEEN start_date AND end_date AND locked=0) THEN RAISE EXCEPTION 'PERIOD_LOCKED';END IF;
  IF NOT EXISTS(SELECT 1 FROM document_attachments x JOIN stored_files f ON f.company_id=x.company_id AND f.id=x.file_id WHERE x.company_id=cid AND x.document_id=did AND f.scan_state='clean' AND NOT EXISTS(SELECT 1 FROM attachment_withdrawals w WHERE w.company_id=x.company_id AND w.document_id=x.document_id AND w.file_id=x.file_id)) THEN RAISE EXCEPTION 'OPENING_EVIDENCE_REQUIRED';END IF;
  IF EXISTS(SELECT 1 FROM documents WHERE company_id=cid AND id!=did AND(status='pending' OR status='posted' AND date>root.date)) THEN RAISE EXCEPTION 'OPENING_PENDING';END IF;
  IF root.payload_json::jsonb->>'mode'='post' AND EXISTS(SELECT 1 FROM journals WHERE company_id=cid AND document_id!=did) THEN RAISE EXCEPTION 'LEDGER_NOT_EMPTY';END IF;
