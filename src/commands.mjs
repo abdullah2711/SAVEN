@@ -3,6 +3,7 @@ import { canonical, hash } from './crypto.mjs';
 import { decimal, minor, quantity, multiplied } from './money.mjs';
 import { now, companyAccess, canPrepare, canReview } from './auth.mjs';
 import {extendedKinds,normalizeExtended,extendedEffect} from './extended-accounting.mjs';
+import {normalizeOpening,openingEffect} from './opening.mjs';
 
 function fields(value, allowed) {
   requireThat(value && typeof value === 'object' && !Array.isArray(value), 422, 'INVALID_DOCUMENT', 'Provide a document object.');
@@ -13,6 +14,7 @@ function text(value, field, max = 160) {
   return value.trim();
 }
 export function normalize(input) {
+  if(input?.kind==='opening_balance')return normalizeOpening(input);
   if(extendedKinds.includes(input?.kind))return normalizeExtended(input);
   fields(input, ['kind','date','reference','description','partyId','amount','settlement','cashAccountId','itemId','quantity','dueDate']);
   requireThat(['invoice','stock_issue'].includes(input.kind), 422, 'INVALID_KIND', 'Choose a service invoice or stock issue.');
@@ -38,6 +40,8 @@ export async function preview(db, actor, companyId, raw) {
   const company = await companyAccess(db,actor,companyId);
   requireThat(canPrepare(company.role),403,'PREPARATION_DENIED','Your role cannot prepare transactions.');
   const document = normalize(raw), lines = [], denials = await denied(db,companyId,actor.id);
+  if(db.schemaVersion>=8&&document.kind!=='opening_balance')requireThat(!(await db.prepare("SELECT id FROM documents WHERE company_id=? AND kind='opening_balance' AND status='pending' LIMIT 1").bind(companyId).first()),409,'OPENING_PENDING','An opening snapshot is awaiting review. Complete or reject it before preparing other transactions.');
+  if(db.schemaVersion>=8&&document.kind!=='opening_balance'){const domains=(await db.prepare('SELECT domain,cutoff FROM opening_domains WHERE company_id=?').bind(companyId).all()).results;const full=await db.prepare("SELECT date FROM documents WHERE company_id=? AND kind='opening_balance' AND status='posted' AND payload_json::jsonb->>'mode'='post'").bind(companyId).first();requireThat(!(full&&document.date<=full.date)&&!domains.some(d=>document.date<=d.cutoff&&(d.domain==='receivables'&&['invoice','receipt','credit_note'].includes(document.kind)||d.domain==='payables'&&['bill','payment','supplier_credit'].includes(document.kind)||d.domain==='inventory'&&document.kind==='stock_issue')),409,'OPENING_DATE_CLOSED','Opening snapshots are closing balances for their cutoff date. Prepare subsequent transactions from the following day.');}
   const period = await db.prepare('SELECT locked FROM periods WHERE company_id=? AND ? BETWEEN start_date AND end_date').bind(companyId,document.date).first();
   requireThat(period && !period.locked,409,'PERIOD_LOCKED','This accounting date is outside an open period.');
   const accounts = (await db.prepare('SELECT id,code,name'+(db.schemaVersion>=3?',kind,category':'')+(db.schemaVersion>=6?',active':'')+' FROM accounts WHERE company_id=?').bind(companyId).all()).results;
@@ -48,8 +52,9 @@ export async function preview(db, actor, companyId, raw) {
     allowedResource(denials,'account',accountId);
     lines.push({accountId,code:account.code,name:account.name,debit:decimal(debit),credit:decimal(credit)});
   }
-  let amount, stock = null,allocation=null;
-  if(extendedKinds.includes(document.kind)){
+  let amount, stock = null,allocation=null,opening=null;
+  if(document.kind==='opening_balance'){const effect=await openingEffect(db,actor,companyId,document,line);amount=effect.amount;opening=effect.opening;}
+  else if(extendedKinds.includes(document.kind)){
     requireThat(db.schemaVersion>=4,503,'UPGRADE_REQUIRED','This accounting workflow is being activated.');
     const effect=await extendedEffect(db,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;allocation=effect.allocation??null;
   } else
@@ -76,6 +81,7 @@ export async function preview(db, actor, companyId, raw) {
   }
   const effects={document,lines,amount:decimal(amount),stock,revision:company.revision};
   if(allocation)effects.allocation=allocation;
+  if(opening)effects.opening=opening;
   return {...effects,digest:await hash(canonical({companyId,...effects}))};
 }
 async function retryResult(db, actor, companyId, kind, key, payloadHash) {
@@ -107,6 +113,14 @@ async function transact(db, statements, retry) {
       ['STALE_PREVIEW',409,'The company changed after this preview. Review a fresh preview and try again.'],
       ['PERIOD_LOCKED',409,'The accounting period is locked.'],
       ['BANK_PERIOD_CLOSED',409,'This cash or bank account has a closed reconciliation or a fixed opening baseline. Use a later open accounting date.'],
+      ['OPENING_PENDING',409,'Resolve pending activity before applying this opening snapshot.'],
+      ['OPENING_DATE_CLOSED',409,'The date is covered by an opening closing snapshot. Use a subsequent accounting date.'],
+      ['OPENING_ALREADY_SET',409,'This opening subledger already has an approved or pending baseline.'],
+      ['OPENING_EVIDENCE_REQUIRED',409,'Attach retained clean source evidence before opening approval.'],
+      ['OPENING_CONTROL_DIFFERENCE',409,'The control balance changed. The opening breakdown no longer agrees.'],
+      ['OPENING_INVENTORY_DIFFERENCE',409,'The inventory control no longer agrees to the item breakdown.'],
+      ['OPENING_STOCK_DIFFERENCE',409,'The physical stock count changed after the opening preview.'],
+      ['OPENING_STOCK_COVERAGE',409,'The stock baseline must cover all existing items and reservations must be resolved.'],
       ['SESSION_EXPIRED',401,'Your session is no longer active. Sign in again.'],
       ['FORBIDDEN',403,'Your access changed. This action is no longer allowed.'],
       ['RESOURCE_DENIED',403,'Your access does not include this customer, item, or account.'],
@@ -158,6 +172,7 @@ export async function review(db,actor,companyId,documentId,input,key,action) {
   requireThat(document.status==='pending' && document.version===input.expectedVersion,409,'STALE_DOCUMENT','The transaction has already been reviewed or changed.');
   if(db.schemaVersion>=5){const evidence=await db.prepare('SELECT revision FROM document_evidence_versions WHERE company_id=? AND document_id=?').bind(companyId,documentId).first();requireThat((input.expectedEvidenceRevision??0)===(evidence?.revision??0),409,'STALE_EVIDENCE','The attached evidence changed. Reopen and review the current evidence before deciding.');}
   const effect=JSON.parse(document.preview_json), denials=await denied(db,companyId,actor.id);
+  if(document.kind==='opening_balance')requireThat(denials.length===0,403,'OPENING_ACCESS','Full resource access is required to review an opening snapshot.');
   if(document.party_id) allowedResource(denials,'party',document.party_id);
   if(document.item_id) allowedResource(denials,'item',document.item_id);
   for(const line of effect.lines) allowedResource(denials,'account',line.accountId);
@@ -167,17 +182,24 @@ export async function review(db,actor,companyId,documentId,input,key,action) {
     for(const line of JSON.parse(target.preview_json).lines)allowedResource(denials,'account',line.accountId);
   }
   requireThat(await hash(canonical(JSON.parse(document.payload_json)))===document.payload_hash,409,'PAYLOAD_CHANGED','The stored document does not match its approved payload.');
+  if(document.kind==='opening_balance'&&action==='approve'){
+    const currentLines=[],current=await openingEffect(db,actor,companyId,effect.document,(accountId,debit,credit)=>currentLines.push({accountId,debit:decimal(debit),credit:decimal(credit)}),{review:true,excludeId:documentId});
+    requireThat(canonical(current.opening)===canonical(effect.opening)&&canonical(currentLines)===canonical(effect.lines.map(l=>({accountId:l.accountId,debit:l.debit,credit:l.credit}))),409,'STALE_OPENING','Opening sources changed after submission. Return the snapshot and prepare it again.');
+    requireThat(await db.prepare("SELECT a.file_id FROM document_attachments a JOIN stored_files f ON f.company_id=a.company_id AND f.id=a.file_id WHERE a.company_id=? AND a.document_id=? AND f.scan_state='clean' AND NOT EXISTS(SELECT 1 FROM attachment_withdrawals w WHERE w.company_id=a.company_id AND w.document_id=a.document_id AND w.file_id=a.file_id) LIMIT 1").bind(companyId,documentId).first(),409,'OPENING_EVIDENCE_REQUIRED','Attach retained clean source evidence before approving opening balances.');
+  }
   const operationId=crypto.randomUUID(),time=now(),status=action==='approve'?'posted':'rejected';
   const result={id:documentId,status,version:document.version+1};
   const statements=[guard(db,actor,companyId,action,key,payloadHash,company.revision,result,operationId,time)];
   if(document.kind==='stock_issue') statements.push(db.prepare(action==='approve'?'UPDATE items SET on_hand=on_hand-?,reserved=reserved-? WHERE company_id=? AND id=?':'UPDATE items SET reserved=reserved-? WHERE company_id=? AND id=?').bind(...(action==='approve'?[document.quantity,document.quantity,companyId,document.item_id]:[document.quantity,companyId,document.item_id])));
-  if(action==='approve') {
+  if(action==='approve'&&!(document.kind==='opening_balance'&&effect.document.mode==='reconcile')) {
     const journalId=crypto.randomUUID();
     statements.push(db.prepare('INSERT INTO journals(company_id,id,document_id,date) VALUES(?,?,?,?)').bind(companyId,journalId,documentId,document.date));
     effect.lines.forEach((line,index)=>statements.push(db.prepare('INSERT INTO journal_lines(company_id,journal_id,line_no,account_id,debit_minor,credit_minor) VALUES(?,?,?,?,?,?)').bind(companyId,journalId,index+1,line.accountId,minor(line.debit),minor(line.credit))));
     statements.push(db.prepare("UPDATE journals SET status='posted' WHERE company_id=? AND id=?").bind(companyId,journalId));
   }
-  statements.push(db.prepare('UPDATE documents SET status=?,reviewed_by=?,version=version+1 WHERE company_id=? AND id=?').bind(status,actor.id,companyId,documentId),...finish(db,actor,companyId,operationId,documentId,action==='approve'?'posted':'rejected',time));
+  statements.push(db.prepare('UPDATE documents SET status=?,reviewed_by=?,version=version+1 WHERE company_id=? AND id=?').bind(status,actor.id,companyId,documentId));
+  if(action==='approve'&&document.kind==='opening_balance')statements.push(db.prepare('SELECT saven_apply_opening(?,?)').bind(companyId,documentId));
+  statements.push(...finish(db,actor,companyId,operationId,documentId,action==='approve'?'posted':'rejected',time));
   return await transact(db,statements,retry)??result;
 }
 
@@ -191,7 +213,7 @@ export async function workspace(db,actor,companyId) {
     db.prepare('SELECT id,code,name FROM accounts WHERE company_id=? ORDER BY code').bind(companyId).all(),
     db.prepare('SELECT a.*,u.name AS actor_name,d.reference FROM audit_events a JOIN users u ON u.id=a.actor_id JOIN documents d ON d.company_id=a.company_id AND d.id=a.document_id WHERE a.company_id=? ORDER BY a.created_at DESC,a.id DESC LIMIT 100').bind(companyId).all()
   ]);
-  const visibleDocs=documents.results.filter(row=>!deniedSet.has(`party:${row.party_id}`)&&!deniedSet.has(`item:${row.item_id}`)&&[...JSON.parse(row.preview_json).lines,...(row.target_preview_json?JSON.parse(row.target_preview_json).lines:[])].every(line=>!deniedSet.has(`account:${line.accountId}`)));
+  const visibleDocs=documents.results.filter(row=>!(row.kind==='opening_balance'&&denials.length)&&!deniedSet.has(`party:${row.party_id}`)&&!deniedSet.has(`item:${row.item_id}`)&&[...JSON.parse(row.preview_json).lines,...(row.target_preview_json?JSON.parse(row.target_preview_json).lines:[])].every(line=>!deniedSet.has(`account:${line.accountId}`)));
   const docIds=new Set(visibleDocs.map(row=>row.id));
   return {company,permissions:{prepare:canPrepare(company.role),review:canReview(company.role)},
     parties:parties.results.filter(row=>!deniedSet.has(`party:${row.id}`)),
@@ -208,12 +230,13 @@ export async function documentDetail(db,actor,companyId,id){
   const row=await db.prepare('SELECT d.*,'+allocationVisibility(db)+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
   requireThat(row,404,'NOT_FOUND','The transaction is unavailable.');
   const restrictions=await denied(db,companyId,actor.id),effect=JSON.parse(row.preview_json);
+  if(row.kind==='opening_balance')requireThat(restrictions.length===0,403,'OPENING_ACCESS','Full resource access is required to inspect an opening snapshot.');
   if(row.party_id)allowedResource(restrictions,'party',row.party_id);
   if(row.item_id)allowedResource(restrictions,'item',row.item_id);
   for(const line of effect.lines)allowedResource(restrictions,'account',line.accountId);
   if(row.target_preview_json)for(const line of JSON.parse(row.target_preview_json).lines)allowedResource(restrictions,'account',line.accountId);
   let related=[];
-  if(db.schemaVersion>=6){const parent=effect.document.originalDocumentId??effect.allocation?.targetDocumentId??null;const rows=(await db.prepare("SELECT d.id,d.kind,d.date,d.reference,d.description,d.status,d.amount_minor,d.party_id,d.item_id,d.preview_json FROM documents d WHERE d.company_id=? AND(d.id=? OR(d.kind='reversal' AND d.payload_json::jsonb->>'originalDocumentId'=?) OR EXISTS(SELECT 1 FROM document_allocations a WHERE a.company_id=d.company_id AND a.settlement_id=d.id AND a.target_id=?)) ORDER BY d.date,d.created_at,d.id LIMIT 200").bind(companyId,parent,id,id).all()).results;
+  if(db.schemaVersion>=6){const parent=effect.document.openingDocumentId??effect.document.originalDocumentId??effect.allocation?.targetDocumentId??null;const rows=(await db.prepare("SELECT d.id,d.kind,d.date,d.reference,d.description,d.status,d.amount_minor,d.party_id,d.item_id,d.preview_json FROM documents d WHERE d.company_id=? AND(d.id=? OR d.payload_json::jsonb->>'openingDocumentId'=? OR(d.kind='reversal' AND d.payload_json::jsonb->>'originalDocumentId'=?) OR EXISTS(SELECT 1 FROM document_allocations a WHERE a.company_id=d.company_id AND a.settlement_id=d.id AND a.target_id=?)) ORDER BY d.date,d.created_at,d.id LIMIT 200").bind(companyId,parent,id,id,id).all()).results;
    related=rows.filter(d=>!restrictions.some(r=>r.resource_type==='party'&&r.resource_id===d.party_id||r.resource_type==='item'&&r.resource_id===d.item_id||r.resource_type==='account'&&JSON.parse(d.preview_json).lines.some(l=>l.accountId===r.resource_id))).map(d=>({id:d.id,kind:d.kind,date:d.date,reference:d.reference,description:d.description,status:d.status,amount:decimal(d.amount_minor),relationship:d.id===parent?'original':'related'}));
   }
   return {id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,evidenceRevision:row.evidence_revision??0,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:effect,related};

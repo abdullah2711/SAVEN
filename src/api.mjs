@@ -4,6 +4,7 @@ import { preview, submit, review, workspace,documentDetail } from './commands.mj
 import {operatingContext,configure,createCompany,invite,reports,membershipInvitation} from './operating.mjs';
 import {outstandingBalances} from './extended-accounting.mjs';
 import {accountingWorkspace,accountingCommand,bankDetail,partyAccounting,closeChecklist} from './accounting.mjs';
+import {openingStatus} from './opening.mjs';
 
 const LIMIT=16_384;
 export async function body(request,limit=LIMIT) {
@@ -63,6 +64,8 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const opening=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/opening$/);
+    if(opening){if(method==='GET')return json(await openingStatus(env.DB,actor,opening[1]));if(method==='POST'){const input=await body(request,131072);requireThat(input&&['preview','submit'].includes(input.action),422,'INVALID_ACTION','Choose preview or submit.');if(input.action==='preview'){requireThat(input.document?.kind==='opening_balance',422,'INVALID_OPENING','Provide an opening snapshot.');return json(await preview(env.DB,actor,opening[1],input.document));}requireThat(input.data?.document?.kind==='opening_balance',422,'INVALID_OPENING','Provide an opening snapshot.');return json(await submit(env.DB,actor,opening[1],input.data,request.headers.get('idempotency-key')),201);}throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported opening action.');}
     const closeReport=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/close-review$/);if(closeReport&&method==='GET')return json(await closeChecklist(env.DB,actor,closeReport[1],url.searchParams));
     const partyReport=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/party-ledger$/);if(partyReport&&method==='GET')return json(await partyAccounting(env.DB,actor,partyReport[1],url.searchParams));
     const accounting=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/accounting(?:\/statements\/([a-zA-Z0-9_-]{1,80}))?$/);
