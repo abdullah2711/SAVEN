@@ -38,7 +38,7 @@ BEGIN
 END $$;
 
 CREATE FUNCTION saven_apply_opening(cid text,did text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE root public.documents%ROWTYPE; actor text; side text; account_key text; target_kind text; p jsonb; item public.items%ROWTYPE; a record; ledger numeric; existing_balance numeric; incoming numeric; new_id text; child_payload jsonb; child_preview jsonb; child_ids jsonb:='[]'; stamp bigint; total numeric;
+DECLARE root public.documents%ROWTYPE; actor text; side text; account_key text; target_kind text; p jsonb; item public.items%ROWTYPE; a record; ledger numeric; existing_balance numeric; incoming numeric; new_id text; child_payload jsonb; child_preview jsonb; child_canonical text; child_ids jsonb:='[]'; stamp bigint; total numeric;
 BEGIN
  actor:=saven_actor();PERFORM 1 FROM companies WHERE id=cid FOR UPDATE;
  SELECT * INTO root FROM documents WHERE company_id=cid AND id=did;
@@ -61,9 +61,12 @@ BEGIN
    FOR p IN SELECT value FROM jsonb_array_elements(root.payload_json::jsonb->side) LOOP
     IF NOT EXISTS(SELECT 1 FROM parties WHERE company_id=cid AND id=p->>'partyId' AND kind IN('both',CASE WHEN side='receivables' THEN 'customer' ELSE 'supplier' END)) THEN RAISE EXCEPTION 'INVALID_OPENING';END IF;
     new_id:=gen_random_uuid()::text;
-    child_payload:=jsonb_build_object('kind',target_kind,'date',root.date,'reference',p->>'reference','partyId',p->>'partyId','amount',p->>'amount','originalDate',p->>'originalDate','dueDate',p->>'dueDate','openingDocumentId',did);
+    child_payload:=jsonb_build_object('kind',target_kind,'date',root.date,'reference',p->>'reference','description','Opening position from '||root.reference,'partyId',p->>'partyId','amount',p->>'amount','originalDate',p->>'originalDate','dueDate',p->>'dueDate','openingDocumentId',did);
+    -- Generated child fields are strings. Sort their keys and serialize without
+    -- spacing to match the shared application's canonical payload hash.
+    SELECT '{'||string_agg(to_json(key)::text||':'||value::text,',' ORDER BY key COLLATE "C")||'}' INTO child_canonical FROM jsonb_each(child_payload);
     SELECT jsonb_build_object('document',child_payload,'amount',p->>'amount','lines',jsonb_build_array(jsonb_build_object('accountId',id,'code',code,'name',name,'debit','0.00','credit','0.00')),'openingPosition',jsonb_build_object('sourceId',did,'sourceReference',root.reference,'originalDate',p->>'originalDate','dueDate',p->>'dueDate','noAdditionalJournal',true)) INTO child_preview FROM accounts WHERE company_id=cid AND id=account_key;
-    INSERT INTO documents(company_id,id,kind,date,reference,description,party_id,amount_minor,payload_json,payload_hash,preview_json,prepared_by,reviewed_by,status,created_at) VALUES(cid,new_id,target_kind,root.date,p->>'reference','Opening position from '||root.reference,p->>'partyId',(p->>'amount')::numeric*100,child_payload::text,encode(sha256(convert_to(child_payload::text,'UTF8')),'hex'),child_preview::text,root.prepared_by,actor,'posted',stamp);
+    INSERT INTO documents(company_id,id,kind,date,reference,description,party_id,amount_minor,payload_json,payload_hash,preview_json,prepared_by,reviewed_by,status,created_at) VALUES(cid,new_id,target_kind,root.date,p->>'reference',child_payload->>'description',p->>'partyId',(p->>'amount')::numeric*100,child_payload::text,encode(sha256(convert_to(child_canonical,'UTF8')),'hex'),child_preview::text,root.prepared_by,actor,'posted',stamp);
     child_ids:=child_ids||jsonb_build_array(new_id);
    END LOOP;
   ELSE
