@@ -1,6 +1,6 @@
 import {createRuleConditions} from './rule-conditions.js';
 const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const kinds=['*','payment_entry','payment_allocation','invoice','bill','receipt','payment','journal','stock_issue','cash_transfer','cash_expense','cash_income','reversal','credit_note','supplier_credit'];
+const kinds=['*','asset_acquisition','asset_depreciation','asset_disposal','asset_cancellation','payment_entry','payment_allocation','invoice','bill','receipt','payment','journal','stock_issue','cash_transfer','cash_expense','cash_income','reversal','credit_note','supplier_credit'];
 const decimal=n=>{const v=BigInt(n);return `${v/100n}.${String(v%100n).padStart(2,'0')}`;};
 export function createApprovalPolicies({getData,call,endpoint,dialog,refresh,render,setBusy,toast}){
  let state={company:'',result:null,error:''};

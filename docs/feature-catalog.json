@@ -1084,11 +1084,15 @@
       "supported_scope": "Purchase project cost capital WIP and components",
       "acceptance": "Capitalized amount agrees to source and allowed policy",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/23-fixed-assets.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -1098,11 +1102,15 @@
       "supported_scope": "Methods useful lives residual values start date and proration",
       "acceptance": "Schedule agrees to independent examples and period locks",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/23-fixed-assets.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -1140,11 +1148,15 @@
       "supported_scope": "Sale scrap partial disposal gain loss and derecognition",
       "acceptance": "Cost accumulated depreciation proceeds and gain or loss reconcile",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/23-fixed-assets.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {

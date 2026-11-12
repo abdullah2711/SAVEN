@@ -1,3 +1,4 @@
+import {assetRegister,assetDetails} from './assets.mjs';
 import {paymentsWorkspace} from './payments.mjs';
 import { AppError, requireThat } from './errors.mjs';
 import { authenticate, redeemGrant } from './auth.mjs';
@@ -68,6 +69,7 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const assetRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/assets(?:\/([a-zA-Z0-9_-]{1,80}))?$/);if(assetRoute&&method==='GET')return json(assetRoute[2]?await assetDetails(env.DB,actor,assetRoute[1],assetRoute[2]):await assetRegister(env.DB,actor,assetRoute[1],url.searchParams));
     const paymentsRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/payments$/);if(paymentsRoute&&method==='GET')return json(await paymentsWorkspace(env.DB,actor,paymentsRoute[1],url.searchParams));
     const policyRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/approval-policies$/);
     if(policyRoute){if(method==='GET')return json(await approvalPolicies(env.DB,actor,policyRoute[1]));if(method==='POST')return json(await publishApprovalPolicy(env.DB,actor,policyRoute[1],await body(request),request.headers.get('idempotency-key')),201);throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported approval policy action.');}

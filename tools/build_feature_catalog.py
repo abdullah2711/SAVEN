@@ -324,6 +324,7 @@ IN_PROGRESS = {'FND-001','FND-003','FND-004','FND-006','FND-007','FND-008','FND-
 ACCOUNTING_EVIDENCE = {rid: ['docs/16-accounting-delivery.md','docs/17-accounting-requirement-status.md','docs/BUILD_STATE.md'] for rid in
                       ['ACC-001','ACC-002','ACC-003','ACC-004','ACC-005','ACC-006','ACC-007','ACC-011','ACC-012','ACC-018','SAL-006','SAL-007','PUR-004','PUR-006','PUR-008','RPT-001']}
 ACCOUNTING_EVIDENCE['ACC-002']=['docs/18-opening-reconciliation.md','docs/17-accounting-requirement-status.md','docs/BUILD_STATE.md']
+ACCOUNTING_EVIDENCE.update({rid:['docs/23-fixed-assets.md','docs/24-bookkeeping-module-map.md','docs/BUILD_STATE.md'] for rid in ['AST-002','AST-003','AST-006']})
 IN_PROGRESS.update(ACCOUNTING_EVIDENCE)
 
 def build():

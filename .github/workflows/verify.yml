@@ -120,3 +120,10 @@ jobs:
           PGHOST: 127.0.0.1
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
+
+      - name: Fixed asset acquisition, depreciation and disposal contracts
+        run: node scripts/verify-assets.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci
