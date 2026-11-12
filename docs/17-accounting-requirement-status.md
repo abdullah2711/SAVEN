@@ -5,7 +5,7 @@
 | Requirement | Working scope | Remaining before the agreed requirement is complete |
 | --- | --- | --- |
 | ACC-001 Chart of accounts | Typed accounts, controlled categories, create, rename/archive, reasoned history and date-based balances | Hierarchical templates, effective-dated mapping changes and full setup administration |
-| ACC-002 Opening position | General journal can record supported non-control openings | Controlled imports, dimensions, opening AR/AP/inventory/asset subledgers and reconciliation without duplicate recognition |
+| ACC-002 Opening position | Balanced trial-balance import or existing-GL reconciliation with retained evidence and linked AR/AP/fixed-cost stock openings; source and native CI, server activation pending | Negative/unapplied positions, FX, dimensions, asset registers, fractional/batch/layered stock, larger staged imports and governed opening corrections |
 | ACC-003 Journal preparation | Balanced general journals, approval and exact linked reversals | Recurring journals, accrual/prepayment schedules, allocations, dimensions and policy-based evidence requirements |
 | ACC-004 Posting kernel | Atomic balanced posting, immutable original records, retry and concurrency guards, linked general/cash reversals and supported credits | Extend the same contracts across every remaining module and correction case; wider release assurance |
 | ACC-005 Period controls | Ultimate-owner period administration with reasons, lock enforcement and close review | Formal checklist sign-off, report snapshots, policy-governed reopening and exceptional approval route |

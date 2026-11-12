@@ -192,11 +192,15 @@
       "supported_scope": "Trial balance dimensions evidence and subledger links",
       "acceptance": "Opening control accounts agree without duplicate recognition",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "FND-001"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/18-opening-reconciliation.md",
+        "docs/17-accounting-requirement-status.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {

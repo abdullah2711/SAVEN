@@ -2,6 +2,8 @@
 
 The owner's delivery order is accounting and cash & bank first, then the remaining operating modules, then further AI work. AI development is paused. The broad commercial release contract is retained; module navigation and a passing ledger test are not completion of the full accounting family.
 
+The subsequent [opening reconciliation implementation](18-opening-reconciliation.md) covers a balanced new-ledger import or detail linked to existing controls without duplicate recognition. Its current source/CI and personal-server activation status is recorded separately in BUILD_STATE; the workbench stays gated off on schema 7.
+
 ## Working accounting increment
 
 Schema 6 adds a dedicated accounting workspace with an account chart showing date-based openings, debits, credits and closing balances; account-specific running ledgers with pagination; a searchable transaction register covering all stored records rather than the workspace's latest 100; CSV export explicitly limited to the viewed page; account renaming and archival with reasons and retained history; and direct access to posting-period controls.

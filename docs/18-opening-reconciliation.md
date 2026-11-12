@@ -12,7 +12,7 @@ No balancing plug is created. A mismatch must be corrected or explained in the s
 
 ## Dates and evidence
 
-The snapshot is a **closing balance at the end of its cutoff date**. Subsequent affected transactions begin on the following day. A new-ledger opening protects all earlier dates; a selected existing-ledger reconciliation protects its control-account history. The date must lie in an open posting period. A previous-day opening may therefore require the owner to establish the corresponding opening period.
+The snapshot is a **closing balance at the end of its cutoff date**. Subsequent affected transactions begin on the following day. A new-ledger opening protects all earlier dates; a selected existing-ledger reconciliation protects its control-account history. The date must lie in an open posting period at preparation and approval, including existing-ledger mode that creates no journal. Locking the period after submission prevents approval. A previous-day opening may therefore require the owner to establish the corresponding opening period.
 
 Original invoice/bill dates and due dates are preserved, while the opening recognition date remains the cutoff. Historical activity is not invented. Existing posted activity after the selected cutoff prevents the snapshot. Other pending transactions must be resolved first, and a pending opening temporarily prevents new financial submissions.
 
@@ -22,7 +22,7 @@ A company administrator prepares the snapshot. Another authorized person with fu
 
 PKR, positive unpaid customer/supplier positions, and whole stock units at configured fixed opening item costs. Negative party openings, unapplied credits/advances, FX openings, asset registers, batches/serials, fractional units and FIFO/weighted-average receipt layers need their own supported workflows. Reject unsupported data rather than netting different contacts or silently changing cost policy.
 
-Each section currently supports up to 200 rows. Migration references must be unique within each opening party subledger. Full imports reconcile all three control families, including zero balances. Existing-ledger mode may select only the domains being activated. Additional non-zero receivable/payable controls require explicit mapping support before import.
+Each section currently supports up to 200 rows within a 128 KiB JSON command. Migration references must be unique within each opening party subledger. Full imports reconcile all three control families, including zero balances. Existing-ledger mode may select only the domains being activated. Additional non-zero receivable/payable controls require explicit mapping support before import.
 
 Opening customer/supplier records participate in normal allocated receipts/payments, ageing and statements. Current-year service credits cannot be applied to an opening position without the separate opening-correction policy. Fixed-cost opening inventory less subsequent approved issues can be reconciled historically to its GL control at the selected cutoff; this does not establish a complete stock valuation engine.
 
