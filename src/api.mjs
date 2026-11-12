@@ -38,11 +38,14 @@ export async function api(request,env) {
       let schemaReady=false;
       if(env.DB) {
         try {
-          const schema=await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('users','companies','memberships','accounts','parties','periods','items','resource_denials','operations','documents','journals','journal_lines','audit_events','outbox','login_grants','sessions')").first();
-          schemaReady=Number(schema?.n)===16;
+          if(env.DB.schemaReady) schemaReady=await env.DB.schemaReady();
+          else {
+            const schema=await env.DB.prepare("SELECT count(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('users','companies','memberships','accounts','parties','periods','items','resource_denials','operations','documents','journals','journal_lines','audit_events','outbox','login_grants','sessions')").first();
+            schemaReady=Number(schema?.n)===16;
+          }
         }catch{}
       }
-      return json({service:'saven',stage:'foundation',databaseConfigured:!!env.DB,schemaReady,environment:env.ENVIRONMENT??'local'});
+      return json({service:'saven',stage:'foundation',database:env.DB?.dialect??'sqlite',databaseConfigured:!!env.DB,schemaReady,environment:env.ENVIRONMENT??'local'});
     }
     requireThat(env.DB,503,'SETUP_REQUIRED','The testing database has not been connected. No business data can be read or posted until setup is complete.');
     // Same-origin JSON mutations plus Strict HttpOnly cookies. No CORS grants.

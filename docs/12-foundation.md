@@ -1,5 +1,7 @@
 # First implementation: commands, accounting and workspace
 
+12 November update: PostgreSQL supersedes D1 as the selected transaction database. This page describes the original limited spike. Current hosting, native database controls and migration procedures are in [the PostgreSQL runbook](13-hosting-postgresql-and-migration.md), with actual execution status in [BUILD_STATE](BUILD_STATE.md). The owner has explicitly required continued construction of the complete agreed MVP.
+
 11 November 2026. Foundation work, not a commercial release. The [additional input](11-additional-input.md) and all original catalog families remain required. [BUILD_STATE](BUILD_STATE.md) is the handoff checkpoint.
 
 ## Run locally

@@ -36,7 +36,11 @@ Financial AI prepares and submits. A human explicitly executes through configure
 
 Recommend React TypeScript Django PostgreSQL object storage and durable workers. The permanent team and a foundation spike must validate migrations tenant scope decimal arithmetic contracts private packaging and recovery. Exact versions remain implementation decisions. This recommendation is not evidence that a production scaffold exists.
 
-## ADR 009 Cloudflare foundation experiment — 11 November 2026
+## ADR 009 Cloudflare foundation experiment - 11 November 2026
 
 The owner's new input prefers Cloudflare Workers, database and buckets while preserving a self-hosted path. The first foundation now uses native Worker ES modules, D1-compatible prepared statements and batches, fixed-point BigInt financial calculation, a local Node/SQLite adapter, and a buildless browser workspace. This supersedes ADR 008 as the immediate spike choice, not as an irrevocable production database decision. ADR 003's PostgreSQL row-level security is not available in D1 and has not been claimed. The complete suite still requires a database/capacity/security decision supported by measured evidence. See [foundation implementation](12-foundation.md).
+
+## ADR 010 PostgreSQL restored as the transaction database - 12 November 2026
+
+The owner explicitly confirmed PostgreSQL and authorized installing it on the personal server temporarily. D1 was a foundation activation shortcut and is not the selected MVP database. Keep the command boundary while moving its storage to native PostgreSQL with non-owner runtime privileges, transactional pooled scope, row security and native control triggers. Host the API beside PostgreSQL initially; Cloudflare serves the frontend and reaches only the private HTTP API through a VPC Service/Tunnel. Do not expose PostgreSQL publicly or reuse the server administration password as a database credential. Never fall back to D1 after PostgreSQL failure. The [hosting and migration runbook](13-hosting-postgresql-and-migration.md) governs cutover, responsibility, portability and recovery evidence. This supersedes ADR 009's immediate database choice. Native PostgreSQL tests, migration reconciliation and recovery rehearsal are required; SQLite checks cannot substitute for them.
 

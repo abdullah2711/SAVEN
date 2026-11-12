@@ -10,6 +10,19 @@ jobs:
   foundation:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: contract-test-only
+          POSTGRES_DB: saven_contract_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -21,8 +34,15 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node scripts/check.mjs
       - run: node --test tests/*.test.mjs
+      - name: Native PostgreSQL authority and posting contracts
+        run: node scripts/verify-postgres.mjs --initialize
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci
       - run: python tools/validate_plan.py
       - name: Ensure generated catalog is current
         run: |

@@ -91,6 +91,8 @@ async function transact(db, statements, retry) {
     const existing=await retry();
     if(existing) return existing;
     const message=String(error.message);
+    if(error.code==='23505')throw new AppError(409,'DUPLICATE_REFERENCE','This reference or command key is already in use.');
+    if(['23514','23503','42501'].includes(error.code))throw new AppError(error.code==='42501'?403:409,'CONSTRAINT_CONFLICT','The access or financial constraints changed. Refresh and review this action.');
     for(const [code,status,description] of [
       ['STALE_PREVIEW',409,'The company changed after this preview. Review a fresh preview and try again.'],
       ['PERIOD_LOCKED',409,'The accounting period is locked.'],

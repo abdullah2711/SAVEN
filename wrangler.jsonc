@@ -12,17 +12,11 @@
     "run_worker_first": true
   },
   "vars": {
-    "ENVIRONMENT": "testing"
+    "ENVIRONMENT": "testing",
+    "API_MODE": "maintenance"
   },
   "observability": {
     "enabled": false
   },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "saven-testing-db",
-      "database_id": "42a1463c-40d9-4f23-9ecb-50265eb07bb1",
-      "migrations_dir": "migrations"
-    }
-  ]
+  "vpc_services": [{"binding":"SAVEN_API","service_id":"01a1cd07-8d47-7bc0-a115-f8bf736614a2"}]
 }

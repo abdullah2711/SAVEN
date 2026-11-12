@@ -23,6 +23,7 @@ export async function redeemGrant(db, value) {
     db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) SELECT ?,user_id,? FROM login_grants WHERE token_hash=? AND claim=? ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash,expires_at=excluded.expires_at').bind(sessionHash, expiresAt, grantHash, claim),
     db.prepare('DELETE FROM login_grants WHERE token_hash=? AND claim=?').bind(grantHash, claim)
   ]);
+  db.adoptSession?.(sessionHash);
   const created = await db.prepare('SELECT user_id FROM sessions WHERE token_hash=?').bind(sessionHash).first();
   requireThat(created, 401, 'INVALID_INVITATION', 'This invitation is invalid, already used, or has expired.');
   return { session, expiresAt };

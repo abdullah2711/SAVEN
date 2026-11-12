@@ -1,0 +1,6 @@
+var
+node_modules
+.git
+docs
+public
+tests

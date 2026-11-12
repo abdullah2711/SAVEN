@@ -1,0 +1,11 @@
+FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
+ENV NODE_ENV=production BIND_HOST=0.0.0.0 PORT=8788 PGUSER=saven_app
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
+COPY src ./src
+COPY scripts ./scripts
+COPY postgresql ./postgresql
+RUN chmod -R a+rX /app
+EXPOSE 8788
+CMD ["node","scripts/postgres-server.mjs"]
