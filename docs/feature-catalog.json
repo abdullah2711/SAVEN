@@ -513,7 +513,9 @@
         "ACC-004"
       ],
       "evidence": [
-        "docs/12-foundation.md"
+        "docs/25-invoices-taxes-settings.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
@@ -649,8 +651,8 @@
         "ACC-004"
       ],
       "evidence": [
-        "docs/16-accounting-delivery.md",
-        "docs/17-accounting-requirement-status.md",
+        "docs/25-invoices-taxes-settings.md",
+        "docs/24-bookkeeping-module-map.md",
         "docs/BUILD_STATE.md"
       ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
@@ -1852,11 +1854,15 @@
       "supported_scope": "Company registrations jurisdictions exemptions and effective dates",
       "acceptance": "Applicable pack requirements cannot be disabled through invoice UI",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/25-invoices-taxes-settings.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -1866,11 +1872,15 @@
       "supported_scope": "Rate versions inclusive exclusive recoverable and nonrecoverable treatment",
       "acceptance": "Independent examples reconcile taxable base rounding and posting",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/25-invoices-taxes-settings.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -1894,11 +1904,15 @@
       "supported_scope": "Return schedules input output withholding and ledger bridges",
       "acceptance": "Every reported total traces to the relevant accepted documents",
       "commercial_release": "required",
-      "status": "specified",
+      "status": "in progress",
       "dependencies": [
         "ACC-004"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/25-invoices-taxes-settings.md",
+        "docs/24-bookkeeping-module-map.md",
+        "docs/BUILD_STATE.md"
+      ],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {

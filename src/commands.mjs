@@ -1,3 +1,4 @@
+import {normalizeLineInvoice,lineInvoiceEffect} from './bookkeeping.mjs';
 import {assetKinds,normalizeAsset,assetEffect} from './assets.mjs';
 import {paymentKinds,normalizePayment,paymentEffect} from './payments.mjs';
 import { AppError, requireThat } from './errors.mjs';
@@ -18,6 +19,7 @@ function text(value, field, max = 160) {
   return value.trim();
 }
 export function normalize(input) {
+  if(['invoice','bill'].includes(input?.kind)&&input.lines!==undefined)return normalizeLineInvoice(input);
   if(assetKinds.includes(input?.kind))return normalizeAsset(input);
   if(paymentKinds.includes(input?.kind))return normalizePayment(input);
   if(input?.kind==='opening_balance')return normalizeOpening(input);
@@ -59,8 +61,9 @@ export async function preview(db, actor, companyId, raw) {
     allowedResource(denials,'account',accountId);
     lines.push({accountId,code:account.code,name:account.name,debit:decimal(debit),credit:decimal(credit)});
   }
-  let amount, stock = null,allocation=null,opening=null,payment=null,asset=null,resourceAccounts=[];
-  if(document.kind==='opening_balance'){const effect=await openingEffect(db,actor,companyId,document,line);amount=effect.amount;opening=effect.opening;}
+  let amount, stock = null,allocation=null,opening=null,payment=null,asset=null,invoice=null,resourceAccounts=[];
+  if(['invoice','bill'].includes(document.kind)&&document.lines){const effect=await lineInvoiceEffect(db,actor,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;invoice=effect.invoice;resourceAccounts=effect.resourceAccounts;}
+  else if(document.kind==='opening_balance'){const effect=await openingEffect(db,actor,companyId,document,line);amount=effect.amount;opening=effect.opening;}
   else if(assetKinds.includes(document.kind)){const effect=await assetEffect(db,actor,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;asset=effect.asset;allocation=effect.allocation??null;resourceAccounts=effect.resourceAccounts;payment=effect.payment??null;}
   else if(paymentKinds.includes(document.kind)){const effect=await paymentEffect(db,actor,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;payment=effect.payment;}
   else if(extendedKinds.includes(document.kind)){
@@ -94,7 +97,9 @@ export async function preview(db, actor, companyId, raw) {
   if(allocation)effects.allocation=allocation;
   if(opening)effects.opening=opening;
   if(payment)effects.payment=payment;
-  if(asset){effects.asset=asset;effects.resourceAccounts=resourceAccounts;}
+  if(asset)effects.asset=asset;
+  if(invoice)effects.invoice=invoice;
+  if(resourceAccounts.length)effects.resourceAccounts=resourceAccounts;
   return {...effects,digest:await hash(canonical({companyId,...effects}))};
 }
 async function retryResult(db, actor, companyId, kind, key, payloadHash) {

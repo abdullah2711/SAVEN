@@ -62,6 +62,7 @@ export async function extendedEffect(db,companyId,document,line,allow){
   for(const entry of JSON.parse(target.preview_json).lines)allow('account',entry.accountId);
   requireThat(document.date>=target.date,422,'SETTLEMENT_DATE','The settlement date cannot precede its invoice or bill.');
   const payload=JSON.parse(target.payload_json);
+  requireThat(!credit||!payload.lines,409,'LINE_CREDIT_REQUIRED','Line invoices need a linked line-and-tax credit workflow. The legacy amount-only adjustment cannot reverse their tax correctly.');
   requireThat(target.kind!=='invoice'||payload.settlement==='credit',409,'ALREADY_SETTLED','This sale was already recorded with full payment.');
   const used=await db.prepare("SELECT coalesce(sum(a.amount_minor),0)::text AS amount FROM document_allocations a JOIN documents s ON s.company_id=a.company_id AND s.id=a.settlement_id WHERE a.company_id=? AND a.target_id=? AND s.status IN ('pending','posted')").bind(companyId,target.id).first();
   const available=BigInt(target.amount_minor)-BigInt(used.amount);

@@ -1,3 +1,4 @@
+import {bookkeeping,bookkeepingCommand,taxRegister,invoiceRegister} from './bookkeeping.mjs';
 import {assetRegister,assetDetails} from './assets.mjs';
 import {paymentsWorkspace} from './payments.mjs';
 import { AppError, requireThat } from './errors.mjs';
@@ -69,6 +70,7 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const bookkeepingRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/(bookkeeping|tax-register|invoice-register)$/);if(bookkeepingRoute){const [,cid,part]=bookkeepingRoute;if(method==='GET')return json(part==='bookkeeping'?await bookkeeping(env.DB,actor,cid):part==='invoice-register'?await invoiceRegister(env.DB,actor,cid,url.searchParams):await taxRegister(env.DB,actor,cid,url.searchParams));if(method==='POST'&&part==='bookkeeping')return json(await bookkeepingCommand(env.DB,actor,cid,await body(request),request.headers.get('idempotency-key')),201);throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported bookkeeping action.');}
     const assetRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/assets(?:\/([a-zA-Z0-9_-]{1,80}))?$/);if(assetRoute&&method==='GET')return json(assetRoute[2]?await assetDetails(env.DB,actor,assetRoute[1],assetRoute[2]):await assetRegister(env.DB,actor,assetRoute[1],url.searchParams));
     const paymentsRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/payments$/);if(paymentsRoute&&method==='GET')return json(await paymentsWorkspace(env.DB,actor,paymentsRoute[1],url.searchParams));
     const policyRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/approval-policies$/);
@@ -114,9 +116,9 @@ export async function api(request,env) {
       if(env.DB.schemaVersion>=3)Object.assign(result,await operatingContext(env.DB,actor,companyId));
       return json(result);
     }
-    if(area==='preview' && !documentId && method==='POST') return json(await preview(env.DB,actor,companyId,await body(request)));
+    if(area==='preview' && !documentId && method==='POST') return json(await preview(env.DB,actor,companyId,await body(request,env.DB.schemaVersion>=14?65536:LIMIT)));
     if(area==='documents' && method==='POST') {
-      const input=await body(request),key=request.headers.get('idempotency-key');
+      const input=await body(request,env.DB.schemaVersion>=14?65536:LIMIT),key=request.headers.get('idempotency-key');
       if(!documentId) return json(await submit(env.DB,actor,companyId,input,key),201);
       return json(await review(env.DB,actor,companyId,documentId,input,key,action));
     }

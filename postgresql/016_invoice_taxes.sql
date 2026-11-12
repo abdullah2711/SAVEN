@@ -1,0 +1,55 @@
+BEGIN;
+CREATE TABLE tax_codes(company_id text NOT NULL REFERENCES companies(id),id text NOT NULL,code text NOT NULL,name text NOT NULL,direction text NOT NULL CHECK(direction IN('sale','purchase')),rate text NOT NULL CHECK(rate::numeric BETWEEN 0 AND 100 AND scale(rate::numeric)<=4),account_id text NOT NULL,jurisdiction text NOT NULL,effective_from text NOT NULL,effective_to text NOT NULL,active boolean NOT NULL DEFAULT true,PRIMARY KEY(company_id,id),UNIQUE(company_id,code),FOREIGN KEY(company_id,account_id) REFERENCES accounts(company_id,id),CHECK(effective_from::date<=effective_to::date));
+CREATE TABLE bookkeeping_defaults(company_id text PRIMARY KEY REFERENCES companies(id),data jsonb NOT NULL,version bigint NOT NULL CHECK(version>0));
+CREATE TABLE invoice_lines(company_id text NOT NULL,document_id text NOT NULL,line_no integer NOT NULL,description text NOT NULL,quantity numeric(12,6) NOT NULL CHECK(quantity>0),unit_price_minor bigint NOT NULL CHECK(unit_price_minor>=0),discount text NOT NULL,account_id text NOT NULL,tax_code_id text,tax_code text NOT NULL,rate text NOT NULL,tax_account text,jurisdiction text NOT NULL,net_minor bigint NOT NULL CHECK(net_minor>=0),tax_minor bigint NOT NULL CHECK(tax_minor>=0),gross_minor bigint NOT NULL CHECK(gross_minor=net_minor+tax_minor),PRIMARY KEY(company_id,document_id,line_no),FOREIGN KEY(company_id,document_id) REFERENCES documents(company_id,id),FOREIGN KEY(company_id,account_id) REFERENCES accounts(company_id,id),FOREIGN KEY(company_id,tax_code_id) REFERENCES tax_codes(company_id,id),FOREIGN KEY(company_id,tax_account) REFERENCES accounts(company_id,id));
+CREATE TRIGGER immutable_invoice_lines BEFORE UPDATE OR DELETE ON invoice_lines FOR EACH ROW EXECUTE FUNCTION saven_immutable('INVOICE_LINE_IMMUTABLE');
+DO $$ DECLARE t text;BEGIN FOREACH t IN ARRAY ARRAY['tax_codes','bookkeeping_defaults','invoice_lines'] LOOP EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY',t);EXECUTE format('CREATE POLICY company_scope ON %I USING(saven_member(company_id))',t);EXECUTE format('GRANT SELECT ON %I TO saven_app',t);END LOOP;END $$;
+CREATE FUNCTION saven_bookkeeping(cid text,entity text,data jsonb,rev bigint,command_key text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE actor text:=public.saven_actor();fingerprint text;old public.configuration_events%ROWTYPE;current_rev bigint;entity_id text;result jsonb;
+BEGIN
+ IF actor IS NULL OR NOT EXISTS(SELECT 1 FROM public.memberships m JOIN public.companies c ON c.id=m.company_id WHERE m.company_id=cid AND m.user_id=actor AND m.active=1 AND m.role IN('owner','admin') AND c.status='active') OR EXISTS(SELECT 1 FROM public.resource_denials WHERE company_id=cid AND user_id=actor) THEN RAISE EXCEPTION 'FORBIDDEN';END IF;
+ IF command_key !~ '^[a-zA-Z0-9_-]{16,128}$' THEN RAISE EXCEPTION 'IDEMPOTENCY_REQUIRED';END IF;
+ fingerprint:=encode(sha256(convert_to(entity||data::text,'UTF8')),'hex');SELECT * INTO old FROM public.configuration_events WHERE company_id=cid AND configuration_events.command_key=saven_bookkeeping.command_key;
+ IF FOUND THEN IF old.actor_id!=actor OR old.payload_hash!=fingerprint THEN RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT';END IF;RETURN old.result_json||'{"replayed":true}'::jsonb;END IF;
+ SELECT revision INTO current_rev FROM public.companies WHERE id=cid FOR UPDATE;IF current_rev IS DISTINCT FROM rev THEN RAISE EXCEPTION 'STALE_PREVIEW';END IF;
+ IF entity='tax_code' THEN
+  IF data->>'direction' NOT IN('sale','purchase') OR data->>'rate' !~ '^(0|[1-9][0-9]{0,2})(\.[0-9]{1,4})?$' OR(data->>'rate')::numeric>100 OR length(data->>'code') NOT BETWEEN 1 AND 30 OR length(data->>'name') NOT BETWEEN 1 AND 160 OR (data->>'effectiveFrom')::date>(data->>'effectiveTo')::date OR NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.company_id=cid AND a.id=data->>'accountId' AND a.active AND a.category='general' AND a.kind=CASE WHEN data->>'direction'='sale' THEN 'liability' ELSE 'asset' END) THEN RAISE EXCEPTION 'INVALID_TAX_CODE';END IF;
+  entity_id:=gen_random_uuid()::text;INSERT INTO public.tax_codes(company_id,id,code,name,direction,rate,account_id,jurisdiction,effective_from,effective_to) VALUES(cid,entity_id,data->>'code',data->>'name',data->>'direction',data->>'rate',data->>'accountId',coalesce(data->>'jurisdiction',''),data->>'effectiveFrom',data->>'effectiveTo');
+ ELSIF entity='tax_status' THEN
+  IF jsonb_typeof(data->'active')!='boolean' THEN RAISE EXCEPTION 'INVALID_STATUS';END IF;entity_id:=data->>'id';UPDATE public.tax_codes SET active=(data->>'active')::boolean WHERE company_id=cid AND id=entity_id;IF NOT FOUND THEN RAISE EXCEPTION 'INVALID_TAX_CODE';END IF;
+ ELSIF entity='defaults' THEN
+  IF (data->>'paymentDays')::integer NOT BETWEEN 0 AND 3650 OR jsonb_typeof(data->'pricesIncludeTax')!='boolean' OR length(data->>'footer')>1000 OR NOT EXISTS(SELECT 1 FROM public.accounts WHERE company_id=cid AND id=data->>'salesAccountId' AND active AND kind='income' AND category='general') OR NOT EXISTS(SELECT 1 FROM public.accounts WHERE company_id=cid AND id=data->>'purchaseAccountId' AND active AND kind='expense' AND category='general') THEN RAISE EXCEPTION 'INVALID_DEFAULTS';END IF;
+  entity_id:=cid;INSERT INTO public.bookkeeping_defaults(company_id,data,version) VALUES(cid,data,1) ON CONFLICT(company_id) DO UPDATE SET data=EXCLUDED.data,version=bookkeeping_defaults.version+1;
+ ELSE RAISE EXCEPTION 'INVALID_ACTION';END IF;
+ result:=jsonb_build_object('id',entity_id,'entity',entity,'revision',current_rev+1);INSERT INTO public.configuration_events(company_id,actor_id,entity_type,entity_id,command_key,payload_hash,data_json,result_json,created_at) VALUES(cid,actor,'bookkeeping_'||entity,entity_id,command_key,fingerprint,data,result,extract(epoch FROM clock_timestamp())::bigint);UPDATE public.companies SET revision=revision+1 WHERE id=cid;RETURN result;
+END $$;
+REVOKE ALL ON FUNCTION saven_bookkeeping(text,text,jsonb,bigint,text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION saven_bookkeeping(text,text,jsonb,bigint,text) TO saven_app;
+CREATE FUNCTION saven_invoice_lines() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p jsonb:=NEW.payload_json::jsonb;r jsonb;t public.tax_codes%ROWTYPE;n integer:=0;before_tax numeric;discounted numeric;net numeric;tax numeric;gross numeric:=0;rate numeric;inclusive boolean;account_kind text;preview_row jsonb;
+BEGIN
+ IF NEW.kind NOT IN('invoice','bill') OR NOT(p ? 'lines') THEN RETURN NEW;END IF;
+ IF NEW.status!='pending' OR NEW.prepared_by IS DISTINCT FROM public.saven_actor() OR jsonb_typeof(p->'lines')!='array' OR jsonb_array_length(p->'lines') NOT BETWEEN 1 AND 20 OR jsonb_typeof(p->'pricesIncludeTax')!='boolean' OR (p->>'dueDate')::date<NEW.date::date OR(NEW.kind='invoice' AND p->>'settlement' IS DISTINCT FROM 'credit') THEN RAISE EXCEPTION 'INVALID_INVOICE';END IF;
+ inclusive:=(p->>'pricesIncludeTax')::boolean;account_kind:=CASE WHEN NEW.kind='invoice' THEN 'income' ELSE 'expense' END;
+ FOR r IN SELECT value FROM jsonb_array_elements(p->'lines') LOOP
+  n:=n+1;t:=NULL;rate:=0;
+  IF r->>'quantity' !~ '^(0|[1-9][0-9]{0,5})(\.[0-9]{1,6})?$' OR(r->>'quantity')::numeric<=0 OR(r->>'unitPrice')::numeric<0 OR scale((r->>'unitPrice')::numeric)>2 OR (r->>'discount')::numeric NOT BETWEEN 0 AND 100 OR scale((r->>'discount')::numeric)>4 OR length(r->>'description') NOT BETWEEN 1 AND 300 OR NOT EXISTS(SELECT 1 FROM public.accounts a WHERE a.company_id=NEW.company_id AND a.id=r->>'accountId' AND a.active AND a.category='general' AND a.kind=account_kind) THEN RAISE EXCEPTION 'INVALID_INVOICE_LINE';END IF;
+  IF coalesce(r->>'taxCodeId','')!='' THEN
+   SELECT * INTO t FROM public.tax_codes WHERE company_id=NEW.company_id AND id=r->>'taxCodeId' AND active AND direction=CASE WHEN NEW.kind='invoice' THEN 'sale' ELSE 'purchase' END AND NEW.date BETWEEN effective_from AND effective_to;
+   IF t.id IS NULL OR NOT EXISTS(SELECT 1 FROM public.accounts WHERE company_id=NEW.company_id AND id=t.account_id AND active) THEN RAISE EXCEPTION 'INVALID_TAX_CODE';END IF;rate:=t.rate::numeric;
+  END IF;
+  IF EXISTS(SELECT 1 FROM public.resource_denials WHERE company_id=NEW.company_id AND user_id=NEW.prepared_by AND resource_type='account' AND resource_id IN(r->>'accountId',t.account_id)) THEN RAISE EXCEPTION 'RESOURCE_DENIED';END IF;
+  before_tax:=round((r->>'quantity')::numeric*(r->>'unitPrice')::numeric*100);discounted:=before_tax-round(before_tax*(r->>'discount')::numeric/100);net:=CASE WHEN inclusive THEN round(discounted*100/(100+rate)) ELSE discounted END;tax:=CASE WHEN inclusive THEN discounted-net ELSE round(net*rate/100) END;gross:=gross+net+tax;
+  preview_row:=NEW.preview_json::jsonb->'invoice'->'rows'->(n-1);IF preview_row IS NULL OR(preview_row->>'net')::numeric*100 IS DISTINCT FROM net OR(preview_row->>'tax')::numeric*100 IS DISTINCT FROM tax OR(preview_row->>'gross')::numeric*100 IS DISTINCT FROM net+tax OR coalesce(preview_row->>'taxAccountId','')!=coalesce(t.account_id,'') THEN RAISE EXCEPTION 'INVOICE_TOTAL_CHANGED';END IF;
+  INSERT INTO public.invoice_lines(company_id,document_id,line_no,description,quantity,unit_price_minor,discount,account_id,tax_code_id,tax_code,rate,tax_account,jurisdiction,net_minor,tax_minor,gross_minor) VALUES(NEW.company_id,NEW.id,n,r->>'description',(r->>'quantity')::numeric,(r->>'unitPrice')::numeric*100,r->>'discount',r->>'accountId',t.id,coalesce(t.code,''),coalesce(t.rate,'0'),t.account_id,coalesce(t.jurisdiction,''),net,tax,net+tax);
+ END LOOP;
+ IF gross!=NEW.amount_minor OR (p->>'amount')::numeric*100 IS DISTINCT FROM gross OR gross<=0 OR gross>999999999999 THEN RAISE EXCEPTION 'INVOICE_TOTAL_CHANGED';END IF;
+ IF EXISTS(WITH expected_rows AS(
+ SELECT account_id AS id,sum(net_minor)*CASE WHEN NEW.kind='invoice' THEN -1 ELSE 1 END AS amount FROM public.invoice_lines WHERE company_id=NEW.company_id AND document_id=NEW.id GROUP BY account_id
+ UNION ALL SELECT tax_account,sum(tax_minor)*CASE WHEN NEW.kind='invoice' THEN -1 ELSE 1 END FROM public.invoice_lines WHERE company_id=NEW.company_id AND document_id=NEW.id AND tax_account IS NOT NULL GROUP BY tax_account
+ UNION ALL SELECT CASE WHEN NEW.kind='invoice' THEN 'receivable' ELSE 'payable' END,gross*CASE WHEN NEW.kind='invoice' THEN 1 ELSE -1 END),expected AS(SELECT id,sum(amount) AS amount FROM expected_rows GROUP BY id),actual AS(SELECT v->>'accountId' AS id,sum(((v->>'debit')::numeric-(v->>'credit')::numeric)*100) AS amount FROM jsonb_array_elements(NEW.preview_json::jsonb->'lines') v GROUP BY v->>'accountId') SELECT 1 FROM expected e FULL JOIN actual a USING(id) WHERE coalesce(e.amount,0)!=coalesce(a.amount,0)) THEN RAISE EXCEPTION 'INVOICE_POSTING_MISMATCH';END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION saven_invoice_lines() FROM PUBLIC;
+CREATE TRIGGER invoice_lines_projection AFTER INSERT ON documents FOR EACH ROW EXECUTE FUNCTION saven_invoice_lines();
+INSERT INTO schema_version(version) VALUES(14);
+COMMIT;

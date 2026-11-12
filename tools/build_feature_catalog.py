@@ -325,6 +325,7 @@ ACCOUNTING_EVIDENCE = {rid: ['docs/16-accounting-delivery.md','docs/17-accountin
                       ['ACC-001','ACC-002','ACC-003','ACC-004','ACC-005','ACC-006','ACC-007','ACC-011','ACC-012','ACC-018','SAL-006','SAL-007','PUR-004','PUR-006','PUR-008','RPT-001']}
 ACCOUNTING_EVIDENCE['ACC-002']=['docs/18-opening-reconciliation.md','docs/17-accounting-requirement-status.md','docs/BUILD_STATE.md']
 ACCOUNTING_EVIDENCE.update({rid:['docs/23-fixed-assets.md','docs/24-bookkeeping-module-map.md','docs/BUILD_STATE.md'] for rid in ['AST-002','AST-003','AST-006']})
+ACCOUNTING_EVIDENCE.update({rid:['docs/25-invoices-taxes-settings.md','docs/24-bookkeeping-module-map.md','docs/BUILD_STATE.md'] for rid in ['SAL-003','PUR-004','TAX-001','TAX-002','TAX-004']})
 IN_PROGRESS.update(ACCOUNTING_EVIDENCE)
 
 def build():
