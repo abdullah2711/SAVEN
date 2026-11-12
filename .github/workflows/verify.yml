@@ -99,3 +99,10 @@ jobs:
           PGHOST: 127.0.0.1
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
+
+      - name: Configurable posting authority and evidence policies
+        run: node scripts/verify-approval-policies.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci

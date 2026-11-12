@@ -5,6 +5,7 @@ import { now, companyAccess, canPrepare, canReview } from './auth.mjs';
 import {extendedKinds,normalizeExtended,extendedEffect} from './extended-accounting.mjs';
 import {normalizeOpening,openingEffect} from './opening.mjs';
 import {validateRecurring} from './recurring.mjs';
+import {approvalDecision} from './approval.mjs';
 
 function fields(value, allowed) {
   requireThat(value && typeof value === 'object' && !Array.isArray(value), 422, 'INVALID_DOCUMENT', 'Provide a document object.');
@@ -82,6 +83,8 @@ export async function preview(db, actor, companyId, raw) {
     stock={name:item.name,store:item.store,unit:item.unit,quantity:document.quantity,available:String(item.on_hand-item.reserved),cost:decimal(amount)};
   }
   const effects={document,lines,amount:decimal(amount),stock,revision:company.revision};
+  const approval=await approvalDecision(db,actor,companyId,document.kind,minor(effects.amount));
+  if(approval){requireThat(approval.mode!=='denied',403,'PREPARATION_DENIED','The configured document permission does not allow your role to submit this transaction type.');effects.approval=approval;}
   if(allocation)effects.allocation=allocation;
   if(opening)effects.opening=opening;
   return {...effects,digest:await hash(canonical({companyId,...effects}))};
@@ -117,6 +120,7 @@ async function transact(db, statements, retry) {
       ['BANK_PERIOD_CLOSED',409,'This cash or bank account has a closed reconciliation or a fixed opening baseline. Use a later open accounting date.'],
       ['OPENING_PENDING',409,'Resolve pending activity before applying this opening snapshot.'],
       ['FILE_NOT_READY',409,'A supporting file is no longer available or has not passed scanning.'],
+      ['EVIDENCE_REQUIRED',409,'This transaction requires retained clean supporting evidence under the company policy.'],
       ['SCHEDULE_CHANGED',409,'The recurring schedule or occurrence changed. Prepare a fresh occurrence.'],
       ['OPENING_DATE_CLOSED',409,'The date is covered by an opening closing snapshot. Use a subsequent accounting date.'],
       ['OPENING_ALREADY_SET',409,'This opening subledger already has an approved or pending baseline.'],
@@ -162,16 +166,24 @@ export async function submit(db,actor,companyId,input,key) {
   const effect=await preview(db,actor,companyId,input.document);
   requireThat(input.expectedRevision===effect.revision && input.previewDigest===effect.digest,409,'STALE_PREVIEW','Review a fresh accounting preview before submitting.');
   const id=crypto.randomUUID(), operationId=crypto.randomUUID(), time=now(), document=effect.document;
-  const result={id,status:'pending',version:1};
+  requireThat(!effect.approval?.requiresEvidence||fileIds.length>0,409,'EVIDENCE_REQUIRED','Attach clean supporting evidence before submitting under this company policy.');
+  const direct=effect.approval?.mode==='direct';
+  const result={id,status:direct?'posted':'pending',version:direct?2:1,...(effect.approval?{approval:effect.approval}:{})};
   const statements=[guard(db,actor,companyId,'submit',key,payloadHash,effect.revision,result,operationId,time,input.assistantTaskId??null),
     db.prepare('INSERT INTO documents(company_id,id,kind,date,reference,description,party_id,item_id,quantity,amount_minor,payload_json,payload_hash,preview_json,prepared_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(companyId,id,document.kind,document.date,document.reference,document.description,document.partyId??null,document.itemId??null,document.quantity?Number(document.quantity):null,minor(effect.amount),JSON.stringify(document),await hash(canonical(document)),JSON.stringify(effect),actor.id,time)
   ];
   if(document.kind==='stock_issue') statements.push(db.prepare('UPDATE items SET reserved=reserved+? WHERE company_id=? AND id=?').bind(Number(document.quantity),companyId,document.itemId));
   if(effect.allocation)statements.push(db.prepare('INSERT INTO document_allocations(company_id,settlement_id,target_id,amount_minor) VALUES(?,?,?,?)').bind(companyId,id,effect.allocation.targetDocumentId,minor(effect.amount)));
   for(const fileId of fileIds)statements.push(db.prepare('INSERT INTO document_attachments(company_id,document_id,file_id,actor_id,created_at) VALUES(?,?,?,?,?)').bind(companyId,id,fileId,actor.id,time),db.prepare('INSERT INTO file_events(id,company_id,file_id,actor_id,action,reason,created_at) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),companyId,fileId,actor.id,'attached',id,time));
-  statements.push(...finish(db,actor,companyId,operationId,id,'submitted',time));
+  if(direct){
+    if(document.kind==='stock_issue')statements.push(db.prepare('UPDATE items SET on_hand=on_hand-?,reserved=reserved-? WHERE company_id=? AND id=?').bind(Number(document.quantity),Number(document.quantity),companyId,document.itemId));
+    statements.push(...journalStatements(db,companyId,id,document.date,effect.lines));
+    statements.push(db.prepare("UPDATE documents SET status='posted',reviewed_by=?,version=version+1 WHERE company_id=? AND id=?").bind(actor.id,companyId,id));
+  }
+  statements.push(...finish(db,actor,companyId,operationId,id,direct?'posted_direct':'submitted',time));
   return await transact(db,statements,retry)??result;
 }
+function journalStatements(db,companyId,documentId,date,lines){const id=crypto.randomUUID();return [db.prepare('INSERT INTO journals(company_id,id,document_id,date) VALUES(?,?,?,?)').bind(companyId,id,documentId,date),...lines.map((line,index)=>db.prepare('INSERT INTO journal_lines(company_id,journal_id,line_no,account_id,debit_minor,credit_minor) VALUES(?,?,?,?,?,?)').bind(companyId,id,index+1,line.accountId,minor(line.debit),minor(line.credit))),db.prepare("UPDATE journals SET status='posted' WHERE company_id=? AND id=?").bind(companyId,id)];}
 export async function review(db,actor,companyId,documentId,input,key,action) {
   fields(input,['expectedVersion','expectedEvidenceRevision']);
   requireThat(Number.isSafeInteger(input.expectedVersion) && input.expectedVersion>0,422,'VERSION_REQUIRED','Provide the transaction version you reviewed.');

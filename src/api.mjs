@@ -7,6 +7,7 @@ import {accountingWorkspace,accountingCommand,bankDetail,partyAccounting,closeCh
 import {openingStatus} from './opening.mjs';
 import {recurringList,recurringDetail,recurringDocument,recurringCommand} from './recurring.mjs';
 import {accountingExport} from './accounting-export.mjs';
+import {approvalPolicies,publishApprovalPolicy} from './approval.mjs';
 
 const LIMIT=16_384;
 export async function body(request,limit=LIMIT) {
@@ -66,6 +67,8 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const policyRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/approval-policies$/);
+    if(policyRoute){if(method==='GET')return json(await approvalPolicies(env.DB,actor,policyRoute[1]));if(method==='POST')return json(await publishApprovalPolicy(env.DB,actor,policyRoute[1],await body(request),request.headers.get('idempotency-key')),201);throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported approval policy action.');}
     const exportRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/accounting-export$/);
     if(exportRoute&&method==='GET'){const result=await accountingExport(env.DB,actor,exportRoute[1],url.searchParams);return new Response(result.text,{headers:{...securityHeaders,'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="${result.filename}"`}});}
     const recurring=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/recurring(?:\/([a-zA-Z0-9_-]{1,80})(?:\/(preview))?)?$/);
