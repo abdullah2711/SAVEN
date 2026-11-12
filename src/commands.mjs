@@ -2,6 +2,7 @@ import { AppError, requireThat } from './errors.mjs';
 import { canonical, hash } from './crypto.mjs';
 import { decimal, minor, quantity, multiplied } from './money.mjs';
 import { now, companyAccess, canPrepare, canReview } from './auth.mjs';
+import {extendedKinds,normalizeExtended,extendedEffect} from './extended-accounting.mjs';
 
 function fields(value, allowed) {
   requireThat(value && typeof value === 'object' && !Array.isArray(value), 422, 'INVALID_DOCUMENT', 'Provide a document object.');
@@ -12,6 +13,7 @@ function text(value, field, max = 160) {
   return value.trim();
 }
 export function normalize(input) {
+  if(extendedKinds.includes(input?.kind))return normalizeExtended(input);
   fields(input, ['kind','date','reference','description','partyId','amount','settlement','cashAccountId','itemId','quantity']);
   requireThat(['invoice','stock_issue'].includes(input.kind), 422, 'INVALID_KIND', 'Choose a service invoice or stock issue.');
   requireThat(typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date) && !Number.isNaN(Date.parse(input.date)) && new Date(input.date).toISOString().slice(0,10) === input.date, 422, 'INVALID_DATE', 'Choose a valid accounting date.');
@@ -44,7 +46,11 @@ export async function preview(db, actor, companyId, raw) {
     allowedResource(denials,'account',accountId);
     lines.push({accountId,code:account.code,name:account.name,debit:decimal(debit),credit:decimal(credit)});
   }
-  let amount, stock = null;
+  let amount, stock = null,allocation=null;
+  if(extendedKinds.includes(document.kind)){
+    requireThat(db.schemaVersion>=4,503,'UPGRADE_REQUIRED','This accounting workflow is being activated.');
+    const effect=await extendedEffect(db,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;allocation=effect.allocation??null;
+  } else
   if(document.kind==='invoice') {
     allowedResource(denials,'party',document.partyId);
     const party = await db.prepare('SELECT name FROM parties WHERE company_id=? AND id=?').bind(companyId,document.partyId).first();
@@ -66,6 +72,7 @@ export async function preview(db, actor, companyId, raw) {
     stock={name:item.name,store:item.store,unit:item.unit,quantity:document.quantity,available:String(item.on_hand-item.reserved),cost:decimal(amount)};
   }
   const effects={document,lines,amount:decimal(amount),stock,revision:company.revision};
+  if(allocation)effects.allocation=allocation;
   return {...effects,digest:await hash(canonical({companyId,...effects}))};
 }
 async function retryResult(db, actor, companyId, kind, key, payloadHash) {
@@ -99,6 +106,8 @@ async function transact(db, statements, retry) {
       ['SESSION_EXPIRED',401,'Your session is no longer active. Sign in again.'],
       ['FORBIDDEN',403,'Your access changed. This action is no longer allowed.'],
       ['RESOURCE_DENIED',403,'Your access does not include this customer, item, or account.'],
+      ['OVER_ALLOCATION',409,'The invoice or bill balance changed. Review a fresh settlement preview.'],
+      ['SETTLEMENT_TARGET',409,'The invoice or bill is no longer available for this settlement.'],
       ['DOCUMENT_IMMUTABLE',409,'The transaction was already reviewed or changed.'],
       ['UNIQUE constraint failed: documents',409,'This reference is already in use.'],
       ['CHECK constraint failed',409,'The stock or financial constraints changed. Refresh and review the transaction.']
@@ -122,6 +131,7 @@ export async function submit(db,actor,companyId,input,key) {
     db.prepare('INSERT INTO documents(company_id,id,kind,date,reference,description,party_id,item_id,quantity,amount_minor,payload_json,payload_hash,preview_json,prepared_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').bind(companyId,id,document.kind,document.date,document.reference,document.description,document.partyId??null,document.itemId??null,document.quantity?Number(document.quantity):null,minor(effect.amount),JSON.stringify(document),await hash(canonical(document)),JSON.stringify(effect),actor.id,time)
   ];
   if(document.kind==='stock_issue') statements.push(db.prepare('UPDATE items SET reserved=reserved+? WHERE company_id=? AND id=?').bind(Number(document.quantity),companyId,document.itemId));
+  if(effect.allocation)statements.push(db.prepare('INSERT INTO document_allocations(company_id,settlement_id,target_id,amount_minor) VALUES(?,?,?,?)').bind(companyId,id,effect.allocation.targetDocumentId,minor(effect.amount)));
   statements.push(...finish(db,actor,companyId,operationId,id,'submitted',time));
   return await transact(db,statements,retry)??result;
 }
@@ -141,6 +151,11 @@ export async function review(db,actor,companyId,documentId,input,key,action) {
   if(document.party_id) allowedResource(denials,'party',document.party_id);
   if(document.item_id) allowedResource(denials,'item',document.item_id);
   for(const line of effect.lines) allowedResource(denials,'account',line.accountId);
+  if(effect.allocation){
+    const target=await db.prepare('SELECT preview_json FROM documents WHERE company_id=? AND id=?').bind(companyId,effect.allocation.targetDocumentId).first();
+    requireThat(target,409,'SETTLEMENT_TARGET','The underlying invoice or bill is unavailable.');
+    for(const line of JSON.parse(target.preview_json).lines)allowedResource(denials,'account',line.accountId);
+  }
   requireThat(await hash(canonical(JSON.parse(document.payload_json)))===document.payload_hash,409,'PAYLOAD_CHANGED','The stored document does not match its approved payload.');
   const operationId=crypto.randomUUID(),time=now(),status=action==='approve'?'posted':'rejected';
   const result={id:documentId,status,version:document.version+1};

@@ -11,6 +11,7 @@ GRANT UPDATE(revision) ON companies TO saven_app;
 GRANT UPDATE(reserved,on_hand) ON items TO saven_app;
 GRANT UPDATE(status,reviewed_by,version) ON documents TO saven_app;
 GRANT UPDATE(status) ON journals TO saven_app;
+DO $$ BEGIN IF to_regclass('public.document_allocations') IS NOT NULL THEN EXECUTE 'GRANT INSERT ON public.document_allocations TO saven_app'; END IF; END $$;
 REVOKE ALL ON FUNCTION saven_immutable(),saven_operation_authority(),saven_document_insert(),saven_document_review(),saven_journal_control(),saven_line_insert() FROM PUBLIC;
 -- Reapply after a --no-acl restore. Include later identity/configuration
 -- helpers without granting their execution to other database roles.

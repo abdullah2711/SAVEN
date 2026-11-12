@@ -50,6 +50,12 @@ jobs:
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
       - run: python tools/validate_plan.py
+      - name: Supplier, settlement and manual-journal contracts
+        run: node scripts/verify-accounting-cycles.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci
       - name: Ensure generated catalog is current
         run: |
           python tools/build_feature_catalog.py
