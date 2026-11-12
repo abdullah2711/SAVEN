@@ -36,7 +36,7 @@ CI maintenance: the first remote run warned that older action versions used depr
 
 Next actions: confirm testing Worker branch and DB binding, run D1 contract tests and provision isolated test identities through a controlled operator path; complete browser QA; then implement real operator onboarding, identity/MFA, company setup/opening reconciliation and protected attachments. Preserve all other catalog requirements.
 
-## Testing activation update - 12 November 2026 (Asia/Karachi)
+## Testing activation update — 12 November 2026 (Asia/Karachi)
 
 The logged-in Helium session became accessible after the owner selected Cloudflare. Verified the testing Worker builds testing-1, and confirmed it had no database bindings. Created a separate empty D1 database, saven-testing-db, ID 42a1463c-40d9-4f23-9ecb-50265eb07bb1, within the existing free database quota. Ran a read-only console connection/batch query successfully. No pre-existing database was modified.
 
@@ -50,7 +50,7 @@ Visual rendering, schema import and hosted login remain unverified. CI must veri
 
 Deployment evidence: Cloudflare reported a successful saven-testing deployment for 64cc239a020d191eaeba033d4640e66b3818c6f3, including the DB binding and sign-in branding source. The schema is still uninitialized. Activation readiness also covers anonymous startup: a missing cookie returns 401 before touching the database, so readiness must be checked on that path as well. Browser rendering remains unverified; the new GitHub Actions run was still queued at the last inspection.
 
-## Hosted testing activation completed - 12 November 2026
+## Hosted testing activation completed — 12 November 2026
 
 This section supersedes the earlier activation blockers. The owner also signed into Cloudflare in the in-app browser. Used the existing isolated saven-testing-db only. Before import, sqlite_master showed only Cloudflare's internal table. Imported the canonical schema and synthetic fixtures plus hashed single-use invitations through its SQL console. Verified 16 application tables, 18 control triggers, two companies, five users and six memberships.
 
@@ -67,13 +67,13 @@ Private owner/preparer/reviewer invitations are generated under ignored var/ and
 Next: finish the post-deployment UI confirmation and hand off working testing links; then implement full operator onboarding/identity, company setup and opening reconciliation, protected attachments and the remaining catalog. The completed access setup is not the complete commercial product.
 
 
-## Final hosted confirmation - 12 November 2026
+## Final hosted confirmation — 12 November 2026
 
 Cloudflare successfully deployed application commit b5b50ba427fcd3295ab6067e5f9b8890f9db06a0. After deployment, a same-page invitation link signed the separate QA owner into the hosted workspace. Confirmed the posted invoice caption now states its effects are posted, and verified light/dark appearance and sidebar collapse/expand. The sign-in logo, wordmark, caption and introductory text share the same center axis, visually checked and confirmed by rendered geometry. The owner workspace remains open with the synthetic reconciliation records for inspection. All user-handoff invitations remain unused.
 
 Latest GitHub Actions was still queued at inspection; the earlier foundation run passed and all 23 current local tests passed. Do not describe the latest remote CI run as passed without checking it. The next implementation work remains operator onboarding/identity, company setup/openings, protected attachments and the remaining catalog. No main or production change was made.
 
-## PostgreSQL correction and MVP continuation - 12 November 2026
+## PostgreSQL correction and MVP continuation — 12 November 2026
 
 The owner rejected the narrow foundation as the agreed MVP, confirmed PostgreSQL, and authorized temporary installation on the personal server through the supplied browser SSH session. Do not relabel this architecture work as a complete MVP. The full catalog remains required.
 

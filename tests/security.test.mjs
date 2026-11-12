@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {encodePassword,verifyPassword,securityApi} from '../src/security.mjs';
 
 test('passwords use unique scrypt salts and verify exact Unicode input',async()=>{
-  const secret='Testing only - correct horse 2711';
+  const secret='Testing only — correct horse 2711';
   const a=await encodePassword(secret),b=await encodePassword(secret);
   assert.notEqual(a,b);assert.equal(await verifyPassword(secret,a),true);
   assert.equal(await verifyPassword(secret+'x',a),false);

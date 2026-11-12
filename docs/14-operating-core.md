@@ -12,7 +12,7 @@ Setup writes use atomic native PostgreSQL functions, company revisions, stable c
 
 ## Identity and invitations
 
-Email/password sign-in uses Node's asynchronous scrypt (N=32768, r=8, p=1), a separate random 16-byte salt per credential, and constant-time derived-key comparison. No recoverable passwords are stored. Passwords contain 12-128 characters. Sign-in attempts are bounded per email and incoming Cloudflare IP; current-password checks have their own limit, and expensive concurrent derivations are bounded. These are basic controls, not evidence of independent security review or complete bot defence.
+Email/password sign-in uses Node's asynchronous scrypt (N=32768, r=8, p=1), a separate random 16-byte salt per credential, and constant-time derived-key comparison. No recoverable passwords are stored. Passwords contain 12–128 characters. Sign-in attempts are bounded per email and incoming Cloudflare IP; current-password checks have their own limit, and expensive concurrent derivations are bounded. These are basic controls, not evidence of independent security review or complete bot defence.
 
 An eight-hour Secure/HttpOnly/SameSite=Strict cookie identifies one active server session. A new login or password/profile change rotates it and invalidates the previous session. Password changes verify the existing password where one is set, check credential version and remove outstanding unused bootstrap grants. Users set their own credentials. MFA, verified email, account recovery, attributed support access and notification delivery remain unfinished.
 

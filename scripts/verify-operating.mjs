@@ -25,6 +25,7 @@ try{
   const endpoint=part=>`/api/companies/${companyId}/${part}`;
   let workspace=(await invoke(owner,endpoint('workspace'))).value;
   assert.equal(workspace.documents.length,0);assert.equal(workspace.items.length,0);assert.equal(workspace.parties.length,0);assert.equal(workspace.accounts.length,10);
+  assert.equal(Array.isArray(workspace.periods),true);assert.equal(workspace.periods.length,1);assert.equal(workspace.periods[0].start_date,'2026-01-01');
   pass('authorized blank company setup, fiscal year and idempotent retry');
   async function configure(entity,data,commandKey=crypto.randomUUID(),expectedRevision){const current=expectedRevision??(await invoke(owner,endpoint('workspace'))).value.company.revision;return invoke(owner,endpoint('configure'),'POST',{entity,data,expectedRevision:current},commandKey);}
   const customer=await configure('party',{name:'Contract customer',kind:'customer',email:'customer@example.invalid',phone:'',address:'',taxNumber:''});assert.equal(customer.status,201,JSON.stringify(customer.value));
