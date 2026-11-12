@@ -113,3 +113,10 @@ jobs:
           PGHOST: 127.0.0.1
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
+
+      - name: Conditional direct-posting authority for preparers
+        run: node scripts/verify-approval-conditions.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci

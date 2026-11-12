@@ -86,7 +86,7 @@ export async function preview(db, actor, companyId, raw) {
     stock={name:item.name,store:item.store,unit:item.unit,quantity:document.quantity,available:String(item.on_hand-item.reserved),cost:decimal(amount)};
   }
   const effects={document,lines,amount:decimal(amount),stock,revision:company.revision};
-  const approval=await approvalDecision(db,actor,companyId,document.kind,minor(effects.amount));
+  const approval=await approvalDecision(db,actor,companyId,document.kind,minor(effects.amount),{document,lines});
   if(approval){requireThat(approval.mode!=='denied',403,'PREPARATION_DENIED','The configured document permission does not allow your role to submit this transaction type.');effects.approval=approval;}
   if(allocation)effects.allocation=allocation;
   if(opening)effects.opening=opening;
