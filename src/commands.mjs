@@ -4,6 +4,7 @@ import { decimal, minor, quantity, multiplied } from './money.mjs';
 import { now, companyAccess, canPrepare, canReview } from './auth.mjs';
 import {extendedKinds,normalizeExtended,extendedEffect} from './extended-accounting.mjs';
 import {normalizeOpening,openingEffect} from './opening.mjs';
+import {validateRecurring} from './recurring.mjs';
 
 function fields(value, allowed) {
   requireThat(value && typeof value === 'object' && !Array.isArray(value), 422, 'INVALID_DOCUMENT', 'Provide a document object.');
@@ -40,6 +41,7 @@ export async function preview(db, actor, companyId, raw) {
   const company = await companyAccess(db,actor,companyId);
   requireThat(canPrepare(company.role),403,'PREPARATION_DENIED','Your role cannot prepare transactions.');
   const document = normalize(raw), lines = [], denials = await denied(db,companyId,actor.id);
+  await validateRecurring(db,actor,companyId,document);
   if(db.schemaVersion>=8&&document.kind!=='opening_balance')requireThat(!(await db.prepare("SELECT id FROM documents WHERE company_id=? AND kind='opening_balance' AND status='pending' LIMIT 1").bind(companyId).first()),409,'OPENING_PENDING','An opening snapshot is awaiting review. Complete or reject it before preparing other transactions.');
   if(db.schemaVersion>=8&&document.kind!=='opening_balance'){const domains=(await db.prepare('SELECT domain,cutoff FROM opening_domains WHERE company_id=?').bind(companyId).all()).results;const full=await db.prepare("SELECT date FROM documents WHERE company_id=? AND kind='opening_balance' AND status='posted' AND payload_json::jsonb->>'mode'='post'").bind(companyId).first();requireThat(!(full&&document.date<=full.date)&&!domains.some(d=>document.date<=d.cutoff&&(d.domain==='receivables'&&['invoice','receipt','credit_note'].includes(document.kind)||d.domain==='payables'&&['bill','payment','supplier_credit'].includes(document.kind)||d.domain==='inventory'&&document.kind==='stock_issue')),409,'OPENING_DATE_CLOSED','Opening snapshots are closing balances for their cutoff date. Prepare subsequent transactions from the following day.');}
   const period = await db.prepare('SELECT locked FROM periods WHERE company_id=? AND ? BETWEEN start_date AND end_date').bind(companyId,document.date).first();
@@ -114,6 +116,8 @@ async function transact(db, statements, retry) {
       ['PERIOD_LOCKED',409,'The accounting period is locked.'],
       ['BANK_PERIOD_CLOSED',409,'This cash or bank account has a closed reconciliation or a fixed opening baseline. Use a later open accounting date.'],
       ['OPENING_PENDING',409,'Resolve pending activity before applying this opening snapshot.'],
+      ['FILE_NOT_READY',409,'A supporting file is no longer available or has not passed scanning.'],
+      ['SCHEDULE_CHANGED',409,'The recurring schedule or occurrence changed. Prepare a fresh occurrence.'],
       ['OPENING_DATE_CLOSED',409,'The date is covered by an opening closing snapshot. Use a subsequent accounting date.'],
       ['OPENING_ALREADY_SET',409,'This opening subledger already has an approved or pending baseline.'],
       ['OPENING_EVIDENCE_REQUIRED',409,'Attach retained clean source evidence before opening approval.'],
@@ -135,12 +139,21 @@ async function transact(db, statements, retry) {
   return null;
 }
 export async function submit(db,actor,companyId,input,key) {
-  fields(input,['document','previewDigest','expectedRevision','assistantTaskId']);
+  fields(input,['document','previewDigest','expectedRevision','assistantTaskId','fileIds']);
   const company=await companyAccess(db,actor,companyId);
   requireThat(canPrepare(company.role),403,'PREPARATION_DENIED','Your role cannot prepare transactions.');
   const payloadHash=await hash(canonical(input));
   const retry=()=>retryResult(db,actor,companyId,'submit',key,payloadHash);
   const prior=await retry(); if(prior) return prior;
+  const fileIds=input.fileIds??[];
+  requireThat(Array.isArray(fileIds)&&fileIds.length<=10&&new Set(fileIds).size===fileIds.length&&fileIds.every(id=>typeof id==='string'&&/^[a-f0-9-]{36}$/.test(id)),422,'INVALID_EVIDENCE','Attach up to ten distinct supporting files.');
+  if(fileIds.length)requireThat(db.schemaVersion>=5,503,'UPGRADE_REQUIRED','Supporting files require private storage.');
+  for(const fileId of fileIds){
+    const file=await db.prepare("SELECT id FROM stored_files f WHERE company_id=? AND id=? AND visibility='company' AND scan_state='clean' AND NOT EXISTS(SELECT 1 FROM file_removals r WHERE r.company_id=f.company_id AND r.file_id=f.id)").bind(companyId,fileId).first();
+    requireThat(file,409,'FILE_NOT_READY','Every supporting file must belong to this company, pass scanning and remain available.');
+    const links=(await db.prepare('SELECT document_id FROM document_attachments WHERE company_id=? AND file_id=?').bind(companyId,fileId).all()).results;
+    for(const link of links)await documentDetail(db,actor,companyId,link.document_id);
+  }
   if(input.assistantTaskId){
     requireThat(db.schemaVersion>=5&&typeof input.assistantTaskId==='string',422,'AI_TASK_REQUIRED','Use a validated assistant proposal.');
     const task=await db.prepare("SELECT response_json FROM assistant_tasks WHERE company_id=? AND id=? AND user_id=? AND status='complete'").bind(companyId,input.assistantTaskId,actor.id).first();
@@ -155,6 +168,7 @@ export async function submit(db,actor,companyId,input,key) {
   ];
   if(document.kind==='stock_issue') statements.push(db.prepare('UPDATE items SET reserved=reserved+? WHERE company_id=? AND id=?').bind(Number(document.quantity),companyId,document.itemId));
   if(effect.allocation)statements.push(db.prepare('INSERT INTO document_allocations(company_id,settlement_id,target_id,amount_minor) VALUES(?,?,?,?)').bind(companyId,id,effect.allocation.targetDocumentId,minor(effect.amount)));
+  for(const fileId of fileIds)statements.push(db.prepare('INSERT INTO document_attachments(company_id,document_id,file_id,actor_id,created_at) VALUES(?,?,?,?,?)').bind(companyId,id,fileId,actor.id,time),db.prepare('INSERT INTO file_events(id,company_id,file_id,actor_id,action,reason,created_at) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),companyId,fileId,actor.id,'attached',id,time));
   statements.push(...finish(db,actor,companyId,operationId,id,'submitted',time));
   return await transact(db,statements,retry)??result;
 }

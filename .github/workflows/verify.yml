@@ -85,3 +85,17 @@ jobs:
           PGHOST: 127.0.0.1
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
+
+      - name: Recurring journal schedules and occurrence authority contracts
+        run: node scripts/verify-recurring.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci
+
+      - name: Complete accounting exports and atomic submission evidence
+        run: node scripts/verify-exports-evidence.mjs
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci

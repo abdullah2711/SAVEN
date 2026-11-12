@@ -5,6 +5,8 @@ import {operatingContext,configure,createCompany,invite,reports,membershipInvita
 import {outstandingBalances} from './extended-accounting.mjs';
 import {accountingWorkspace,accountingCommand,bankDetail,partyAccounting,closeChecklist} from './accounting.mjs';
 import {openingStatus} from './opening.mjs';
+import {recurringList,recurringDetail,recurringDocument,recurringCommand} from './recurring.mjs';
+import {accountingExport} from './accounting-export.mjs';
 
 const LIMIT=16_384;
 export async function body(request,limit=LIMIT) {
@@ -64,6 +66,10 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const exportRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/accounting-export$/);
+    if(exportRoute&&method==='GET'){const result=await accountingExport(env.DB,actor,exportRoute[1],url.searchParams);return new Response(result.text,{headers:{...securityHeaders,'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename="${result.filename}"`}});}
+    const recurring=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/recurring(?:\/([a-zA-Z0-9_-]{1,80})(?:\/(preview))?)?$/);
+    if(recurring){const [,cid,id,action]=recurring;if(method==='GET'&&!action)return json(id?await recurringDetail(env.DB,actor,cid,id):await recurringList(env.DB,actor,cid));if(method==='POST'&&action){const p=await body(request);requireThat(p&&Object.keys(p).every(k=>['index','attempt'].includes(k)),422,'INVALID_OCCURRENCE','Provide the occurrence index and attempt.');return json(await preview(env.DB,actor,cid,await recurringDocument(env.DB,actor,cid,id,p.index,p.attempt)));}if(method==='POST'&&!id)return json(await recurringCommand(env.DB,actor,cid,await body(request),request.headers.get('idempotency-key')),201);throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported recurring schedule action.');}
     const opening=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/opening$/);
     if(opening){if(method==='GET')return json(await openingStatus(env.DB,actor,opening[1]));if(method==='POST'){const input=await body(request,131072);requireThat(input&&['preview','submit'].includes(input.action),422,'INVALID_ACTION','Choose preview or submit.');if(input.action==='preview'){requireThat(input.document?.kind==='opening_balance',422,'INVALID_OPENING','Provide an opening snapshot.');return json(await preview(env.DB,actor,opening[1],input.document));}requireThat(input.data?.document?.kind==='opening_balance',422,'INVALID_OPENING','Provide an opening snapshot.');return json(await submit(env.DB,actor,opening[1],input.data,request.headers.get('idempotency-key')),201);}throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported opening action.');}
     const closeReport=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/close-review$/);if(closeReport&&method==='GET')return json(await closeChecklist(env.DB,actor,closeReport[1],url.searchParams));

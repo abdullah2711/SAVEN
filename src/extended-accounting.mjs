@@ -9,7 +9,7 @@ function text(value,label,max=160){requireThat(typeof value==='string'&&value.tr
 export function normalizeExtended(input){
   requireThat(extendedKinds.includes(input?.kind),422,'INVALID_KIND','Choose a supported transaction type.');
   const extra=input.kind==='bill'?['partyId','amount','expenseAccountId','dueDate']:input.kind==='journal'?['lines']:input.kind==='reversal'?['originalDocumentId']:input.kind==='cash_transfer'?['fromAccountId','toAccountId','amount']:['credit_note','supplier_credit'].includes(input.kind)?['targetDocumentId','amount','partyId']:['cash_expense','cash_income'].includes(input.kind)?['cashAccountId','counterAccountId','amount']:['targetDocumentId','partyId','amount','cashAccountId'];
-  object(input,[...common,...extra]);
+  object(input,[...common,...extra,...(input.kind==='journal'?['recurrence']:[])]);
   requireThat(typeof input.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(input.date)&&!Number.isNaN(Date.parse(input.date))&&new Date(input.date).toISOString().slice(0,10)===input.date,422,'INVALID_DATE','Choose a valid accounting date.');
   const base={kind:input.kind,date:input.date,reference:text(input.reference,'reference',60),description:text(input.description,'description',500)};
   if(input.kind==='reversal')return {...base,originalDocumentId:text(input.originalDocumentId,'original transaction')};
@@ -21,7 +21,10 @@ export function normalizeExtended(input){
     let debit=0n,credit=0n;
     const lines=input.lines.map(row=>{object(row,['accountId','debit','credit']);const d=BigInt(minor(row.debit)),c=BigInt(minor(row.credit));requireThat(d>0n&&c===0n||c>0n&&d===0n,422,'INVALID_LINE','Each line must contain one debit or one credit.');debit+=d;credit+=c;return {accountId:text(row.accountId,'account'),debit:decimal(d),credit:decimal(c)};});
     requireThat(debit===credit,422,'UNBALANCED_JOURNAL','Total debits and credits must match.');
-    minor(decimal(debit),{positive:true});return {...base,lines};
+    minor(decimal(debit),{positive:true});
+    let recurrence;
+    if(input.recurrence!==undefined){object(input.recurrence,['scheduleId','index','attempt']);const r=input.recurrence;requireThat(Number.isInteger(r.index)&&r.index>=0&&r.index<120&&Number.isInteger(r.attempt)&&r.attempt>=1&&r.attempt<=1000,422,'INVALID_OCCURRENCE','Choose a valid schedule occurrence.');recurrence={scheduleId:text(r.scheduleId,'schedule',80),index:r.index,attempt:r.attempt};}
+    return {...base,lines,...(recurrence?{recurrence}:{})};
   }
   return {...base,targetDocumentId:text(input.targetDocumentId,'invoice or bill'),...(input.partyId?{partyId:text(input.partyId,'contact')}:{}),amount:decimal(minor(input.amount,{positive:true})),...(!['credit_note','supplier_credit'].includes(input.kind)?{cashAccountId:text(input.cashAccountId,'cash or bank account')}:{})};
 }

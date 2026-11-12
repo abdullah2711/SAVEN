@@ -36,10 +36,10 @@ export class PostgresDatabase {
   scoped(scope) {return new PostgresDatabase(this.pool,scope,this.schemaVersion);}
   adoptSession(sessionHash){this.scope.sessionHash=sessionHash;}
   prepare(sql){return new Statement(this,sql,[]);}
-  async transaction(action) {
+  async transaction(action,{snapshot=false}={}) {
     const client=await this.pool.connect();
     try {
-      await client.query('BEGIN');
+      await client.query(snapshot?'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY':'BEGIN');
       await client.query("SELECT set_config('saven.session_hash',$1,true),set_config('saven.grant_hash',$2,true),set_config('saven.application_schema_version',$3,true),set_config('statement_timeout','10000',true),set_config('lock_timeout','5000',true)",[this.scope.sessionHash??'',this.scope.grantHash??'',String(this.schemaVersion)]);
       const value=await action(client);await client.query('COMMIT');return value;
     } catch(error){await client.query('ROLLBACK');throw error;}
