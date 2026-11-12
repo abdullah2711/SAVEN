@@ -12,4 +12,12 @@ GRANT UPDATE(reserved,on_hand) ON items TO saven_app;
 GRANT UPDATE(status,reviewed_by,version) ON documents TO saven_app;
 GRANT UPDATE(status) ON journals TO saven_app;
 REVOKE ALL ON FUNCTION saven_immutable(),saven_operation_authority(),saven_document_insert(),saven_document_review(),saven_journal_control(),saven_line_insert() FROM PUBLIC;
+-- Reapply after a --no-acl restore. Include later identity/configuration
+-- helpers without granting their execution to other database roles.
+DO $$ DECLARE signature text; BEGIN
+ FOR signature IN SELECT p.oid::regprocedure::text FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname LIKE 'saven_%' AND p.prosecdef LOOP
+   EXECUTE 'REVOKE ALL ON FUNCTION '||signature||' FROM PUBLIC';
+   EXECUTE 'GRANT EXECUTE ON FUNCTION '||signature||' TO saven_app';
+ END LOOP;
+END $$;
 COMMIT;

@@ -43,6 +43,12 @@ jobs:
           PGHOST: 127.0.0.1
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
+      - name: Company setup, identity and administration contracts
+        run: node scripts/verify-operating.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci
       - run: python tools/validate_plan.py
       - name: Ensure generated catalog is current
         run: |

@@ -1,9 +1,10 @@
 import { AppError, requireThat } from './errors.mjs';
 import { authenticate, redeemGrant } from './auth.mjs';
-import { preview, submit, review, workspace } from './commands.mjs';
+import { preview, submit, review, workspace,documentDetail } from './commands.mjs';
+import {operatingContext,configure,createCompany,invite,reports,membershipInvitation} from './operating.mjs';
 
 const LIMIT=16_384;
-async function body(request) {
+export async function body(request) {
   requireThat(request.headers.get('content-type')?.split(';')[0]==='application/json',415,'JSON_REQUIRED','Send this request as JSON.');
   const reader=request.body?.getReader();
   requireThat(reader,400,'BODY_REQUIRED','Provide a request body.');
@@ -45,7 +46,7 @@ export async function api(request,env) {
           }
         }catch{}
       }
-      return json({service:'saven',stage:'foundation',database:env.DB?.dialect??'sqlite',databaseConfigured:!!env.DB,schemaReady,environment:env.ENVIRONMENT??'local'});
+      return json({service:'saven',stage:env.DB?.schemaVersion>=3?'operating-core':'foundation',database:env.DB?.dialect??'sqlite',schemaVersion:env.DB?.schemaVersion??1,databaseConfigured:!!env.DB,schemaReady,environment:env.ENVIRONMENT??'local'});
     }
     requireThat(env.DB,503,'SETUP_REQUIRED','The testing database has not been connected. No business data can be read or posted until setup is complete.');
     // Same-origin JSON mutations plus Strict HttpOnly cookies. No CORS grants.
@@ -60,18 +61,36 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const join=url.pathname.match(/^\/api\/invitations\/(preview|accept)$/);
+    if(join&&method==='POST'){requireThat(env.DB.schemaVersion>=3,503,'UPGRADE_REQUIRED','Company invitations are being activated.');return json(await membershipInvitation(env.DB,actor,await body(request),join[1]));}
     if(url.pathname==='/api/session' && method==='DELETE') {
       await env.DB.prepare('DELETE FROM sessions WHERE token_hash=?').bind(actor.sessionHash).run();
       return json({signedOut:true},200,{'Set-Cookie':`saven_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0${url.protocol==='https:'?'; Secure':''}`});
     }
     if(url.pathname==='/api/me' && method==='GET') {
-      const companies=await env.DB.prepare("SELECT c.id,c.name,c.currency,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? AND c.status='active' ORDER BY c.name").bind(actor.id).all();
+      const companies=await env.DB.prepare("SELECT c.id,c.name,c.currency,m.role FROM companies c JOIN memberships m ON m.company_id=c.id WHERE m.user_id=? AND c.status='active'"+(env.DB.schemaVersion>=3?' AND m.active=1':'')+' ORDER BY c.name').bind(actor.id).all();
       return json({user:{id:actor.id,name:actor.name,email:actor.email},companies:companies.results});
     }
+    if(url.pathname==='/api/companies'&&method==='POST')return json(await createCompany(env.DB,actor,await body(request),request.headers.get('idempotency-key')),201);
+    const operating=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/(configure|invites|reports)$/);
+    if(operating){
+      requireThat(env.DB.schemaVersion>=3,503,'UPGRADE_REQUIRED','This company capability is being activated.');
+      const [,companyId,area]=operating;
+      if(area==='configure'&&method==='POST')return json(await configure(env.DB,actor,companyId,await body(request),request.headers.get('idempotency-key')),201);
+      if(area==='invites'&&method==='POST')return json(await invite(env.DB,actor,companyId,await body(request),request.headers.get('idempotency-key')),201);
+      if(area==='reports'&&method==='GET')return json(await reports(env.DB,actor,companyId,url.searchParams));
+      throw new AppError(405,'METHOD_NOT_ALLOWED','This endpoint does not support that method.');
+    }
+    const detail=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/documents\/([a-zA-Z0-9_-]{1,80})$/);
+    if(detail&&method==='GET')return json(await documentDetail(env.DB,actor,detail[1],detail[2]));
     const match=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/(workspace|preview|documents)(?:\/([a-zA-Z0-9_-]{1,80})\/(approve|reject))?$/);
     requireThat(match,404,'NOT_FOUND','This endpoint does not exist.');
     const [,companyId,area,documentId,action]=match;
-    if(area==='workspace' && !documentId && method==='GET') return json(await workspace(env.DB,actor,companyId));
+    if(area==='workspace' && !documentId && method==='GET') {
+      const result=await workspace(env.DB,actor,companyId);
+      if(env.DB.schemaVersion>=3)Object.assign(result,await operatingContext(env.DB,actor,companyId));
+      return json(result);
+    }
     if(area==='preview' && !documentId && method==='POST') return json(await preview(env.DB,actor,companyId,await body(request)));
     if(area==='documents' && method==='POST') {
       const input=await body(request),key=request.headers.get('idempotency-key');

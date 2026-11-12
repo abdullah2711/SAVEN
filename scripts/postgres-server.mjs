@@ -1,7 +1,9 @@
 import {createServer} from 'node:http';
 import {Readable} from 'node:stream';
 import {PostgresDatabase} from './postgres.mjs';
-import {api,securityHeaders,json} from '../src/api.mjs';
+import {api,securityHeaders,json,body} from '../src/api.mjs';
+import {securityApi} from '../src/security.mjs';
+import {AppError} from '../src/errors.mjs';
 import {cookieToken} from '../src/auth.mjs';
 import {hash} from '../src/crypto.mjs';
 
@@ -18,17 +20,18 @@ const server=createServer({maxHeaderSize:16384},async(incoming,outgoing)=>{
     if(!path.startsWith('/api/')){outgoing.writeHead(404);outgoing.end();return;}
     const requestedOrigin=incoming.headers['x-saven-public-origin'];
     if(requestedOrigin&&!allowedOrigins.has(requestedOrigin)){outgoing.writeHead(403,securityHeaders);outgoing.end('Origin denied.');return;}
-    const request=new Request(`${requestedOrigin??origin}${path}`,{method,headers:incoming.headers,...(!['GET','HEAD'].includes(method)?{body:Readable.toWeb(incoming),duplex:'half'}:{})});
+    let request=new Request(`${requestedOrigin??origin}${path}`,{method,headers:incoming.headers,...(!['GET','HEAD'].includes(method)?{body:Readable.toWeb(incoming),duplex:'half'}:{})});
     const session=cookieToken(request),scope={sessionHash:session?await hash(session):''};
     if(path==='/api/session'&&method==='POST') {
       // Grant scope is a hash, not a user/company selector supplied by a client.
-      const declared=Number(incoming.headers['content-length']);
-      if(!Number.isFinite(declared)||declared>16384){const response=json({error:{code:'BODY_TOO_LARGE',message:'Provide a bounded invitation request.'}},413);outgoing.writeHead(response.status,Object.fromEntries(response.headers));outgoing.end(await response.text());return;}
-      try {const input=await request.clone().json();if(typeof input.token==='string'&&/^[a-f0-9]{64}$/.test(input.token))scope.grantHash=await hash(input.token);}catch{}
+      const input=await body(request);
+      if(typeof input?.token==='string'&&/^[a-f0-9]{64}$/.test(input.token))scope.grantHash=await hash(input.token);
+      request=new Request(request,{body:JSON.stringify(input),duplex:'half'});
     }
-    const response=await api(request,{DB:db.scoped(scope),ENVIRONMENT:'testing-postgresql'});
+    const scoped=db.scoped(scope);
+    const response=await securityApi(request,scoped)??await api(request,{DB:scoped,ENVIRONMENT:'testing-postgresql'});
     outgoing.writeHead(response.status,Object.fromEntries(response.headers));outgoing.end(method==='HEAD'?undefined:Buffer.from(await response.arrayBuffer()));
-  } catch {outgoing.writeHead(500,securityHeaders);outgoing.end('Request failed.');}
+  } catch(error) {const response=error instanceof AppError?json({error:{code:error.code,message:error.message}},error.status):json({error:{code:'INTERNAL_ERROR',message:'The action could not be completed.'}},500);outgoing.writeHead(response.status,Object.fromEntries(response.headers));outgoing.end(await response.text());}
 });
 server.requestTimeout=15000;server.headersTimeout=10000;server.keepAliveTimeout=5000;
 server.listen(Number(process.env.PORT??8788),process.env.BIND_HOST??'127.0.0.1',()=>console.log('SAVEN PostgreSQL API ready'));

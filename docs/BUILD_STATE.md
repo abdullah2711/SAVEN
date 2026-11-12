@@ -97,3 +97,13 @@ Installed the separate PostgreSQL-owned daily local backup timer/service. Correc
 
 This activation change selects API_MODE=postgresql. Verify its actual hosted VPC connection and sign-in after deployment before claiming cutover complete. Then continue operating functionality. The current narrow UI still is not the agreed complete MVP.
 
+## Operating implementation - 12 November 2026
+
+Hosted PostgreSQL cutover was verified after c2f37f4: the public API reported PostgreSQL/schemaReady, and hosted sign-in opened all four migrated records. The owner's pending INV-0726409 / PKR 5,515 was preserved. GitHub foundation/native CI and the testing Cloudflare build both passed for c2f37f4. Main remained unchanged.
+
+Added native migration 005 and the real setup/identity/report UI and API described in docs/14-operating-core.md. Existing-identity invitations explicitly require authenticated acceptance and cannot become a password-reset/global-login token. Added tests for cross-company impersonation attempts and replay after revocation. New blank-company contacts/items/accounts/invoices are exercised in an isolated contract database.
+
+Source syntax passes for 28 JavaScript files. All 28 local tests pass. Native PostgreSQL 18 rehearsal saven_contract_20261112_c passed all eight foundation and nine operating groups. Planning validation remains a separate required check. Application backup/migration, container readiness, hosted UI verification and new remote CI status must be recorded after observation; do not infer them from these contracts.
+
+Next continue complete accounting cycles (supplier bills, allocated receipts/payments, stock receipts/openings, journals/corrections/tax), protected evidence, operator/module controls and the full remaining catalog. Current master UI creates records; editing/archival is still pending. No AI provider, MFA/recovery or off-site backup has been connected. Do not call this a completed MVP or promote main.
+

@@ -23,7 +23,7 @@ if(process.argv.includes('--demo')) {
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
 const assets={async fetch(request){
   const pathname=new URL(request.url).pathname;
-  const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/styles.css':'styles.css','/sign-in.css':'sign-in.css','/logo.svg':'logo.svg'};
+  const files={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/management.js':'management.js','/styles.css':'styles.css','/management.css':'management.css','/sign-in.css':'sign-in.css','/logo.svg':'logo.svg'};
   if(!files[pathname])return new Response('Not found',{status:404});
   try{return new Response(await readFile(resolve(root,'public',files[pathname])),{headers:{'Content-Type':mime[extname(files[pathname])]}});}
   catch{return new Response('Asset unavailable',{status:404});}

@@ -27,26 +27,26 @@ function rows(result) {
   })));
 }
 export class PostgresDatabase {
-  constructor(pool,scope={}) {this.pool=pool;this.scope={...scope};this.dialect='postgresql';}
+  constructor(pool,scope={},schemaVersion=0) {this.pool=pool;this.scope={...scope};this.dialect='postgresql';this.schemaVersion=schemaVersion;}
   static connect(config={}) {
     const pool=new pg.Pool({...config,max:8,connectionTimeoutMillis:5000,idleTimeoutMillis:30000,application_name:'saven-testing'});
     pool.on('error',()=>console.error(JSON.stringify({event:'database_pool_error'})));
     return new PostgresDatabase(pool);
   }
-  scoped(scope) {return new PostgresDatabase(this.pool,scope);}
+  scoped(scope) {return new PostgresDatabase(this.pool,scope,this.schemaVersion);}
   adoptSession(sessionHash){this.scope.sessionHash=sessionHash;}
   prepare(sql){return new Statement(this,sql,[]);}
   async transaction(action) {
     const client=await this.pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query("SELECT set_config('saven.session_hash',$1,true),set_config('saven.grant_hash',$2,true),set_config('statement_timeout','10000',true),set_config('lock_timeout','5000',true)",[this.scope.sessionHash??'',this.scope.grantHash??'']);
+      await client.query("SELECT set_config('saven.session_hash',$1,true),set_config('saven.grant_hash',$2,true),set_config('saven.application_schema_version',$3,true),set_config('statement_timeout','10000',true),set_config('lock_timeout','5000',true)",[this.scope.sessionHash??'',this.scope.grantHash??'',String(this.schemaVersion)]);
       const value=await action(client);await client.query('COMMIT');return value;
     } catch(error){await client.query('ROLLBACK');throw error;}
     finally{client.release();}
   }
   async batch(statements){return this.transaction(async client=>{const output=[];for(const s of statements)output.push(await s.execute(client));return output;});}
-  async schemaReady(){try{return Number((await this.pool.query("SELECT version FROM schema_version WHERE version=1")).rows[0]?.version)===1;}catch{return false;}}
+  async schemaReady(){try{this.schemaVersion=Number((await this.pool.query('SELECT max(version) AS version FROM schema_version')).rows[0]?.version??0);return this.schemaVersion>=1;}catch{return false;}}
   async close(){await this.pool.end();}
 }
 class Statement {

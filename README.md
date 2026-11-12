@@ -10,7 +10,7 @@ Read the [working foundation, setup and verification limits](docs/12-foundation.
 
 ## Run and check
 
-Node 24.19.0 is the reference runtime. There are no runtime npm dependencies.
+Node 24.19.0 is the reference runtime. The PostgreSQL API uses the pinned `pg` dependency and lockfile; install it with `npm ci`.
 
 ```sh
 node scripts/check.mjs
@@ -21,7 +21,7 @@ node scripts/server.mjs --demo
 
 The last command starts a local server and prints single-use invitations for synthetic preparer, reviewer, owner and viewer accounts in two isolated companies. Open the printed URL in your browser. Submit an invoice or stock issue as preparer; sign out and open the reviewer invitation to approve it. The exact journal preview is shown before submission and approval. No demo users, credentials or seed endpoint are deployed.
 
-The same command code targets Cloudflare Workers/D1 through src/worker.mjs and a local Node/SQLite adapter through scripts/server.mjs. See [the adapter decision and external setup](docs/12-foundation.md). Full identity/MFA, operator provisioning, evidence storage, tax localization, offline operation, other catalog modules and evaluated model providers remain unfinished. Empty workspace destinations identify their planned status.
+The testing Worker now serves assets and forwards APIs through a restricted Cloudflare VPC service to the personal server's PostgreSQL API. PostgreSQL listens locally only. The former D1 data was reconciled and migrated; D1 is not a fallback writer. See [hosting, backups and migration](docs/13-hosting-postgresql-and-migration.md) and [operating setup, identity and reports](docs/14-operating-core.md). The local Node/SQLite adapter remains a foundation contract harness. MFA/recovery, operator provisioning, evidence storage, tax localization, offline operation, other catalog modules and evaluated model providers remain unfinished. Empty workspace destinations identify their planned status.
 
 ## Branches and environments
 

@@ -19,7 +19,7 @@ export async function redeemGrant(db, value) {
   const grantHash = await hash(value), claim = crypto.randomUUID(), session = token(), sessionHash = await hash(session);
   const expiresAt = now() + 8 * 60 * 60;
   await db.batch([
-    db.prepare('UPDATE login_grants SET claim=? WHERE token_hash=? AND claim IS NULL AND expires_at>? AND user_id IN (SELECT id FROM users WHERE active=1)').bind(claim, grantHash, now()),
+    db.prepare('UPDATE login_grants SET claim=? WHERE token_hash=? AND claim IS NULL AND expires_at>? AND user_id IN (SELECT id FROM users WHERE active=1)'+(db.schemaVersion>=3?' AND saven_bootstrap_allowed(user_id)':'')).bind(claim, grantHash, now()),
     db.prepare('INSERT INTO sessions(token_hash,user_id,expires_at) SELECT ?,user_id,? FROM login_grants WHERE token_hash=? AND claim=? ON CONFLICT(user_id) DO UPDATE SET token_hash=excluded.token_hash,expires_at=excluded.expires_at').bind(sessionHash, expiresAt, grantHash, claim),
     db.prepare('DELETE FROM login_grants WHERE token_hash=? AND claim=?').bind(grantHash, claim)
   ]);

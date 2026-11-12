@@ -176,3 +176,14 @@ export async function workspace(db,actor,companyId) {
     audit:audit.results.filter(row=>docIds.has(row.document_id)).map(row=>({id:row.id,documentId:row.document_id,reference:row.reference,actor:row.actor_name,action:row.action,time:row.created_at}))
   };
 }
+
+export async function documentDetail(db,actor,companyId,id){
+  await companyAccess(db,actor,companyId);
+  const row=await db.prepare('SELECT d.*,u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
+  requireThat(row,404,'NOT_FOUND','The transaction is unavailable.');
+  const restrictions=await denied(db,companyId,actor.id),effect=JSON.parse(row.preview_json);
+  if(row.party_id)allowedResource(restrictions,'party',row.party_id);
+  if(row.item_id)allowedResource(restrictions,'item',row.item_id);
+  for(const line of effect.lines)allowedResource(restrictions,'account',line.accountId);
+  return {id:row.id,kind:row.kind,date:row.date,reference:row.reference,description:row.description,status:row.status,version:row.version,preparedBy:row.prepared_by,preparer:row.preparer_name,reviewer:row.reviewer_name,amount:decimal(row.amount_minor),preview:effect};
+}
