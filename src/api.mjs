@@ -1,3 +1,4 @@
+import {paymentsWorkspace} from './payments.mjs';
 import { AppError, requireThat } from './errors.mjs';
 import { authenticate, redeemGrant } from './auth.mjs';
 import { preview, submit, review, workspace,documentDetail } from './commands.mjs';
@@ -67,6 +68,7 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const paymentsRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/payments$/);if(paymentsRoute&&method==='GET')return json(await paymentsWorkspace(env.DB,actor,paymentsRoute[1],url.searchParams));
     const policyRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/approval-policies$/);
     if(policyRoute){if(method==='GET')return json(await approvalPolicies(env.DB,actor,policyRoute[1]));if(method==='POST')return json(await publishApprovalPolicy(env.DB,actor,policyRoute[1],await body(request),request.headers.get('idempotency-key')),201);throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported approval policy action.');}
     const exportRoute=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/accounting-export$/);
@@ -97,7 +99,7 @@ export async function api(request,env) {
       if(area==='configure'&&method==='POST')return json(await configure(env.DB,actor,companyId,await body(request),request.headers.get('idempotency-key')),201);
       if(area==='invites'&&method==='POST')return json(await invite(env.DB,actor,companyId,await body(request),request.headers.get('idempotency-key')),201);
       if(area==='reports'&&method==='GET')return json(await reports(env.DB,actor,companyId,url.searchParams));
-      if(area==='balances'&&method==='GET')return json(await outstandingBalances(env.DB,actor,companyId));
+      if(area==='balances'&&method==='GET')return json(await outstandingBalances(env.DB,actor,companyId,url.searchParams.get('party')??''));
       throw new AppError(405,'METHOD_NOT_ALLOWED','This endpoint does not support that method.');
     }
     const detail=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/documents\/([a-zA-Z0-9_-]{1,80})$/);

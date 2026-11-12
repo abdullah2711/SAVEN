@@ -1,0 +1,13 @@
+# Transaction authority and approval policies
+
+The owner's 13 November feedback rejects mandatory independent approval for every administrator transaction. Schema 10 introduced configurable policy snapshots; schema 11 establishes the ordinary-use factory default: owners and administrators can directly post ordinary supported financial documents, while preparers require independent review. Opening snapshots remain subject to retained source evidence and independent review. An existing pending document keeps its recorded decision; upgrading does not approve a backlog or rewrite history.
+
+The ultimate owner can publish a different policy in Workspace settings, under Transaction permissions and approvals. Rules select a transaction type and preparing role; an all-types rule is the fallback. Rules can deny submission, permit direct posting up to an exact PKR amount, or require independent review. Supporting evidence can be mandatory. A type-specific rule overrides the all-types rule. Once a custom policy is published, unmatched role/type combinations require independent review rather than inheriting the factory direct-posting default.
+
+Every publication needs a reason and a stable command key, increments the company revision, and appends a policy version and configuration event. Previous policies cannot be overwritten. New financial previews include the decision and policy version in their digest. PostgreSQL independently recomputes and stores that decision when inserting the document; a stale preview or revoked direct-posting permission is rejected. The runtime cannot update the stored decision.
+
+Direct posting commits document preparation, allocations/reservations, clean evidence links, stock changes, one balanced journal and the audit/outbox together. It is an authorized posting action, not a fabricated approval by a second person. Above-limit or otherwise review-required entries remain pending. An independent reviewer still cannot approve their own pending request. Closed periods, company/resource restrictions, immutable posted records and safe retry rules continue to apply to both routes.
+
+Current policy conditions cover transaction type, preparing role, amount and retained evidence. Multi-stage routing, named reviewer groups, per-person exceptions, branch/project conditions, delegation/escalation and the complete configurable permission UI remain required. Bank reconciliation closure retains its separately specified independent reviewer control; this policy does not silently change it.
+
+Native and hosted acceptance evidence is recorded in BUILD_STATE. The default behavior must be tested separately from a custom policy that requires review. No policy settings or credentials are copied between companies.

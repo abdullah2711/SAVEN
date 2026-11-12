@@ -9,7 +9,7 @@
 | ACC-003 Journal preparation | Balanced general journals, exact linked reversals and fixed-value recurring template source/native acceptance | Accrual/prepayment schedules, allocations, dimensions and policy-based evidence requirements |
 | ACC-004 Posting kernel | Atomic balanced posting, immutable original records, retry and concurrency guards, linked general/cash reversals and supported credits | Extend the same contracts across every remaining module and correction case; wider release assurance |
 | ACC-005 Period controls | Ultimate-owner period administration with reasons, lock enforcement and close review | Formal checklist sign-off, report snapshots, policy-governed reopening and exceptional approval route |
-| ACC-006 Cash and bank | Cash books, internal transfers, direct expenses/income, allocated receipts/payments, account-ledger drill-through | Petty-cash imprest workflow, advances, withholding and wider tender/payment cases |
+| ACC-006 Cash and bank | Cash books, transfers, direct expenses/income; dedicated payment, allocation, advance and advance-refund source/native acceptance | Petty-cash imprest workflow, withholding, payment corrections and wider tender/bank cases |
 | ACC-007 Bank reconciliation | CSV import, arithmetic validation, duplicate/overlap/continuity controls, exact matching, independent closure, outstanding books and protected closed dates | Larger/asynchronous imports, bank format adapters/feeds, split or aggregate matching, unresolved opening reconciling items and governed reopening |
 | ACC-008 Foreign currency | Decimal PKR amounts only | Currency rates, realized gains, settlement and period remeasurement |
 | ACC-009 Intercompany | Separate company access and ledgers | Reciprocal documents, due-to/from and cross-company reconciliation |
@@ -29,3 +29,5 @@ Related progress includes SAL-006 and SAL-007 for supported credits and allocate
 The operator administration portal, subscriber application/billing flows, HR/payroll, manufacturing and the rest of the suite remain required. They are not counted as implemented because a navigation destination or company-settings page exists. The owner's current instruction pauses further AI development until the software modules are built.
 
 The owner clarified the immediate delivery priority and daily-use gaps on 13 November; see [bookkeeping completion](20-bookkeeping-completion.md). A distinct Payments module and configurable approval policies remain required, not substituted by general journals or unconditional administrator self-approval.
+
+Further implementation boundaries: [transaction authority](21-approval-policies.md), [dedicated Payments](22-payments.md), and [recurring journals](19-recurring-journals.md). Full journal imports, professional statement packs and broader workflows remain required.

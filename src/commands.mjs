@@ -1,3 +1,4 @@
+import {paymentKinds,normalizePayment,paymentEffect} from './payments.mjs';
 import { AppError, requireThat } from './errors.mjs';
 import { canonical, hash } from './crypto.mjs';
 import { decimal, minor, quantity, multiplied } from './money.mjs';
@@ -16,6 +17,7 @@ function text(value, field, max = 160) {
   return value.trim();
 }
 export function normalize(input) {
+  if(paymentKinds.includes(input?.kind))return normalizePayment(input);
   if(input?.kind==='opening_balance')return normalizeOpening(input);
   if(extendedKinds.includes(input?.kind))return normalizeExtended(input);
   fields(input, ['kind','date','reference','description','partyId','amount','settlement','cashAccountId','itemId','quantity','dueDate']);
@@ -55,8 +57,9 @@ export async function preview(db, actor, companyId, raw) {
     allowedResource(denials,'account',accountId);
     lines.push({accountId,code:account.code,name:account.name,debit:decimal(debit),credit:decimal(credit)});
   }
-  let amount, stock = null,allocation=null,opening=null;
+  let amount, stock = null,allocation=null,opening=null,payment=null;
   if(document.kind==='opening_balance'){const effect=await openingEffect(db,actor,companyId,document,line);amount=effect.amount;opening=effect.opening;}
+  else if(paymentKinds.includes(document.kind)){const effect=await paymentEffect(db,actor,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;payment=effect.payment;}
   else if(extendedKinds.includes(document.kind)){
     requireThat(db.schemaVersion>=4,503,'UPGRADE_REQUIRED','This accounting workflow is being activated.');
     const effect=await extendedEffect(db,companyId,document,line,(type,id)=>allowedResource(denials,type,id));amount=effect.amount;allocation=effect.allocation??null;
@@ -87,6 +90,7 @@ export async function preview(db, actor, companyId, raw) {
   if(approval){requireThat(approval.mode!=='denied',403,'PREPARATION_DENIED','The configured document permission does not allow your role to submit this transaction type.');effects.approval=approval;}
   if(allocation)effects.allocation=allocation;
   if(opening)effects.opening=opening;
+  if(payment)effects.payment=payment;
   return {...effects,digest:await hash(canonical({companyId,...effects}))};
 }
 async function retryResult(db, actor, companyId, kind, key, payloadHash) {
@@ -132,6 +136,9 @@ async function transact(db, statements, retry) {
       ['SESSION_EXPIRED',401,'Your session is no longer active. Sign in again.'],
       ['FORBIDDEN',403,'Your access changed. This action is no longer allowed.'],
       ['RESOURCE_DENIED',403,'Your access does not include this customer, item, or account.'],
+      ['ADVANCE_EXCEEDED',409,'An advance balance changed after another pending or posted application.'],
+      ['ADVANCE_SOURCE',409,'The selected advance sources no longer agree with this payment.'],
+      ['ALLOCATION_REQUIRED',409,'The payment references must agree exactly and commit with the document.'],
       ['OVER_ALLOCATION',409,'The invoice or bill balance changed. Review a fresh settlement preview.'],
       ['SETTLEMENT_TARGET',409,'The invoice or bill is no longer available for this settlement.'],
       ['DOCUMENT_IMMUTABLE',409,'The transaction was already reviewed or changed.'],
@@ -174,6 +181,7 @@ export async function submit(db,actor,companyId,input,key) {
   ];
   if(document.kind==='stock_issue') statements.push(db.prepare('UPDATE items SET reserved=reserved+? WHERE company_id=? AND id=?').bind(Number(document.quantity),companyId,document.itemId));
   if(effect.allocation)statements.push(db.prepare('INSERT INTO document_allocations(company_id,settlement_id,target_id,amount_minor) VALUES(?,?,?,?)').bind(companyId,id,effect.allocation.targetDocumentId,minor(effect.amount)));
+  if(effect.payment){for(const r of document.allocations)statements.push(db.prepare('INSERT INTO document_allocations(company_id,settlement_id,target_id,amount_minor) VALUES(?,?,?,?)').bind(companyId,id,r.targetDocumentId,minor(r.amount)));for(const r of document.sources)statements.push(db.prepare('INSERT INTO payment_sources(company_id,consumer_id,source_id,amount_minor) VALUES(?,?,?,?)').bind(companyId,id,r.paymentId,minor(r.amount)));}
   for(const fileId of fileIds)statements.push(db.prepare('INSERT INTO document_attachments(company_id,document_id,file_id,actor_id,created_at) VALUES(?,?,?,?,?)').bind(companyId,id,fileId,actor.id,time),db.prepare('INSERT INTO file_events(id,company_id,file_id,actor_id,action,reason,created_at) VALUES(?,?,?,?,?,?,?)').bind(crypto.randomUUID(),companyId,fileId,actor.id,'attached',id,time));
   if(direct){
     if(document.kind==='stock_issue')statements.push(db.prepare('UPDATE items SET on_hand=on_hand-?,reserved=reserved-? WHERE company_id=? AND id=?').bind(Number(document.quantity),Number(document.quantity),companyId,document.itemId));
@@ -207,6 +215,7 @@ export async function review(db,actor,companyId,documentId,input,key,action) {
     requireThat(target,409,'SETTLEMENT_TARGET','The underlying invoice or bill is unavailable.');
     for(const line of JSON.parse(target.preview_json).lines)allowedResource(denials,'account',line.accountId);
   }
+  if(effect.payment)for(const r of [...effect.document.allocations.map(a=>a.targetDocumentId),...effect.document.sources.map(a=>a.paymentId)]){const target=await db.prepare('SELECT preview_json FROM documents WHERE company_id=? AND id=?').bind(companyId,r).first();requireThat(target,409,'SETTLEMENT_TARGET','A payment reference is unavailable.');for(const line of JSON.parse(target.preview_json).lines)allowedResource(denials,'account',line.accountId);}
   requireThat(await hash(canonical(JSON.parse(document.payload_json)))===document.payload_hash,409,'PAYLOAD_CHANGED','The stored document does not match its approved payload.');
   if(document.kind==='opening_balance'&&action==='approve'){
     const currentLines=[],current=await openingEffect(db,actor,companyId,effect.document,(accountId,debit,credit)=>currentLines.push({accountId,debit:decimal(debit),credit:decimal(credit)}),{review:true,excludeId:documentId});
@@ -250,7 +259,7 @@ export async function workspace(db,actor,companyId) {
   };
 }
 
-function allocationVisibility(db){return db.schemaVersion>=4?'(SELECT t.preview_json FROM document_allocations a JOIN documents t ON t.company_id=a.company_id AND t.id=a.target_id WHERE a.company_id=d.company_id AND a.settlement_id=d.id) AS target_preview_json,':'';}
+function allocationVisibility(db){if(!(db.schemaVersion>=4))return '';if(db.schemaVersion<11)return '(SELECT t.preview_json FROM document_allocations a JOIN documents t ON t.company_id=a.company_id AND t.id=a.target_id WHERE a.company_id=d.company_id AND a.settlement_id=d.id) AS target_preview_json,';return "(SELECT jsonb_build_object('lines',coalesce(jsonb_agg(x.line),'[]'::jsonb))::text FROM(SELECT l AS line FROM document_allocations a JOIN documents t ON t.company_id=a.company_id AND t.id=a.target_id CROSS JOIN LATERAL jsonb_array_elements(t.preview_json::jsonb->'lines') l WHERE a.company_id=d.company_id AND a.settlement_id=d.id UNION ALL SELECT l AS line FROM payment_sources a JOIN documents t ON t.company_id=a.company_id AND t.id=a.source_id CROSS JOIN LATERAL jsonb_array_elements(t.preview_json::jsonb->'lines') l WHERE a.company_id=d.company_id AND a.consumer_id=d.id) x) AS target_preview_json,";}
 export async function documentDetail(db,actor,companyId,id){
   await companyAccess(db,actor,companyId);
   const row=await db.prepare('SELECT d.*,'+allocationVisibility(db)+(db.schemaVersion>=5?'coalesce((SELECT v.revision FROM document_evidence_versions v WHERE v.company_id=d.company_id AND v.document_id=d.id),0) AS evidence_revision,':'')+'u.name AS preparer_name,r.name AS reviewer_name FROM documents d JOIN users u ON u.id=d.prepared_by LEFT JOIN users r ON r.id=d.reviewed_by WHERE d.company_id=? AND d.id=?').bind(companyId,id).first();
