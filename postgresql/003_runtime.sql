@@ -12,6 +12,14 @@ GRANT UPDATE(reserved,on_hand) ON items TO saven_app;
 GRANT UPDATE(status,reviewed_by,version) ON documents TO saven_app;
 GRANT UPDATE(status) ON journals TO saven_app;
 DO $$ BEGIN IF to_regclass('public.document_allocations') IS NOT NULL THEN EXECUTE 'GRANT INSERT ON public.document_allocations TO saven_app'; END IF; END $$;
+DO $$ DECLARE t text; BEGIN
+ FOREACH t IN ARRAY ARRAY['stored_files','file_events','file_removals','document_attachments','attachment_withdrawals','notifications','assistant_tasks'] LOOP
+  IF to_regclass('public.'||t) IS NOT NULL THEN EXECUTE format('GRANT INSERT ON public.%I TO saven_app',t); END IF;
+ END LOOP;
+ IF to_regclass('public.stored_files') IS NOT NULL THEN EXECUTE 'GRANT UPDATE(scan_state) ON public.stored_files TO saven_app'; END IF;
+ IF to_regclass('public.notifications') IS NOT NULL THEN EXECUTE 'GRANT UPDATE(read_at) ON public.notifications TO saven_app'; END IF;
+ IF to_regclass('public.assistant_tasks') IS NOT NULL THEN EXECUTE 'GRANT UPDATE(status,response_json,error_code,model,input_tokens,output_tokens,started_at,finished_at) ON public.assistant_tasks TO saven_app'; END IF;
+END $$;
 REVOKE ALL ON FUNCTION saven_immutable(),saven_operation_authority(),saven_document_insert(),saven_document_review(),saven_journal_control(),saven_line_insert() FROM PUBLIC;
 -- Reapply after a --no-acl restore. Include later identity/configuration
 -- helpers without granting their execution to other database roles.
