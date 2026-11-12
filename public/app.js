@@ -20,7 +20,7 @@ async function call(path,{method='GET',body,key}={}) {
 const endpoint=area=>`/api/companies/${encodeURIComponent(activeCompany)}/${area}`;
 async function reloadCompanies(companyId){me=await call('/api/me');if(companyId){activeCompany=companyId;page='overview';}await refresh();}
 const management=createManagement({getData:()=>data,getMe:()=>me,call,endpoint,dialog,refresh,reloadCompanies,render,setBusy:value=>{sending=value;},toast,accountSaved:start});
-async function refresh(){data=await call(endpoint('workspace'));render();}
+async function refresh(){data=await call(endpoint('workspace'));if(!Array.isArray(data.periods)&&Array.isArray(data.periods?.results))data.periods=data.periods.results;render();}
 function signIn(message='') {
   me=null;data=null;dialog.close();
   const invitation=signInMode==='invitation';
