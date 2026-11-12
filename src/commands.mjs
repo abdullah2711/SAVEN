@@ -14,17 +14,18 @@ function text(value, field, max = 160) {
 }
 export function normalize(input) {
   if(extendedKinds.includes(input?.kind))return normalizeExtended(input);
-  fields(input, ['kind','date','reference','description','partyId','amount','settlement','cashAccountId','itemId','quantity']);
+  fields(input, ['kind','date','reference','description','partyId','amount','settlement','cashAccountId','itemId','quantity','dueDate']);
   requireThat(['invoice','stock_issue'].includes(input.kind), 422, 'INVALID_KIND', 'Choose a service invoice or stock issue.');
   requireThat(typeof input.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.date) && !Number.isNaN(Date.parse(input.date)) && new Date(input.date).toISOString().slice(0,10) === input.date, 422, 'INVALID_DATE', 'Choose a valid accounting date.');
   const base = { kind: input.kind, date: input.date, reference: text(input.reference,'reference',60), description: text(input.description,'description',500) };
   if (input.kind === 'invoice') {
+    if(input.dueDate!==undefined)requireThat(typeof input.dueDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(input.dueDate)&&!Number.isNaN(Date.parse(input.dueDate))&&new Date(input.dueDate).toISOString().slice(0,10)===input.dueDate&&input.dueDate>=input.date,422,'INVALID_DATE','The due date must be a valid date on or after the invoice date.');
     requireThat(input.itemId === undefined && input.quantity === undefined, 422, 'INVALID_FIELD', 'A service invoice cannot include stock-issue fields.');
     requireThat(['credit','receipt','cash'].includes(input.settlement), 422, 'INVALID_SETTLEMENT', 'Choose credit, invoice with receipt, or direct cash sale.');
     requireThat(input.settlement === 'credit' ? input.cashAccountId === undefined : typeof input.cashAccountId==='string'&&input.cashAccountId.length>0&&input.cashAccountId.length<=160, 422, 'INVALID_ACCOUNT', 'Choose the cash or bank account for this receipt.');
-    return { ...base, partyId: text(input.partyId,'customer'), amount: decimal(minor(input.amount,{positive:true})), settlement: input.settlement, ...(input.settlement !== 'credit' ? {cashAccountId:input.cashAccountId}: {}) };
+    return { ...base, partyId: text(input.partyId,'customer'), amount: decimal(minor(input.amount,{positive:true})), settlement: input.settlement, ...(input.dueDate?{dueDate:input.dueDate}:{}),...(input.settlement !== 'credit' ? {cashAccountId:input.cashAccountId}: {}) };
   }
-  requireThat(['partyId','amount','settlement','cashAccountId'].every(key=>input[key]===undefined),422,'INVALID_FIELD','A stock issue cannot include invoice fields.');
+  requireThat(['partyId','amount','settlement','cashAccountId','dueDate'].every(key=>input[key]===undefined),422,'INVALID_FIELD','A stock issue cannot include invoice fields.');
   return { ...base, itemId: text(input.itemId,'item'), quantity: String(quantity(input.quantity)) };
 }
 async function denied(db, companyId, userId) {

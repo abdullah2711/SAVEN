@@ -73,3 +73,9 @@ jobs:
           PGHOST: 127.0.0.1
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
+      - name: Historical party statements, ageing and credit adjustment contracts
+        run: node scripts/verify-party-accounting.mjs --migrate
+        env:
+          PGHOST: 127.0.0.1
+          PGPASSWORD: contract-test-only
+          CONTRACT_DATABASE: saven_contract_ci

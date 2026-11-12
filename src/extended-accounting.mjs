@@ -2,20 +2,20 @@ import {requireThat} from './errors.mjs';
 import {minor,decimal} from './money.mjs';
 import {companyAccess} from './auth.mjs';
 
-export const extendedKinds=['bill','receipt','payment','journal','cash_transfer','cash_expense','cash_income','reversal'];
+export const extendedKinds=['bill','receipt','payment','journal','cash_transfer','cash_expense','cash_income','reversal','credit_note','supplier_credit'];
 const common=['kind','date','reference','description'];
 function object(value,allowed){requireThat(value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(k=>allowed.includes(k)),422,'INVALID_DOCUMENT','Provide only the supported document fields.');}
 function text(value,label,max=160){requireThat(typeof value==='string'&&value.trim().length>0&&value.trim().length<=max&&!/[\u0000-\u001f]/.test(value),422,'INVALID_FIELD',`Provide a valid ${label}.`);return value.trim();}
 export function normalizeExtended(input){
   requireThat(extendedKinds.includes(input?.kind),422,'INVALID_KIND','Choose a supported transaction type.');
-  const extra=input.kind==='bill'?['partyId','amount','expenseAccountId']:input.kind==='journal'?['lines']:input.kind==='reversal'?['originalDocumentId']:input.kind==='cash_transfer'?['fromAccountId','toAccountId','amount']:['cash_expense','cash_income'].includes(input.kind)?['cashAccountId','counterAccountId','amount']:['targetDocumentId','partyId','amount','cashAccountId'];
+  const extra=input.kind==='bill'?['partyId','amount','expenseAccountId','dueDate']:input.kind==='journal'?['lines']:input.kind==='reversal'?['originalDocumentId']:input.kind==='cash_transfer'?['fromAccountId','toAccountId','amount']:['credit_note','supplier_credit'].includes(input.kind)?['targetDocumentId','amount','partyId']:['cash_expense','cash_income'].includes(input.kind)?['cashAccountId','counterAccountId','amount']:['targetDocumentId','partyId','amount','cashAccountId'];
   object(input,[...common,...extra]);
   requireThat(typeof input.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(input.date)&&!Number.isNaN(Date.parse(input.date))&&new Date(input.date).toISOString().slice(0,10)===input.date,422,'INVALID_DATE','Choose a valid accounting date.');
   const base={kind:input.kind,date:input.date,reference:text(input.reference,'reference',60),description:text(input.description,'description',500)};
   if(input.kind==='reversal')return {...base,originalDocumentId:text(input.originalDocumentId,'original transaction')};
   if(input.kind==='cash_transfer'){requireThat(input.fromAccountId!==input.toAccountId,422,'INVALID_ACCOUNT','Choose different source and destination accounts.');return {...base,fromAccountId:text(input.fromAccountId,'source account'),toAccountId:text(input.toAccountId,'destination account'),amount:decimal(minor(input.amount,{positive:true}))};}
   if(['cash_expense','cash_income'].includes(input.kind))return {...base,cashAccountId:text(input.cashAccountId,'cash or bank account'),counterAccountId:text(input.counterAccountId,'income or expense account'),amount:decimal(minor(input.amount,{positive:true}))};
-  if(input.kind==='bill')return {...base,partyId:text(input.partyId,'supplier'),amount:decimal(minor(input.amount,{positive:true})),expenseAccountId:text(input.expenseAccountId,'expense account')};
+  if(input.kind==='bill'){const dueDate=input.dueDate??base.date;requireThat(typeof dueDate==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(dueDate)&&!Number.isNaN(Date.parse(dueDate))&&new Date(dueDate).toISOString().slice(0,10)===dueDate&&dueDate>=base.date,422,'INVALID_DATE','The due date must be a valid date on or after the bill date.');return {...base,partyId:text(input.partyId,'supplier'),amount:decimal(minor(input.amount,{positive:true})),expenseAccountId:text(input.expenseAccountId,'expense account'),dueDate};}
   if(input.kind==='journal'){
     requireThat(Array.isArray(input.lines)&&input.lines.length>=2&&input.lines.length<=40,422,'INVALID_LINES','A journal needs 2 to 40 lines.');
     let debit=0n,credit=0n;
@@ -23,7 +23,7 @@ export function normalizeExtended(input){
     requireThat(debit===credit,422,'UNBALANCED_JOURNAL','Total debits and credits must match.');
     minor(decimal(debit),{positive:true});return {...base,lines};
   }
-  return {...base,targetDocumentId:text(input.targetDocumentId,'invoice or bill'),...(input.partyId?{partyId:text(input.partyId,'contact')}:{}),amount:decimal(minor(input.amount,{positive:true})),cashAccountId:text(input.cashAccountId,'cash or bank account')};
+  return {...base,targetDocumentId:text(input.targetDocumentId,'invoice or bill'),...(input.partyId?{partyId:text(input.partyId,'contact')}:{}),amount:decimal(minor(input.amount,{positive:true})),...(!['credit_note','supplier_credit'].includes(input.kind)?{cashAccountId:text(input.cashAccountId,'cash or bank account')}:{})};
 }
 
 export async function extendedEffect(db,companyId,document,line,allow){
@@ -50,9 +50,10 @@ export async function extendedEffect(db,companyId,document,line,allow){
     account('payable',a=>a.kind==='liability'&&a.category==='payable','The supplier control account is missing.');
     line(document.expenseAccountId,amount,0n);line('payable',0n,amount);return {amount};
   }
-  account(document.cashAccountId,a=>a.kind==='asset'&&a.category==='cash_bank','Choose an available cash or bank account.');
+  const credit=['credit_note','supplier_credit'].includes(document.kind);if(credit)requireThat(db.schemaVersion>=7,503,'UPGRADE_REQUIRED','Credit adjustments require the receivables/payables upgrade.');
+  if(!credit)account(document.cashAccountId,a=>a.kind==='asset'&&a.category==='cash_bank','Choose an available cash or bank account.');
   const target=await db.prepare('SELECT * FROM documents WHERE company_id=? AND id=?').bind(companyId,document.targetDocumentId).first();
-  requireThat(target&&target.status==='posted'&&target.kind===(document.kind==='receipt'?'invoice':'bill'),422,'SETTLEMENT_TARGET','Choose a posted customer invoice or supplier bill.');
+  requireThat(target&&target.status==='posted'&&target.kind===(['receipt','credit_note'].includes(document.kind)?'invoice':'bill'),422,'SETTLEMENT_TARGET','Choose a posted customer invoice or supplier bill.');
   allow('party',target.party_id);
   for(const entry of JSON.parse(target.preview_json).lines)allow('account',entry.accountId);
   requireThat(document.date>=target.date,422,'SETTLEMENT_DATE','The settlement date cannot precede its invoice or bill.');
@@ -62,7 +63,9 @@ export async function extendedEffect(db,companyId,document,line,allow){
   const available=BigInt(target.amount_minor)-BigInt(used.amount);
   requireThat(amount<=available,409,'OVER_ALLOCATION','This amount exceeds the invoice or bill balance available after pending settlements.');
   document.partyId=target.party_id;
-  if(document.kind==='receipt'){line(document.cashAccountId,amount,0n);line('receivable',0n,amount);}
+  if(document.kind==='credit_note'){line('revenue',amount,0n);line('receivable',0n,amount);}
+  else if(document.kind==='supplier_credit'){const expenseId=payload.expenseAccountId;account(expenseId,a=>a.kind==='expense'&&a.category==='general','The original bill expense account is unavailable.');line('payable',amount,0n);line(expenseId,0n,amount);}
+  else if(document.kind==='receipt'){line(document.cashAccountId,amount,0n);line('receivable',0n,amount);}
   else{line('payable',amount,0n);line(document.cashAccountId,0n,amount);}
   return {amount,allocation:{targetDocumentId:target.id,reference:target.reference,amount:decimal(amount),availableBefore:decimal(available),availableAfter:decimal(available-amount)}};
 }
