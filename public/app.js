@@ -1,3 +1,4 @@
+import {openingSummary} from './opening.js';
 import {createManagement} from './management.js';
 import {createAssistantView} from './assistant.js';
 import {createTransactions} from './transactions.js';
@@ -27,7 +28,7 @@ const assistantView=createAssistantView({getData:()=>data,getMe:()=>me,call,endp
 const fileView=createFileView({getData:()=>data,call,endpoint,dialog,render,refresh,setBusy:value=>{sending=value;},toast});
 const transactions=createTransactions({getData:()=>data,call,endpoint,dialog,refresh,previewMarkup,setBusy:value=>{sending=value;},toast});
 const management=createManagement({getData:()=>data,getMe:()=>me,call,endpoint,dialog,refresh,reloadCompanies,render,setBusy:value=>{sending=value;},toast,accountSaved:start});
-const accountingView=createAccountingView({getData:()=>data,call,endpoint,dialog,render,refresh,transactions,management,toast,setBusy:value=>{sending=value;}});
+const accountingView=createAccountingView({getData:()=>data,call,endpoint,dialog,render,refresh,transactions,management,toast,openDocument,previewMarkup,setBusy:value=>{sending=value;}});
 async function refresh(){data=await call(endpoint('workspace'));if(!Array.isArray(data.periods)&&Array.isArray(data.periods?.results))data.periods=data.periods.results;await accountingView.load(page);render();}
 function signIn(message='') {
   me=null;data=null;dialog.close();
@@ -92,10 +93,12 @@ function pageContent(){
 }
 function options(rows){return rows.map(row=>`<option value="${e(row.id)}">${e(row.name)}</option>`).join('');}
 function previewMarkup(effect,state='pending'){
+  if(effect.openingPosition||effect.opening?.noAdditionalJournal)return openingSummary(effect);
+  const opening=effect.opening?openingSummary(effect):'';
   const heading=state==='posted'?'Accounting entry':state==='rejected'?'Proposed accounting entry':'Accounting entry preview';
   const description=state==='posted'?'These accounting effects are posted.':state==='rejected'?'This request was returned. These effects were not posted.':'These exact effects will be posted after approval.';
   const stockEffect=state==='posted'?'issued':state==='rejected'?'reservation released':'reserved';
-  return `<h3>${heading}</h3><p>PKR · ${description}</p><table><thead><tr><th>Account</th><th class="amount">Debit</th><th class="amount">Credit</th></tr></thead><tbody>${effect.lines.map(line=>`<tr><td>${e(line.name)}<span class="table-secondary">${e(line.code)}</span></td><td class="amount">${line.debit==='0.00'?'—':amount(line.debit)}</td><td class="amount">${line.credit==='0.00'?'—':amount(line.credit)}</td></tr>`).join('')}</tbody></table><div class="balance-total"><span>Balanced entry</span><span>${icon('check')}</span></div>${effect.stock?`<div class="preview-caption">${e(effect.stock.quantity)} ${e(effect.stock.unit)} · ${stockEffect} · ${e(effect.stock.store)}. ${state==='pending'?'Stock and accounting change together on approval.':state==='posted'?'Stock release and accounting were posted together.':'Physical stock and the ledger were not changed.'}</div>`:''}`;
+  return `${opening}<h3>${heading}</h3><p>PKR · ${description}</p><table><thead><tr><th>Account</th><th class="amount">Debit</th><th class="amount">Credit</th></tr></thead><tbody>${effect.lines.map(line=>`<tr><td>${e(line.name)}<span class="table-secondary">${e(line.code)}</span></td><td class="amount">${line.debit==='0.00'?'—':amount(line.debit)}</td><td class="amount">${line.credit==='0.00'?'—':amount(line.credit)}</td></tr>`).join('')}</tbody></table><div class="balance-total"><span>Balanced entry</span><span>${icon('check')}</span></div>${effect.stock?`<div class="preview-caption">${e(effect.stock.quantity)} ${e(effect.stock.unit)} · ${stockEffect} · ${e(effect.stock.store)}. ${state==='pending'?'Stock and accounting change together on approval.':state==='posted'?'Stock release and accounting were posted together.':'Physical stock and the ledger were not changed.'}</div>`:''}`;
 }
 function formDocument(form){
   const values=Object.fromEntries(new FormData(form));

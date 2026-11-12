@@ -66,10 +66,10 @@ BEGIN
     child_ids:=child_ids||jsonb_build_array(new_id);
    END LOOP;
   ELSE
-   IF EXISTS(SELECT 1 FROM items i WHERE i.company_id=cid AND(i.reserved!=0 OR i.on_hand>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(root.payload_json::jsonb->'stock') p WHERE p->>'itemId'=i.id))) THEN RAISE EXCEPTION 'OPENING_STOCK_COVERAGE';END IF;
+   IF EXISTS(SELECT 1 FROM items i WHERE i.company_id=cid AND(i.reserved!=0 OR i.on_hand>0 AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(root.payload_json::jsonb->'stock') ps(value) WHERE ps.value->>'itemId'=i.id))) THEN RAISE EXCEPTION 'OPENING_STOCK_COVERAGE';END IF;
    FOR a IN SELECT id FROM accounts WHERE company_id=cid AND category='inventory' LOOP
     SELECT coalesce(sum(l.debit_minor-l.credit_minor),0) INTO ledger FROM journal_lines l JOIN journals j ON j.company_id=l.company_id AND j.id=l.journal_id WHERE j.company_id=cid AND j.status='posted' AND j.date<=root.date AND l.account_id=a.id;
-    SELECT coalesce(sum((p->>'quantity')::bigint*i.unit_cost_minor),0) INTO incoming FROM jsonb_array_elements(root.payload_json::jsonb->'stock') p JOIN items i ON i.company_id=cid AND i.id=p->>'itemId' WHERE i.inventory_account=a.id;
+    SELECT coalesce(sum((ps.value->>'quantity')::bigint*i.unit_cost_minor),0) INTO incoming FROM jsonb_array_elements(root.payload_json::jsonb->'stock') ps(value) JOIN items i ON i.company_id=cid AND i.id=ps.value->>'itemId' WHERE i.inventory_account=a.id;
     IF ledger!=incoming THEN RAISE EXCEPTION 'OPENING_INVENTORY_DIFFERENCE';END IF;
    END LOOP;
    FOR p IN SELECT value FROM jsonb_array_elements(root.payload_json::jsonb->'stock') LOOP
