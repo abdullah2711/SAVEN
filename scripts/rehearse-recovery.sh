@@ -13,14 +13,14 @@ test -s "$backup.objects.tar"
 runuser -u postgres -- createdb "$database"
 runuser -u postgres -- pg_restore --exit-on-error --no-owner --no-acl -d "$database" < "$backup"
 runuser -u postgres -- psql -X -v ON_ERROR_STOP=1 -d "$database" < postgresql/003_runtime.sql
-target=/var/lib/saven-testing/restore-acceptance-20261112
+target="/var/lib/saven-testing/restore-$database"
 test ! -e "$target"
 install -d -o root -g root -m 0700 "$target"
 python3 - "$backup.objects.tar" "$target" <<'PY'
 import sys,tarfile
 from pathlib import Path
 root=Path(sys.argv[2]).resolve()
-assert root==Path('/var/lib/saven-testing/restore-acceptance-20261112')
+assert root.parent==Path('/var/lib/saven-testing') and root.name.startswith('restore-saven_restore_')
 with tarfile.open(sys.argv[1]) as archive:
     archive.extractall(root,filter='data')
 PY

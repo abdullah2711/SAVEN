@@ -2,16 +2,19 @@ import {requireThat} from './errors.mjs';
 import {minor,decimal} from './money.mjs';
 import {companyAccess} from './auth.mjs';
 
-export const extendedKinds=['bill','receipt','payment','journal'];
+export const extendedKinds=['bill','receipt','payment','journal','cash_transfer','cash_expense','cash_income','reversal'];
 const common=['kind','date','reference','description'];
 function object(value,allowed){requireThat(value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(k=>allowed.includes(k)),422,'INVALID_DOCUMENT','Provide only the supported document fields.');}
 function text(value,label,max=160){requireThat(typeof value==='string'&&value.trim().length>0&&value.trim().length<=max&&!/[\u0000-\u001f]/.test(value),422,'INVALID_FIELD',`Provide a valid ${label}.`);return value.trim();}
 export function normalizeExtended(input){
   requireThat(extendedKinds.includes(input?.kind),422,'INVALID_KIND','Choose a supported transaction type.');
-  const extra=input.kind==='bill'?['partyId','amount','expenseAccountId']:input.kind==='journal'?['lines']:['targetDocumentId','partyId','amount','cashAccountId'];
+  const extra=input.kind==='bill'?['partyId','amount','expenseAccountId']:input.kind==='journal'?['lines']:input.kind==='reversal'?['originalDocumentId']:input.kind==='cash_transfer'?['fromAccountId','toAccountId','amount']:['cash_expense','cash_income'].includes(input.kind)?['cashAccountId','counterAccountId','amount']:['targetDocumentId','partyId','amount','cashAccountId'];
   object(input,[...common,...extra]);
   requireThat(typeof input.date==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(input.date)&&!Number.isNaN(Date.parse(input.date))&&new Date(input.date).toISOString().slice(0,10)===input.date,422,'INVALID_DATE','Choose a valid accounting date.');
   const base={kind:input.kind,date:input.date,reference:text(input.reference,'reference',60),description:text(input.description,'description',500)};
+  if(input.kind==='reversal')return {...base,originalDocumentId:text(input.originalDocumentId,'original transaction')};
+  if(input.kind==='cash_transfer'){requireThat(input.fromAccountId!==input.toAccountId,422,'INVALID_ACCOUNT','Choose different source and destination accounts.');return {...base,fromAccountId:text(input.fromAccountId,'source account'),toAccountId:text(input.toAccountId,'destination account'),amount:decimal(minor(input.amount,{positive:true}))};}
+  if(['cash_expense','cash_income'].includes(input.kind))return {...base,cashAccountId:text(input.cashAccountId,'cash or bank account'),counterAccountId:text(input.counterAccountId,'income or expense account'),amount:decimal(minor(input.amount,{positive:true}))};
   if(input.kind==='bill')return {...base,partyId:text(input.partyId,'supplier'),amount:decimal(minor(input.amount,{positive:true})),expenseAccountId:text(input.expenseAccountId,'expense account')};
   if(input.kind==='journal'){
     requireThat(Array.isArray(input.lines)&&input.lines.length>=2&&input.lines.length<=40,422,'INVALID_LINES','A journal needs 2 to 40 lines.');
@@ -24,8 +27,16 @@ export function normalizeExtended(input){
 }
 
 export async function extendedEffect(db,companyId,document,line,allow){
-  const accounts=(await db.prepare('SELECT id,kind,category FROM accounts WHERE company_id=?').bind(companyId).all()).results;
+  const accounts=(await db.prepare('SELECT id,kind,category'+(db.schemaVersion>=6?',active':'')+' FROM accounts WHERE company_id=?').bind(companyId).all()).results;
   const account=(id,check,message)=>{const a=accounts.find(x=>x.id===id);requireThat(a&&check(a),422,'INVALID_ACCOUNT',message);return a;};
+  if(['cash_transfer','cash_expense','cash_income','reversal'].includes(document.kind))requireThat(db.schemaVersion>=6,503,'UPGRADE_REQUIRED','The accounting workspace upgrade is required.');
+  if(document.kind==='reversal'){
+    const original=await db.prepare('SELECT * FROM documents WHERE company_id=? AND id=?').bind(companyId,document.originalDocumentId).first();requireThat(original?.status==='posted'&&['journal','cash_transfer','cash_expense','cash_income'].includes(original.kind),422,'INVALID_REVERSAL','Select a posted general journal or cash transaction. Invoice, settlement and stock corrections require their subledger workflow.');requireThat(document.date>=original.date,422,'INVALID_DATE','The reversal date cannot precede the original entry.');
+    const prior=await db.prepare("SELECT id FROM documents WHERE company_id=? AND kind='reversal' AND status IN('pending','posted') AND payload_json::jsonb->>'originalDocumentId'=?").bind(companyId,original.id).first();requireThat(!prior,409,'ALREADY_REVERSED','This entry already has a pending or posted reversal.');
+    for(const entry of JSON.parse(original.preview_json).lines)line(entry.accountId,minor(entry.credit),minor(entry.debit));return {amount:BigInt(original.amount_minor)};
+  }
+  if(document.kind==='cash_transfer'){const amount=BigInt(minor(document.amount,{positive:true}));for(const id of [document.fromAccountId,document.toAccountId])account(id,a=>a.kind==='asset'&&a.category==='cash_bank','Select two cash or bank accounts.');line(document.toAccountId,amount,0n);line(document.fromAccountId,0n,amount);return {amount};}
+  if(['cash_expense','cash_income'].includes(document.kind)){const amount=BigInt(minor(document.amount,{positive:true}));account(document.cashAccountId,a=>a.kind==='asset'&&a.category==='cash_bank','Choose a cash or bank account.');account(document.counterAccountId,a=>a.category==='general'&&a.kind===(document.kind==='cash_expense'?'expense':'income'),'Choose the appropriate expense or income account.');if(document.kind==='cash_expense'){line(document.counterAccountId,amount,0n);line(document.cashAccountId,0n,amount);}else{line(document.cashAccountId,amount,0n);line(document.counterAccountId,0n,amount);}return {amount};}
   if(document.kind==='journal'){
     for(const row of document.lines){account(row.accountId,a=>['general','cash_bank'].includes(a.category),'Use a normal ledger account. Customer, supplier and inventory control accounts require their own transactions.');line(row.accountId,minor(row.debit),minor(row.credit));}
     return {amount:document.lines.reduce((sum,l)=>sum+BigInt(minor(l.debit)),0n)};

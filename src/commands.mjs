@@ -21,7 +21,7 @@ export function normalize(input) {
   if (input.kind === 'invoice') {
     requireThat(input.itemId === undefined && input.quantity === undefined, 422, 'INVALID_FIELD', 'A service invoice cannot include stock-issue fields.');
     requireThat(['credit','receipt','cash'].includes(input.settlement), 422, 'INVALID_SETTLEMENT', 'Choose credit, invoice with receipt, or direct cash sale.');
-    requireThat(input.settlement === 'credit' ? input.cashAccountId === undefined : ['cash','bank'].includes(input.cashAccountId), 422, 'INVALID_ACCOUNT', 'Choose the cash or bank account for this receipt.');
+    requireThat(input.settlement === 'credit' ? input.cashAccountId === undefined : typeof input.cashAccountId==='string'&&input.cashAccountId.length>0&&input.cashAccountId.length<=160, 422, 'INVALID_ACCOUNT', 'Choose the cash or bank account for this receipt.');
     return { ...base, partyId: text(input.partyId,'customer'), amount: decimal(minor(input.amount,{positive:true})), settlement: input.settlement, ...(input.settlement !== 'credit' ? {cashAccountId:input.cashAccountId}: {}) };
   }
   requireThat(['partyId','amount','settlement','cashAccountId'].every(key=>input[key]===undefined),422,'INVALID_FIELD','A stock issue cannot include invoice fields.');
@@ -39,10 +39,11 @@ export async function preview(db, actor, companyId, raw) {
   const document = normalize(raw), lines = [], denials = await denied(db,companyId,actor.id);
   const period = await db.prepare('SELECT locked FROM periods WHERE company_id=? AND ? BETWEEN start_date AND end_date').bind(companyId,document.date).first();
   requireThat(period && !period.locked,409,'PERIOD_LOCKED','This accounting date is outside an open period.');
-  const accounts = (await db.prepare('SELECT id,code,name FROM accounts WHERE company_id=?').bind(companyId).all()).results;
+  const accounts = (await db.prepare('SELECT id,code,name'+(db.schemaVersion>=3?',kind,category':'')+(db.schemaVersion>=6?',active':'')+' FROM accounts WHERE company_id=?').bind(companyId).all()).results;
   function line(accountId, debit, credit) {
     const account = accounts.find(row=>row.id===accountId);
     requireThat(account,422,'ACCOUNT_MAPPING','An accounting mapping is missing. Ask your administrator.');
+    requireThat(account.active!==false||document.kind==='reversal',409,'ACCOUNT_INACTIVE','This account is archived. Choose an active account.');
     allowedResource(denials,'account',accountId);
     lines.push({accountId,code:account.code,name:account.name,debit:decimal(debit),credit:decimal(credit)});
   }
@@ -56,6 +57,7 @@ export async function preview(db, actor, companyId, raw) {
     const party = await db.prepare('SELECT name'+(db.schemaVersion>=3?',kind':'')+' FROM parties WHERE company_id=? AND id=?').bind(companyId,document.partyId).first();
     requireThat(party&&party.kind!=='supplier',422,'CUSTOMER_NOT_FOUND','Select a customer in this company.');
     amount = minor(document.amount,{positive:true});
+    if(document.settlement!=='credit')requireThat(db.schemaVersion>=3?accounts.some(a=>a.id===document.cashAccountId&&a.kind==='asset'&&a.category==='cash_bank'):['cash','bank'].includes(document.cashAccountId),422,'INVALID_ACCOUNT','Choose an actual cash or bank account.');
     if(document.settlement==='cash') { line(document.cashAccountId,amount,0); line('revenue',0,amount); }
     else {
       line('receivable',amount,0); line('revenue',0,amount);
@@ -103,6 +105,7 @@ async function transact(db, statements, retry) {
     for(const [code,status,description] of [
       ['STALE_PREVIEW',409,'The company changed after this preview. Review a fresh preview and try again.'],
       ['PERIOD_LOCKED',409,'The accounting period is locked.'],
+      ['BANK_PERIOD_CLOSED',409,'This cash or bank account has a closed reconciliation or a fixed opening baseline. Use a later open accounting date.'],
       ['SESSION_EXPIRED',401,'Your session is no longer active. Sign in again.'],
       ['FORBIDDEN',403,'Your access changed. This action is no longer allowed.'],
       ['RESOURCE_DENIED',403,'Your access does not include this customer, item, or account.'],

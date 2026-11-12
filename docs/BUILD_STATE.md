@@ -145,3 +145,14 @@ The hardened root-owned combined backup service successfully produced database a
 
 Cloudflare hosts the frontend, edge routing and the consent-gated AI provider; the personal server hosts PostgreSQL, application API, private objects and antivirus. The AI budget Durable Object stores usage reservations and attributed consent, not the accounting ledger. Hosting and migration procedures are in docs/13-hosting-postgresql-and-migration.md and docs/15-runtime-services.md. No full-MVP completion claim is supported; continue the remaining requirement catalog. Real private-company AI processing remains default-off pending specific owner consent.
 
+
+
+## Accounting-first delivery reset - 12 November 2026
+
+The owner explicitly directed completion one module at a time, accounting first, followed by the remaining modules, and AI afterward. Further AI development is paused. Company settings are not represented as the missing operator portal. The accounting and cash/bank acceptance boundary and remaining catalog work are documented in docs/16-accounting-delivery.md.
+
+Reconnected using the owner's renewed temporary SSH tunnel with the pinned host fingerprint. Retrieved the earlier recovery result: PASSED in saven_restore_services_20261112_a, RESTORED_SCHEMA=5, one clean object hash verified, zero unbalanced posted journals, and zero companies visible without scope. The backup timer is enabled with a scheduled next run. This supersedes the prior unverified status only for that observed rehearsal.
+
+Schema 6 source introduces a dedicated accounting workspace, cash book, date-based account ledgers, full searchable/paginated transaction register, account renaming/archive, direct cash transactions/transfers, linked reversals of general/cash transactions, and controlled bank statement import/matching/independent closure. Source tests pass 40 cases and 50 JavaScript files parse. Plan validation passes all 239 requirements. The plan validator now excludes ignored working/dependency directories rather than treating a transport dependency's Markdown as planning documentation.
+
+The first actual-server native schema-6 rehearsal passed in saven_contract_accounting_20261112_a: all prior 27 groups plus six accounting-workspace groups. The new groups independently reconcile bank 900, cash 150, assets 1,050, profit 50 and filtered running balances; exercise account administration, reconciliation controls, reversal integrity and permission boundaries. A final matching image rehearsal, application backup/migration/activation, hosted checks, UI review and schema-6 recovery remain separate observations. Main remains untouched. Whole accounting, the operator portal and the complete MVP remain incomplete.

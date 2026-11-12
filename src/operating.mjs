@@ -20,7 +20,7 @@ export function databaseError(error){
 export async function operatingContext(db,actor,companyId){
   const company=await companyAccess(db,actor,companyId);
   const [accounts,parties,periods]=await Promise.all([
-    db.prepare('SELECT id,code,name,kind,category FROM accounts WHERE company_id=? ORDER BY code').bind(companyId).all(),
+    db.prepare('SELECT id,code,name,kind,category'+(db.schemaVersion>=6?',active':'')+' FROM accounts WHERE company_id=? ORDER BY code').bind(companyId).all(),
     db.prepare('SELECT id,name,kind,email,phone,address,tax_number FROM parties WHERE company_id=? ORDER BY name').bind(companyId).all(),
     db.prepare('SELECT start_date,end_date,locked FROM periods WHERE company_id=? ORDER BY start_date').bind(companyId).all()
   ]);
@@ -31,7 +31,7 @@ export async function operatingContext(db,actor,companyId){
     pendingInvitations=(await db.prepare('SELECT * FROM saven_pending_invitations(?)').bind(companyId).all()).results;
   }
   const denied=(await db.prepare('SELECT resource_type,resource_id FROM resource_denials WHERE company_id=? AND user_id=?').bind(companyId,actor.id).all()).results;
-  return {capabilities:{administration:true,extendedAccounting:db.schemaVersion>=4,accountingCycles:db.schemaVersion>=4,files:db.schemaVersion>=5,assistant:db.schemaVersion>=5,persistentSignIn:true},accounts:accounts.results.filter(a=>!denied.some(d=>d.resource_type==='account'&&d.resource_id===a.id)),parties:parties.results.filter(p=>!denied.some(d=>d.resource_type==='party'&&d.resource_id===p.id)),periods:periods.results,members,pendingInvitations,configurationChanges:changes};
+  return {capabilities:{administration:true,accountingWorkspace:db.schemaVersion>=6,extendedAccounting:db.schemaVersion>=4,accountingCycles:db.schemaVersion>=4,files:db.schemaVersion>=5,assistant:db.schemaVersion>=5,persistentSignIn:true},accounts:accounts.results.filter(a=>!denied.some(d=>d.resource_type==='account'&&d.resource_id===a.id)),parties:parties.results.filter(p=>!denied.some(d=>d.resource_type==='party'&&d.resource_id===p.id)),periods:periods.results,members,pendingInvitations,configurationChanges:changes};
 }
 export async function configure(db,actor,companyId,input,commandKey){
   requireThat(db.schemaVersion>=3,503,'UPGRADE_REQUIRED','Company setup is being activated.');

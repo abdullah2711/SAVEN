@@ -3,9 +3,10 @@ import { authenticate, redeemGrant } from './auth.mjs';
 import { preview, submit, review, workspace,documentDetail } from './commands.mjs';
 import {operatingContext,configure,createCompany,invite,reports,membershipInvitation} from './operating.mjs';
 import {outstandingBalances} from './extended-accounting.mjs';
+import {accountingWorkspace,accountingCommand,bankDetail} from './accounting.mjs';
 
 const LIMIT=16_384;
-export async function body(request) {
+export async function body(request,limit=LIMIT) {
   requireThat(request.headers.get('content-type')?.split(';')[0]==='application/json',415,'JSON_REQUIRED','Send this request as JSON.');
   const reader=request.body?.getReader();
   requireThat(reader,400,'BODY_REQUIRED','Provide a request body.');
@@ -13,7 +14,7 @@ export async function body(request) {
   while(true) {
     const {value,done}=await reader.read();if(done) break;
     length+=value.byteLength;
-    if(length>LIMIT){await reader.cancel();throw new AppError(413,'BODY_TOO_LARGE','This request exceeds the supported size.');}
+    if(length>limit){await reader.cancel();throw new AppError(413,'BODY_TOO_LARGE','This request exceeds the supported size.');}
     chunks.push(value);
   }
   const bytes=new Uint8Array(length);let offset=0;
@@ -62,6 +63,8 @@ export async function api(request,env) {
       return json({expiresAt:result.expiresAt},200,{'Set-Cookie':`saven_session=${result.session}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${url.protocol==='https:'?'; Secure':''}`});
     }
     const actor=await authenticate(env.DB,request);
+    const accounting=url.pathname.match(/^\/api\/companies\/([a-zA-Z0-9_-]{1,80})\/accounting(?:\/statements\/([a-zA-Z0-9_-]{1,80}))?$/);
+    if(accounting){if(method==='GET')return json(accounting[2]?await bankDetail(env.DB,actor,accounting[1],accounting[2]):await accountingWorkspace(env.DB,actor,accounting[1],url.searchParams));if(method==='POST'&&!accounting[2])return json(await accountingCommand(env.DB,actor,accounting[1],await body(request,131072),request.headers.get('idempotency-key')),201);throw new AppError(405,'METHOD_NOT_ALLOWED','Unsupported accounting action.');}
     const join=url.pathname.match(/^\/api\/invitations\/(preview|accept)$/);
     if(join&&method==='POST'){requireThat(env.DB.schemaVersion>=3,503,'UPGRADE_REQUIRED','Company invitations are being activated.');return json(await membershipInvitation(env.DB,actor,await body(request),join[1]));}
     if(url.pathname==='/api/session' && method==='DELETE') {
