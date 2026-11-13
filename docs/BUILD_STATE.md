@@ -14,6 +14,8 @@ Verified locally:96 Node tests passed,117 JavaScript files parsed,255 original/e
 
 Development environment reset invalidated the earlier shell session; verification was repeated successfully through the available local Node runtime. No permissions escalation or server change was needed. No visual browser tool is available; no screenshot or owner approval is claimed.
 
+Source5063b12f6e449bf0e6ca616e569644d76ce24e8d was published on testing-1. Review of the static binding identified index-file canonical redirects as a possible root-loop hazard; the adapter now requests canonical root and a focused regression covers root/operator/subscriptions. No API or financial behavior changed. Final source CI/deployment is still pending.
+
 Next: guarded testing-1 publication, inspect CI/testing build, verify root and complete module graph/retired routes plus unchanged schema13 health/main. Then continue Accounting UI completion under docs40 before backend feature expansion. Offline implementation follows main infrastructure while versioning, permissions, pending evidence and duplicate-free sync contracts remain mandatory.
 
 
