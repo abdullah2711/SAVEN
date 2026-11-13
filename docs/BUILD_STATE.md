@@ -13,6 +13,12 @@ Deployment: no server service, image, route/DNS/tunnel, main, production or live
 Precise next tasks: browser/owner UI review and full accounting/tax/invoice/credit/evidence details; authenticated native local runtime with session/epoch/field controls; independent financial module parity; resumable provisioning and durable workers/dead letters; coordinated control/object restore; approved licence lifecycle/seat/key-recovery policy and full private package/install tests. Fleet canaries, BI5m, Offline sync and authorized cutover remain gates. Do not activate schema14 or replace PostgreSQL merely because SSH is available.
 
 
+### Publication and health checkpoint
+
+Implementation published as cd9eeac0d5785b1cf680381fd4a933b1bcb239fe on testing-1 using a non-force expected-head lease. Exact remote tree hashes matched all46 changed files; no files were deleted and all pre-existing financial source/migrations were preserved. Main independently remains bdf418ca3bf6ebac49115f45119cbe0f6548e907. Fresh public testing health is HTTP200, PostgreSQL schema13, ready. GitHub run43479316617 began; its result and testing asset deployment are not inferred from local tests.
+
+Post-publication review found a portability flaw in the package-import test's path derivation for nested checkout directories. The test now uses fileURLToPath/relative instead of a repository-name split; all five licensing/package tests pass locally. This changes verification code only. Await fresh remote CI and static asset evidence before reporting deployment verified. No live database or server change was made.
+
 ## Historical governing state ? 13 November 2026, mandate v2
 
 Baseline remote testing-1 was da1bdb14880086f979cfaf33b7c90841b9bca8a0. Public health was independently refreshed and reports PostgreSQL schema13, ready. Schema14 remains tested source, not activated. The latest owner mandate is committed at docs/sources/SAVEN-mandate-v2.md; see docs/26-owner-decisions-2026-11-13-v2.md. Older PostgreSQL/hybrid-node/development-order assumptions below are historical where superseded. Main/production and business data have not been changed.
