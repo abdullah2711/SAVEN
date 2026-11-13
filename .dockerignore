@@ -3,5 +3,9 @@ node_modules
 .git
 docs
 public
+!public
+public/*
+!public/live
+!public/live/**
 tests
 *.b64

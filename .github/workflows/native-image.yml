@@ -1,0 +1,26 @@
+name: Native SQLite release candidate
+on:
+  push:
+    branches: [testing-1, main]
+  pull_request:
+    branches: [testing-1, main]
+permissions:
+  contents: read
+jobs:
+  native-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Build immutable native candidate
+        run: docker build -f Dockerfile.native -t saven-native:${{ github.sha }} .
+      - name: Clean container financial and authority contracts
+        run: >-
+          docker run --rm --read-only --network none --tmpfs /tmp:rw,nosuid,nodev,size=4g
+          -v "$GITHUB_WORKSPACE/tests:/app/tests:ro"
+          --entrypoint node saven-native:${{ github.sha }}
+          --test tests/native-foundation.test.mjs tests/native-runtime.test.mjs tests/native-recovery.test.mjs
+      - name: Release boundary
+        run: echo 'Candidate tests do not authorize client onboarding, migrate live reference data, change DNS or deploy main.'

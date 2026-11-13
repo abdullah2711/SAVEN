@@ -62,3 +62,7 @@ A critical financial, isolation, evidence-loss, or recovery defect stops affecte
 ## UI revision risks
 
 Same-origin testing paths must not be mistaken for production origin isolation; prototype persona switches grant no authority. Private administration must not accidentally ship vendor issuer/global subscriber services. Full accounting UI, responsive/keyboard/owner review and authenticated native runtime remain incomplete. Archived frontend helpers must stay covered by regressions. Display-brand changes must not rename protocol/certificate/database IDs. Offline deferral must not remove sync/idempotency/permission contracts.
+
+## First operational release risks
+
+The two-hour expectation cannot substitute for missing workflows, independent live evidence or recovery. The new native runtime is bounded: substantial ACC/INV/commercial/workspace/AI scope remains. Never onboard clients merely because container tests pass. Existing reference data has not been migrated. Source and original-file retention are separate stores; failed metadata commits may leave orphans. Local-only backups share server failure risk; schedule/off-host recovery and fleet-safe upgrades remain release gates. Local AI has bounded memory/concurrency but needs actual inference evidence and cannot be presented as all-module AI. Exact hostname routing and worker/custom-domain conflicts require live checks before public cutover.

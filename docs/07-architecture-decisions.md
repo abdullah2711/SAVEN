@@ -94,3 +94,7 @@ Adopt the latest owner feedback: muted ivory/charcoal/plum, restrained dark acce
 ## ADR022 - customer versus administration origins
 
 Cloud targets app.saven.economicsystems.cc and operator.saven.economicsystems.cc. The latter hosts commercial subscriptions/onboarding/invoicing AND platform operator sections with separate authorization. Fully Private requires configurable separate application/admin origins, local administration/own-licence status only; vendor global billing and issuer are excluded. Host-only independent sessions, origin/audience checks, server permissions and explicit customer support consent are mandatory. Current testing paths are synthetic walkthroughs, not origin security isolation. See contracts/origins-v1.json and docs/39-ui-first-brand-and-origin-revision.md.
+
+## ADR023 - verified native operational release increments
+
+The 14 November request authorizes progression beyond UI-only work and controlled production increments after verification. Native SQLite/control separation and immutable atomic posting remain. Add authenticated Cloud transport, private original storage, stock valuation through the shared kernel, separate app/operator realms and separate commercial/fleet scopes. Preserve the reference PostgreSQL installation until independent parity/cutover. See docs/42-first-operational-release.md; no feature-complete or client-ready claim follows from a candidate deployment.

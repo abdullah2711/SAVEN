@@ -16,6 +16,8 @@
     "check": "node scripts/check.mjs",
     "build": "node scripts/check.mjs",
     "native:demo": "node scripts/native-demo.mjs",
-    "ui": "node scripts/design-server.mjs"
+    "ui": "node scripts/design-server.mjs",
+    "native:server": "node scripts/native-server.mjs",
+    "native:test": "node --test tests/native-foundation.test.mjs tests/native-runtime.test.mjs tests/native-recovery.test.mjs"
   }
 }

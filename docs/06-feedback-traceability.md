@@ -88,3 +88,7 @@ UX-001/002/003/007/009/010: calm themes, SA7EN display brand, root frontend repl
 ## 14 November focused repair and Accounting continuation
 
 UX-001/002/003/005: retain theme direction, repair grid/flex overflow and section gaps, theme-mask the existing logo, use accessible SVG history icons, deepen plum from the first-party stylesheet and remove the clarity tagline. ACC-002/003/018: add opening and recurring UI workflows with strict balanced/control reconciliation, canonical compatibility and no false posting. Scope and verification limits: docs/41-accounting-setup-and-layout-repair.md. No new requirement ID or feature-completion claim is introduced.
+
+## Operational first release authorization
+
+The latest request maps to ACC-001..019, INV-001..014, UX navigation/printing/export, SEC authorization/identity, OPS commercial/operator/deployment/recovery and AI existing requirements; no duplicate IDs are added. The UI-only order is superseded for the operational increment. Rename Books & money to Accounting, prefer a local private directory, preserve owner applications and existing business data, and promote only independently verified increments. See docs/42-first-operational-release.md for implemented source boundaries and unresolved release gates.

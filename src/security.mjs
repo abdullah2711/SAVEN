@@ -1,26 +1,10 @@
-import {scrypt as scryptCallback,randomBytes,timingSafeEqual} from 'node:crypto';
-import {promisify} from 'node:util';
+import {encodePassword,verifyPassword} from './passwords.mjs';
+export {encodePassword,verifyPassword};
 import {hash,token} from './crypto.mjs';
 import {authenticate,now} from './auth.mjs';
 import {AppError,requireThat} from './errors.mjs';
 import {body,json} from './api.mjs';
 
-const scrypt=promisify(scryptCallback);
-const params={N:32768,r:8,p:1,maxmem:64*1024*1024};
-const dummy='scrypt$1$32768$8$1$'+'0'.repeat(32)+'$'+'0'.repeat(128);
-let activeKdfs=0;
-async function derive(password,salt){requireThat(activeKdfs<2,429,'SIGN_IN_BUSY','Sign-in is busy. Try again shortly.');activeKdfs++;try{return await scrypt(password,salt,64,params);}finally{activeKdfs--;}}
-export async function encodePassword(password){
-  requireThat(typeof password==='string'&&password.length>=12&&password.length<=128&&Buffer.byteLength(password)<=512,422,'PASSWORD_LENGTH','Use a password of 12 to 128 characters.');
-  const salt=randomBytes(16).toString('hex'),key=await derive(password,salt);
-  return `scrypt$1$32768$8$1$${salt}$${key.toString('hex')}`;
-}
-export async function verifyPassword(password,encoded){
-  requireThat(typeof password==='string'&&password.length<=128&&Buffer.byteLength(password)<=512,401,'SIGN_IN_FAILED','The email or password is incorrect.');
-  const safe=typeof encoded==='string'&&/^scrypt\$1\$32768\$8\$1\$[a-f0-9]{32}\$[a-f0-9]{128}$/.test(encoded)?encoded:dummy;
-  const parts=safe.split('$'),key=await derive(password,parts[5]);
-  return timingSafeEqual(key,Buffer.from(parts[6],'hex'))&&safe!==dummy;
-}
 function sameOrigin(request){const origin=new URL(request.url).origin;requireThat(request.headers.get('origin')===origin&&['same-origin','none',null].includes(request.headers.get('sec-fetch-site')),403,'ORIGIN_DENIED','Open this action from your SAVEN workspace.');}
 function cookie(value,request){return `saven_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=28800${new URL(request.url).protocol==='https:'?'; Secure':''}`;}
 async function currentCredential(db,actor,password){const current=await db.prepare('SELECT encoded,version FROM user_credentials WHERE user_id=?').bind(actor.id).first();if(current){const limit=await db.prepare('SELECT saven_auth_limit(?,5,900) AS allowed').bind(await hash('step-up:'+actor.id)).first();requireThat(limit.allowed,429,'STEP_UP_LIMIT','Too many verification attempts. Try again in 15 minutes.');requireThat(await verifyPassword(password??'',current.encoded),401,'CURRENT_PASSWORD','The current password is incorrect.');}return current;}
