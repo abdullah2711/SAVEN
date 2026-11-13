@@ -25,6 +25,12 @@ Follow-up b0ebbee6959dc3bc42899f67447b8b45c6a7787a passed GitHub run43479582286/
 
 Public testing design app/catalog/workspaces/invoice-model/icons/CSS all returned200 with the new v2.3 source. The API separately remained PostgreSQL schema13. Final small design correction retains company selection, prevents Northstar fixture totals appearing for the empty Cedar company, preserves journal-register access and corrects the chart expansion chevron. Focused design tests and syntax pass; browser/visual acceptance remains pending. This final source/evidence commit must receive its own CI/deployment check.
 
+### Final source acceptance - v2.3 first increment
+
+Source commit6d994cbbb5531ce5ec5dbc1214e697da6c563f4e passed GitHub run43480212121/job132074438999 and the saven-testing Cloudflare build. All eight served design files (index, app, catalog, model, workspaces, invoice model, icons, CSS) returned200 and matched the tested source after deployment. Fresh health still reports ready PostgreSQL schema13. Machine-readable hashes and timestamps are in docs/v23-first-increment-evidence.json. The pre-existing extra production-named saven build failed; no production/main setting was changed.
+
+This evidence-only checkpoint does not change application source. The first increment is source/test/deployment-verified within its stated boundaries, not a complete accounting ERP, visual acceptance, private installation, full native parity or SQLite live cutover. Continue the precise next tasks above. Do not infer owner approval or permission for production/decommissioning from green CI.
+
 ## Historical governing state ? 13 November 2026, mandate v2
 
 Baseline remote testing-1 was da1bdb14880086f979cfaf33b7c90841b9bca8a0. Public health was independently refreshed and reports PostgreSQL schema13, ready. Schema14 remains tested source, not activated. The latest owner mandate is committed at docs/sources/SAVEN-mandate-v2.md; see docs/26-owner-decisions-2026-11-13-v2.md. Older PostgreSQL/hybrid-node/development-order assumptions below are historical where superseded. Main/production and business data have not been changed.

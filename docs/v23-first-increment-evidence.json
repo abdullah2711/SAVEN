@@ -28,12 +28,13 @@
     "nativePostgresqlContracts": "passed through source schema14; live schema unchanged"
   },
   "observedTesting": {
-    "designAssetsHTTP": 200,
-    "apiHealthHTTP": 200,
+    "service": "saven",
+    "stage": "operating-core",
     "database": "postgresql",
     "schemaVersion": 13,
+    "databaseConfigured": true,
     "schemaReady": true,
-    "nativeCutover": false
+    "environment": "testing-postgresql"
   },
   "ownerDesignApproval": null,
   "visualBrowserAcceptance": false,
@@ -42,5 +43,64 @@
   "offlineSyncImplemented": false,
   "newPublicRouteCreated": false,
   "liveBusinessDataMigrated": false,
-  "finalContextPatchVerification": "focused tests passed; latest CI and deployment must be checked"
+  "finalContextPatchVerification": "syntax and focused tests passed; latest remote CI/testing build passed; all eight served design files match source",
+  "finalSourceCommit": "6d994cbbb5531ce5ec5dbc1214e697da6c563f4e",
+  "finalCheckedAt": "2026-11-13T18:14:45.217Z",
+  "finalCI": {
+    "run": 43480212121,
+    "job": 132074438999,
+    "conclusion": "success"
+  },
+  "finalTestingBuild": "success",
+  "finalDesignAssets": [
+    {
+      "name": "index.html",
+      "status": 200,
+      "sha256": "c7653121a9180b51dfba1b66283d829f8a6bd2e3547cda2f5f7a79da4496f336",
+      "matchesSource": true
+    },
+    {
+      "name": "app.js",
+      "status": 200,
+      "sha256": "f76cc9cfaaf2d47048b52a696622ed355ce22ab92fe9f644a48dd20c6df6ad73",
+      "matchesSource": true
+    },
+    {
+      "name": "catalog.js",
+      "status": 200,
+      "sha256": "c468020a61e8cfadaf242d2a66d0182dd7a95e631d2f53866f2d43d5981c12a6",
+      "matchesSource": true
+    },
+    {
+      "name": "model.js",
+      "status": 200,
+      "sha256": "6d0601bd8bb2099bbbfa2b4c7e65215c688617322b58502421439c4789c1bf09",
+      "matchesSource": true
+    },
+    {
+      "name": "workspaces.js",
+      "status": 200,
+      "sha256": "2f78723bb376cc287f5fd276b5d2450c9845c37dfb38f83a74d160155367f503",
+      "matchesSource": true
+    },
+    {
+      "name": "invoice-model.js",
+      "status": 200,
+      "sha256": "0b900f01403d48f097ddf80f9e1cc2fa818b20b274dad016ab42176bbe39bae8",
+      "matchesSource": true
+    },
+    {
+      "name": "icons.js",
+      "status": 200,
+      "sha256": "7c4b89f86814ce00871feedac7ce4042914bf41cb9ac19525116e9272055dc7d",
+      "matchesSource": true
+    },
+    {
+      "name": "design.css",
+      "status": 200,
+      "sha256": "f029fb23af57c95bf458b81d27468c7e7f97d71175bf6a359c922cd4e69166ec",
+      "matchesSource": true
+    }
+  ],
+  "unrelatedProductionNamedBuild": "pre-existing extra saven build failed; no production configuration was changed"
 }
