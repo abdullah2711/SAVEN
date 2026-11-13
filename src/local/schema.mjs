@@ -1,0 +1,41 @@
+export const identity=[`
+CREATE TABLE users(id TEXT PRIMARY KEY, active INTEGER NOT NULL CHECK(active IN(0,1))) STRICT;
+CREATE TABLE memberships(tenant_id TEXT NOT NULL, user_id TEXT NOT NULL REFERENCES users(id), active INTEGER NOT NULL CHECK(active IN(0,1)), PRIMARY KEY(tenant_id,user_id)) STRICT;
+`];
+export const commerce=[`CREATE TABLE entitlements(tenant_id TEXT PRIMARY KEY, version INTEGER NOT NULL, writes_until INTEGER NOT NULL, source TEXT NOT NULL) STRICT;`];
+export const fleet=[`CREATE TABLE placements(tenant_id TEXT PRIMARY KEY, state TEXT NOT NULL CHECK(state IN('PROVISIONING','ACTIVE','QUARANTINED')), schema_version INTEGER NOT NULL, generation INTEGER NOT NULL) STRICT;`];
+export const jobs=[`CREATE TABLE jobs(tenant_id TEXT NOT NULL, command_id TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN('READY','RUNNING','DONE','FAILED')), attempts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(tenant_id,command_id)) STRICT;`];
+export const tenant=[`
+CREATE TABLE business(id TEXT PRIMARY KEY, state TEXT NOT NULL CHECK(state IN('PROVISIONING','ACTIVE'))) STRICT;
+CREATE TABLE members(user_id TEXT PRIMARY KEY, active INTEGER NOT NULL CHECK(active IN(0,1))) STRICT;
+CREATE TABLE roles(id TEXT PRIMARY KEY, name TEXT NOT NULL, protected INTEGER NOT NULL CHECK(protected IN(0,1)), permissions TEXT NOT NULL, CHECK((id='ultimate_business_admin' AND protected=1) OR (id<>'ultimate_business_admin' AND protected=0))) STRICT;
+CREATE TABLE assignments(user_id TEXT NOT NULL REFERENCES members(user_id), role_id TEXT NOT NULL REFERENCES roles(id), PRIMARY KEY(user_id,role_id)) STRICT;
+CREATE UNIQUE INDEX sole_ultimate_owner ON assignments(role_id) WHERE role_id='ultimate_business_admin';
+CREATE TRIGGER owner_role_immutable_update BEFORE UPDATE ON roles WHEN OLD.protected=1 BEGIN SELECT RAISE(ABORT,'Protected role is immutable'); END;
+CREATE TRIGGER owner_role_immutable_delete BEFORE DELETE ON roles WHEN OLD.protected=1 BEGIN SELECT RAISE(ABORT,'Protected role is immutable'); END;
+CREATE TRIGGER owner_assignment_required BEFORE DELETE ON assignments WHEN OLD.role_id='ultimate_business_admin' AND (SELECT state FROM business)='ACTIVE' BEGIN SELECT RAISE(ABORT,'Active business must retain its owner'); END;
+CREATE TRIGGER owner_must_remain_active BEFORE UPDATE OF active ON members WHEN NEW.active=0 AND EXISTS(SELECT 1 FROM assignments WHERE user_id=OLD.user_id AND role_id='ultimate_business_admin') BEGIN SELECT RAISE(ABORT,'Active owner required'); END;
+CREATE TRIGGER activation_requires_owner BEFORE UPDATE OF state ON business WHEN NEW.state='ACTIVE' AND (SELECT count(*) FROM assignments a JOIN members m ON m.user_id=a.user_id WHERE a.role_id='ultimate_business_admin' AND m.active=1)<>1 BEGIN SELECT RAISE(ABORT,'Exactly one active owner required'); END;
+CREATE TABLE denials(user_id TEXT NOT NULL REFERENCES members(user_id), action TEXT NOT NULL, PRIMARY KEY(user_id,action)) STRICT;
+CREATE TABLE accounts(code TEXT PRIMARY KEY, title TEXT NOT NULL) STRICT;
+CREATE TABLE periods(company TEXT NOT NULL, start_date TEXT NOT NULL, end_date TEXT NOT NULL, locked INTEGER NOT NULL CHECK(locked IN(0,1)), PRIMARY KEY(company,start_date)) STRICT;
+CREATE TABLE command_inbox(id TEXT PRIMARY KEY, actor TEXT NOT NULL REFERENCES members(user_id), digest TEXT NOT NULL, payload TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN('ACCEPTED_PENDING','AWAITING_APPROVAL','POSTED','FAILED')), lease_token TEXT, lease_until INTEGER, error TEXT, approved_by TEXT, created_at INTEGER NOT NULL) STRICT;
+CREATE TABLE approval_requests(command_id TEXT PRIMARY KEY REFERENCES command_inbox(id), payload_digest TEXT NOT NULL, policy_snapshot TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN('PENDING','APPROVED')), decided_by TEXT) STRICT;
+CREATE TABLE journals(id TEXT PRIMARY KEY REFERENCES command_inbox(id), company TEXT NOT NULL, branch TEXT NOT NULL, posting_date TEXT NOT NULL, narrative TEXT NOT NULL) STRICT;
+CREATE TABLE journal_lines(journal_id TEXT NOT NULL REFERENCES journals(id), line_no INTEGER NOT NULL, account TEXT NOT NULL REFERENCES accounts(code), debit INTEGER NOT NULL CHECK(debit>=0 AND debit<=999999999999), credit INTEGER NOT NULL CHECK(credit>=0 AND credit<=999999999999), CHECK((debit>0 AND credit=0) OR (credit>0 AND debit=0)), PRIMARY KEY(journal_id,line_no)) STRICT;
+CREATE TABLE audit(id INTEGER PRIMARY KEY, command_id TEXT, actor TEXT NOT NULL, event TEXT NOT NULL, detail TEXT NOT NULL, happened_at INTEGER NOT NULL) STRICT;
+CREATE TABLE outbox(id TEXT PRIMARY KEY REFERENCES command_inbox(id), event TEXT NOT NULL, state TEXT NOT NULL CHECK(state IN('READY','DELIVERED','FAILED')), attempts INTEGER NOT NULL DEFAULT 0) STRICT;
+CREATE TRIGGER posted_journal_immutable BEFORE UPDATE ON journals BEGIN SELECT RAISE(ABORT,'Posted journal is immutable'); END;
+CREATE TRIGGER posted_journal_no_delete BEFORE DELETE ON journals BEGIN SELECT RAISE(ABORT,'Posted journal is immutable'); END;
+CREATE TRIGGER posted_line_immutable BEFORE UPDATE ON journal_lines BEGIN SELECT RAISE(ABORT,'Posted line is immutable'); END;
+CREATE TRIGGER posted_line_no_delete BEFORE DELETE ON journal_lines BEGIN SELECT RAISE(ABORT,'Posted line is immutable'); END;
+CREATE TRIGGER no_late_lines BEFORE INSERT ON journal_lines WHEN (SELECT state FROM command_inbox WHERE id=NEW.journal_id)='POSTED' BEGIN SELECT RAISE(ABORT,'Posted journal cannot receive more lines'); END;
+CREATE TRIGGER audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
+CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'Audit is immutable'); END;
+CREATE TRIGGER command_payload_immutable BEFORE UPDATE OF actor,digest,payload,id ON command_inbox BEGIN SELECT RAISE(ABORT,'Accepted payload is immutable'); END;
+CREATE TRIGGER command_no_delete BEFORE DELETE ON command_inbox BEGIN SELECT RAISE(ABORT,'Accepted command is retained'); END;
+CREATE TRIGGER posted_state_final BEFORE UPDATE OF state ON command_inbox WHEN OLD.state='POSTED' AND NEW.state<>'POSTED' BEGIN SELECT RAISE(ABORT,'Posted state is final'); END;
+CREATE TRIGGER posted_requires_effects BEFORE UPDATE OF state ON command_inbox WHEN NEW.state='POSTED' AND OLD.state<>'POSTED' BEGIN
+ SELECT CASE WHEN NOT EXISTS(SELECT 1 FROM journals WHERE id=NEW.id) OR (SELECT count(*) FROM journal_lines WHERE journal_id=NEW.id)<2 OR (SELECT sum(debit)-sum(credit) FROM journal_lines WHERE journal_id=NEW.id)<>0 OR (SELECT sum(debit) FROM journal_lines WHERE journal_id=NEW.id)>999999999999 OR NOT EXISTS(SELECT 1 FROM audit WHERE command_id=NEW.id AND event='JOURNAL_POSTED') OR NOT EXISTS(SELECT 1 FROM outbox WHERE id=NEW.id) THEN RAISE(ABORT,'Posting requires balanced source, audit and outbox') END;
+END;
+`];

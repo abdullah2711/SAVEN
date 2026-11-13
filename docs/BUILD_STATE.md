@@ -1,6 +1,19 @@
 # SAVEN build checkpoint
 
-## Latest governing state ? 13 November 2026, mandate v2
+## Current increment - owner mandate v2.3
+
+Base testing-1: 82efa086de75d1fd7788e6c1a2c32235eddd2b55; main remains bdf418ca3bf6ebac49115f45119cbe0f6548e907. Both consolidated files and the full802-line v2 baseline were read. Native SQLite controls/business stores now govern; D1/PostgreSQL target statements below are historical. Exactly Cloud and Fully Private, Offline companion, monthly signed private certificates, protected owner, shared authorization and durable inbox/approval/posting/outbox are reconciled in docs35-38, ADR017-020 and255 retained/extended requirements. All239 original IDs and APP-001 through APP-010 remain.
+
+Implemented source: refined synthetic accounting chart/ledger/statements/close, multi-line invoice calculations, distinct tax/Apps/private-admin/support layouts, SVG navigation and desktop collapse. Native journal-only developer foundation creates isolated control/tenant stores with checked migrations, scoped posting/approval, exact-once operation receipts, immutable financial/audit guards and independent tenant snapshot tests. Monthly Ed25519 challenge/import/acceptance proof and private foundation package allowlist are separate from vendor test issuer. No production credential/key is used. See docs/38-native-foundation-verification-v2.3.md for limitations.
+
+Verification: fresh89 Node tests passed;110 JavaScript files parsed; generators produce255 requirements and263 screen mappings across21 areas. Synthetic native demo independently received then posted one100.00 balanced journal and verified a new SQLite backup. Initial key-object and temporary syntax failures were corrected, all retained tests remain. Final plan validation and publication evidence are appended below. No visual/browser acceptance or owner approval is claimed.
+
+Deployment: no server service, image, route/DNS/tunnel, main, production or live database was manually changed. Earlier fresh public/SSH inspection confirmed PostgreSQL schema13; schema14 remains unactivated. New native code is local proof, not exposed and not the live API. Branch-linked static deployment status must be checked after publication. A passing source suite is not live ERP acceptance.
+
+Precise next tasks: browser/owner UI review and full accounting/tax/invoice/credit/evidence details; authenticated native local runtime with session/epoch/field controls; independent financial module parity; resumable provisioning and durable workers/dead letters; coordinated control/object restore; approved licence lifecycle/seat/key-recovery policy and full private package/install tests. Fleet canaries, BI5m, Offline sync and authorized cutover remain gates. Do not activate schema14 or replace PostgreSQL merely because SSH is available.
+
+
+## Historical governing state ? 13 November 2026, mandate v2
 
 Baseline remote testing-1 was da1bdb14880086f979cfaf33b7c90841b9bca8a0. Public health was independently refreshed and reports PostgreSQL schema13, ready. Schema14 remains tested source, not activated. The latest owner mandate is committed at docs/sources/SAVEN-mandate-v2.md; see docs/26-owner-decisions-2026-11-13-v2.md. Older PostgreSQL/hybrid-node/development-order assumptions below are historical where superseded. Main/production and business data have not been changed.
 

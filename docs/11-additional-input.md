@@ -71,3 +71,7 @@ Source configuration targets only the saven-testing Worker. Cloudflare build-bra
 ## Governing revision, 13 November 2026
 
 The v2 mandate supersedes conflicting delivery order, PostgreSQL target, hybrid customer-data-node, unresolved offline and heavy-glass assumptions. See docs/26-owner-decisions-2026-11-13-v2.md and ADR011?016. This addendum retains valid original functional requirements and historical first-build evidence; it is not the current completion report. Cloud and Fully Private are the only commercial models. Offline is a companion. Current PG functionality stays until SQLite equivalence and controlled migration gates pass.
+
+## Governing consolidated revision v2.3
+
+The owner supplied and required full review of both consolidated v2.3 files and the original v2 baseline. See docs/sources/SAVEN-mandate-v2.3.md, docs/sources/SAVEN-agent-handoff-v2.3.md and docs/35-native-sqlite-local-first-v2.3.md. Native SQLite controls and business stores supersede D1/PostgreSQL targets. Exactly Cloud and Fully Private, monthly signed private entitlements, strict vendor/private composition, local-first QA, one protected owner, durable inbox/approval/posted/outbox boundaries and complete Apps scope now govern. No main, production or destructive database change is authorized. Source-only and synthetic proofs are distinguished in docs/38-native-foundation-verification-v2.3.md.

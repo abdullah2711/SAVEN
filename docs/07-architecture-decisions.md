@@ -69,3 +69,20 @@ Versioned signed manifests, per-file checksums and durable migration cursor, ver
 ## ADR 016 Reporting and telemetry ownership ? accepted contract
 
 Tenant-local incremental projections commit cursor with effects. Governed JSON report definitions compile to bound allowlisted reads, filter permissions before aggregates and expose freshness. Financial snapshots stay authoritative and reproducible. Financial/security audit, billable usage and sampled operational diagnostics have distinct durability/retention pipelines. No universal zero-RPO, unlimited scale or tamper-proof claim.
+
+
+## ADR 017 Native SQLite throughout and local-first QA ? v2.3 accepted target
+
+Supersedes ADR012's D1 control target and all PostgreSQL target assumptions. Native SQLite identity/commerce/fleet and tenant files plus local objects/jobs form the current development baseline. Cloudflare/D1/R2 may be future adapters, not required for local operation. Existing PG schema13 remains the preserved correctness reference; no live cutover or decommission authorized.
+
+## ADR 018 Private composition and monthly certificates ? accepted contract
+
+Private customer builds contain business ERP/local identity/admin/support and public-key licence verification, not vendor issuer/global billing/customer registry. Monthly signed renewal supports connected or manual challenge/certificate/receipt transfer. Exact grace/cutoff/seat reassignment terms remain unapproved; preserve historical read/export/recovery and pending evidence. No hidden universal support owner or absolute root-proof claim.
+
+## ADR 019 Protected owner and shared authorization ? accepted contract
+
+Exactly one immutable ultimate_business_admin definition and active holder per subscriber. Index uniqueness alone is insufficient: activation and transfer enforce existence atomically. Arbitrary custom roles are allowed within entitlement/invariants. Central identity and local tenant policy intersect; explicit denial, row predicates and field masks apply before totals/search/export/AI/worker effects. SQLite is not native RLS.
+
+## ADR 020 Durable receipt, approval, posting and outbox ? accepted contract
+
+ACCEPTED_PENDING requires owning-tenant durable command before ACK. AWAITING_APPROVAL has no journal; final review revalidates current authority/period/evidence. POSTED requires source/journal/audit/dedupe/outbox in one local transaction. Follow-on delivery failure does not undo finance. Jobs are orchestration, not authority; bounded leases, idempotency and unknown-outcome reconciliation are required. No cross-file or SQL/object-byte ACID claim.

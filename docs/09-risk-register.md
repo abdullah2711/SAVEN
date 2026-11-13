@@ -47,3 +47,14 @@ A critical financial, isolation, evidence-loss, or recovery defect stops affecte
 | Local backup mistaken for whole-node resilience | Off-node objects/keys/registry restoration and contracted RPO/RTO still required |
 | New source paths escape syntax/deployment checks | Recursive checks and isolated design static-route tests |
 | Governance reverted by older prompts | Committed governing-source copy, precedence manifest and resumable checkpoint |
+
+
+## v2.3 risk additions
+
+- Native SQLite port must replace PG RLS/functions deliberately; no connection-string migration or claim of full parity from a journal slice.
+- Owner uniqueness requires existence/transfer checks; naming a role Owner cannot confer authority.
+- Pending acceptance, canonical posting and delivery outbox must remain distinct after crashes, policy changes and lost ACK.
+- Private composition must exclude vendor issuer/private keys/global billing at packaging and API boundaries, not just menus.
+- Monthly offline licensing has unresolved grace/cutoff terms and root/VM clone limitations; no invented policy or destructive expiry.
+- Local preview must stay authenticated/loopback by default; new public tunnel/DNS/service exposure needs explicit authority.
+- Cramped repetitive design and mixed pseudo-icons require workflow-specific layouts and consistent SVGs; source tests do not replace visual/mobile/novice review.

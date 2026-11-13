@@ -1,5 +1,7 @@
 # Deployment models and portability
 
+> Historical v2 target where conflicting. [v2.3](sources/SAVEN-mandate-v2.3.md) now selects native SQLite for all stores, local-first QA, and a private package excluding vendor commercial/issuer services. See [current reconciliation](35-native-sqlite-local-first-v2.3.md).
+
 Authority: [v2](sources/SAVEN-mandate-v2.md), sections 1–4 and 13. Target architecture; not the current PostgreSQL runtime.
 
 | Commercial model | Control | Business data | Objects | Ordinary independence |

@@ -6,13 +6,15 @@
 - Promotion to `main` follows testing, review, and the owner's release decision.
 - Do not force push or discard unrelated work.
 
-## Governing owner mandate v2
+## Governing owner mandate v2.3
 
-- Read docs/sources/SAVEN-mandate-v2.md in full and docs/26-owner-decisions-2026-11-13-v2.md before new work. Newest owner feedback takes precedence.
-- Target exactly Cloud and Fully Private, D1 Cloud control aggregates, local tenant SQLite on SAVEN-controlled nodes, private-local SQLite controls and a separate offline companion. No SaaS customer-node attachment, reseller hosting or PostgreSQL target is authorized by older prompts.
-- Preserve current working PostgreSQL source/data/tests as the correctness reference; no irreversible live migration, production or main change without explicit approval.
-- Complete frontend design/contract library and owner review before most missing backend work. Synthetic /design/ cannot issue live financial commands. No design approval exists yet.
-- Run both catalog and design generators, recursive syntax checks, relevant tests and plan validator. Keep source, tested and live evidence separate.
+- Read docs/sources/SAVEN-mandate-v2.3.md and docs/sources/SAVEN-agent-handoff-v2.3.md completely, plus the full v2 baseline for nonconflicting scope. Newest explicit owner feedback governs.
+- Native SQLite is the sole selected next database engine, including central controls. No new D1 or PostgreSQL dependency. Local-first development/QA must work without SSH or cloud services.
+- Exactly Cloud and Fully Private; Offline is a companion. No SaaS customer-node attachment or reseller hosting. Private excludes vendor issuer/billing/global customer/operator components and uses monthly signed public-key-verified entitlements.
+- One immutable ultimate-owner role definition and exactly one active principal per subscribed business. Custom role names grant no protected authority. Pending, approval, posted and outbox states are distinct durable contracts.
+- Preserve existing PG code/data/services/tests until independent SQLite parity, restore/reconciliation and explicit cutover/decommission authorization. No destructive deletion, main or production change.
+- Frontend refinement remains first; bounded native foundation/licensing compatibility work may run alongside it. Keep synthetic design separate from working commands. Apps APP-001 through APP-010 remain mandatory.
+- After each increment run relevant tests, both generators and plan validation, then persist source/test/deployment limits and next actions in BUILD_STATE.
 
 ## Current project stage
 

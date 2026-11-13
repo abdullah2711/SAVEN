@@ -75,3 +75,8 @@ The latest governing source is docs/sources/SAVEN-mandate-v2.md. The complete co
 | Preparers may post under flexible policies; keep all modules | FND-012 CFG-003 and complete catalog | Existing conditions retained; full broad workflow still required |
 
 Earlier turnkey customer-data-node and PostgreSQL-target prompts are historical and superseded, not additional deployment offerings. No privately provided ERPNext/server credentials are copied into the repository.
+
+
+## v2.3 consolidated source, 13 November 2026
+
+Both current attachments are preserved under docs/sources/. They supersede earlier licensing/local-first/queue addenda and conflicting v2 target storage decisions. Full baseline product scope and APP-001 through APP-010 survive. See docs/35-native-sqlite-local-first-v2.3.md, docs/36-private-licensing-and-support-v2.3.md and docs/37-authorization-and-durable-queues-v2.3.md. OPS-019 is amended in place to native SQLite; new child IDs OPS-023 through OPS-026 cover monthly certificates, private composition, local QA and durable receipt. Existing IDs are never renumbered. Owner design approval is absent.

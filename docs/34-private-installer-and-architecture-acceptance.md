@@ -1,5 +1,7 @@
 # Turnkey release and installation acceptance
 
+> Historical v2 target where conflicting. [v2.3](sources/SAVEN-mandate-v2.3.md) now selects native SQLite for all stores, local-first QA, and a private package excluding vendor commercial/issuer services. See [current reconciliation](35-native-sqlite-local-first-v2.3.md).
+
 Profiles: private-local (self-contained control/tenant SQLite, objects, frontend/gateway/business/operator/workers/backup/licensing); private-cloudflare (customer-owned Cloudflare dependencies); saven-cloud (internal SAVEN-operated profile). Only Cloud and Fully Private are commercial offerings. No customer attaches a database host to shared SaaS.
 
 Release contract: signed versioned prebuilt images/offline bundle, digests/SBOM, Compose or equivalent, automated secret generation, initial-admin wizard, TLS/domain validation, control/tenant DB initialization, compatible migration lock, dependency health/readiness, bounded workers, object/backup configuration, structured diagnostics, backup schedule, verified restore and safe upgrade/forward repair. No proprietary-source access, manual SQL, test hostname, personal server path or SAVEN Cloudflare account is required for private-local.

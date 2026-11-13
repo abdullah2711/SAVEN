@@ -25,5 +25,13 @@
     "precedence": "Supersedes earlier conflicting master/turnkey prompts; preserves valid original functional requirements",
     "repository_text_sha256": "d73dc77338fdac36206802c494d38fa35952f0d8736867d83bdb9af1b46c3722",
     "representation": "Extracted full text, UTF-8 with LF normalization; source library document is the authority"
+  },
+  "active_addendum": {
+    "name": "SAVEN Consolidated Final Owner Mandate v2.3",
+    "path": "docs/sources/SAVEN-mandate-v2.3.md",
+    "library_file_id": "libfile_dc5b502adcac8191ba4514a62cf97024",
+    "lines": 319,
+    "handoff": "docs/sources/SAVEN-agent-handoff-v2.3.md",
+    "precedence": "Supersedes earlier addenda and conflicting v2 storage/licensing/QA clauses; full v2 remains baseline"
   }
 }

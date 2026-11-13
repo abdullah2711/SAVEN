@@ -1,13 +1,47 @@
 {
   "version": 2,
-  "status": "SPECIFIED_NOT_INSTALLABLE",
+  "status": "SPECIFIED_NOT_INSTALLABLE_BOUNDED_NATIVE_PROOF_EXISTS",
   "approvedReleaseDigest": null,
-  "commercialModels": ["saven-cloud", "fully-private"],
+  "commercialModels": [
+    "saven-cloud",
+    "fully-private"
+  ],
   "profiles": {
-    "saven-cloud": {"operator": "SAVEN", "controls": "D1 identity, commerce, fleet", "tenantStore": "local SQLite on SAVEN-controlled nodes", "objects": "R2", "customerDatabaseAttachment": false},
-    "private-local": {"commercialModel": "fully-private", "controls": "native local SQLite", "tenantStore": "native local SQLite", "objects": "local or S3-compatible", "cloudflareRequired": false, "ordinaryCloudConnectivityRequired": false},
-    "private-cloudflare": {"commercialModel": "fully-private", "controls": "customer-owned D1", "tenantStore": "customer-controlled local SQLite nodes", "objects": "customer-owned R2", "cloudflareRequired": true}
+    "saven-cloud": {
+      "operator": "SAVEN",
+      "controls": "native SQLite identity, commerce, fleet, jobs",
+      "tenantStore": "local SQLite on SAVEN-controlled nodes",
+      "objects": "configurable local or S3-compatible; Cloudflare R2 adapter optional",
+      "customerDatabaseAttachment": false,
+      "cloudflareRequired": false
+    },
+    "private-local": {
+      "commercialModel": "fully-private",
+      "controls": "native local SQLite identity, local entitlement verifier, fleet, jobs",
+      "tenantStore": "native local SQLite",
+      "objects": "local or S3-compatible",
+      "cloudflareRequired": false,
+      "ordinaryCloudConnectivityRequired": false,
+      "vendorCommercialServicesIncluded": false,
+      "monthlySignedCertificateRequired": true
+    }
   },
-  "offlineCompanion": {"hostingModel": false, "syncProtocol": "not implemented", "leasePolicy": "requires reviewed decision", "pendingEvidencePreservedOnExpiry": true},
-  "releaseGates": ["signed images and manifests", "clean-server wizard", "automatic control and tenant initialization", "safe upgrade and forward recovery", "independent backup restore", "private-local operation without Cloudflare", "fenced tenant ownership", "financial and permission conformance"]
+  "offlineCompanion": {
+    "hostingModel": false,
+    "syncProtocol": "not implemented",
+    "leasePolicy": "requires reviewed decision",
+    "pendingEvidencePreservedOnExpiry": true
+  },
+  "releaseGates": [
+    "signed images and manifests",
+    "clean-server wizard",
+    "automatic control and tenant initialization",
+    "safe upgrade and forward recovery",
+    "independent backup restore",
+    "private-local operation without Cloudflare",
+    "fenced tenant ownership",
+    "financial and permission conformance"
+  ],
+  "governingMandate": "v2.3",
+  "localDevelopmentDefault": true
 }

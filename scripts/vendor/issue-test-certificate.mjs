@@ -1,0 +1,5 @@
+// Vendor-side proof utility; excluded from the private package allowlist.
+// Callers supply ephemeral test keys. This is not a commercial issuance endpoint.
+import {authentic,publicDigest,signedMessage} from '../../src/local/licence.mjs';
+import {digest} from '../../src/local/sqlite.mjs';
+export function issueTestCertificate(challenge,{installationPublicKey,vendorPrivateKey,vendorKeyId,month,sequence,validFrom,validUntil,modules,seats,policyId}){if(!authentic(challenge,installationPublicKey)||challenge.claims.kind!=='SAVEN_RENEWAL_CHALLENGE'||challenge.claims.installationKeyDigest!==publicDigest(installationPublicKey))throw Error('Invalid signed renewal challenge');return signedMessage({kind:'SAVEN_MONTHLY_ENTITLEMENT',version:1,vendorKeyId,installationId:challenge.claims.installationId,tenantId:challenge.claims.tenantId,installationKeyDigest:challenge.claims.installationKeyDigest,challengeNonce:challenge.claims.nonce,challengeDigest:digest(challenge.claims),month,sequence,validFrom,validUntil,modules,seats,policyId,gracePolicy:'NONE_EXPLICITLY_SIGNED',protocolMin:1,protocolMax:1},vendorPrivateKey);}

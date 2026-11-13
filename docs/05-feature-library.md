@@ -1,8 +1,8 @@
 # SAVEN Feature and Acceptance Library
 
-13 November 2026 | Baseline 2.0
+13 November 2026 | Baseline 2.3
 
-251 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.
+255 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.
 
 Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.
 
@@ -16,11 +16,11 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | FND-004 | Periods and dates: Financial years business dates timezones and locks | Every entry route rejects a locked period |
 | FND-005 | Numbering: Scoped unique document series with concurrency control | Simultaneous submissions cannot duplicate a document number |
 | FND-006 | Membership lifecycle: Invite suspend revoke recover and switch companies | Revocation blocks new requests queued actions and downloads |
-| FND-007 | Permissions: Roles row scopes field sensitivity and effective-access preview | Preview agrees with allow and deny tests |
+| FND-007 | Permissions: Business-defined custom role types with module action row field branch company amount approval and AI conditions; explicit denies enforced consistently by a shared scoped-query and command service | Preview agrees with allow and deny tests |
 | FND-008 | Delegated administration: Company superadmin and module administrator grants | Delegation cannot exceed grantor authority or cross companies |
 | FND-009 | Workspace configuration: Role navigation quick actions and personal preferences | Hidden menus do not grant or revoke business authority |
 | FND-010 | Localization packs: Versioned language reporting tax and employment configuration | Unsupported pack rules are visible before activation |
-| FND-011 | Ultimate business ownership: One protected ultimate owner and controlled delegated administration | Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority |
+| FND-011 | Ultimate business ownership: Exactly one immutable ultimate_business_admin role definition and one active ultimate-owner principal per subscribed business; atomic protected transfer and recovery; arbitrary custom role names cannot clone authority | Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority |
 | FND-012 | Resource-level controls: Customer supplier item account store and action-specific grants with preview and execution checks | A forbidden resource remains forbidden through forms APIs AI approvals and offline synchronization |
 
 ## Accounting and close
@@ -258,8 +258,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | APP-006 | Events and webhooks: Signed at-least-once delivery replay control retries and dead-letter review | Duplicate reordered and delayed events reconcile without duplicate effects |
 | APP-007 | Tax adapter: Canonical invoice external reference QR errors and reconciliation | Unknown submission outcome is resolved before a second external invoice |
 | APP-008 | External commerce: Shopify-like orders stock payments refunds and mapping | External identifiers map once and settlement differences enter reconciliation |
-| APP-009 | Developer sandbox: Sample app SDK guide fixtures and install diagnostics | Independent integrator can install test revoke and uninstall a sample app |
-| APP-010 | Lifecycle: Compatibility review migration uninstall and preserved records | Uninstall revokes execution while retaining required financial evidence |
+| APP-009 | Developer sandbox: Local developer sandbox typed SDK examples manifest validation and install/revoke/uninstall fixtures for Cloud Private and declared offline compatibility | Independent integrator can install test revoke and uninstall a sample app |
+| APP-010 | Lifecycle: Versioned App contract and isolated storage migrations install/update/disable/uninstall lifecycle; no direct core schema access and required financial evidence retained | Uninstall revokes execution while retaining required financial evidence |
 
 ## AI tools memory and evaluation
 
@@ -308,7 +308,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-005 | Backups and restoration: Database objects configuration identity and work queues | Rehearsal demonstrates measured recovery and reconciled totals |
 | OPS-006 | Technical telemetry: Structured redacted logs metrics tracing alerts and error queues | Credentials and unnecessary payroll content never appear in routine logs |
 | OPS-007 | Support access: Own identity case scope expiry customer history and emergency review | Expired support authority blocks further access |
-| OPS-008 | Private deployment: Exactly Cloud and Fully Private commercial modes using the same product; private-local needs no Cloudflare and private-cloudflare uses customer-owned resources; no SaaS customer-node attachment or reseller hosting | Upgrade and expiry tests match documented supported behaviour |
+| OPS-008 | Private deployment: Exactly Cloud and Fully Private with native SQLite stores; private customer ERP and local administration exclude SAVEN commercial operator and licence issuer services; offline is a companion | Upgrade and expiry tests match documented supported behaviour |
 | OPS-009 | Performance and cells: Per-tenant limits asynchronous BI regional home and capacity measurement | Noisy neighbour and declared-load tests meet agreed budgets |
 | OPS-010 | Migration and releases: Expand migrate contract canary compatibility and recovery | Old records remain interpretable and destructive changes have verified recovery |
 | OPS-011 | Submission conversion: Application frontend feeds operator review billing status and idempotent company and nominated-user provisioning | Accepted submitted data converts without re-entry and concurrent provisioning cannot create duplicate accounts |
@@ -316,13 +316,17 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-013 | Manual and future card billing: Manual-transfer operation now with payment-adapter boundaries for later mixed card and manual customers | Repeated provider events cannot activate twice and manual receipt review cannot expose payment-card details |
 | OPS-014 | Entitlement administration: Operator controls for business user group and global features modules AI access and package gates | Effective access is the intersection of entitlement company choice user permission and operator availability with comprehensive logs |
 | OPS-015 | Support identity administration: Case-scoped attributed impersonation reset or invitation flows with customer visibility and no recoverable password access | Support cannot retrieve existing passwords and sensitive actions preserve real operator and represented user identities |
-| OPS-016 | Hosting portability: D1 Cloud control-store ports native SQLite private control equivalents local SQLite tenant nodes and replaceable R2 or local object adapters with tested portability | The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use |
+| OPS-016 | Hosting portability: Local-first native SQLite control and tenant store providers with local objects; optional future Cloudflare or S3 adapters are not development dependencies | The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use |
 | OPS-017 | Resumable development: Durable build state changed-file records check outcomes blockers and remaining actions | A resumed development agent locates the current branch and incomplete work without repeating completed effects |
 | OPS-018 | Controlled offline application: Selected POS accounting inventory assets and manufacturing functions with signed grants scoped master-data creation and bidirectional sync | Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested |
-| OPS-019 | D1 control aggregates: Cloud identity commerce and fleet control domains with native SQLite private equivalents and durable cross-domain sagas | Duplicate approvals partial provisioning and control outages cannot activate an unready tenant |
+| OPS-019 | Native SQLite control aggregates: Purpose-separated native SQLite identity commerce and fleet aggregates with durable owning-domain outboxes and explicit cross-file provisioning sagas; D1 is not a selected target | Duplicate approvals partial provisioning and control outages cannot activate an unready tenant |
 | OPS-020 | SQLite fleet schema lifecycle: Per-database checksum and compatibility ledger backup preflight canaries resumable backfill and isolated forward recovery | One thousand synthetic tenants across at least three nodes survive mixed versions failed migration and compatibility tests without altered books |
 | OPS-021 | Tenant writable ownership: SAVEN-controlled Cloud nodes secure typed routing monotonic owner generation and fenced moves | Stale owner network partition and promotion race cannot create two authoritative writers |
 | OPS-022 | Turnkey release packaging: Signed versioned images wizard control and tenant initialization diagnostics backup restore and safe upgrades for standardized profiles | Clean private-local install operates without Cloudflare or proprietary source access and interrupted upgrade is recoverable |
+| OPS-023 | Monthly private certificates: SAVEN-only asymmetric issuer and private public-key verification with installation binding monotonic sequence and offline challenge/import/receipt | Forged expired replayed and foreign-installation licences fail safely while lawful historical access and pending evidence survive; grace and monthly cutoffs remain explicit policy decisions |
+| OPS-024 | Private package composition: Customer ERP identity business admin support and verifier are packaged without vendor billing issuer global registry signing keys or hidden accounts | A private artifact allowlist and runtime checks exclude vendor-only components and work without mandatory SAVEN connectivity |
+| OPS-025 | Local-first development and QA: Native SQLite control tenant jobs and local objects start reproducibly without D1 PostgreSQL SSH or external cloud dependencies; optional authorized authenticated remote preview | Fresh local boot works offline and no database secret debug or unrestricted operator endpoint is publicly exposed |
+| OPS-026 | Durable command receipt and recovery: Owning-tenant inbox approval posting audit and outbox states have explicit commit-before-ack and lease retry semantics | Crash before receipt yields no acceptance and commit-before-ACK replay cannot duplicate a journal; changed permissions period or entitlement are rechecked |
 
 ## Security audit and assurance
 

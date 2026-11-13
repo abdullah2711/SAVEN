@@ -1,5 +1,7 @@
 # D1 control aggregates and authority contract
 
+> Historical v2 target where conflicting. [v2.3](sources/SAVEN-mandate-v2.3.md) now selects native SQLite for all stores, local-first QA, and a private package excluding vendor commercial/issuer services. See [current reconciliation](35-native-sqlite-local-first-v2.3.md).
+
 Target logical aggregates: identity (users, sessions, tenant membership, ultimate owner, revocation epoch); commerce (applications, billing, payment review, subscription ledger); fleet (node identity, tenant placement, generation, provisioning/migration/backup jobs). AI reservations use a separately measured coordinator when needed. These are boundaries, not a claim that D1 databases have been provisioned. Private-local uses equivalent native SQLite stores and conformance cases.
 
 Each aggregate owns its audit/outbox and idempotency in the same transaction. D1 batch is atomic only within its bound database. Activation is a durable saga: RECEIVED → REVIEWED → PAYMENT_VERIFIED → PROVISIONING → TENANT_READY → MEMBERSHIP_READY → ACTIVE; failures stay retryable or NEEDS_OPERATOR. No intermediate commerce approval can authorize business posting. Unique tenant/request IDs deduplicate concurrent approvals. An owning-domain outbox precedes export to independent audit storage.

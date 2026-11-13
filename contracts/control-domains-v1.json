@@ -1,17 +1,105 @@
 {
   "version": 1,
   "status": "DESIGN_CONTRACT_NOT_DEPLOYED",
-  "engines": {"cloud": "D1", "private-local": "native SQLite"},
-  "domains": {
-    "identity": {"tables": ["users", "credential_versions", "sessions", "tenant_memberships", "ultimate_owners", "authority_epochs", "revocations", "security_outbox", "schema_migrations"], "atomicInvariants": ["one protected ultimate owner per tenant", "new successful session invalidates previous session under configured policy", "membership or credential change commits epoch and audit/outbox", "operator identity is separate attributed authority"]},
-    "commerce": {"tables": ["applications", "plans", "quotes", "subscription_ledger", "billing_documents", "payment_reviews", "provider_receipts", "entitlement_changes", "commercial_outbox", "schema_migrations"], "atomicInvariants": ["idempotent payment approval", "versioned proration and evidence", "durable provisioning intent before external activation", "suspension preserves history"]},
-    "fleet": {"tables": ["nodes", "tenant_placements", "owner_generations", "provisioning_jobs", "migration_jobs", "backup_reports", "fleet_outbox", "schema_migrations"], "atomicInvariants": ["one published writable owner generation per tenant", "routing active only after ready tenant and authority", "node heartbeat is bounded state", "registry report is not schema-file verification"]}
+  "engines": {
+    "cloud": "native SQLite",
+    "fully-private": "native SQLite"
   },
-  "crossDomainSaga": ["RECEIVED", "REVIEWED", "PAYMENT_VERIFIED", "PROVISIONING", "TENANT_READY", "MEMBERSHIP_READY", "ACTIVE"],
-  "recoveryStates": ["RETRY_PENDING", "UNKNOWN_OUTCOME", "NEEDS_OPERATOR", "QUARANTINED"],
+  "domains": {
+    "identity": {
+      "tables": [
+        "users",
+        "credential_versions",
+        "sessions",
+        "tenant_memberships",
+        "ultimate_owners",
+        "authority_epochs",
+        "revocations",
+        "security_outbox",
+        "schema_migrations"
+      ],
+      "atomicInvariants": [
+        "one protected ultimate owner per tenant",
+        "new successful session invalidates previous session under configured policy",
+        "membership or credential change commits epoch and audit/outbox",
+        "operator identity is separate attributed authority"
+      ]
+    },
+    "commerce": {
+      "tables": [
+        "applications",
+        "plans",
+        "quotes",
+        "subscription_ledger",
+        "billing_documents",
+        "payment_reviews",
+        "provider_receipts",
+        "entitlement_changes",
+        "commercial_outbox",
+        "schema_migrations"
+      ],
+      "atomicInvariants": [
+        "idempotent payment approval",
+        "versioned proration and evidence",
+        "durable provisioning intent before external activation",
+        "suspension preserves history"
+      ]
+    },
+    "fleet": {
+      "tables": [
+        "nodes",
+        "tenant_placements",
+        "owner_generations",
+        "provisioning_jobs",
+        "migration_jobs",
+        "backup_reports",
+        "fleet_outbox",
+        "schema_migrations"
+      ],
+      "atomicInvariants": [
+        "one published writable owner generation per tenant",
+        "routing active only after ready tenant and authority",
+        "node heartbeat is bounded state",
+        "registry report is not schema-file verification"
+      ]
+    }
+  },
+  "crossDomainSaga": [
+    "RECEIVED",
+    "REVIEWED",
+    "PAYMENT_VERIFIED",
+    "PROVISIONING",
+    "TENANT_READY",
+    "MEMBERSHIP_READY",
+    "ACTIVE"
+  ],
+  "recoveryStates": [
+    "RETRY_PENDING",
+    "UNKNOWN_OUTCOME",
+    "NEEDS_OPERATOR",
+    "QUARANTINED"
+  ],
   "audit": "owning transaction writes durable outbox before independent archival",
   "crossDatabaseAtomicity": false,
-  "authorityAssertion": ["installationId", "tenantId", "companyId", "actorId", "sessionId", "commandVersion", "requestDigest", "permissionEpoch", "entitlementVersion", "ownerGeneration", "nodeAudience", "nonce", "issuedAt", "expiresAt", "signature"],
+  "authorityAssertion": [
+    "installationId",
+    "tenantId",
+    "companyId",
+    "actorId",
+    "sessionId",
+    "commandVersion",
+    "requestDigest",
+    "permissionEpoch",
+    "entitlementVersion",
+    "ownerGeneration",
+    "nodeAudience",
+    "nonce",
+    "issuedAt",
+    "expiresAt",
+    "signature"
+  ],
   "leaseDuration": null,
-  "leaseDecision": "Must be approved and tested; sensitive authority changes fail closed"
+  "leaseDecision": "Must be approved and tested; sensitive authority changes fail closed",
+  "governingMandate": "v2.3",
+  "historicalEngineTarget": "D1 superseded by v2.3; existing PostgreSQL remains protected reference"
 }

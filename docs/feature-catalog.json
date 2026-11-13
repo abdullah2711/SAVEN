@@ -1,7 +1,7 @@
 {
   "product": "SAVEN",
   "pronunciation": "seven",
-  "baseline": "2.0",
+  "baseline": "2.3",
   "date": "2026-11-13",
   "meaning": "Specified requirements are not implemented features. Public launch requires agreed family gates.",
   "requirements": [
@@ -14,7 +14,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -31,7 +31,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [],
       "evidence": [],
@@ -46,7 +46,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -63,7 +63,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -80,7 +80,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [],
       "evidence": [],
@@ -95,7 +95,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -107,12 +107,12 @@
       "id": "FND-007",
       "family": "Business foundation",
       "title": "Permissions",
-      "supported_scope": "Roles row scopes field sensitivity and effective-access preview",
+      "supported_scope": "Business-defined custom role types with module action row field branch company amount approval and AI conditions; explicit denies enforced consistently by a shared scoped-query and command service",
       "acceptance": "Preview agrees with allow and deny tests",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -129,7 +129,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -146,7 +146,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -163,7 +163,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [],
       "evidence": [],
@@ -173,12 +173,12 @@
       "id": "FND-011",
       "family": "Business foundation",
       "title": "Ultimate business ownership",
-      "supported_scope": "One protected ultimate owner and controlled delegated administration",
+      "supported_scope": "Exactly one immutable ultimate_business_admin role definition and one active ultimate-owner principal per subscribed business; atomic protected transfer and recovery; arbitrary custom role names cannot clone authority",
       "acceptance": "Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -195,7 +195,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -212,7 +212,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -233,7 +233,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -254,7 +254,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -275,7 +275,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -296,7 +296,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -317,7 +317,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -338,7 +338,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -359,7 +359,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -376,7 +376,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -393,7 +393,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -410,7 +410,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -431,7 +431,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -452,7 +452,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -469,7 +469,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -486,7 +486,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -503,7 +503,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -520,7 +520,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -537,7 +537,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -558,7 +558,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -575,7 +575,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -592,7 +592,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -609,7 +609,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -630,7 +630,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -647,7 +647,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -664,7 +664,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -685,7 +685,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -706,7 +706,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -723,7 +723,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -740,7 +740,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -757,7 +757,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -774,7 +774,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -795,7 +795,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -812,7 +812,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -833,7 +833,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -850,7 +850,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -871,7 +871,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -888,7 +888,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -905,7 +905,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -922,7 +922,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -939,7 +939,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -956,7 +956,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -973,7 +973,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -990,7 +990,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -1007,7 +1007,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -1024,7 +1024,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -1041,7 +1041,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1058,7 +1058,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1075,7 +1075,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1094,7 +1094,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1113,7 +1113,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1132,7 +1132,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1149,7 +1149,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1166,7 +1166,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1183,7 +1183,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1200,7 +1200,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1217,7 +1217,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1236,7 +1236,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1253,7 +1253,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1270,7 +1270,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1287,7 +1287,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1304,7 +1304,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1325,7 +1325,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1346,7 +1346,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1363,7 +1363,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1380,7 +1380,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1401,7 +1401,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1418,7 +1418,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1435,7 +1435,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1452,7 +1452,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1469,7 +1469,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1486,7 +1486,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1503,7 +1503,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1520,7 +1520,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1537,7 +1537,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1554,7 +1554,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1571,7 +1571,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1588,7 +1588,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1605,7 +1605,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1622,7 +1622,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1639,7 +1639,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1656,7 +1656,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1673,7 +1673,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1690,7 +1690,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1707,7 +1707,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1724,7 +1724,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1741,7 +1741,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1758,7 +1758,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1775,7 +1775,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1792,7 +1792,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1809,7 +1809,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1826,7 +1826,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1843,7 +1843,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1860,7 +1860,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1877,7 +1877,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1894,7 +1894,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1911,7 +1911,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1928,7 +1928,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1945,7 +1945,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1962,7 +1962,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1979,7 +1979,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1996,7 +1996,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -2013,7 +2013,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -2030,7 +2030,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2047,7 +2047,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2064,7 +2064,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2081,7 +2081,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2098,7 +2098,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2115,7 +2115,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2132,7 +2132,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2149,7 +2149,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2166,7 +2166,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2183,7 +2183,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2200,7 +2200,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2217,7 +2217,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2234,7 +2234,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2255,7 +2255,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2276,7 +2276,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2293,7 +2293,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2314,7 +2314,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2331,7 +2331,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2348,7 +2348,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2365,7 +2365,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2382,7 +2382,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2403,7 +2403,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2420,7 +2420,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2437,7 +2437,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2454,7 +2454,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2471,7 +2471,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2488,7 +2488,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2505,7 +2505,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2522,7 +2522,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2539,7 +2539,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2559,7 +2559,7 @@
         "RPT-008",
         "ACC-004"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2582,7 +2582,7 @@
         "RPT-009",
         "FND-012"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2602,7 +2602,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2619,7 +2619,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2636,7 +2636,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2653,7 +2653,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2670,7 +2670,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2687,7 +2687,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2704,7 +2704,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2721,7 +2721,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2738,7 +2738,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2755,7 +2755,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2772,7 +2772,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2789,7 +2789,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2806,7 +2806,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2823,7 +2823,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2840,7 +2840,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2857,7 +2857,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2874,7 +2874,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2891,7 +2891,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2908,7 +2908,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2925,7 +2925,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2942,7 +2942,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2959,7 +2959,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2976,7 +2976,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2993,7 +2993,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3010,7 +3010,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3027,7 +3027,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3044,7 +3044,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3056,12 +3056,12 @@
       "id": "APP-009",
       "family": "APIs and Apps",
       "title": "Developer sandbox",
-      "supported_scope": "Sample app SDK guide fixtures and install diagnostics",
+      "supported_scope": "Local developer sandbox typed SDK examples manifest validation and install/revoke/uninstall fixtures for Cloud Private and declared offline compatibility",
       "acceptance": "Independent integrator can install test revoke and uninstall a sample app",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3073,12 +3073,12 @@
       "id": "APP-010",
       "family": "APIs and Apps",
       "title": "Lifecycle",
-      "supported_scope": "Compatibility review migration uninstall and preserved records",
+      "supported_scope": "Versioned App contract and isolated storage migrations install/update/disable/uninstall lifecycle; no direct core schema access and required financial evidence retained",
       "acceptance": "Uninstall revokes execution while retaining required financial evidence",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3095,7 +3095,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3112,7 +3112,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3129,7 +3129,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3146,7 +3146,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3163,7 +3163,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3180,7 +3180,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3197,7 +3197,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3214,7 +3214,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3231,7 +3231,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3248,7 +3248,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3265,7 +3265,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3282,7 +3282,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3299,7 +3299,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3316,7 +3316,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3333,7 +3333,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3350,7 +3350,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3367,7 +3367,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001",
@@ -3386,7 +3386,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-017",
@@ -3404,7 +3404,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-017",
@@ -3423,7 +3423,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-018",
@@ -3441,7 +3441,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-019"
@@ -3458,7 +3458,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-011",
@@ -3477,7 +3477,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-020",
@@ -3496,7 +3496,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-012",
@@ -3515,7 +3515,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "AI-017",
@@ -3534,7 +3534,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3551,7 +3551,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3568,7 +3568,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3585,7 +3585,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3602,7 +3602,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3619,7 +3619,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -3638,7 +3638,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3655,7 +3655,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3672,7 +3672,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3689,7 +3689,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3706,7 +3706,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3723,7 +3723,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3740,7 +3740,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3752,12 +3752,12 @@
       "id": "OPS-008",
       "family": "Portals subscription and operations",
       "title": "Private deployment",
-      "supported_scope": "Exactly Cloud and Fully Private commercial modes using the same product; private-local needs no Cloudflare and private-cloudflare uses customer-owned resources; no SaaS customer-node attachment or reseller hosting",
+      "supported_scope": "Exactly Cloud and Fully Private with native SQLite stores; private customer ERP and local administration exclude SAVEN commercial operator and licence issuer services; offline is a companion",
       "acceptance": "Upgrade and expiry tests match documented supported behaviour",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3774,7 +3774,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3791,7 +3791,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3808,7 +3808,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3825,7 +3825,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3842,7 +3842,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3859,7 +3859,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3876,7 +3876,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3888,12 +3888,12 @@
       "id": "OPS-016",
       "family": "Portals subscription and operations",
       "title": "Hosting portability",
-      "supported_scope": "D1 Cloud control-store ports native SQLite private control equivalents local SQLite tenant nodes and replaceable R2 or local object adapters with tested portability",
+      "supported_scope": "Local-first native SQLite control and tenant store providers with local objects; optional future Cloudflare or S3 adapters are not development dependencies",
       "acceptance": "The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -3912,7 +3912,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -3931,7 +3931,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3942,8 +3942,8 @@
     {
       "id": "OPS-019",
       "family": "Portals subscription and operations",
-      "title": "D1 control aggregates",
-      "supported_scope": "Cloud identity commerce and fleet control domains with native SQLite private equivalents and durable cross-domain sagas",
+      "title": "Native SQLite control aggregates",
+      "supported_scope": "Purpose-separated native SQLite identity commerce and fleet aggregates with durable owning-domain outboxes and explicit cross-file provisioning sagas; D1 is not a selected target",
       "acceptance": "Duplicate approvals partial provisioning and control outages cannot activate an unready tenant",
       "commercial_release": "required",
       "design_status": "brief mapped",
@@ -3951,7 +3951,7 @@
         "OPS-002",
         "SEC-001"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3971,7 +3971,7 @@
         "OPS-010",
         "CFG-006"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3991,7 +3991,7 @@
         "OPS-009",
         "SEC-002"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4011,7 +4011,88 @@
         "OPS-008",
         "OPS-016"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-023",
+      "family": "Portals subscription and operations",
+      "title": "Monthly private certificates",
+      "supported_scope": "SAVEN-only asymmetric issuer and private public-key verification with installation binding monotonic sequence and offline challenge/import/receipt",
+      "acceptance": "Forged expired replayed and foreign-installation licences fail safely while lawful historical access and pending evidence survive; grace and monthly cutoffs remain explicit policy decisions",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [
+        "OPS-008",
+        "OPS-014"
+      ],
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-024",
+      "family": "Portals subscription and operations",
+      "title": "Private package composition",
+      "supported_scope": "Customer ERP identity business admin support and verifier are packaged without vendor billing issuer global registry signing keys or hidden accounts",
+      "acceptance": "A private artifact allowlist and runtime checks exclude vendor-only components and work without mandatory SAVEN connectivity",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [
+        "OPS-008",
+        "SEC-005"
+      ],
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-025",
+      "family": "Portals subscription and operations",
+      "title": "Local-first development and QA",
+      "supported_scope": "Native SQLite control tenant jobs and local objects start reproducibly without D1 PostgreSQL SSH or external cloud dependencies; optional authorized authenticated remote preview",
+      "acceptance": "Fresh local boot works offline and no database secret debug or unrestricted operator endpoint is publicly exposed",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [
+        "OPS-016",
+        "OPS-017"
+      ],
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-026",
+      "family": "Portals subscription and operations",
+      "title": "Durable command receipt and recovery",
+      "supported_scope": "Owning-tenant inbox approval posting audit and outbox states have explicit commit-before-ack and lease retry semantics",
+      "acceptance": "Crash before receipt yields no acceptance and commit-before-ACK replay cannot duplicate a journal; changed permissions period or entitlement are rechecked",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [
+        "ACC-004",
+        "APP-006",
+        "OPS-018"
+      ],
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4028,7 +4109,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4047,7 +4128,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4066,7 +4147,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4085,7 +4166,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4102,7 +4183,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4119,7 +4200,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4136,7 +4217,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4153,7 +4234,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4170,7 +4251,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4187,7 +4268,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4206,7 +4287,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4226,7 +4307,7 @@
         "SEC-001",
         "SEC-002"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4246,7 +4327,7 @@
         "SEC-003",
         "OPS-006"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4263,7 +4344,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4282,7 +4363,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4301,7 +4382,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4320,7 +4401,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4339,7 +4420,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-009"
@@ -4356,7 +4437,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4378,7 +4459,7 @@
         "UX-002",
         "UX-004"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4401,7 +4482,7 @@
         "UX-002",
         "FND-012"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4424,7 +4505,7 @@
         "UX-004",
         "SEC-002"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4446,7 +4527,7 @@
       "parent_requirements": [
         "UX-007"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.md",
+      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
       "status": "specified",
       "dependencies": [
         "FND-009"
