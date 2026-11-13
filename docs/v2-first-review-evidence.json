@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "date": "2026-11-13",
+  "timezone": "Asia/Karachi",
+  "sourceCommit": "332a97bfe68403621e68a017a11b54cfd5f80e8c",
+  "designUrl": "https://saventesting.economicsystems.cc/design/",
+  "governingMandate": "v2.0",
+  "local": {
+    "testsPassed": 71,
+    "testsFailed": 0,
+    "javascriptFilesParsed": 98,
+    "requirements": 251,
+    "originalRequirementIdsPreserved": 239,
+    "areas": 21,
+    "screenMappings": 259,
+    "interactiveExamples": 10,
+    "domStubStartupRoutes": 31,
+    "visualBrowserAcceptance": false
+  },
+  "github": {
+    "foundation": "success",
+    "testingWorkerBuild": "success",
+    "productionNamedExtraBuild": "failure — pre-existing extra testing trigger; no production/main modification",
+    "job": 131836906389
+  },
+  "hosted": {
+    "designPageAndFourModuleAssets": 200,
+    "syntheticBoundaryLabels": true,
+    "workingDatabase": "PostgreSQL",
+    "workingSchema": 13,
+    "workingSchemaReady": true,
+    "schema14Activated": false
+  },
+  "mainUnchanged": "bdf418ca3bf6ebac49115f45119cbe0f6548e907",
+  "ownerDesignApproved": false,
+  "remaining": [
+    "Detailed interactions beyond the ten primary examples",
+    "Visual, keyboard, mobile, print and novice task acceptance",
+    "Full multi-line editors, credits, bank matching, returns and POS shift/split tender depth",
+    "D1 control adapter and tenant SQLite financial parity",
+    "Fleet 1000-tenant chaos and node fencing",
+    "BI load/freshness and 5m-line POS concurrency",
+    "Turnkey private installation and independent encrypted recovery",
+    "Offline synchronization, licences and protocol compatibility"
+  ],
+  "nextGate": "Owner design feedback before DESIGN_APPROVED and most missing backend implementation; no irreversible live cutover authorized."
+}
