@@ -1,0 +1,138 @@
+{
+  "sourceCommit": "d4d292ecd44d6992e925566bc96f1ee38709eebb",
+  "branch": "testing-1",
+  "checkedAt": "2026-11-13T20:11:53.700Z",
+  "clientDate": "2026-11-14 Asia/Karachi",
+  "testsPassed": 105,
+  "javascriptParsed": 119,
+  "requirementIds": 255,
+  "moduleAreas": 25,
+  "screenMappings": 268,
+  "domStubStartupRoutes": 42,
+  "visualAcceptance": false,
+  "browserObservation": "Initial live accessibility tree only; controls were removed before post-change screenshot/layout measurement",
+  "ownerDesignApproval": null,
+  "repairs": [
+    "home section gutter and grid/flex shrink constraints",
+    "original SVG rendered through theme alpha mask",
+    "accessible SVG back/forward controls",
+    "deep plum fills 24151c and 38212b",
+    "clarity tagline removed"
+  ],
+  "newFrontendWorkflows": [
+    "opening balance CSV/template and editable positions",
+    "new-ledger eligibility and as-of/company control reconciliation",
+    "local incomplete draft save/restore",
+    "original-anchor recurring journal preview"
+  ],
+  "backendWriteConnected": false,
+  "realImportOrJobOrPostingCreated": false,
+  "canonicalCompatibility": [
+    "retained normalizeOpening payload",
+    "retained occurrenceDate calendar rules"
+  ],
+  "ci": {
+    "run": 43498556116,
+    "job": 132137983309,
+    "conclusion": "success"
+  },
+  "testingBuild": {
+    "successfulCheck": 132139681346,
+    "conclusion": "success",
+    "earlierFailedAttempt": 132139192946,
+    "duplicateInProgressCallbacksObserved": true
+  },
+  "assets": [
+    {
+      "file": "index.html",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "f050acdd3586cbb89dc1fa1e0126f3f2c979d201eed7f3310f6815f3bce0038a"
+    },
+    {
+      "file": "ui/accounting-model.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "9e1697a1a4f54f9c4bedfdbf3d093aee2e13c1a135d94cd8f2e21ad7a3b16005"
+    },
+    {
+      "file": "ui/accounting-setup.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "62be3bcc3af9d38538ffd881c5181f1db68c8ba8f19b907c11ceae94b4a579dc"
+    },
+    {
+      "file": "ui/accounting-ui.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "bd9a871177cce7cf3052f950cf0f86eb88cd46b8a9edca0d038b8be9853c9bfe"
+    },
+    {
+      "file": "ui/app.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "ab1fc667d214d04be41176d699955ba842d35d1098337e1e9c8e824871fa2327"
+    },
+    {
+      "file": "ui/catalog.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "80c1fff2c3df2f0ff9dcfec479cf33ac9d2c6c9b756812d49dd442f8e997ce2b"
+    },
+    {
+      "file": "ui/icons.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "e4c8adb683763222a3e76ce276802926d7aa934116343246bfd1b140103f9b47"
+    },
+    {
+      "file": "ui/invoice-model.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "0b900f01403d48f097ddf80f9e1cc2fa818b20b274dad016ab42176bbe39bae8"
+    },
+    {
+      "file": "ui/model.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "6d0601bd8bb2099bbbfa2b4c7e65215c688617322b58502421439c4789c1bf09"
+    },
+    {
+      "file": "ui/portals.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "791f5755eb8296f23b413aeae5563bf22d35cc6a3dc18e936b8b8b45be017e7d"
+    },
+    {
+      "file": "ui/theme.css",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "e1725ee2966c038367a6bef296454d33278388217fb7984aac62e87e5503b412"
+    },
+    {
+      "file": "ui/workspaces.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "c2550944ca2243ef8e08a7c3a5699cdb1a3f1f282b0beb4107b4cc1f51ea2a60"
+    },
+    {
+      "file": "logo.svg",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "3530b29f5b3d59c5ccf509dd00f909d50dc9e3ec4d7d93c172f9fef3eac7b21d"
+    }
+  ],
+  "apiHealth": {
+    "service": "saven",
+    "stage": "operating-core",
+    "database": "postgresql",
+    "schemaVersion": 13,
+    "databaseConfigured": true,
+    "schemaReady": true,
+    "environment": "testing-postgresql"
+  },
+  "mainPreserved": "bdf418ca3bf6ebac49115f45119cbe0f6548e907",
+  "originalLogoAndFinancialSourcePreserved": true,
+  "serverOrProductionChanged": false,
+  "remaining": "docs/40-frontend-module-completion-plan.md"
+}

@@ -31,3 +31,7 @@ These screens do not create jobs, import real balances, upload objects, create a
 Next Accounting UI gates: full source correction/reversal lifecycle, deeper account/control configuration, general import mapping and error correction, approval and evidence lifecycles, comparative/cash-flow/equity/statutory-note reports and close/reopen sign-off. Retain all remaining modules and the later offline/synchronization contracts. Cloud/private domain targets and private vendor-issuer exclusions in docs39 remain unchanged.
 
 No SSH deployment, production/main change, database deletion, financial migration or new backend feature service is part of this increment. Publish only testing-1, verify CI/testing assets and independently refresh the existing schema13 health before reporting deployment verified.
+
+## Observed verification
+
+Source d4d292ecd44d6992e925566bc96f1ee38709eebb passed105 Node tests,119 parses and remote run43498556116/job132137983309, including retained PostgreSQL contracts. Both generators and255-ID validation passed. The final testing build succeeded after an earlier failed attempt;13 served assets match source. API health remains PostgreSQL schema13 and main is unchanged. Exact evidence is in docs/accounting-setup-ui-evidence.json. No post-change visual browser acceptance or backend posting is claimed.

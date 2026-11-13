@@ -10,6 +10,12 @@ Local verification passed:105 Node tests,119 JavaScript parses, both reproducibl
 
 Precise next: publish only the intended files using the fresh branch lease; inspect CI/testing build and verify served hashes/new asset/root/retired paths plus unchanged schema13 health/main. Then finish deeper Accounting correction/approval/evidence/import/report/close UX before backend expansion. All other modules, separate customer/admin hostnames and later offline/sync contracts remain mandatory. No SSH/server/production/DNS/database change is part of this increment.
 
+### Observed source, CI and testing deployment
+
+Published source d4d292ecd44d6992e925566bc96f1ee38709eebb on testing-1 using a non-force expected-head lease.20 intended file objects matched their hashes; no files were removed and original SVG/financial migrations/native reference sources were preserved. GitHub run43498556116/job132137983309 passed105 tests,119 parses, generators and retained isolated PostgreSQL contracts. Cloudflare testing check132139681346 succeeded; an earlier attempt132139192946 failed and duplicate in-progress callbacks were observed. All13 served frontend assets independently match tested source after deployment. Final health remains ready PostgreSQL schema13. Main remains bdf418ca3bf6ebac49115f45119cbe0f6548e907. No service/DNS/database/production change.
+
+GitHub batch uploads timed out and were recovered through immutable blob uploads plus a small hash-only tree. No branch was force-updated or partially published. Machine evidence: docs/accounting-setup-ui-evidence.json. Final evidence/checkpoint changes contain no application-code change. Visual/browser acceptance and complete Accounting/module scope remain open; continue docs40/41 rather than treating the green checks as a complete ERP.
+
 ## Current UI-first revision - visible brand SA7EN
 
 Owner feedback after v2.3 now governs UI order and entry. Visible SA7EN is pronounced seven. Replace the old public testing interface at root, retain reference financial source and data, soften light/dark themes with ivory/charcoal/plum and a low-saturation dark accent, reduce borders, and split Projects from CRM.
