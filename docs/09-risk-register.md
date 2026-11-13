@@ -58,3 +58,7 @@ A critical financial, isolation, evidence-loss, or recovery defect stops affecte
 - Monthly offline licensing has unresolved grace/cutoff terms and root/VM clone limitations; no invented policy or destructive expiry.
 - Local preview must stay authenticated/loopback by default; new public tunnel/DNS/service exposure needs explicit authority.
 - Cramped repetitive design and mixed pseudo-icons require workflow-specific layouts and consistent SVGs; source tests do not replace visual/mobile/novice review.
+
+## UI revision risks
+
+Same-origin testing paths must not be mistaken for production origin isolation; prototype persona switches grant no authority. Private administration must not accidentally ship vendor issuer/global subscriber services. Full accounting UI, responsive/keyboard/owner review and authenticated native runtime remain incomplete. Archived frontend helpers must stay covered by regressions. Display-brand changes must not rename protocol/certificate/database IDs. Offline deferral must not remove sync/idempotency/permission contracts.

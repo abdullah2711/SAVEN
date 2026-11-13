@@ -1,5 +1,22 @@
 # SAVEN build checkpoint
 
+## Current UI-first revision - visible brand SA7EN
+
+Owner feedback after v2.3 now governs UI order and entry. Visible SA7EN is pronounced seven. Replace the old public testing interface at root, retain reference financial source and data, soften light/dark themes with ivory/charcoal/plum and a low-saturation dark accent, reduce borders, and split Projects from CRM.
+
+Cloud target origins: app.saven.economicsystems.cc for customer ERP, operator.saven.economicsystems.cc for BOTH commercial subscriptions/onboarding/SA7EN billing and separately authorized platform operations. Private also requires configured separate application/local-administration origins, without vendor global billing/issuer. Current testing paths are synthetic walkthroughs, not domain security isolation. See docs39, docs40 and contracts/origins-v1.json. No production DNS or domain deployment is claimed.
+
+Frontend source now lives in public/ui and public/index.html. Old public files moved to reference/legacy-ui and are not served; /design/ redirects to root. Existing financial backend, migrations, records and service remain untouched. No SSH/server/main/production change. Only frontend asset routing changes; authenticated API forwarding is retained.
+
+Implemented frontend increment: calmer complete theme, contextual navigation/search, business/commercial/operator walkthroughs, own-subscription area and separate Projects/CRM boards. Accounting adds chart search/detail/sample account editing, journal/source register, multi-line journal preparation/review, supporting metadata, explicit local sample draft save/restore, searchable GL/trial/statements with full fixture CSV, source drilldown and close/correction/evidence explanations. No complete module, real posting, real attachment upload, actual operator authority or owner approval is claimed.
+
+Verified locally:96 Node tests passed,117 JavaScript files parsed,255 original/extended requirement IDs retained,25 areas and268 mappings generated and plan validation passed. Tests include both theme contrast, context/retired-route boundaries, independent expected report totals, date-filter period versus accumulated profit and40 startup routes under a DOM stub. The stub is not visual/browser/keyboard acceptance. Initial sample period-profit and palette-test-parser failures were fixed before the passing final run. All retained financial/native tests remain.
+
+Development environment reset invalidated the earlier shell session; verification was repeated successfully through the available local Node runtime. No permissions escalation or server change was needed. No visual browser tool is available; no screenshot or owner approval is claimed.
+
+Next: guarded testing-1 publication, inspect CI/testing build, verify root and complete module graph/retired routes plus unchanged schema13 health/main. Then continue Accounting UI completion under docs40 before backend feature expansion. Offline implementation follows main infrastructure while versioning, permissions, pending evidence and duplicate-free sync contracts remain mandatory.
+
+
 ## Current increment - owner mandate v2.3
 
 Base testing-1: 82efa086de75d1fd7788e6c1a2c32235eddd2b55; main remains bdf418ca3bf6ebac49115f45119cbe0f6548e907. Both consolidated files and the full802-line v2 baseline were read. Native SQLite controls/business stores now govern; D1/PostgreSQL target statements below are historical. Exactly Cloud and Fully Private, Offline companion, monthly signed private certificates, protected owner, shared authorization and durable inbox/approval/posting/outbox are reconciled in docs35-38, ADR017-020 and255 retained/extended requirements. All239 original IDs and APP-001 through APP-010 remain.

@@ -1,3 +1,4 @@
+import {frontendAsset} from './frontend-assets.mjs';
 import { api, securityHeaders, json } from './api.mjs';
 import {edgeAssistant} from './edge-assistant.mjs';
 export {AiBudget} from './edge-assistant.mjs';
@@ -21,9 +22,9 @@ export default {
       return api(request,env);
     }
     if(!env.ASSETS) return new Response('SAVEN static assets are not configured.',{status:503,headers:securityHeaders});
-    const response=await env.ASSETS.fetch(request);
+    const response=await frontendAsset(request,next=>env.ASSETS.fetch(next));
     const headers=new Headers(response.headers);
-    for(const [name,value] of Object.entries(securityHeaders)) headers.set(name,value);
+    for(const [name,value] of Object.entries(securityHeaders))if(name!=='Content-Security-Policy'||!headers.has(name))headers.set(name,value);
     if(url.protocol==='https:') headers.set('Strict-Transport-Security','max-age=31536000');
     return new Response(response.body,{status:response.status,headers});
   }

@@ -517,6 +517,100 @@
       ],
       "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
     },
+    "crm": {
+      "contract": "design.crm.v1",
+      "fields": [
+        {
+          "name": "leadId",
+          "type": "scoped-lead-id",
+          "required": true
+        },
+        {
+          "name": "pipeline",
+          "type": "versioned-stage-definition",
+          "required": true
+        },
+        {
+          "name": "contact",
+          "type": "scoped-contact-id",
+          "required": true
+        },
+        {
+          "name": "handoff",
+          "type": "linked-quote-or-project-command",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "commerce": {
+      "contract": "design.commerce.v1",
+      "fields": [
+        {
+          "name": "applicationId",
+          "type": "subscriber-application-id",
+          "required": true
+        },
+        {
+          "name": "subscriptionId",
+          "type": "SAVEN-subscription-id",
+          "required": false
+        },
+        {
+          "name": "billingInvoice",
+          "type": "SAVEN-commercial-document-not-business-sales",
+          "required": false
+        },
+        {
+          "name": "conversion",
+          "type": "durable-provisioning-saga",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "operator": {
+      "contract": "design.operator.v1",
+      "fields": [
+        {
+          "name": "operatorId",
+          "type": "attributed-staff-id",
+          "required": true
+        },
+        {
+          "name": "operation",
+          "type": "allowlisted-fleet-or-support-action",
+          "required": true
+        },
+        {
+          "name": "authorization",
+          "type": "named-time-scoped-grant-and-step-up",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "subscription": {
+      "contract": "design.subscription.v1",
+      "fields": [
+        {
+          "name": "subscriberId",
+          "type": "own-subscriber-id",
+          "required": true
+        },
+        {
+          "name": "planChange",
+          "type": "quoted-policy-version",
+          "required": false
+        },
+        {
+          "name": "invoices",
+          "type": "own-SAVEN-billing-documents",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
     "finance": {
       "contract": "design.finance.v1",
       "fields": [

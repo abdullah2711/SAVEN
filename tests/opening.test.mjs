@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeOpening} from '../src/opening.mjs';
-import {openingCsv,openingSummary} from '../public/opening.js';
-import {createAccountingView} from '../public/accounting.js';
+import {openingCsv,openingSummary} from '../reference/legacy-ui/opening.js';
+import {createAccountingView} from '../reference/legacy-ui/accounting.js';
 const opening=()=>({kind:'opening_balance',mode:'post',date:'2026-01-01',reference:'OPEN-2026',description:'Synthetic trial balance',domains:['receivables','payables','inventory'],trialBalance:[{accountId:'bank',debit:'100.00',credit:'0.00'},{accountId:'opening_equity',debit:'0.00',credit:'100.00'}],receivables:[],payables:[],stock:[]});
 test('opening trial balance is exact, balanced and never creates a plug',()=>{assert.equal(normalizeOpening(opening()).trialBalance[0].debit,'100.00');assert.throws(()=>normalizeOpening({...opening(),trialBalance:[{accountId:'bank',debit:'100.00',credit:'0.00'},{accountId:'opening_equity',debit:'0.00',credit:'99.99'}]}));assert.throws(()=>normalizeOpening({...opening(),trialBalance:[{accountId:'bank',debit:'100.00',credit:'0.00'},{accountId:'bank',debit:'0.00',credit:'100.00'}]}));});
 test('reconciliation cannot post another trial balance and selected domains must match the breakdown',()=>{assert.throws(()=>normalizeOpening({...opening(),mode:'reconcile'}));assert.throws(()=>normalizeOpening({...opening(),mode:'reconcile',trialBalance:[],domains:['receivables'],stock:[{itemId:'item',quantity:'1'}]}));});

@@ -86,3 +86,11 @@ Exactly one immutable ultimate_business_admin definition and active holder per s
 ## ADR 020 Durable receipt, approval, posting and outbox ? accepted contract
 
 ACCEPTED_PENDING requires owning-tenant durable command before ACK. AWAITING_APPROVAL has no journal; final review revalidates current authority/period/evidence. POSTED requires source/journal/audit/dedupe/outbox in one local transaction. Follow-on delivery failure does not undo finance. Jobs are orchestration, not authority; bounded leases, idempotency and unknown-outcome reconciliation are required. No cross-file or SQL/object-byte ACID claim.
+
+## ADR021 - UI-first root frontend and SA7EN brand
+
+Adopt the latest owner feedback: muted ivory/charcoal/plum, restrained dark accent and fewer borders. Visible SA7EN brand, pronounced seven; historical identifiers remain stable. Replace old testing UI at root, archive public legacy files as reference, complete UI/UX module by module before backend expansion, split Projects/CRM and retain offline/sync contracts for later implementation.
+
+## ADR022 - customer versus administration origins
+
+Cloud targets app.saven.economicsystems.cc and operator.saven.economicsystems.cc. The latter hosts commercial subscriptions/onboarding/invoicing AND platform operator sections with separate authorization. Fully Private requires configurable separate application/admin origins, local administration/own-licence status only; vendor global billing and issuer are excluded. Host-only independent sessions, origin/audience checks, server permissions and explicit customer support consent are mandatory. Current testing paths are synthetic walkthroughs, not origin security isolation. See contracts/origins-v1.json and docs/39-ui-first-brand-and-origin-revision.md.

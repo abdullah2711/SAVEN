@@ -163,7 +163,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
-| PRJ-001 | Leads and opportunities: Contacts stages activities quotations and conversion | Conversion preserves references without duplicating the customer |
+| PRJ-001 | Leads and opportunities: Separate CRM module for contacts leads activities opportunities and explicit quote/project handoff; project delivery tasks time budgets and billing remain in Projects | Conversion preserves references without duplicating the customer |
 | PRJ-002 | Projects and tasks: Milestones assignments progress and documents | Users see only their permitted projects and responsibilities |
 | PRJ-003 | Time and expenses: Timesheets billable status approvals and cost allocation | Approved entries flow once into project cost or billing |
 | PRJ-004 | Budgets and commitments: Project budgets purchasing retention and variations | Actual committed and remaining amounts reconcile by dimension |
@@ -303,7 +303,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | --- | --- | --- |
 | OPS-001 | Application portal: Package selection company details bank-transfer evidence and status | Submission or screenshot alone cannot activate an app account |
 | OPS-002 | Verification and provisioning: Operator review receipt entitlement and nominated company admin | Provisioning retries cannot create duplicate companies or entitlements |
-| OPS-003 | Operator administration: Companies users quotas subscription dates features and support cases | Ordinary operator role cannot silently browse confidential business data |
+| OPS-003 | Operator administration: Separate administration origin operator.saven.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.saven.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing | Ordinary operator role cannot silently browse confidential business data |
 | OPS-004 | Subscription lifecycle: Renewal due notices grace restrictions and read-export policy | Expiry does not erase ledger attachments or audit history |
 | OPS-005 | Backups and restoration: Database objects configuration identity and work queues | Rehearsal demonstrates measured recovery and reconciled totals |
 | OPS-006 | Technical telemetry: Structured redacted logs metrics tracing alerts and error queues | Credentials and unnecessary payroll content never appear in routine logs |
@@ -318,7 +318,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-015 | Support identity administration: Case-scoped attributed impersonation reset or invitation flows with customer visibility and no recoverable password access | Support cannot retrieve existing passwords and sensitive actions preserve real operator and represented user identities |
 | OPS-016 | Hosting portability: Local-first native SQLite control and tenant store providers with local objects; optional future Cloudflare or S3 adapters are not development dependencies | The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use |
 | OPS-017 | Resumable development: Durable build state changed-file records check outcomes blockers and remaining actions | A resumed development agent locates the current branch and incomplete work without repeating completed effects |
-| OPS-018 | Controlled offline application: Selected POS accounting inventory assets and manufacturing functions with signed grants scoped master-data creation and bidirectional sync | Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested |
+| OPS-018 | Controlled offline application: Offline companion implementation follows main infrastructure while frontend and backend contracts retain versioned canonical commands device scope policy entitlement bounds immutable operation IDs pending evidence conflicts and duplicate-free bidirectional synchronization | Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested |
 | OPS-019 | Native SQLite control aggregates: Purpose-separated native SQLite identity commerce and fleet aggregates with durable owning-domain outboxes and explicit cross-file provisioning sagas; D1 is not a selected target | Duplicate approvals partial provisioning and control outages cannot activate an unready tenant |
 | OPS-020 | SQLite fleet schema lifecycle: Per-database checksum and compatibility ledger backup preflight canaries resumable backfill and isolated forward recovery | One thousand synthetic tenants across at least three nodes survive mixed versions failed migration and compatibility tests without altered books |
 | OPS-021 | Tenant writable ownership: SAVEN-controlled Cloud nodes secure typed routing monotonic owner generation and fenced moves | Stale owner network partition and promotion race cannot create two authoritative writers |
@@ -350,13 +350,13 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
-| UX-001 | Themes and glass: Readable warm neutral and charcoal themes with restrained plum accent limited glass accessible contrast responsive density and reduced-motion behavior | Light and dark review shows no gradient seam or contrast loss |
+| UX-001 | Themes and glass: Muted warm ivory charcoal and restrained plum; layered charcoal dark surfaces with low-saturation violet-plum; coherent readable layouts with few borders and no bright white cards or pink primary buttons | Light and dark review shows no gradient seam or contrast loss |
 | UX-002 | Navigation: Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps | User can locate each destination in both sidebar states |
-| UX-003 | Brand: SAVEN name official ESC emblem plum and ivory tokens | No provisional lion or obsolete product name appears in current application branding |
+| UX-003 | Brand: SA7EN visible display brand pronounced seven across application and account areas; preserve existing repository domain protocol certificate and database identifiers | No provisional lion or obsolete product name appears in current application branding |
 | UX-004 | Task interaction: Keyboard scanning touch quick actions drafts and visible states | Frequent small issue requires no AI chat or specialist instruction |
 | UX-005 | Accessibility: WCAG 2.2 AA target focus labels contrast and reduced motion | Keyboard and assistive checks pass defined critical journeys |
 | UX-006 | Responsive and weak network: Small screens long values errors progress and safe retry | Interrupted submissions preserve intent without duplicate effects |
-| UX-007 | Product-wide workflow library: Isolated synthetic design routes field and state contracts across all product families before most missing backend work | Every requirement maps to a route and contract with specification versus interactive versus implemented status made explicit |
+| UX-007 | Product-wide workflow library: Complete UI and UX module by module before backend feature expansion; coherent registers documents configuration evidence states exports and accessibility; screen coverage is not completion | Every requirement maps to a route and contract with specification versus interactive versus implemented status made explicit |
 | UX-008 | Global search and commands: Permission-scoped module record report settings search and accessible command palette with keyboard navigation | Denied records and totals do not leak and prototype search never calls business APIs |
-| UX-009 | Synthetic design boundary: Conspicuous demo data isolated route explicit simulations and no fake financial or external action success | Design pages cannot submit business API commands and reload resets synthetic transaction state |
+| UX-009 | Synthetic design boundary: New frontend at main testing root replaces old public UI while retained financial source/data stay intact; synthetic states and local sample drafts cannot masquerade as actual posting | Design pages cannot submit business API commands and reload resets synthetic transaction state |
 | UX-010 | Owner design approval: Dated module and cross-module review issues screenshots novice task observations and explicit approval | No design is called approved without recorded owner decision and no approved screen alone counts as backend implementation |

@@ -349,7 +349,7 @@ def build():
                 governing_source='docs/sources/SAVEN-mandate-v2.3.md',
                 status='in progress' if f'{prefix}-{n:03d}' in IN_PROGRESS else 'specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
                 evidence=ACCOUNTING_EVIDENCE.get(f'{prefix}-{n:03d}',['docs/12-foundation.md']) if f'{prefix}-{n:03d}' in IN_PROGRESS else [],approval='Scope includes owner additions of 11 November; unresolved policy decisions remain explicit'))
-    data={'product':'SAVEN','pronunciation':'seven','baseline':'2.3','date':'2026-11-13',
+    data={'product':'SAVEN','display_brand':'SA7EN','pronunciation':'seven','baseline':'2.3','date':'2026-11-13',
           'meaning':'Specified requirements are not implemented features. Public launch requires agreed family gates.',
           'requirements':requirements}
     (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')

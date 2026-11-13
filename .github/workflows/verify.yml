@@ -54,7 +54,7 @@ jobs:
         run: |
           python tools/build_feature_catalog.py
           python tools/build_design_library.py
-          git diff --exit-code -- docs/feature-catalog.json docs/05-feature-library.md docs/ui-screen-inventory.json docs/workflow-contracts-v1.json docs/postgres-reference-inventory.json public/design/catalog.js
+          git diff --exit-code -- docs/feature-catalog.json docs/05-feature-library.md docs/ui-screen-inventory.json docs/workflow-contracts-v1.json docs/postgres-reference-inventory.json public/ui/catalog.js
 
       - name: Supplier, settlement and manual-journal contracts
         run: node scripts/verify-accounting-cycles.mjs --migrate

@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "status": "OWNER_APPROVED_TARGET_NOT_PRODUCTION_DEPLOYED",
+  "displayBrand": "SA7EN",
+  "pronunciation": "seven",
+  "cloud": {
+    "customerApplication": "https://app.saven.economicsystems.cc",
+    "administration": "https://operator.saven.economicsystems.cc",
+    "administrationSections": ["subscriptions-onboarding-businesses-billing", "platform-operator-operations"],
+    "commercialBillingIsBusinessSales": false
+  },
+  "fullyPrivate": {
+    "appOriginConfiguration": "SA7EN_APP_ORIGIN",
+    "adminOriginConfiguration": "SA7EN_ADMIN_ORIGIN",
+    "distinctOriginsRequired": true,
+    "localAdmin": ["installation", "employees-and-access", "backup-and-recovery", "own-subscription-and-seat-status", "monthly-certificate-import-and-verification"],
+    "vendorCommercialIssuerIncluded": false,
+    "globalSubscribersIncluded": false,
+    "ordinaryOperationRequiresVendorConnection": false
+  },
+  "securityContract": {
+    "hostOnlyCookies": true,
+    "crossSubdomainCookieDomain": false,
+    "separateBusinessAndOperatorSessions": true,
+    "crossOriginCORS": "deny by default; explicit exact-origin exceptions only",
+    "csrf": "exact requesting origin and intended service audience",
+    "operatorAccessToBusinessData": "named scoped expiring customer-approved grant; never inferred from operator login",
+    "frontendNavigationIsAuthorization": false,
+    "privateRootTamperProof": false
+  },
+  "testingOnly": {
+    "origin": "https://saventesting.economicsystems.cc",
+    "businessPreview": "/",
+    "commercialPreview": "/subscriptions/",
+    "operatorPreview": "/operator/",
+    "sameOriginPathsAreSecurityIsolation": false,
+    "records": "synthetic",
+    "privilegedBackendConnected": false
+  },
+  "offlineCompanion": {
+    "implementationAfterMainInfrastructure": true,
+    "canonicalSyncTargetsBusinessService": true,
+    "operatorSessionIsOfflinePostingAuthority": false,
+    "required": ["versioned commands", "tenant-company-resource scope", "policy and entitlement bounds", "immutable operation identifiers", "device sequence and conflict handling", "pending evidence preservation", "revalidate-before-post", "no duplicate financial effects"]
+  }
+}

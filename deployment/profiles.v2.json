@@ -13,7 +13,9 @@
       "tenantStore": "local SQLite on SAVEN-controlled nodes",
       "objects": "configurable local or S3-compatible; Cloudflare R2 adapter optional",
       "customerDatabaseAttachment": false,
-      "cloudflareRequired": false
+      "cloudflareRequired": false,
+      "appOrigin": "https://app.saven.economicsystems.cc",
+      "adminOrigin": "https://operator.saven.economicsystems.cc"
     },
     "private-local": {
       "commercialModel": "fully-private",
@@ -23,14 +25,16 @@
       "cloudflareRequired": false,
       "ordinaryCloudConnectivityRequired": false,
       "vendorCommercialServicesIncluded": false,
-      "monthlySignedCertificateRequired": true
+      "monthlySignedCertificateRequired": true,
+      "distinctAppAndAdminOriginsRequired": true
     }
   },
   "offlineCompanion": {
     "hostingModel": false,
     "syncProtocol": "not implemented",
     "leasePolicy": "requires reviewed decision",
-    "pendingEvidencePreservedOnExpiry": true
+    "pendingEvidencePreservedOnExpiry": true,
+    "implementationPhase": "after main infrastructure; compatible contracts retained during frontend work"
   },
   "releaseGates": [
     "signed images and manifests",
@@ -43,5 +47,7 @@
     "financial and permission conformance"
   ],
   "governingMandate": "v2.3",
-  "localDevelopmentDefault": true
+  "localDevelopmentDefault": true,
+  "displayBrand": "SA7EN",
+  "originsContract": "contracts/origins-v1.json"
 }

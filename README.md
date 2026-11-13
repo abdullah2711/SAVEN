@@ -1,6 +1,6 @@
-# SAVEN
+# SA7EN
 
-SAVEN, pronounced **seven**, is Economic Systems Consulting's ERP with connected accounting and controlled AI.
+SA7EN (repository: SAVEN), pronounced **seven**, is Economic Systems Consulting's ERP with connected accounting and controlled AI.
 
 ## Governing specification and current evidence
 
@@ -10,14 +10,14 @@ The existing testing app still uses PostgreSQL schema13. Schema14 line invoices/
 
 The v2.3 target has exactly two commercial models: SAVEN Cloud and Fully Private, both with native SQLite controls and business databases. D1 and PostgreSQL are not new-code targets. Cloudflare hosting and object storage are replaceable adapters. Offline is a restricted synchronized companion, not another hosting tier. No customer-supplied database can attach to shared SaaS; no accounting-firm or reseller hosting is offered.
 
-## Frontend design review
+## Main testing frontend
 
-The isolated [design workspace source](public/design/index.html) maps the complete catalog. It contains synthetic data, explicit simulations, global search and priority module examples. Specification briefs, interactive drafts, existing partial implementation and owner design approval are separate. It cannot call business APIs; it is not the working ERP or an offline client. Owner approval is still required.
+The [main frontend source](public/index.html) maps the complete catalog. It contains synthetic data, explicit simulations, global search and priority module examples. Specification briefs, interactive drafts, existing partial implementation and owner design approval are separate. It cannot call business APIs; it is not the working ERP or an offline client. Owner approval is still required.
 
-Run the design-only preview with Node24:
+Run the frontend locally with Node24:
 
 ```sh
-node scripts/design-server.mjs
+npm run ui
 ```
 
 Open the printed loopback URL. No database, real login or API setup is needed for this preview. All synthetic transactions reset on reload. Existing working app paths are retained separately.
@@ -44,3 +44,9 @@ SAVEN is proprietary. Publication does not grant a software licence. Cloudflare 
 Run `node scripts/native-demo.mjs` for an isolated synthetic SQLite company, durable command, balanced journal and independently opened backup. It uses separate native identity, commerce, fleet, jobs and tenant files in an ignored QA directory. It is a developer harness, not an authenticated ERP service and not connected to design screens. Existing PostgreSQL routes remain separate. See [implementation evidence and limits](docs/38-native-foundation-verification-v2.3.md).
 
 The private monthly certificate proof uses ephemeral test keys, signed challenges and acceptance receipts. Commercial grace, cutoff, emergency and seat policies remain unapproved. No vendor private key is committed or included in the private foundation allowlist.
+
+## Current frontend and domains
+
+The main testing URL now serves the SA7EN frontend. The previous public interface is retained under reference/legacy-ui for regression/source continuity. /design/ redirects to root. All displayed records and posting workflows remain clearly labelled samples. Projects and CRM are separate. Frontend completion precedes further backend feature work, module by module; offline implementation follows infrastructure while synchronization contracts remain required.
+
+Cloud customer application target: https://app.saven.economicsystems.cc . Administration target: https://operator.saven.economicsystems.cc for both commercial subscriptions/onboarding/SA7EN billing and separately authorized platform operations. Fully Private also requires separate configured application and local-administration origins; vendor issuer/global billing remain excluded. See [owner UI/domain revision](docs/39-ui-first-brand-and-origin-revision.md), [module completion gates](docs/40-frontend-module-completion-plan.md) and [origin contract](contracts/origins-v1.json). These are target domains, not a claim of production deployment. Same-origin testing walkthroughs are not domain security isolation.

@@ -10,6 +10,6 @@ async function checkDirectory(dir){
   else if(/\.(mjs|js)$/.test(entry.name)){const result=spawnSync(process.execPath,['--check',path],{encoding:'utf8'});if(result.status!==0){process.stderr.write(result.stderr);process.exit(1);}count++;}
  }
 }
-for(const dir of ['src','scripts','tests','public'])await checkDirectory(resolve(root,dir));
+for(const dir of ['src','scripts','tests','public','reference'])await checkDirectory(resolve(root,dir));
 JSON.parse(await readFile(resolve(root,'package.json'),'utf8'));
 console.log(`PASS: ${count} JavaScript files parsed; package manifest valid.`);

@@ -80,3 +80,7 @@ Earlier turnkey customer-data-node and PostgreSQL-target prompts are historical 
 ## v2.3 consolidated source, 13 November 2026
 
 Both current attachments are preserved under docs/sources/. They supersede earlier licensing/local-first/queue addenda and conflicting v2 target storage decisions. Full baseline product scope and APP-001 through APP-010 survive. See docs/35-native-sqlite-local-first-v2.3.md, docs/36-private-licensing-and-support-v2.3.md and docs/37-authorization-and-durable-queues-v2.3.md. OPS-019 is amended in place to native SQLite; new child IDs OPS-023 through OPS-026 cover monthly certificates, private composition, local QA and durable receipt. Existing IDs are never renumbered. Owner design approval is absent.
+
+## Latest owner UI/domain revision
+
+UX-001/002/003/007/009/010: calm themes, SA7EN display brand, root frontend replacement and module-by-module UI completion; PRJ-001 separated from PRJ-002..006; OPS-003/004/011..015 and SEC controls: customer app versus shared commercial/operator administration origin; OPS-018/POS-007/008: offline later with compatible sync contracts retained. See docs39-40 and contracts/origins-v1.json. No duplicate catalog ID is added.
