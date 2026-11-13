@@ -66,3 +66,7 @@ No browser automation/control tool is available in this session. Therefore scree
 4. Provisioning saga resume, durable workers/dead letters, coordinated identity/tenant/object restore, per-tenant forward migrations/canaries and failed-node isolation.
 5. Approved licence lifecycle policy, installation/restore/key-recovery binding, seat assignment and complete private runtime/package/API separation; clean-server installer and signed release artifacts.
 6. Independent native financial/security/backup/fleet/offline/BI acceptance. Only then prepare a reversible testing cutover plan for explicit owner authorization; no destructive decommission or production promotion is implied.
+
+## Remote evidence after publication
+
+Implementation cd9eeac0d5785b1cf680381fd4a933b1bcb239fe was published only to testing-1 with a guarded non-force update. Its first CI run43479316617 failed at the Linux package-test path assertion. Follow-up b0ebbee6959dc3bc42899f67447b8b45c6a7787a corrected the path derivation and run43479582286/job132072263523 passed:89 Node tests,110 parses, catalog validation/reproducibility and all retained isolated PostgreSQL contracts through the source schema14 invoice/tax suite. This is independent source verification, not live schema14 activation. Public v2.3 design assets returned200 and API health still reported ready PostgreSQL schema13. Main was independently unchanged. Final company-context correction preserves selection and keeps the empty synthetic company from displaying Northstar fixture totals; visual browser acceptance remains pending.

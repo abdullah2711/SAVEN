@@ -1,0 +1,46 @@
+{
+  "governingMandate": "v2.3",
+  "implementationCommit": "cd9eeac0d5785b1cf680381fd4a933b1bcb239fe",
+  "verifiedFollowupCommit": "b0ebbee6959dc3bc42899f67447b8b45c6a7787a",
+  "branch": "testing-1",
+  "mainPreserved": "bdf418ca3bf6ebac49115f45119cbe0f6548e907",
+  "local": {
+    "testsPassed": 89,
+    "javascriptParsed": 110,
+    "requirements": 255,
+    "originalIdsPreserved": 239,
+    "moduleAreas": 21,
+    "screenMappings": 263,
+    "nativeDemo": {
+      "received": "ACCEPTED_PENDING",
+      "final": "POSTED",
+      "debit": "100.00",
+      "credit": "100.00",
+      "tenantBackupIntegrity": "ok"
+    }
+  },
+  "ci": {
+    "initialRun": 43479316617,
+    "initialResult": "failure: nested checkout path in package test",
+    "fixedRun": 43479582286,
+    "fixedJob": 132072263523,
+    "fixedResult": "success",
+    "nativePostgresqlContracts": "passed through source schema14; live schema unchanged"
+  },
+  "observedTesting": {
+    "designAssetsHTTP": 200,
+    "apiHealthHTTP": 200,
+    "database": "postgresql",
+    "schemaVersion": 13,
+    "schemaReady": true,
+    "nativeCutover": false
+  },
+  "ownerDesignApproval": null,
+  "visualBrowserAcceptance": false,
+  "privateReleaseInstallable": false,
+  "fullNativeParity": false,
+  "offlineSyncImplemented": false,
+  "newPublicRouteCreated": false,
+  "liveBusinessDataMigrated": false,
+  "finalContextPatchVerification": "focused tests passed; latest CI and deployment must be checked"
+}

@@ -19,6 +19,12 @@ Implementation published as cd9eeac0d5785b1cf680381fd4a933b1bcb239fe on testing-
 
 Post-publication review found a portability flaw in the package-import test's path derivation for nested checkout directories. The test now uses fileURLToPath/relative instead of a repository-name split; all five licensing/package tests pass locally. This changes verification code only. Await fresh remote CI and static asset evidence before reporting deployment verified. No live database or server change was made.
 
+### Verified remote checks and testing assets
+
+Follow-up b0ebbee6959dc3bc42899f67447b8b45c6a7787a passed GitHub run43479582286/job132072263523:89 Node tests,110 parses,255 requirement validation/reproducibility and all retained native PostgreSQL contracts through invoices/taxes. The initial cd9eeac run43479316617 failed only at the Linux nested-checkout path assertion; its log was inspected and the fix verified. No failure was hidden or skipped.
+
+Public testing design app/catalog/workspaces/invoice-model/icons/CSS all returned200 with the new v2.3 source. The API separately remained PostgreSQL schema13. Final small design correction retains company selection, prevents Northstar fixture totals appearing for the empty Cedar company, preserves journal-register access and corrects the chart expansion chevron. Focused design tests and syntax pass; browser/visual acceptance remains pending. This final source/evidence commit must receive its own CI/deployment check.
+
 ## Historical governing state ? 13 November 2026, mandate v2
 
 Baseline remote testing-1 was da1bdb14880086f979cfaf33b7c90841b9bca8a0. Public health was independently refreshed and reports PostgreSQL schema13, ready. Schema14 remains tested source, not activated. The latest owner mandate is committed at docs/sources/SAVEN-mandate-v2.md; see docs/26-owner-decisions-2026-11-13-v2.md. Older PostgreSQL/hybrid-node/development-order assumptions below are historical where superseded. Main/production and business data have not been changed.
