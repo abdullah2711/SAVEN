@@ -19,6 +19,12 @@ Source5063b12f6e449bf0e6ca616e569644d76ce24e8d was published on testing-1. Revie
 Next: guarded testing-1 publication, inspect CI/testing build, verify root and complete module graph/retired routes plus unchanged schema13 health/main. Then continue Accounting UI completion under docs40 before backend feature expansion. Offline implementation follows main infrastructure while versioning, permissions, pending evidence and duplicate-free sync contracts remain mandatory.
 
 
+### Observed publication and final UI revision evidence
+
+Source5063b12f6e449bf0e6ca616e569644d76ce24e8d and canonical-routing follow-up77da06349a4412cafdd587142fcd13d85ff48801 were published only to testing-1. Final GitHub run43490490002/job132110069529 passed97 Node tests,117 JavaScript parses, generated-artifact consistency and all retained isolated PostgreSQL contracts. Cloudflare saven-testing build succeeded. All12 public frontend assets match source; root/operator/subscriptions return200, /design/ redirects to root, and old /app.js returns410. Fresh API health remains PostgreSQL schema13/ready. Main remains bdf418ca3bf6ebac49115f45119cbe0f6548e907. The extra production-named saven build failed; its configuration was not changed.
+
+Exact hashes and limits are in docs/sa7en-ui-revision-evidence.json. The final hostname contract explicitly rejects port-only/path-only separation for private deployments. No production DNS, operator service, authenticated origin-security runtime, native cutover, real business posting or database removal is claimed. Visual/browser/owner acceptance and complete UI/module depth remain open. The final checkpoint/specification commit changes no application code. Continue docs40 Accounting UI gates, then subsequent modules before backend feature work.
+
 ## Current increment - owner mandate v2.3
 
 Base testing-1: 82efa086de75d1fd7788e6c1a2c32235eddd2b55; main remains bdf418ca3bf6ebac49115f45119cbe0f6548e907. Both consolidated files and the full802-line v2 baseline were read. Native SQLite controls/business stores now govern; D1/PostgreSQL target statements below are historical. Exactly Cloud and Fully Private, Offline companion, monthly signed private certificates, protected owner, shared authorization and durable inbox/approval/posting/outbox are reconciled in docs35-38, ADR017-020 and255 retained/extended requirements. All239 original IDs and APP-001 through APP-010 remain.

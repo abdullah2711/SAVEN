@@ -26,7 +26,8 @@
       "ordinaryCloudConnectivityRequired": false,
       "vendorCommercialServicesIncluded": false,
       "monthlySignedCertificateRequired": true,
-      "distinctAppAndAdminOriginsRequired": true
+      "distinctAppAndAdminOriginsRequired": true,
+      "distinctAppAndAdminHostnamesRequired": true
     }
   },
   "offlineCompanion": {

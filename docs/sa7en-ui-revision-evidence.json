@@ -1,0 +1,130 @@
+{
+  "displayBrand": "SA7EN",
+  "pronunciation": "seven",
+  "sourceCommit": "77da06349a4412cafdd587142fcd13d85ff48801",
+  "initialSourceCommit": "5063b12f6e449bf0e6ca616e569644d76ce24e8d",
+  "branch": "testing-1",
+  "mainPreserved": "bdf418ca3bf6ebac49115f45119cbe0f6548e907",
+  "checkedAt": "2026-11-13T19:20:54.620Z",
+  "local": {
+    "tests": 97,
+    "passed": 97,
+    "javascriptParsed": 117,
+    "requirements": 255,
+    "moduleAreas": 25,
+    "screenMappings": 268,
+    "startupRoutesUnderDomStub": 40,
+    "visualBrowserAcceptance": false
+  },
+  "remoteCI": {
+    "run": 43490490002,
+    "job": 132110069529,
+    "conclusion": "success",
+    "retainedPostgresqlContracts": "all required steps passed"
+  },
+  "testingBuild": "success",
+  "frontendAssets": [
+    {
+      "file": "index.html",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "f050acdd3586cbb89dc1fa1e0126f3f2c979d201eed7f3310f6815f3bce0038a"
+    },
+    {
+      "file": "ui/accounting-model.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "9e1697a1a4f54f9c4bedfdbf3d093aee2e13c1a135d94cd8f2e21ad7a3b16005"
+    },
+    {
+      "file": "ui/accounting-ui.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "58989833fd63ffa951c924ed62af7e6f695c7d003dda1b96a4f4bfeff044d52b"
+    },
+    {
+      "file": "ui/app.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "68e8f4053cc952bea2e458debfab266c06447eab4b908f8a39379439737ca7c9"
+    },
+    {
+      "file": "ui/catalog.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "d702c8fe6c8df8e5a41351444a75a572a78bc3ce177988087129c588b9e43c5b"
+    },
+    {
+      "file": "ui/icons.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "7c4b89f86814ce00871feedac7ce4042914bf41cb9ac19525116e9272055dc7d"
+    },
+    {
+      "file": "ui/invoice-model.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "0b900f01403d48f097ddf80f9e1cc2fa818b20b274dad016ab42176bbe39bae8"
+    },
+    {
+      "file": "ui/model.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "6d0601bd8bb2099bbbfa2b4c7e65215c688617322b58502421439c4789c1bf09"
+    },
+    {
+      "file": "ui/portals.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "791f5755eb8296f23b413aeae5563bf22d35cc6a3dc18e936b8b8b45be017e7d"
+    },
+    {
+      "file": "ui/theme.css",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "c910a5d4ecf8c1cb295fe9d620f75a2917d5eceb336842c88353876d66c9ed0a"
+    },
+    {
+      "file": "ui/workspaces.js",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "c2550944ca2243ef8e08a7c3a5699cdb1a3f1f282b0beb4107b4cc1f51ea2a60"
+    },
+    {
+      "file": "logo.svg",
+      "status": 200,
+      "matchesSource": true,
+      "sha256": "3530b29f5b3d59c5ccf509dd00f909d50dc9e3ec4d7d93c172f9fef3eac7b21d"
+    }
+  ],
+  "routes": {
+    "/": 200,
+    "/operator/": 200,
+    "/subscriptions/": 200,
+    "/design/": "302 to /",
+    "/app.js": 410
+  },
+  "frontendCsp": "connect-src 'none'; form-action 'none'",
+  "apiHealth": {
+    "service": "saven",
+    "stage": "operating-core",
+    "database": "postgresql",
+    "schemaVersion": 13,
+    "databaseConfigured": true,
+    "schemaReady": true,
+    "environment": "testing-postgresql"
+  },
+  "legacySources": "exact source hashes retained outside public assets",
+  "financialSourcesAndMigrationsPreserved": true,
+  "productionDNSChanged": false,
+  "newProductionHostDeployed": false,
+  "originsContract": "contracts/origins-v1.json",
+  "privateSeparateHostnamesRequired": true,
+  "domainSecurityRuntimeImplemented": false,
+  "frontendPostingConnected": false,
+  "completeFrontend": false,
+  "ownerDesignApproval": null,
+  "offlineImplementation": "later, after main infrastructure; sync contracts retained",
+  "remaining": "docs/40-frontend-module-completion-plan.md",
+  "extraProductionNamedBuild": "pre-existing saven build failed; no production configuration changed"
+}

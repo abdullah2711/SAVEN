@@ -6,17 +6,27 @@
   "cloud": {
     "customerApplication": "https://app.saven.economicsystems.cc",
     "administration": "https://operator.saven.economicsystems.cc",
-    "administrationSections": ["subscriptions-onboarding-businesses-billing", "platform-operator-operations"],
+    "administrationSections": [
+      "subscriptions-onboarding-businesses-billing",
+      "platform-operator-operations"
+    ],
     "commercialBillingIsBusinessSales": false
   },
   "fullyPrivate": {
     "appOriginConfiguration": "SA7EN_APP_ORIGIN",
     "adminOriginConfiguration": "SA7EN_ADMIN_ORIGIN",
     "distinctOriginsRequired": true,
-    "localAdmin": ["installation", "employees-and-access", "backup-and-recovery", "own-subscription-and-seat-status", "monthly-certificate-import-and-verification"],
+    "localAdmin": [
+      "installation",
+      "employees-and-access",
+      "backup-and-recovery",
+      "own-subscription-and-seat-status",
+      "monthly-certificate-import-and-verification"
+    ],
     "vendorCommercialIssuerIncluded": false,
     "globalSubscribersIncluded": false,
-    "ordinaryOperationRequiresVendorConnection": false
+    "ordinaryOperationRequiresVendorConnection": false,
+    "distinctHostnamesRequired": true
   },
   "securityContract": {
     "hostOnlyCookies": true,
@@ -26,7 +36,8 @@
     "csrf": "exact requesting origin and intended service audience",
     "operatorAccessToBusinessData": "named scoped expiring customer-approved grant; never inferred from operator login",
     "frontendNavigationIsAuthorization": false,
-    "privateRootTamperProof": false
+    "privateRootTamperProof": false,
+    "portOnlyOrPathOnlySeparationIsSufficient": false
   },
   "testingOnly": {
     "origin": "https://saventesting.economicsystems.cc",
@@ -41,6 +52,15 @@
     "implementationAfterMainInfrastructure": true,
     "canonicalSyncTargetsBusinessService": true,
     "operatorSessionIsOfflinePostingAuthority": false,
-    "required": ["versioned commands", "tenant-company-resource scope", "policy and entitlement bounds", "immutable operation identifiers", "device sequence and conflict handling", "pending evidence preservation", "revalidate-before-post", "no duplicate financial effects"]
+    "required": [
+      "versioned commands",
+      "tenant-company-resource scope",
+      "policy and entitlement bounds",
+      "immutable operation identifiers",
+      "device sequence and conflict handling",
+      "pending evidence preservation",
+      "revalidate-before-post",
+      "no duplicate financial effects"
+    ]
   }
 }
