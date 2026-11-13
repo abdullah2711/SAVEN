@@ -84,3 +84,7 @@ Both current attachments are preserved under docs/sources/. They supersede earli
 ## Latest owner UI/domain revision
 
 UX-001/002/003/007/009/010: calm themes, SA7EN display brand, root frontend replacement and module-by-module UI completion; PRJ-001 separated from PRJ-002..006; OPS-003/004/011..015 and SEC controls: customer app versus shared commercial/operator administration origin; OPS-018/POS-007/008: offline later with compatible sync contracts retained. See docs39-40 and contracts/origins-v1.json. No duplicate catalog ID is added.
+
+## 14 November focused repair and Accounting continuation
+
+UX-001/002/003/005: retain theme direction, repair grid/flex overflow and section gaps, theme-mask the existing logo, use accessible SVG history icons, deepen plum from the first-party stylesheet and remove the clarity tagline. ACC-002/003/018: add opening and recurring UI workflows with strict balanced/control reconciliation, canonical compatibility and no false posting. Scope and verification limits: docs/41-accounting-setup-and-layout-repair.md. No new requirement ID or feature-completion claim is introduced.

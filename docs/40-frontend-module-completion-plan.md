@@ -28,3 +28,7 @@ Each module needs a coherent workspace, searchable/filterable register, create/e
 The shared theme and original SVG icon family apply across all contexts. Business, commercial and operator navigation/search must stay contextual. Runtime server authorization is mandatory later; persona selectors and hidden UI items are demonstrations only.
 
 Module acceptance requires dated workflow evidence and owner feedback captured in BUILD_STATE. A screen count, green parser, screenshot or arithmetic test alone is insufficient. Backend implementation may proceed against approved module contracts; do not claim the entire frontend or ERP is complete from this increment.
+
+## 14 November continuation
+
+Opening reconciliation and recurring setup now have functional frontend workbenches, local draft save/restore, strict trial CSV, exact differences and original-anchor schedules. Canonical opening payload and occurrence-date compatibility are independently tested. See docs/41-accounting-setup-and-layout-repair.md for supported depth and remaining credit/asset/valuation/evidence/import scope. This does not close the whole Accounting UI gate or connect live posting/jobs. The latest owner feedback keeps the existing theme direction with focused layout/logo/history/deeper-plum repairs and removes the clarity tagline.

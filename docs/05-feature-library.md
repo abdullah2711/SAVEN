@@ -350,9 +350,9 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
-| UX-001 | Themes and glass: Muted warm ivory charcoal and restrained plum; layered charcoal dark surfaces with low-saturation violet-plum; coherent readable layouts with few borders and no bright white cards or pink primary buttons | Light and dark review shows no gradient seam or contrast loss |
+| UX-001 | Themes and glass: Muted warm ivory charcoal and restrained plum; layered charcoal dark surfaces with Economic Systems deep plum fills 24151c/38212b and readable low-saturation accent text; coherent readable layouts with few borders and no bright white cards or pink primary buttons | Light and dark review shows no gradient seam or contrast loss |
 | UX-002 | Navigation: Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps | User can locate each destination in both sidebar states |
-| UX-003 | Brand: SA7EN visible display brand pronounced seven across application and account areas; preserve existing repository domain protocol certificate and database identifiers | No provisional lion or obsolete product name appears in current application branding |
+| UX-003 | Brand: SA7EN visible display brand pronounced seven across application and account areas without a clarity tagline; theme-adaptive original mark; preserve existing repository domain protocol certificate and database identifiers | No provisional lion or obsolete product name appears in current application branding |
 | UX-004 | Task interaction: Keyboard scanning touch quick actions drafts and visible states | Frequent small issue requires no AI chat or specialist instruction |
 | UX-005 | Accessibility: WCAG 2.2 AA target focus labels contrast and reduced motion | Keyboard and assistive checks pass defined critical journeys |
 | UX-006 | Responsive and weak network: Small screens long values errors progress and safe retry | Interrupted submissions preserve intent without duplicate effects |

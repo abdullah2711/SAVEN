@@ -1,5 +1,15 @@
 # SAVEN build checkpoint
 
+## Current focused repair and Accounting continuation - 14 November 2026 (Asia/Karachi)
+
+Base testing-1 d412a23e50c233efbd1c904b29c7ab7306f182dd. Owner approved the broad theme direction and requested focused repairs: home overlap, adaptive logo, icon back/forward, deeper Economic Systems plum, no clarity tagline, then continued construction. Latest feedback is captured in docs11 and docs41. Preserve main/production/data and the UI-first module sequence.
+
+Implemented: home grid gutters/shrink constraints/flexible cards; original SVG reused as a theme mask; accessible SVG history controls; primary plum24151c/38212b from the first-party corporate stylesheet; removed brand/home slogan. Added Accounting opening reconciliation and recurring-template workbenches with company-scoped local sample draft save/restore, editable inputs, strict trial CSV/template, original source dates/references, exact control comparisons and month-end/leap-aware occurrence previews. New payload/date checks agree with retained backend contracts. No actual import, scheduler job, supporting upload or posting is connected.
+
+Local verification passed:105 Node tests,119 JavaScript parses, both reproducible generators and255-requirement plan validation. Eight new setup checks cover canonical payload/date compatibility, as-of/company controls, empty-ledger eligibility, strict import, incomplete draft restore and month-end/leap behavior;42 startup routes, palette and asset boundary checks also pass. An initial browser accessibility observation confirmed the old home UI, but browser tools were removed before screenshot/layout checks. No post-change visual/keyboard/responsive acceptance or owner approval is claimed.
+
+Precise next: publish only the intended files using the fresh branch lease; inspect CI/testing build and verify served hashes/new asset/root/retired paths plus unchanged schema13 health/main. Then finish deeper Accounting correction/approval/evidence/import/report/close UX before backend expansion. All other modules, separate customer/admin hostnames and later offline/sync contracts remain mandatory. No SSH/server/production/DNS/database change is part of this increment.
+
 ## Current UI-first revision - visible brand SA7EN
 
 Owner feedback after v2.3 now governs UI order and entry. Visible SA7EN is pronounced seven. Replace the old public testing interface at root, retain reference financial source and data, soften light/dark themes with ivory/charcoal/plum and a low-saturation dark accent, reduce borders, and split Projects from CRM.

@@ -69,7 +69,50 @@
           "required": false
         }
       ],
-      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use",
+      "workflowViews": {
+        "opening": {
+          "requirement": "ACC-002",
+          "route": "/#module=accounting&tab=opening",
+          "modes": [
+            "new-ledger import",
+            "existing-ledger reconciliation"
+          ],
+          "sections": [
+            "trialBalance",
+            "receivables",
+            "payables",
+            "stock"
+          ],
+          "invariants": [
+            "balanced source trial without plug",
+            "original unnetted references and dates",
+            "all control/position differences zero",
+            "existing-ledger reconciliation has no trial posting"
+          ],
+          "canonicalPayload": "retained normalizeOpening contract, independently tested",
+          "backendWriteConnected": false
+        },
+        "recurring": {
+          "requirements": [
+            "ACC-003",
+            "ACC-018"
+          ],
+          "route": "/#module=accounting&tab=recurring",
+          "previewFrequency": [
+            "monthly",
+            "quarterly",
+            "yearly"
+          ],
+          "invariants": [
+            "exact balanced journal template",
+            "original-day month-end/leap anchor",
+            "preview key is not an accepted operation ID",
+            "execution rechecks policy entitlement evidence and period"
+          ],
+          "backendJobConnected": false
+        }
+      }
     },
     "banking": {
       "contract": "design.banking.v1",
