@@ -1,5 +1,7 @@
 # SAVEN Commercial Strategy and Sales Playbook
 
+> Governing revision: [mandate v2](sources/SAVEN-mandate-v2.md) permits exactly SAVEN Cloud and Fully Private. No customer database attachment to SaaS, accounting-firm hosting or reseller fleet is offered. Referrals confer no hosting or customer-data rights.
+
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
 11 November 2026 | Commercial proposal 1.1
@@ -116,9 +118,9 @@ No market price is finalized. Test package hypotheses based on company count, ac
 
 Consider a small-business package, a growing-team package, and a controlled-operations package, with clearly listed entitlements. Manufacturing, POS and HR remain product capabilities; packaging determines access, not whether they exist in the release. Private deployment includes implementation, annual maintenance, infrastructure responsibility, upgrade support, and a minimum commercially viable contract.
 
-Track monthly recurring revenue separately from implementation income. Contribution equals subscription revenue less hosting, storage, AI, direct support, payment handling, and partner commission. Gross margin definitions must be consistent. Acquisition payback uses acquisition spend divided by monthly contribution from acquired customers, and must account for churn and collection delays.
+Track monthly recurring revenue separately from implementation income. Contribution equals subscription revenue less hosting, storage, AI, direct support, payment handling, and approved referral acquisition cost. Gross margin definitions must be consistent. Acquisition payback uses acquisition spend divided by monthly contribution from acquired customers, and must account for churn and collection delays.
 
-For illustration only, PKR 10,000 monthly revenue less PKR 1,200 hosting and storage, PKR 800 AI, PKR 1,500 direct support, and PKR 1,000 partner commission leaves PKR 5,500 contribution, or 55 percent before fixed operating costs. These are invented planning inputs, not market prices or cost estimates. If acquisition cost were PKR 30,000, simple payback would be about 5.5 months before churn and financing effects. Measure actual cohort costs before setting a durable price.
+For illustration only, PKR 10,000 monthly revenue less PKR 1,200 hosting and storage, PKR 800 AI, PKR 1,500 direct support, and PKR 1,000 approved referral acquisition cost leaves PKR 5,500 contribution, or 55 percent before fixed operating costs. These are invented planning inputs, not market prices or cost estimates. If acquisition cost were PKR 30,000, simple payback would be about 5.5 months before churn and financing effects. Measure actual cohort costs before setting a durable price.
 
 Manual bank-transfer verification is the initial payment workflow. An application submission records package, billing details, evidence and status. Operators verify funds, record a receipt, approve entitlements, and provision. Renewals have due dates, reminders, grace, and documented restricted-access behaviour. Automatic payment processing is a later integration, with no current claim that it exists.
 
@@ -126,7 +128,7 @@ Manual bank-transfer verification is the initial payment workflow. An applicatio
 
 Begin with founder-led discovery and demonstrations using Economic Systems Consulting's existing market knowledge, subject to client confidentiality and professional independence. Do not imply an audit opinion endorses the product. Consultants can introduce or implement SAVEN, but responsibilities, commissions, customer ownership, data access, support, and conflicts must be explicit.
 
-Partner onboarding includes a sandbox, task certification based on outcomes, implementation checklist, escalation path, and renewal economics. A referral partner receives no access to client records unless the client grants an appropriate role. Multi-client accountant workspaces keep company context explicit and prevent cross-client AI memory.
+Authorized referral and implementation assistance includes a sandbox, task certification based on outcomes, implementation checklist, escalation path, and renewal economics. A referral partner receives no access to client records unless the client grants an appropriate role. Multi-client accountant workspaces keep company context explicit and prevent cross-client AI memory.
 
 Use task-focused demonstrations, short evidence-backed case studies, migration guides, accountant workshops, and narrowly targeted outreach. Initial content topics are issuing stock without account selection, avoiding duplicate asset openings, approval changes without code, professional statements with notes, and cash forecasting from controlled records. Advertising should lead to one relevant demonstration and clear fit criteria.
 

@@ -317,6 +317,8 @@ Password and login data design|Server-side one-way password hashing or a vetted 
 ''',
 }
 GROUPS = [(prefix,family,dependency,rows+ADDITIONAL.get(prefix,'')) for prefix,family,dependency,rows in GROUPS]
+from v2_requirements import ADDITIONS as V2_ADDITIONS, OVERRIDES as V2_OVERRIDES, PARENTS as V2_PARENTS
+GROUPS=[(p,f,d,r+V2_ADDITIONS.get(p,'')) for p,f,d,r in GROUPS]
 IN_PROGRESS = {'FND-001','FND-003','FND-004','FND-006','FND-007','FND-008','FND-009',
                'FND-011','FND-012','ACC-001','ACC-004','ACC-005','ACC-018','SAL-003','SAL-007',
                'INV-003','INV-004','INV-005','INV-011','AI-031','OPS-016','OPS-017','SEC-001',
@@ -326,6 +328,8 @@ ACCOUNTING_EVIDENCE = {rid: ['docs/16-accounting-delivery.md','docs/17-accountin
 ACCOUNTING_EVIDENCE['ACC-002']=['docs/18-opening-reconciliation.md','docs/17-accounting-requirement-status.md','docs/BUILD_STATE.md']
 ACCOUNTING_EVIDENCE.update({rid:['docs/23-fixed-assets.md','docs/24-bookkeeping-module-map.md','docs/BUILD_STATE.md'] for rid in ['AST-002','AST-003','AST-006']})
 ACCOUNTING_EVIDENCE.update({rid:['docs/25-invoices-taxes-settings.md','docs/24-bookkeeping-module-map.md','docs/BUILD_STATE.md'] for rid in ['SAL-003','PUR-004','TAX-001','TAX-002','TAX-004']})
+ACCOUNTING_EVIDENCE.update({rid:['docs/32-product-wide-ui-ux-library.md','docs/BUILD_STATE.md'] for rid in ['UX-007','UX-008','UX-009']})
+ACCOUNTING_EVIDENCE.update({rid:['docs/30-sqlite-bi-and-metric-catalog.md','docs/BUILD_STATE.md'] for rid in ['RPT-011','RPT-012']})
 IN_PROGRESS.update(ACCOUNTING_EVIDENCE)
 
 def build():
@@ -333,16 +337,19 @@ def build():
     for prefix,family,dependency,rows in GROUPS:
         for n,line in enumerate((row for row in rows.strip().splitlines() if row.strip()),1):
             title,scope,acceptance=line.split('|')
+            scope=V2_OVERRIDES.get(f'{prefix}-{n:03d}',scope)
             requirements.append(dict(id=f'{prefix}-{n:03d}',family=family,title=title,
                 supported_scope=scope,acceptance=acceptance,commercial_release='required',
+                design_status='brief mapped',parent_requirements=V2_PARENTS.get(f'{prefix}-{n:03d}',[]),
+                governing_source='docs/sources/SAVEN-mandate-v2.md',
                 status='in progress' if f'{prefix}-{n:03d}' in IN_PROGRESS else 'specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
                 evidence=ACCOUNTING_EVIDENCE.get(f'{prefix}-{n:03d}',['docs/12-foundation.md']) if f'{prefix}-{n:03d}' in IN_PROGRESS else [],approval='Scope includes owner additions of 11 November; unresolved policy decisions remain explicit'))
-    data={'product':'SAVEN','pronunciation':'seven','baseline':'1.2','date':'2026-11-11',
+    data={'product':'SAVEN','pronunciation':'seven','baseline':'2.0','date':'2026-11-13',
           'meaning':'Specified requirements are not implemented features. Public launch requires agreed family gates.',
           'requirements':requirements}
     (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
-    lines=['# SAVEN Feature and Acceptance Library','','11 November 2026 | Baseline 1.2','',
-           f'{len(requirements)} requirements across {len(GROUPS)} families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. This catalog and decisions D01 to D12 define supported scope for review.','',
+    lines=['# SAVEN Feature and Acceptance Library','','13 November 2026 | Baseline 2.0','',
+           f'{len(requirements)} requirements across {len(GROUPS)} families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.','',
            'Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.','']
     for _,family,_,_ in GROUPS:
         lines += ['## '+family,'','| ID | Capability and supported scope | Acceptance condition |','| --- | --- | --- |']

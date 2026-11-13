@@ -10,7 +10,9 @@ def validate():
     rows=data['requirements']
     ids=[r['id'] for r in rows]
     assert len(ids)==len(set(ids)), 'Duplicate requirement ID'
-    assert len(rows)>=180, 'Unexpected scope reduction'
+    baseline=json.loads((ROOT/'docs/requirements-baseline-ids.json').read_text(encoding='utf-8'))
+    assert set(baseline['ids'])<=set(ids), 'Original requirement identifiers were removed'
+    assert len(rows)>=239, 'Unexpected scope reduction'
     known=set(ids)
     graph={r['id']:r['dependencies'] for r in rows}
     for r in rows:
@@ -20,6 +22,8 @@ def validate():
         assert r['commercial_release']=='required', 'Unexpected release-scope change'
         for k in ('id','family','title','supported_scope','acceptance'):
             assert r[k].strip(), f'Missing {k}'
+        assert set(r.get('parent_requirements',[]))<=known, f'Unknown parent in {r["id"]}'
+        assert r.get('design_status','brief mapped') in {'not started','brief mapped','interactive draft','approved'}, 'Unknown design status'
         assert set(r['dependencies'])<=known, f'Unknown dependency in {r["id"]}'
     def visit(k,path):
         assert k not in path, f'Dependency cycle: {path+[k]}'

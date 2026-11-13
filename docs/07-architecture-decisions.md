@@ -44,3 +44,28 @@ The owner's new input prefers Cloudflare Workers, database and buckets while pre
 
 The owner explicitly confirmed PostgreSQL and authorized installing it on the personal server temporarily. D1 was a foundation activation shortcut and is not the selected MVP database. Keep the command boundary while moving its storage to native PostgreSQL with non-owner runtime privileges, transactional pooled scope, row security and native control triggers. Host the API beside PostgreSQL initially; Cloudflare serves the frontend and reaches only the private HTTP API through a VPC Service/Tunnel. Do not expose PostgreSQL publicly or reuse the server administration password as a database credential. Never fall back to D1 after PostgreSQL failure. The [hosting and migration runbook](13-hosting-postgresql-and-migration.md) governs cutover, responsibility, portability and recovery evidence. This supersedes ADR 009's immediate database choice. Native PostgreSQL tests, migration reconciliation and recovery rehearsal are required; SQLite checks cannot substitute for them.
 
+
+
+## ADR 011 Two commercial models and offline companion ? accepted target, 13 November 2026
+
+Cloud and Fully Private only. No SaaS attachment of customer-provided business databases, accounting-firm hosting or reseller fleet. Offline is a restricted synchronized companion. This supersedes conflicting earlier prompts; see docs/27-deployment-models-and-portability.md.
+
+## ADR 012 All-SQLite target with bounded D1 control aggregates ? accepted target
+
+Cloud control identity/commerce/fleet use D1 with owning-domain audit/outbox and explicit cross-domain sagas. Tenant transactions execute locally on SAVEN-controlled SQLite nodes. Private-local uses native SQLite controls; customer-Cloudflare is a disclosed private profile. ADR 010 describes the retained current runtime and correctness reference, not the new target. No live migration is authorized by this ADR.
+
+## ADR 013 Tenant, legal company and authority ? accepted design contract
+
+Default one file per tenant/subscription containing multiple legal companies. Company foreign keys remain mandatory. Atomic intercompany scope is limited to the file. Central user/session/membership/entitlements intersect with local roles/resources/workflows through signed short-lived assertions, epochs and owner generation. SQLite has no PostgreSQL RLS; application predicates and negative tests plus DB invariants replace that defense explicitly. Lease durations require evidence/policy approval.
+
+## ADR 014 Frontend-first and truthful product states ? accepted ordering
+
+Complete product-wide workflow and design library first, with synthetic isolated prototype and owner review. Preserve working financial routes. Requirement mapping, interactive draft, design approval, tested source and verified live operation are separate evidence states. Most missing backend work follows approved contracts; a bounded synthetic storage/reporting spike is allowed for feasibility.
+
+## ADR 015 Fleet, private release and offline compatibility ? accepted contract
+
+Versioned signed manifests, per-file checksums and durable migration cursor, verified backup, canary batches, expand/backfill/contract, fencing, financial postflight and forward recovery. A container rollback does not reverse data. Shared release contracts support private-local without Cloudflare and explicit offline protocol windows. 1k-tenant chaos/private-install gates remain unpassed.
+
+## ADR 016 Reporting and telemetry ownership ? accepted contract
+
+Tenant-local incremental projections commit cursor with effects. Governed JSON report definitions compile to bound allowlisted reads, filter permissions before aggregates and expose freshness. Financial snapshots stay authoritative and reproducible. Financial/security audit, billable usage and sampled operational diagnostics have distinct durability/retention pipelines. No universal zero-RPO, unlimited scale or tamper-proof claim.

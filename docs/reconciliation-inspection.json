@@ -1,0 +1,393 @@
+{
+  "baseRemoteCommit": "da1bdb14880086f979cfaf33b7c90841b9bca8a0",
+  "inspectionOf": "local v2 working snapshot; includes explicit superseding notices",
+  "documents": [
+    {
+      "path": "docs/01-product-blueprint.md",
+      "canonical_text_sha256": "3799b662610be405e6df32b709cfbbb3b4bb46e4c9978a1fa3560068b01eaea9",
+      "lines": 166,
+      "sections": [
+        "# SAVEN Product Blueprint",
+        "## 1 Purpose and product commitment",
+        "## 2 Customers and business fit",
+        "## 3 Shared foundation and accounting rules",
+        "## 4 Functional breadth and supported depth",
+        "### Sales purchases and POS",
+        "### Tax and localization",
+        "### Inventory and manufacturing",
+        "### Human resources and payroll",
+        "## 5 Finance beyond bookkeeping",
+        "## 6 Professional statements and built in BI",
+        "## 7 Configuration without breaking history",
+        "## 8 AI at launch and release control",
+        "## 9 Portals company Drive and Apps",
+        "### Company knowledge and memory",
+        "### Portals storage and extensions",
+        "## 10 Brand and experience contract",
+        "## 11 What must be reviewed before coding",
+        "## References"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/02-architecture-ai-security.md",
+      "canonical_text_sha256": "6dbbc8d66d0e641c9008d1ad3b1ad52176340311008c3725825ca8016d28b42c",
+      "lines": 161,
+      "sections": [
+        "# SAVEN Architecture AI and Security",
+        "## 1 Architecture decision",
+        "## 2 Recommended stack and alternatives",
+        "## 3 Components and ownership",
+        "## 4 Data model and isolation",
+        "## 5 Business command and posting contract",
+        "## 6 Example stock approval and external invoice",
+        "## 7 AI execution and model portability",
+        "### Document processing and import",
+        "### Memory owned by SAVEN",
+        "## 8 AI cost and quality controls",
+        "## 9 APIs and the Apps platform",
+        "## 10 Security oversight and company files",
+        "## 11 Hosting recovery and measured scale",
+        "## 12 Safe change and operations",
+        "## References"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/03-commercial-strategy.md",
+      "canonical_text_sha256": "550419861b7ce9365a6a99cdbbf169a051a8dc6e0ad1a2d76f6b60c244968dc1",
+      "lines": 165,
+      "sections": [
+        "# SAVEN Commercial Strategy and Sales Playbook",
+        "## 1 Commercial position",
+        "## 2 Who buys who uses and who influences",
+        "## 3 Qualification and fit boundaries",
+        "## 4 Value and friction library",
+        "## 5 Demonstration and conversation scripts",
+        "### The short owner conversation",
+        "### The accountant demonstration",
+        "### The storekeeper demonstration",
+        "### The finance and reporting demonstration",
+        "### The administrator demonstration",
+        "### The company knowledge demonstration",
+        "## 6 Objections and responsible responses",
+        "## 7 Pricing and unit economics",
+        "## 8 Channels and marketing execution",
+        "## 9 Defensibility and the next decade",
+        "## 10 Initial commercial experiments and stop rules",
+        "## References"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/04-delivery-and-verification.md",
+      "canonical_text_sha256": "2aa907547bdb867dceed0d6bcd9004c4060ea7566c53240d5d4b2d860e256917",
+      "lines": 162,
+      "sections": [
+        "# SAVEN Delivery and Verification Plan",
+        "## 1 Current state and next authorized step",
+        "## 2 Delivery order and gates",
+        "## 3 Branch release and environment policy",
+        "## 4 Foundation backlog",
+        "## 5 Financial and operating acceptance cases",
+        "## 6 AI evaluation and release controls",
+        "## 7 Usability performance and recovery gates",
+        "## 8 Security launch gate and incident response",
+        "## 9 Decisions and recommended defaults",
+        "## 10 Traceability and evidence management"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/05-feature-library.md",
+      "canonical_text_sha256": "fe85338eded130362274f040f4fb9261150aa976e32a4277b6fcf50632f08916",
+      "lines": 358,
+      "sections": [
+        "# SAVEN Feature and Acceptance Library",
+        "## Business foundation",
+        "## Accounting and close",
+        "## Sales and receivables",
+        "## Purchases and payables",
+        "## Point of sale",
+        "## Inventory",
+        "## Fixed assets",
+        "## Manufacturing",
+        "## Human resources and payroll",
+        "## Projects and basic CRM",
+        "## Financial management",
+        "## Tax and statutory localization",
+        "## Financial statements and BI",
+        "## Configuration and workflows",
+        "## Company Drive and evidence",
+        "## APIs and Apps",
+        "## AI tools memory and evaluation",
+        "## Portals subscription and operations",
+        "## Security audit and assurance",
+        "## Interface and accessibility"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/06-feedback-traceability.md",
+      "canonical_text_sha256": "e44a2b2c9dfdc4c9142e69482347941adfb0651850cb8991c7479cd584a24a28",
+      "lines": 77,
+      "sections": [
+        "# SAVEN Feedback Traceability",
+        "## Changes to earlier assumptions",
+        "## Remaining specification work",
+        "## 13 November v2 feedback register"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/07-architecture-decisions.md",
+      "canonical_text_sha256": "040aaa9f4f56522be2c43b21856d408b6ea09ab27a9cc1a8c9cd80c8233c76d2",
+      "lines": 71,
+      "sections": [
+        "# SAVEN Architecture Decision Register",
+        "## ADR 001 One modular transaction core",
+        "## ADR 002 Shared command authority",
+        "## ADR 003 Company scope with database defense",
+        "## ADR 004 App isolation and one registry",
+        "## ADR 005 Application owned AI memory",
+        "## ADR 006 Change with historical meaning preserved",
+        "## ADR 007 No automatic financial AI execution initially",
+        "## ADR 008 Recommended stack subject to foundation evidence",
+        "## ADR 009 Cloudflare foundation experiment - 11 November 2026",
+        "## ADR 010 PostgreSQL restored as the transaction database - 12 November 2026",
+        "## ADR 011 Two commercial models and offline companion ? accepted target, 13 November 2026",
+        "## ADR 012 All-SQLite target with bounded D1 control aggregates ? accepted target",
+        "## ADR 013 Tenant, legal company and authority ? accepted design contract",
+        "## ADR 014 Frontend-first and truthful product states ? accepted ordering",
+        "## ADR 015 Fleet, private release and offline compatibility ? accepted contract",
+        "## ADR 016 Reporting and telemetry ownership ? accepted contract"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/08-competitive-review.md",
+      "canonical_text_sha256": "ed82dd536fa6ca1a33cec64a235e246257cee2a167924983ce9f34d238ae6687",
+      "lines": 23,
+      "sections": [
+        "# SAVEN Competitive Review",
+        "## Comparison method for pilots"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/09-risk-register.md",
+      "canonical_text_sha256": "42392b8190f3d603343047b46be7b08c20bfe417cb1c1df81e2485edfe8c766e",
+      "lines": 49,
+      "sections": [
+        "# SAVEN Risk Register",
+        "## Escalation rule",
+        "## v2 architecture and design risks ? 13 November 2026"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/10-company-knowledge-and-memory.md",
+      "canonical_text_sha256": "250a5059e204041c1519c902dfb3e4d85bdd61a863a704c082c1f6cae9478b10",
+      "lines": 103,
+      "sections": [
+        "# SAVEN Company Knowledge and Memory",
+        "## 1 Purpose and scope",
+        "## 2 Separate layers of knowledge",
+        "## 3 Evidence that identifies the actual source",
+        "## 4 Change tracking and business history",
+        "## 5 Company user and operator controls",
+        "## 6 What disabling means",
+        "## 7 Storage retrieval and permissions",
+        "## 8 Review and acceptance"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/11-additional-input.md",
+      "canonical_text_sha256": "5b297d990539c39fa504dfe13c6e1b024f5d747ed009f644691cc0e1c963c700",
+      "lines": 73,
+      "sections": [
+        "# Additional owner input \u2014 implementation contract",
+        "## Necessary interpretation and unresolved policy",
+        "## Environment map",
+        "## Governing revision, 13 November 2026"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/12-foundation.md",
+      "canonical_text_sha256": "eec137b090ff91de5ab6e63858724405f6542fbb9612f7fbae0ce35ad96986ac",
+      "lines": 75,
+      "sections": [
+        "# First implementation: commands, accounting and workspace",
+        "## Run locally",
+        "## Implemented paths",
+        "## Adapter decision",
+        "## Cloudflare setup and release safeguards",
+        "## Verification and remaining work"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/13-hosting-postgresql-and-migration.md",
+      "canonical_text_sha256": "3ca3e71ba1b53e06bdccc7d959b30f1cb4cde8e38dfa01c9ddafef5a5df3aba0",
+      "lines": 81,
+      "sections": [
+        "# SAVEN hosting, PostgreSQL and moving servers",
+        "## Why D1 was used, and the correction",
+        "## Responsibility split",
+        "## Current personal-server boundaries",
+        "## Reproducible application and schema",
+        "## Controlled D1 to PostgreSQL cutover",
+        "## Moving PostgreSQL to another personal or cloud server",
+        "## Backup policy and release evidence"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/14-operating-core.md",
+      "canonical_text_sha256": "34dc9da983b57ba564b7f1c71dfd7bd878223fd14b330c14d3368626e683b1e2",
+      "lines": 33,
+      "sections": [
+        "# Operating core: implemented behaviour and limits",
+        "## Business setup",
+        "## Identity and invitations",
+        "## Financial reports",
+        "## Verification"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/15-runtime-services.md",
+      "canonical_text_sha256": "0bca439c7d75d8bc781997e4dd1706d0295c4d9c336e33b60f08e19d2f95d80f",
+      "lines": 50,
+      "sections": [
+        "# Runtime services and acceptance evidence",
+        "## Hosting responsibilities",
+        "## Assistant",
+        "## Private bucket and evidence",
+        "## Portability and recovery"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/16-accounting-delivery.md",
+      "canonical_text_sha256": "578c9d1b8565a85ff247497fc2743696730744cf4cf7529f8d49c6b72ec20a0b",
+      "lines": 57,
+      "sections": [
+        "# Accounting delivery and verification",
+        "## Working accounting increment",
+        "## Bank statements and reconciliation",
+        "## Required verification",
+        "## Still required before accounting is complete",
+        "## Receivables and payables increment",
+        "## Close review workbench"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/17-accounting-requirement-status.md",
+      "canonical_text_sha256": "11dc3abc3372821877c7ae011d50aa3e4aed530431cbc92f42195aa13ed50dcb",
+      "lines": 33,
+      "sections": [
+        "# Accounting requirement status"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/18-opening-reconciliation.md",
+      "canonical_text_sha256": "660adc97ce74e24e7c9347f750c0627ae421b75d1c4e5f5384b270f753f64bba",
+      "lines": 33,
+      "sections": [
+        "# Opening balances and subledger reconciliation",
+        "## Two accounting modes",
+        "## Dates and evidence",
+        "## Supported boundary",
+        "## Verification contract"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/19-recurring-journals.md",
+      "canonical_text_sha256": "dba7604a6c956233f910b7f97c3b57db21dfd3fd7ad19811cf4c2002a7481301",
+      "lines": 9,
+      "sections": [
+        "# Recurring journal schedules"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/20-bookkeeping-completion.md",
+      "canonical_text_sha256": "cbd220bba558522859376a4b82ccc24fec7c3ed9f7a3be950bec655c400ecc3a",
+      "lines": 36,
+      "sections": [
+        "# Bookkeeping completion and reference review",
+        "## Immediate acceptance gaps",
+        "## Reference review",
+        "## Export and evidence contract"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/21-approval-policies.md",
+      "canonical_text_sha256": "82781a695d6f5e136551e26ea9e40fc3e6e7618bf8c8492352edd2256a521187",
+      "lines": 13,
+      "sections": [
+        "# Transaction authority and approval policies"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/22-payments.md",
+      "canonical_text_sha256": "8b9a3890770b177c98fe9f04702cc3a6f779795b7e85363f58b4b156dd4c4671",
+      "lines": 29,
+      "sections": [
+        "# Payments workspace and reference lifecycle",
+        "## Supported lifecycle",
+        "## Independent expected scenario",
+        "## Required remaining depth"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/23-fixed-assets.md",
+      "canonical_text_sha256": "26746c3567147fe334669d6b0724d45ec15ff4de5752528a0c5cbd1001c29adf",
+      "lines": 31,
+      "sections": [
+        "# Fixed assets and accounting integration",
+        "## Working lifecycle",
+        "## Register and controls",
+        "## Independent acceptance example",
+        "## Remaining required asset depth"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/24-bookkeeping-module-map.md",
+      "canonical_text_sha256": "01fea657b9b0a75a6af78d6b4e58f852dbc34fdfd1fe8219cf18058dd6982c65",
+      "lines": 30,
+      "sections": [
+        "# Bookkeeping foundation and module distribution",
+        "## Reference review",
+        "## SAVEN responsibility map",
+        "## Acceptance standard"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    },
+    {
+      "path": "docs/25-invoices-taxes-settings.md",
+      "canonical_text_sha256": "10ad5d0eb93bbc9c60c999bcdb3a36d79e9e0d20983b2829b3aee2eaf7ad337e",
+      "lines": 26,
+      "sections": [
+        "# Invoice lines, configured taxes and bookkeeping defaults",
+        "## Connected behavior",
+        "## Independent acceptance",
+        "## Remaining required depth"
+      ],
+      "review": "Full-file programmatic inventory and targeted requirement/architecture review; historical conflicting decisions are superseded by v2, not deleted."
+    }
+  ],
+  "sourceMandateRead": "all802lines",
+  "externalReference": "ERPNext authenticated read-only workspace and form metadata; no visual browser acceptance",
+  "liveHealth": "PostgreSQL schema13 ready; schema14 not activated"
+}

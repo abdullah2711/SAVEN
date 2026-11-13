@@ -1,8 +1,8 @@
 # SAVEN Feature and Acceptance Library
 
-11 November 2026 | Baseline 1.2
+13 November 2026 | Baseline 2.0
 
-239 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. This catalog and decisions D01 to D12 define supported scope for review.
+251 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.
 
 Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.
 
@@ -10,7 +10,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
-| FND-001 | Tenant and company identity: Organization subscription and explicit legal-company membership | A user in company A cannot read or reference company B records |
+| FND-001 | Tenant and company identity: Installation tenant subscription legal-company and operational-dimension hierarchy with one SQLite file per tenant containing permitted legal companies | A user in company A cannot read or reference company B records |
 | FND-002 | Dimensions: Branches departments projects stores and cost centres | A report filters and reconciles each permitted dimension |
 | FND-003 | Currencies and precision: Decimal money quantities exchange rates and rounding policies | Boundary and conversion examples agree to independently calculated results |
 | FND-004 | Periods and dates: Financial years business dates timezones and locks | Every entry route rejects a locked period |
@@ -84,7 +84,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | POS-005 | Returns: Original-sale lookup refund limits and stock return | A repeated return cannot refund or receive the same quantity twice |
 | POS-006 | Tax receipt: Applicable tax identifiers QR and fiscal status | Required tax data and acceptance state appear on receipt |
 | POS-007 | Connectivity: Connected operation draft recovery and safe retry | Interrupted submission cannot duplicate sale stock or tender |
-| POS-008 | Offline scope decision: Offline operating contract subject to D05 review | No offline promise is made before tax sync tender and oversell policies pass |
+| POS-008 | Offline scope decision: Restricted synchronized offline companion to Cloud or Fully Private with signed scoped device authority explicit conflicts and retained pending evidence | No offline promise is made before tax sync tender and oversell policies pass |
 | POS-009 | Recipe-linked production sales: POS sale consumes designated recipe inputs records production and sells finished output in one controlled process | A burger sale consumes the correct ingredients once and insufficient ingredients or retry cannot partially post |
 | POS-010 | Device connectors: Configured barcode scanners scales counters printers and other supported store or POS devices through scoped adapters | Duplicate or malformed device events cannot bypass quantity unit authority or posting validation |
 
@@ -105,7 +105,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | INV-011 | Availability controls: Negative-stock policy concurrency and reservations | Two users cannot release the same last unit under no-negative policy |
 | INV-012 | Replenishment: Minimum levels lead times reorder proposals and commitments | Proposed supply accounts for approved open orders and reservations |
 | INV-013 | Retroactive costing: Explicit item policy for provisional issue costs later purchase costs and traceable cost adjustments | Later costs reconcile by linked adjustments with closed-period and historical-report handling rather than silent rewrites |
-| INV-014 | Item valuation selection: Company defaults and item-category policies for FIFO weighted average and a requested separately governed LIFO option | Unsupported reporting-policy combinations are blocked and policy changes retain reproducible history |
+| INV-014 | Item valuation selection: Effective-dated inventory valuation policy with FIFO or weighted average for IAS 2 interchangeable inventory and justified specific identification; no LIFO statutory IAS 2 option | Unsupported reporting-policy combinations are blocked and policy changes retain reproducible history |
 
 ## Fixed assets
 
@@ -214,6 +214,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | RPT-008 | Metric catalog: Governed definitions dimensions filters and calculated measures | Two reports using a metric agree on the same basis |
 | RPT-009 | BI builder: Saved dashboards tables charts filters and sharing | Permission checks apply to datasets fields exports and cached results |
 | RPT-010 | Report jobs: Scheduling heavy query limits progress and freshness | Large report does not starve posting and shows its as-of time |
+| RPT-011 | SQLite incremental read models: Committed tenant outbox atomic projection cursor reproducible rebuild and visible source freshness | Duplicate delivery crash backdated correction and rebuild cannot double count or alter published close snapshots |
+| RPT-012 | Governed report compiler: Versioned non-SQL report DSL allowlisted metrics dimensions joins typed filters and server resource scope before aggregation | Injection denied aggregate cache scope and heavy-job limits pass while independent source balances agree |
 
 ## Configuration and workflows
 
@@ -306,7 +308,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-005 | Backups and restoration: Database objects configuration identity and work queues | Rehearsal demonstrates measured recovery and reconciled totals |
 | OPS-006 | Technical telemetry: Structured redacted logs metrics tracing alerts and error queues | Credentials and unnecessary payroll content never appear in routine logs |
 | OPS-007 | Support access: Own identity case scope expiry customer history and emergency review | Expired support authority blocks further access |
-| OPS-008 | Private deployment: Same artifacts migrations entitlements grace and responsibility matrix | Upgrade and expiry tests match documented supported behaviour |
+| OPS-008 | Private deployment: Exactly Cloud and Fully Private commercial modes using the same product; private-local needs no Cloudflare and private-cloudflare uses customer-owned resources; no SaaS customer-node attachment or reseller hosting | Upgrade and expiry tests match documented supported behaviour |
 | OPS-009 | Performance and cells: Per-tenant limits asynchronous BI regional home and capacity measurement | Noisy neighbour and declared-load tests meet agreed budgets |
 | OPS-010 | Migration and releases: Expand migrate contract canary compatibility and recovery | Old records remain interpretable and destructive changes have verified recovery |
 | OPS-011 | Submission conversion: Application frontend feeds operator review billing status and idempotent company and nominated-user provisioning | Accepted submitted data converts without re-entry and concurrent provisioning cannot create duplicate accounts |
@@ -314,9 +316,13 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-013 | Manual and future card billing: Manual-transfer operation now with payment-adapter boundaries for later mixed card and manual customers | Repeated provider events cannot activate twice and manual receipt review cannot expose payment-card details |
 | OPS-014 | Entitlement administration: Operator controls for business user group and global features modules AI access and package gates | Effective access is the intersection of entitlement company choice user permission and operator availability with comprehensive logs |
 | OPS-015 | Support identity administration: Case-scoped attributed impersonation reset or invitation flows with customer visibility and no recoverable password access | Support cannot retrieve existing passwords and sensitive actions preserve real operator and represented user identities |
-| OPS-016 | Hosting portability: Cloudflare Workers database and buckets behind adapters with a supported self-hosted container path | The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use |
+| OPS-016 | Hosting portability: D1 Cloud control-store ports native SQLite private control equivalents local SQLite tenant nodes and replaceable R2 or local object adapters with tested portability | The same financial contracts run across supported adapters and migration or recovery is rehearsed before production use |
 | OPS-017 | Resumable development: Durable build state changed-file records check outcomes blockers and remaining actions | A resumed development agent locates the current branch and incomplete work without repeating completed effects |
 | OPS-018 | Controlled offline application: Selected POS accounting inventory assets and manufacturing functions with signed grants scoped master-data creation and bidirectional sync | Replayed or conflicting commands cannot double post and expiry revocation reconciliation and lost-device cases are tested |
+| OPS-019 | D1 control aggregates: Cloud identity commerce and fleet control domains with native SQLite private equivalents and durable cross-domain sagas | Duplicate approvals partial provisioning and control outages cannot activate an unready tenant |
+| OPS-020 | SQLite fleet schema lifecycle: Per-database checksum and compatibility ledger backup preflight canaries resumable backfill and isolated forward recovery | One thousand synthetic tenants across at least three nodes survive mixed versions failed migration and compatibility tests without altered books |
+| OPS-021 | Tenant writable ownership: SAVEN-controlled Cloud nodes secure typed routing monotonic owner generation and fenced moves | Stale owner network partition and promotion race cannot create two authoritative writers |
+| OPS-022 | Turnkey release packaging: Signed versioned images wizard control and tenant initialization diagnostics backup restore and safe upgrades for standardized profiles | Clean private-local install operates without Cloudflare or proprietary source access and interrupted upgrade is recoverable |
 
 ## Security audit and assurance
 
@@ -333,14 +339,20 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | SEC-009 | Export and exit: Structured records attachments mappings and reconciliation | A sample export independently reconstructs accepted balances and evidence |
 | SEC-010 | Single active account session: A successful new login replaces the previous active session across companies | The previous cookie fails on its next request and revocation is rechecked when a command executes |
 | SEC-011 | Password and login data design: Server-side one-way password hashing or a vetted identity provider secure recovery and no plaintext password storage | Database backups logs operator tools and the browser never expose recoverable user passwords |
+| SEC-012 | Gateway and node authority: Central session membership and entitlement assertion intersected with tenant-local business resources policy versions replay and fencing checks | Forged stale revoked wrong-audience or wrong-tenant authority is denied across UI jobs AI exports and direct API calls |
+| SEC-013 | Audit and telemetry classes: Atomic unsampled financial and security evidence durable metering and separate bounded redacted diagnostics | Diagnostic flood cannot erase critical audit or reveal credentials prompts or business document bodies |
 
 ## Interface and accessibility
 
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
-| UX-001 | Themes and glass: Polished visible glass chrome with readable stable data surfaces | Light and dark review shows no gradient seam or contrast loss |
+| UX-001 | Themes and glass: Readable warm neutral and charcoal themes with restrained plum accent limited glass accessible contrast responsive density and reduced-motion behavior | Light and dark review shows no gradient seam or contrast loss |
 | UX-002 | Navigation: Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps | User can locate each destination in both sidebar states |
 | UX-003 | Brand: SAVEN name official ESC emblem plum and ivory tokens | No provisional lion or obsolete product name appears in current application branding |
 | UX-004 | Task interaction: Keyboard scanning touch quick actions drafts and visible states | Frequent small issue requires no AI chat or specialist instruction |
 | UX-005 | Accessibility: WCAG 2.2 AA target focus labels contrast and reduced motion | Keyboard and assistive checks pass defined critical journeys |
 | UX-006 | Responsive and weak network: Small screens long values errors progress and safe retry | Interrupted submissions preserve intent without duplicate effects |
+| UX-007 | Product-wide workflow library: Isolated synthetic design routes field and state contracts across all product families before most missing backend work | Every requirement maps to a route and contract with specification versus interactive versus implemented status made explicit |
+| UX-008 | Global search and commands: Permission-scoped module record report settings search and accessible command palette with keyboard navigation | Denied records and totals do not leak and prototype search never calls business APIs |
+| UX-009 | Synthetic design boundary: Conspicuous demo data isolated route explicit simulations and no fake financial or external action success | Design pages cannot submit business API commands and reload resets synthetic transaction state |
+| UX-010 | Owner design approval: Dated module and cross-module review issues screenshots novice task observations and explicit approval | No design is called approved without recorded owner decision and no approved screen alone counts as backend implementation |

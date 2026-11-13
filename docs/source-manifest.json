@@ -1,5 +1,5 @@
 {
-  "date": "2026-11-11",
+  "date": "2026-11-13",
   "source_precedence": [
     "Saven_Discussion.txt",
     "SIMBA_Product_Blueprint.md"
@@ -16,5 +16,14 @@
       "bytes": 33633
     }
   ],
-  "note": "Fingerprints identify the supplied inputs. Private raw feedback is not duplicated into the repository."
+  "note": "Fingerprints identify the supplied inputs. Private raw feedback is not duplicated into the repository.",
+  "governing_source": {
+    "name": "SAVEN Final Architecture Product Design and Development Mandate v2.0",
+    "library_file_id": "libfile_9f896099237c81919db6285f60f81454",
+    "repo_path": "docs/sources/SAVEN-mandate-v2.md",
+    "source_lines": 802,
+    "precedence": "Supersedes earlier conflicting master/turnkey prompts; preserves valid original functional requirements",
+    "repository_text_sha256": "d73dc77338fdac36206802c494d38fa35952f0d8736867d83bdb9af1b46c3722",
+    "representation": "Extracted full text, UTF-8 with LF normalization; source library document is the authority"
+  }
 }

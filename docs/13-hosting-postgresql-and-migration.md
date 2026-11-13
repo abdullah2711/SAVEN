@@ -1,5 +1,7 @@
 # SAVEN hosting, PostgreSQL and moving servers
 
+> Historical baseline: target architecture and development ordering are superseded where conflicting by [owner mandate v2](sources/SAVEN-mandate-v2.md) and [reconciliation](26-owner-decisions-2026-11-13-v2.md). Existing implementation evidence remains valid for its recorded environment.
+
 12 November 2026. Owner decision: PostgreSQL is the transaction database. The current server is a temporary testing host. This is an operating runbook, not a claim that the complete MVP or production recovery gate has passed. Verified execution evidence belongs in BUILD_STATE.md.
 
 ## Why D1 was used, and the correction

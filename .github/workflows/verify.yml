@@ -50,6 +50,12 @@ jobs:
           PGPASSWORD: contract-test-only
           CONTRACT_DATABASE: saven_contract_ci
       - run: python tools/validate_plan.py
+      - name: Reproduce design coverage and workflow contracts
+        run: |
+          python tools/build_feature_catalog.py
+          python tools/build_design_library.py
+          git diff --exit-code -- docs/feature-catalog.json docs/05-feature-library.md docs/ui-screen-inventory.json docs/workflow-contracts-v1.json docs/postgres-reference-inventory.json public/design/catalog.js
+
       - name: Supplier, settlement and manual-journal contracts
         run: node scripts/verify-accounting-cycles.mjs --migrate
         env:

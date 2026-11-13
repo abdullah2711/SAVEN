@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SAVEN reviewed migration manifest contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "engine", "fromVersion", "toVersion", "checksum", "compatibility", "strategy", "preflight", "postflight", "failurePolicy", "releaseDigest", "approval"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "engine": {"enum": ["control_d1", "control_sqlite", "tenant_sqlite", "offline_sqlite"]},
+    "fromVersion": {"type": "integer", "minimum": 0},
+    "toVersion": {"type": "integer", "minimum": 1},
+    "checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "compatibility": {"type": "object", "required": ["minApp", "maxApp", "minSync", "eventVersion"], "properties": {"minApp": {"type": "string"}, "maxApp": {"type": "string"}, "minSync": {"type": "integer"}, "eventVersion": {"type": "integer"}}, "additionalProperties": false},
+    "strategy": {"enum": ["additive", "backfill", "contract", "rebuild"]},
+    "preflight": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "postflight": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "failurePolicy": {"enum": ["quarantine-forward-repair", "verified-no-divergent-write-restore"]},
+    "releaseDigest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "approval": {"type": "object", "required": ["reviewer", "signature", "canaryEvidence"], "properties": {"reviewer": {"type": "string"}, "signature": {"type": "string"}, "canaryEvidence": {"type": "string"}}, "additionalProperties": false}
+  }
+}

@@ -1,0 +1,4 @@
+// Local design-only preview. No database, account, API or financial endpoint.
+import {createServer} from 'node:http';import {designAsset} from './design-assets.mjs';
+const port=Number(process.env.DESIGN_PORT??4174);if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Choose a design port between 1024 and 65535.');
+const server=createServer(async(req,res)=>{try{const r=await designAsset(new Request('http://localhost'+req.url,{method:req.method}));res.writeHead(r.status,Object.fromEntries(r.headers));res.end(Buffer.from(await r.arrayBuffer()));}catch{res.writeHead(500);res.end('Design asset unavailable.');}});server.listen(port,'127.0.0.1',()=>console.log('SAVEN synthetic design review: http://127.0.0.1:'+port+'/design/index.html'));for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>server.close(()=>process.exit(0)));

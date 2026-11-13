@@ -1,0 +1,15 @@
+# Frontend design library and review gate
+
+The isolated /design/ workspace uses conspicuously synthetic data and no business API connection. Existing live workspace routes stay intact. A presentation screen is not an implemented backend feature. Design actions explicitly simulate, draft or preview; no Post/Send/Save/Approve may claim a live write. Reload resets synthetic transactions; only theme/favorite preferences may persist under a design-only key.
+
+Generated inventory maps every catalog ID to a module, route, supported scope, acceptance, current implementation status and versioned workflow-contract reference. Mapping coverage is not UX completion. Priority packs are Accounting/COA/Journals/GL/Statements/Close; Cash & Bank; Sales; Purchases; Payments; Taxes; Inventory; Manufacturing; POS; Assets. Foundation, settings/workflows, HR/payroll, projects/CRM, finance, BI, Drive, Apps, AI, subscriptions/operator, security and offline remain navigable design families.
+
+Shared shell: stable grouped sidebar, explicit tenant/company/branch context, global search/command palette, breadcrumbs/back/forward, favorites/recent views, list filters, record details and source links. Shared editor: core fields first, detailed tabs for dimensions/terms/tax/evidence, line editor, exact journal preview, authority explanation, activity/connected records and visible lifecycle. Permissions and unavailable states explain why without implying UI hiding is security.
+
+Visual tokens: warm ivory/neutral surfaces, charcoal text, restrained plum accent, clear type hierarchy, light borders, limited shadows and no heavy blur. System fonts avoid unlicensed dependency. Dense accountant tables coexist with comfortable forms and touch POS. Light/dark/reduced motion, keyboard/Escape/focus, responsive forms/tables and print rules require review; syntax tests are not visual acceptance.
+
+Review journeys: bookkeeper journal → evidence → exact preview → policy route → source/ledger; owner invoice variants → Payments/advance → bank reconciliation; storekeeper receipt/issue/transfer/count; supervisor BOM → production/WIP/output/variance → POS recipe sale; tax specialist recovery/withholding → control reconciliation; CFO snapshot/BI drill; HR confidential pay; operator application → billing → provisioning/recovery; offline clerk sync/conflict.
+
+States required per contract: empty/sample/filter, loading, field error, denied, unsaved, stale preview, review/direct authority, queued/conflict, suspended entitlement, offline, partial failure and historical read-only. A state selector in the prototype demonstrates these states; it is not a real authorization or sync engine.
+
+DESIGN_APPROVED requires dated owner feedback, issue resolution and observed novice tasks on desktop/mobile, both themes and keyboard/print. Current approval: none. Screens generated as requirement briefs remain explicitly marked specification-only until detailed interactions are completed. The prototype must expose that distinction in its coverage view.

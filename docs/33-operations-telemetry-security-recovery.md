@@ -1,0 +1,9 @@
+# Audit, telemetry and recovery boundaries
+
+Financial audit commits unsampled in tenant SQLite with source effects. Security/operator/entitlement changes commit audit/outbox in their owning control or tenant domain, then independently archive. Billable usage has durable reservations/dedupe/provider reconciliation. Operational diagnostics use bounded redacted spool/aggregation/sampling and compressed archive. Dropping noncritical success traces under pressure cannot discard financial/security evidence or block ordinary posting indefinitely.
+
+Generic telemetry excludes credentials, session tokens, document bodies, images, balances and full AI prompts. Use correlation IDs, scoped pseudonymous identifiers, error classes, duration and bounded summaries. Operators receive case-bound diagnostics, not unrestricted customer rows. Independent retained digest roots detect audit alterations within stated limits; root access is not absolutely tamper-proof.
+
+Recovery covers identity/commerce/fleet saga state, owner generation, tenant consistent snapshot/WAL, migration ledger, pending jobs, outbox/dedupe, source/evidence manifests, object versions and recoverable encryption/signing keys. No restored copy becomes a second live writer. Reconcile cross-domain snapshot times before reactivation. D1 time travel alone is not whole-platform recovery.
+
+RPO/RTO tiers, replication acknowledgement and independent off-node retention are unresolved engineering/commercial gates. synchronous=FULL does not protect against whole-host loss. Required drills: lost tenant/node, corrupted object manifest, missing key, D1 outage/account lockout, ransomware, stale fleet owner, offline compromise and operator abuse. Tests and actual restore evidence must name artifact/schema/environment and independently expected controls.

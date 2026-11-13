@@ -1,5 +1,7 @@
 # SAVEN Product Blueprint
 
+> Historical baseline: target architecture and development ordering are superseded where conflicting by [owner mandate v2](sources/SAVEN-mandate-v2.md) and [reconciliation](26-owner-decisions-2026-11-13-v2.md). Existing implementation evidence remains valid for its recorded environment.
+
 **Implementation update, 11 November 2026:** the owner's [additional input](11-additional-input.md) extends this baseline. The catalog now includes these requirements, and [the first foundation](12-foundation.md) has begun on testing-1. Broad launch scope remains required; initial working paths are explicitly limited and do not constitute release completion.
 
 Prepared for Abdullah Nauman and Economic Systems Consulting

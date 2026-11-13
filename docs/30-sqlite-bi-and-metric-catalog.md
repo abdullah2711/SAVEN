@@ -1,0 +1,11 @@
+# SQLite reporting contracts
+
+Transactional drill-down reads canonical records. Managerial dashboards use incremental tenant-local projections with visible source/projection sequence and as-of/lag; 5–10 seconds is a target, not observed performance. Official financial statements use consistent source snapshots and retained policy/mapping versions, not differently aged widgets.
+
+Projection families: GL account-period; sales/purchases daily; AR/AP due buckets; stock/cost layers; production WIP/yield/cost; asset rollforward; project actual/commitment/forecast; tax workpapers; cash flow; confidential payroll. Each has version, source lineage, rebuild procedure, cursor and reconciliation fixture. Avoid a combinatorial cube over all dimensions.
+
+Source command commits immutable outbox in the same business transaction. Projection worker updates derived facts and consumer cursor/applied-event identity atomically, so commit-before-ACK retry cannot double-apply. Backdated corrections invalidate/rebuild affected slices; published close snapshots are immutable. Permission changes invalidate cache; keys include tenant/company/scope epoch, dataset/definition version, basis/currency/range and source watermark.
+
+Report DSL: version, allowlisted dataset, measures, dimensions, typed filters, sort, bounded limit, posted basis and freshness class. Compiler resolves server authority, intersects row/column permissions before aggregation, uses fixed identifiers and bound values, forbids arbitrary SQL/AI code and limits scan/CPU/memory/concurrency. Coarse totals cannot be served when they would disclose denied rows. Heavy jobs return scoped job IDs, cancel/progress and protected export objects. Drill-through must preserve scope at every hop.
+
+Initial feasibility spike uses synthetic SQLite journal facts, transactional projection cursor and allowlisted account aggregation. It is neither the PG-to-SQLite port nor production BI. Full gates remain: 10k/100k/1m/5m datasets, POS/import concurrency, bounded WAL readers, backdated corrections, failed rebuild, scope-safe totals, source reconciliation and exact snapshot exports. Proposed p95 goals: projection query <1s, common ledger <2s, normal lag <10s; network-included numbers must be measured separately.

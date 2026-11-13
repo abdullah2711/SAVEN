@@ -1,5 +1,7 @@
 # SAVEN Architecture AI and Security
 
+> Historical baseline: target architecture and development ordering are superseded where conflicting by [owner mandate v2](sources/SAVEN-mandate-v2.md) and [reconciliation](26-owner-decisions-2026-11-13-v2.md). Existing implementation evidence remains valid for its recorded environment.
+
 Prepared for Abdullah Nauman and Economic Systems Consulting
 
 11 November 2026 | Technical proposal 1.1

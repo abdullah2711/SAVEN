@@ -29,3 +29,21 @@ Likelihood and impact below are planning judgments rather than measured frequenc
 ## Escalation rule
 
 A critical financial, isolation, evidence-loss, or recovery defect stops affected production onboarding and release. Contain the impact, preserve evidence, reconcile effects, and identify the corrective action before resuming. Commercial pressure does not change the accounting meaning of a transaction or the authority needed to execute it.
+
+
+## v2 architecture and design risks ? 13 November 2026
+
+| Risk | Required gate / current limit |
+| --- | --- |
+| SQLite port silently drops RLS/SECDEF controls | Generated object inventory plus explicit policy/constraint replacement and PG/SQLite fixture equivalence; not yet passed |
+| D1 cross-domain partial activation | Owning-transaction outboxes, idempotent saga and recovery; no cross-D1 atomicity claim |
+| Duplicate tenant writer during move/restore | Generation fencing, reconciled tail and no second live copy; fail closed if uncertain |
+| Prototype confused with live ERP | Isolated route, synthetic labels, network/write boundary tests and explicit simulation |
+| Design coverage confused with finished UX | Requirement briefs versus interactive drafts tracked separately; owner task/visual review required |
+| Offline stale authority/oversold stock | Signed bounded lease, branch stock policy, conflict inbox and retained evidence |
+| Image rollback discards new records | Compatibility windows and forward repair after divergent writes |
+| BI leaks denied accounts through totals | Filter before aggregation, scope-version cache keys and negative aggregate tests |
+| Long reports starve POS/WAL | Reader/job budgets and measured concurrency/5m-line gates |
+| Local backup mistaken for whole-node resilience | Off-node objects/keys/registry restoration and contracted RPO/RTO still required |
+| New source paths escape syntax/deployment checks | Recursive checks and isolated design static-route tests |
+| Governance reverted by older prompts | Committed governing-source copy, precedence manifest and resumable checkpoint |

@@ -1,0 +1,409 @@
+[
+  {
+    "path": "postgresql/001_schema.sql",
+    "sha256": "ac37ac3292bae1f572f691ff1963e306bb9b235c930900dee764dad073d9c77b",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "users",
+      "companies",
+      "memberships",
+      "login_grants",
+      "sessions",
+      "accounts",
+      "parties",
+      "periods",
+      "items",
+      "resource_denials",
+      "operations",
+      "documents",
+      "journals",
+      "journal_lines",
+      "audit_events",
+      "outbox",
+      "schema_version"
+    ],
+    "functions": [],
+    "triggers": [],
+    "policies": [],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/002_controls.sql",
+    "sha256": "82a0480ee89d8d129164c4b3a032a875028bc10732d1c4b3c03c7364b25eebd0",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [],
+    "functions": [
+      "saven_immutable",
+      "saven_operation_authority",
+      "saven_document_insert",
+      "saven_document_review",
+      "saven_journal_control",
+      "saven_line_insert",
+      "saven_actor",
+      "saven_grant_actor",
+      "saven_member",
+      "saven_visible_user"
+    ],
+    "triggers": [
+      "owner_not_removed",
+      "owner_not_demoted",
+      "operation_authority",
+      "document_insert",
+      "document_review",
+      "document_no_delete",
+      "journal_control",
+      "journal_no_delete",
+      "line_insert",
+      "lines_no_update",
+      "lines_no_delete",
+      "audit_no_update",
+      "audit_no_delete"
+    ],
+    "policies": [
+      "user_scope",
+      "grant_scope",
+      "session_scope",
+      "company_scope",
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/003_runtime.sql",
+    "sha256": "93f98197147c0eebf27b6dfb3d21e8c21896bac61ba86e99f3b6de165b3426d9",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [],
+    "functions": [],
+    "triggers": [],
+    "policies": [],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/004_policy_owners.sql",
+    "sha256": "d528a7d8a183cf7b9aa7abee9ae35e06be1a640dc11239e816c6fffb86acc497",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [],
+    "functions": [],
+    "triggers": [],
+    "policies": [],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/005_identity_and_setup.sql",
+    "sha256": "934373e8fa5b514fb15f9cbd06cbe5953e6e0d513dc0be8f29f8cf3e40fa98c9",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "user_credentials",
+      "auth_limits",
+      "membership_invitations",
+      "security_events",
+      "configuration_events"
+    ],
+    "functions": [
+      "saven_member",
+      "saven_visible_user",
+      "saven_auth_limit",
+      "saven_auth_candidate",
+      "saven_bootstrap_allowed",
+      "saven_password_session",
+      "saven_set_password",
+      "saven_set_profile",
+      "saven_configure",
+      "saven_create_company",
+      "saven_invite",
+      "saven_invitation_preview",
+      "saven_invitation_accept",
+      "saven_pending_invitations"
+    ],
+    "triggers": [
+      "security_no_update",
+      "security_no_delete",
+      "configuration_no_update",
+      "configuration_no_delete"
+    ],
+    "policies": [
+      "own_credentials",
+      "own_security_events",
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/006_accounting_cycles.sql",
+    "sha256": "b1ff9e95e441b02fb567081e7baa03ce1c18958bf1df9a6868320c7cb6e02c71",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "document_allocations"
+    ],
+    "functions": [
+      "saven_allocation_control",
+      "saven_document_review"
+    ],
+    "triggers": [
+      "allocation_control",
+      "allocation_no_update",
+      "allocation_no_delete"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/007_files_and_assistant.sql",
+    "sha256": "72f19082cc8cb522979a33d21966b5b5576c8f0e253d5c53e2734d28c5bcb17e",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "stored_files",
+      "file_events",
+      "file_removals",
+      "document_attachments",
+      "attachment_withdrawals",
+      "notifications",
+      "document_evidence_versions",
+      "assistant_tasks"
+    ],
+    "functions": [
+      "saven_file_control",
+      "saven_evidence_control",
+      "saven_evidence_revision",
+      "saven_assistant_task_control",
+      "saven_assistant_operation"
+    ],
+    "triggers": [
+      "file_control",
+      "attachment_control",
+      "removal_control",
+      "withdrawal_control",
+      "evidence_revision",
+      "withdrawal_revision",
+      "immutable_update",
+      "immutable_delete",
+      "files_no_delete",
+      "assistant_task_control",
+      "assistant_no_delete",
+      "assistant_operation"
+    ],
+    "policies": [
+      "company_scope",
+      "file_scope",
+      "own_notifications",
+      "create_notifications",
+      "company_scope",
+      "own_tasks"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/008_accounting_workspace.sql",
+    "sha256": "c96648677581f7846240bc3e68d0a1bf7c0fa48c47ab9f67a29310a0540a5ca8",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "bank_statements",
+      "bank_statement_lines",
+      "bank_matches"
+    ],
+    "functions": [
+      "saven_reversal_control",
+      "saven_accounting_admin",
+      "saven_closed_bank_control"
+    ],
+    "triggers": [
+      "reversal_control",
+      "statement_lines_no_update",
+      "closed_bank_control"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/009_party_accounting.sql",
+    "sha256": "4581fba9dc19da4273e9330d8748cc5d82c732cf9334913c609bb330748b94e7",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [],
+    "functions": [
+      "saven_allocation_control",
+      "saven_credit_allocation_required"
+    ],
+    "triggers": [
+      "credit_allocation_required"
+    ],
+    "policies": [],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/010_opening_reconciliation.sql",
+    "sha256": "13a7116e67fce9e3dabb9b4aa77d2877ebcf07ca8de1bba02845793d7304a967",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "opening_domains",
+      "opening_stock_positions"
+    ],
+    "functions": [
+      "saven_opening_insert_guard",
+      "saven_document_review",
+      "saven_apply_opening",
+      "saven_opening_complete",
+      "saven_opening_journal_cutoff",
+      "saven_allocation_control"
+    ],
+    "triggers": [
+      "immutable",
+      "opening_insert_guard",
+      "opening_complete",
+      "opening_journal_cutoff"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/011_recurring_journals.sql",
+    "sha256": "76f9d65a25e0f5b5c8f8ffeadff7b41123eb4628c6e2e6c3305a0f6ad42b65cd",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "recurring_schedules",
+      "recurring_runs"
+    ],
+    "functions": [
+      "saven_recurring_admin",
+      "saven_recurring_occurrence"
+    ],
+    "triggers": [
+      "recurring_occurrence"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/012_approval_policies.sql",
+    "sha256": "120ab72d2017c2b7efe2a0c5d8fbb9479ca35ccdc842be989025fa6c49d33e6f",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "approval_policies"
+    ],
+    "functions": [
+      "saven_approval_decision",
+      "saven_publish_approval_policy",
+      "saven_document_approval_snapshot",
+      "saven_document_review"
+    ],
+    "triggers": [
+      "immutable_policy",
+      "approval_snapshot"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/013_payments.sql",
+    "sha256": "ad4d2763155514f0b268913f50d4057a68b8439fd07afae728a7ac7640d3c1ea",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "payment_sources"
+    ],
+    "functions": [
+      "saven_approval_decision",
+      "saven_payment_accounts",
+      "saven_allocation_control",
+      "saven_payment_source_control",
+      "saven_payment_completeness",
+      "saven_payment_cutoff"
+    ],
+    "triggers": [
+      "immutable_payment_sources",
+      "payment_accounts",
+      "payment_source_control",
+      "payment_complete",
+      "payment_cutoff"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/014_approval_conditions.sql",
+    "sha256": "2a6e8c4724039819f3f8036b93e92f3a9d64d8f688bffb1bfd07eb782d2d39d8",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [],
+    "functions": [
+      "saven_condition_matches",
+      "saven_validate_conditions",
+      "saven_approval_context",
+      "saven_document_approval_snapshot"
+    ],
+    "triggers": [],
+    "policies": [],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/015_fixed_assets.sql",
+    "sha256": "68d3a379fab032f32094458592fe5e14745d31e17d9131043cf85ce38de40c6d",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "fixed_assets",
+      "asset_events"
+    ],
+    "functions": [
+      "saven_asset_accounts",
+      "saven_asset_cumulative",
+      "saven_asset_document",
+      "saven_asset_cancel_complete"
+    ],
+    "triggers": [
+      "asset_accounts",
+      "asset_document",
+      "asset_cancel_complete"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  },
+  {
+    "path": "postgresql/016_invoice_taxes.sql",
+    "sha256": "4787274fb49defd688f1f92a118fabcdb7d739dbb9e8a18db932661c32898fff",
+    "digestFormat": "UTF-8 LF-normalized source",
+    "inspection": "static source inventory; dynamic objects require database introspection",
+    "tables": [
+      "tax_codes",
+      "bookkeeping_defaults",
+      "invoice_lines"
+    ],
+    "functions": [
+      "saven_bookkeeping",
+      "saven_invoice_lines"
+    ],
+    "triggers": [
+      "immutable_invoice_lines",
+      "invoice_lines_projection"
+    ],
+    "policies": [
+      "company_scope"
+    ],
+    "replacementContract": "docs/29-tenant-sqlite-and-fleet-migrations.md"
+  }
+]

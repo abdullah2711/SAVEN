@@ -6,6 +6,14 @@
 - Promotion to `main` follows testing, review, and the owner's release decision.
 - Do not force push or discard unrelated work.
 
+## Governing owner mandate v2
+
+- Read docs/sources/SAVEN-mandate-v2.md in full and docs/26-owner-decisions-2026-11-13-v2.md before new work. Newest owner feedback takes precedence.
+- Target exactly Cloud and Fully Private, D1 Cloud control aggregates, local tenant SQLite on SAVEN-controlled nodes, private-local SQLite controls and a separate offline companion. No SaaS customer-node attachment, reseller hosting or PostgreSQL target is authorized by older prompts.
+- Preserve current working PostgreSQL source/data/tests as the correctness reference; no irreversible live migration, production or main change without explicit approval.
+- Complete frontend design/contract library and owner review before most missing backend work. Synthetic /design/ cannot issue live financial commands. No design approval exists yet.
+- Run both catalog and design generators, recursive syntax checks, relevant tests and plan validator. Keep source, tested and live evidence separate.
+
 ## Current project stage
 
 - The owner authorized construction on 11 November 2026. Read docs/BUILD_STATE.md, docs/11-additional-input.md and docs/12-foundation.md before continuing implementation.

@@ -59,3 +59,19 @@ The original expansion-only treatment of extraction and report-building AI is su
 
 This baseline is sufficient to review direction and start a foundation after approval. It does not pretend that hundreds of screen designs, every payroll rule, every production formula, tax onboarding, threat assessment, or every API schema have already been completed. Each feature must acquire those concrete contracts and evidence before being called verified or sold as supported.
 
+
+
+## 13 November v2 feedback register
+
+The latest governing source is docs/sources/SAVEN-mandate-v2.md. The complete conflict table and source/deployment limits are in docs/26-owner-decisions-2026-11-13-v2.md. Existing IDs are preserved; new child requirements explicitly identify their parents. UX status is a separate brief-mapped/design-review field, not a backend completion claim.
+
+| Source / outcome | Trace | Current state / next evidence |
+| --- | --- | --- |
+| v2 sections1?4: exactly two models, D1 controls and SAVEN-owned SQLite nodes | OPS-008 OPS-016 OPS-019 OPS-021, ADR011?013 | Specified target; PG schema13 retained |
+| v2 sections8?10: fleet/turnkey/offline compatibility | OPS-018 OPS-020 OPS-022, ADR015 | Contracts; no migration/installer/sync completion |
+| New owner UX feedback, ERPNext reference, search, full frontend first | UX-007 through UX-010, ADR014 | Isolated synthetic design library; owner approval absent |
+| v2 section12: incremental BI and safe compiler | RPT-011 RPT-012 | Synthetic feasibility only; load/freshness gates pending |
+| v2 sections5?6: authority and log separation | SEC-012 SEC-013 | Contracts; direct API and outage tests required |
+| Preparers may post under flexible policies; keep all modules | FND-012 CFG-003 and complete catalog | Existing conditions retained; full broad workflow still required |
+
+Earlier turnkey customer-data-node and PostgreSQL-target prompts are historical and superseded, not additional deployment offerings. No privately provided ERPNext/server credentials are copied into the repository.

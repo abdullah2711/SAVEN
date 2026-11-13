@@ -66,3 +66,8 @@ Personal folders are company-managed space with disclosed company-admin access, 
 | Future marketing frontend | https://saven.economicsystems.cc/ |
 
 Source configuration targets only the saven-testing Worker. Cloudflare build-branch and database bindings require verified external setup. The first source update does not authorize main promotion or reuse of production data.
+
+
+## Governing revision, 13 November 2026
+
+The v2 mandate supersedes conflicting delivery order, PostgreSQL target, hybrid customer-data-node, unresolved offline and heavy-glass assumptions. See docs/26-owner-decisions-2026-11-13-v2.md and ADR011?016. This addendum retains valid original functional requirements and historical first-build evidence; it is not the current completion report. Cloud and Fully Private are the only commercial models. Offline is a companion. Current PG functionality stays until SQLite equivalence and controlled migration gates pass.

@@ -1,0 +1,780 @@
+{
+  "version": 1,
+  "status": "DESIGN_DRAFT_NOT_APPROVED",
+  "noLiveEndpoint": true,
+  "authority": "Gateway identity/session/membership/entitlement AND node-local resource/action/workflow checks; explicit denial wins. Actor authority never comes from editable payload fields.",
+  "financial": "Final atomic commit revalidates exact preview, record/policy/evidence versions, period, resources and idempotency. Posted corrections are linked events.",
+  "commonEnvelope": {
+    "trustedAtGateway": [
+      "installationId",
+      "tenantId",
+      "companyId",
+      "actorId",
+      "sessionId",
+      "permissionEpoch",
+      "ownerGeneration",
+      "expiresAt",
+      "audience",
+      "nonce"
+    ],
+    "clientInputs": [
+      "commandVersion",
+      "payload",
+      "idempotencyKey",
+      "expectedRecordVersion",
+      "previewDigest",
+      "evidenceVersion",
+      "correlationId"
+    ]
+  },
+  "states": [
+    "draft",
+    "preview",
+    "stale-preview",
+    "validation-failed",
+    "review-required",
+    "authorized-direct",
+    "committed",
+    "unknown-outcome",
+    "rejected",
+    "linked-correction"
+  ],
+  "modules": {
+    "accounting": {
+      "contract": "design.accounting.v1",
+      "fields": [
+        {
+          "name": "date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "reference",
+          "type": "string:60",
+          "required": true
+        },
+        {
+          "name": "description",
+          "type": "string:500",
+          "required": true
+        },
+        {
+          "name": "lines",
+          "type": "array:2..40(accountId,debit:money,credit:money,dimensions)",
+          "required": true
+        },
+        {
+          "name": "evidence",
+          "type": "array:versioned-object-ref",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "banking": {
+      "contract": "design.banking.v1",
+      "fields": [
+        {
+          "name": "cashAccountId",
+          "type": "account:cash_bank",
+          "required": true
+        },
+        {
+          "name": "from",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "to",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "statementLines",
+          "type": "array:date,reference,signed-money",
+          "required": true
+        },
+        {
+          "name": "matches",
+          "type": "array:statementLineId,documentId,amount",
+          "required": false
+        },
+        {
+          "name": "closureVersion",
+          "type": "integer",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "payments": {
+      "contract": "design.payments.v1",
+      "fields": [
+        {
+          "name": "direction",
+          "type": "enum:receive,pay,apply,refund",
+          "required": true
+        },
+        {
+          "name": "partyType",
+          "type": "enum:customer,supplier,both,other",
+          "required": true
+        },
+        {
+          "name": "partyId",
+          "type": "scoped-party-id",
+          "required": true
+        },
+        {
+          "name": "cashAccountId",
+          "type": "scoped-account-id",
+          "required": false
+        },
+        {
+          "name": "amount",
+          "type": "money",
+          "required": true
+        },
+        {
+          "name": "method",
+          "type": "enum:cash,transfer,cheque,other",
+          "required": true
+        },
+        {
+          "name": "allocations",
+          "type": "array:documentId,amount",
+          "required": false
+        },
+        {
+          "name": "sources",
+          "type": "array:advanceId,amount",
+          "required": false
+        },
+        {
+          "name": "deductions",
+          "type": "array:taxRuleId,amount,certificate",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "sales": {
+      "contract": "design.sales.v1",
+      "fields": [
+        {
+          "name": "partyId",
+          "type": "scoped-customer-id",
+          "required": true
+        },
+        {
+          "name": "date",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "dueDate",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "lines",
+          "type": "array:itemOrDescription,quantity:decimal6,unitPrice:money,discount,taxRuleIds,account,dimensions",
+          "required": true
+        },
+        {
+          "name": "settlement",
+          "type": "enum:credit,linked-receipt,direct-cash",
+          "required": true
+        },
+        {
+          "name": "priceBasis",
+          "type": "enum:inclusive,exclusive",
+          "required": true
+        },
+        {
+          "name": "sourceOrder",
+          "type": "versioned-document-id",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "purchases": {
+      "contract": "design.purchases.v1",
+      "fields": [
+        {
+          "name": "partyId",
+          "type": "scoped-supplier-id",
+          "required": true
+        },
+        {
+          "name": "supplierReference",
+          "type": "string:60",
+          "required": true
+        },
+        {
+          "name": "lines",
+          "type": "array:tracked-stock,expense,asset;qty,price,tax,recoverability,dimensions",
+          "required": true
+        },
+        {
+          "name": "receipts",
+          "type": "array:versioned-receipt-ref",
+          "required": false
+        },
+        {
+          "name": "matchingPolicy",
+          "type": "versioned-rule-id",
+          "required": true
+        },
+        {
+          "name": "dueDate",
+          "type": "date",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "tax": {
+      "contract": "design.tax.v1",
+      "fields": [
+        {
+          "name": "registrationId",
+          "type": "scoped-registration-id",
+          "required": true
+        },
+        {
+          "name": "jurisdiction",
+          "type": "reviewed-country-pack-id",
+          "required": true
+        },
+        {
+          "name": "effectivePeriod",
+          "type": "date-range",
+          "required": true
+        },
+        {
+          "name": "taxRuleVersion",
+          "type": "immutable-version",
+          "required": true
+        },
+        {
+          "name": "recoverability",
+          "type": "decimal-percent",
+          "required": false
+        },
+        {
+          "name": "withholdingBasis",
+          "type": "reviewed-rule-id",
+          "required": false
+        },
+        {
+          "name": "sourceDocuments",
+          "type": "array:versioned-document-ref",
+          "required": true
+        },
+        {
+          "name": "filingAction",
+          "type": "enum:workpaper,preview,approved-adapter",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "inventory": {
+      "contract": "design.inventory.v1",
+      "fields": [
+        {
+          "name": "movement",
+          "type": "enum:receipt,issue,transfer,count,return",
+          "required": true
+        },
+        {
+          "name": "itemId",
+          "type": "scoped-item-id",
+          "required": true
+        },
+        {
+          "name": "quantity",
+          "type": "positive-decimal6",
+          "required": true
+        },
+        {
+          "name": "fromStore",
+          "type": "scoped-store-id",
+          "required": false
+        },
+        {
+          "name": "toStore",
+          "type": "scoped-store-id",
+          "required": false
+        },
+        {
+          "name": "uomVersion",
+          "type": "immutable-version",
+          "required": true
+        },
+        {
+          "name": "valuationPolicy",
+          "type": "enum:FIFO,weighted-average,specific-identification",
+          "required": true
+        },
+        {
+          "name": "batches",
+          "type": "array:lot,serial,expiry,quantity",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "manufacturing": {
+      "contract": "design.manufacturing.v1",
+      "fields": [
+        {
+          "name": "bomVersion",
+          "type": "immutable-bom-version",
+          "required": true
+        },
+        {
+          "name": "productionOrder",
+          "type": "scoped-order-id",
+          "required": true
+        },
+        {
+          "name": "inputStore",
+          "type": "scoped-store-id",
+          "required": true
+        },
+        {
+          "name": "outputStore",
+          "type": "scoped-store-id",
+          "required": true
+        },
+        {
+          "name": "actualInputs",
+          "type": "array:item,qty,uom,lot,cost-layer,ownership",
+          "required": true
+        },
+        {
+          "name": "outputQuantity",
+          "type": "positive-decimal6",
+          "required": true
+        },
+        {
+          "name": "labourOverhead",
+          "type": "array:operation,cost,allocation-policy",
+          "required": false
+        },
+        {
+          "name": "scrapByproducts",
+          "type": "array:item,quantity,treatment",
+          "required": false
+        },
+        {
+          "name": "completion",
+          "type": "enum:partial,complete,rework",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "pos": {
+      "contract": "design.pos.v1",
+      "fields": [
+        {
+          "name": "shiftId",
+          "type": "scoped-open-shift-id",
+          "required": true
+        },
+        {
+          "name": "terminalId",
+          "type": "registered-device-id",
+          "required": true
+        },
+        {
+          "name": "lines",
+          "type": "array:item,quantity,price,discount,tax,recipe-version",
+          "required": true
+        },
+        {
+          "name": "tenders",
+          "type": "array:method,amount,reference",
+          "required": true
+        },
+        {
+          "name": "returnSource",
+          "type": "original-receipt-id",
+          "required": false
+        },
+        {
+          "name": "offlineOperation",
+          "type": "device-id,sequence,operation-hash",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "assets": {
+      "contract": "design.assets.v1",
+      "fields": [
+        {
+          "name": "assetId",
+          "type": "scoped-asset-id",
+          "required": true
+        },
+        {
+          "name": "event",
+          "type": "enum:opening,acquire,depreciate,transfer,revalue,impair,dispose",
+          "required": true
+        },
+        {
+          "name": "effectiveDate",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "policyVersion",
+          "type": "immutable-version",
+          "required": true
+        },
+        {
+          "name": "sourceDocument",
+          "type": "versioned-document-id",
+          "required": false
+        },
+        {
+          "name": "amounts",
+          "type": "exact-cost,residual,charge,proceeds",
+          "required": true
+        },
+        {
+          "name": "custody",
+          "type": "scoped-location,custodian",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "people": {
+      "contract": "design.people.v1",
+      "fields": [
+        {
+          "name": "employeeId",
+          "type": "confidential-scoped-id",
+          "required": true
+        },
+        {
+          "name": "effectiveDate",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "employmentPolicy",
+          "type": "immutable-version",
+          "required": true
+        },
+        {
+          "name": "payComponents",
+          "type": "restricted-array:exact-money",
+          "required": false
+        },
+        {
+          "name": "attendanceSources",
+          "type": "array:approved-event-id",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "projects": {
+      "contract": "design.projects.v1",
+      "fields": [
+        {
+          "name": "projectId",
+          "type": "scoped-project-id",
+          "required": true
+        },
+        {
+          "name": "wbs",
+          "type": "versioned-wbs-id",
+          "required": false
+        },
+        {
+          "name": "budgetRevision",
+          "type": "immutable-version",
+          "required": false
+        },
+        {
+          "name": "commitmentSources",
+          "type": "array:source-document-ref",
+          "required": false
+        },
+        {
+          "name": "forecast",
+          "type": "assumptions-and-exact-money",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "finance": {
+      "contract": "design.finance.v1",
+      "fields": [
+        {
+          "name": "scenarioId",
+          "type": "versioned-scenario-id",
+          "required": true
+        },
+        {
+          "name": "asOf",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "assumptions",
+          "type": "typed-nonexecutable-values",
+          "required": true
+        },
+        {
+          "name": "actualSources",
+          "type": "authorized-snapshot-refs",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "reports": {
+      "contract": "design.reports.v1",
+      "fields": [
+        {
+          "name": "dataset",
+          "type": "allowlisted-dataset-id",
+          "required": true
+        },
+        {
+          "name": "measures",
+          "type": "array:allowlisted-metric-id",
+          "required": true
+        },
+        {
+          "name": "dimensions",
+          "type": "array:allowlisted-dimension-id",
+          "required": false
+        },
+        {
+          "name": "filters",
+          "type": "array:typed-allowlisted-predicate",
+          "required": false
+        },
+        {
+          "name": "basis",
+          "type": "enum:posted,snapshot,managerial",
+          "required": true
+        },
+        {
+          "name": "freshness",
+          "type": "source-and-projection-watermark",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "drive": {
+      "contract": "design.drive.v1",
+      "fields": [
+        {
+          "name": "objectId",
+          "type": "opaque-versioned-id",
+          "required": true
+        },
+        {
+          "name": "scanState",
+          "type": "enum:quarantine,clean,rejected",
+          "required": true
+        },
+        {
+          "name": "links",
+          "type": "array:authorized-document-ref",
+          "required": false
+        },
+        {
+          "name": "retention",
+          "type": "versioned-policy-id",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "apps": {
+      "contract": "design.apps.v1",
+      "fields": [
+        {
+          "name": "manifest",
+          "type": "signed-versioned-manifest",
+          "required": true
+        },
+        {
+          "name": "scopes",
+          "type": "array:approved-capability",
+          "required": true
+        },
+        {
+          "name": "egress",
+          "type": "allowlisted-destinations",
+          "required": false
+        },
+        {
+          "name": "secretReferences",
+          "type": "opaque-vault-refs",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "assistant": {
+      "contract": "design.assistant.v1",
+      "fields": [
+        {
+          "name": "taskId",
+          "type": "durable-task-id",
+          "required": true
+        },
+        {
+          "name": "tools",
+          "type": "array:typed-authorized-tool",
+          "required": true
+        },
+        {
+          "name": "budgetReservation",
+          "type": "versioned-reservation-id",
+          "required": true
+        },
+        {
+          "name": "evidence",
+          "type": "versioned-source-refs",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "settings": {
+      "contract": "design.settings.v1",
+      "fields": [
+        {
+          "name": "policyId",
+          "type": "versioned-policy-id",
+          "required": true
+        },
+        {
+          "name": "conditions",
+          "type": "typed-nested-rule-tree",
+          "required": true
+        },
+        {
+          "name": "effectiveDate",
+          "type": "date",
+          "required": true
+        },
+        {
+          "name": "accessSimulation",
+          "type": "actor,action,resource,context",
+          "required": false
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "admin": {
+      "contract": "design.admin.v1",
+      "fields": [
+        {
+          "name": "caseId",
+          "type": "attributed-support-case",
+          "required": true
+        },
+        {
+          "name": "scope",
+          "type": "installation,tenant,action",
+          "required": true
+        },
+        {
+          "name": "expectedEpoch",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "reason",
+          "type": "string:500",
+          "required": true
+        },
+        {
+          "name": "approval",
+          "type": "step-up-and-independent-review-where-required",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "offline": {
+      "contract": "design.offline.v1",
+      "fields": [
+        {
+          "name": "deviceId",
+          "type": "registered-key-id",
+          "required": true
+        },
+        {
+          "name": "operationId",
+          "type": "immutable-uuid",
+          "required": true
+        },
+        {
+          "name": "sequence",
+          "type": "monotonic-integer",
+          "required": true
+        },
+        {
+          "name": "policyLease",
+          "type": "signed-scoped-lease",
+          "required": true
+        },
+        {
+          "name": "syncCursor",
+          "type": "acknowledged-sequence",
+          "required": true
+        },
+        {
+          "name": "payload",
+          "type": "versioned-canonical-command",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    },
+    "design": {
+      "contract": "design.design.v1",
+      "fields": [
+        {
+          "name": "requirementId",
+          "type": "catalog-id",
+          "required": true
+        },
+        {
+          "name": "reviewer",
+          "type": "authorized-owner",
+          "required": true
+        },
+        {
+          "name": "decision",
+          "type": "enum:issues,approved",
+          "required": true
+        },
+        {
+          "name": "evidence",
+          "type": "dated-task-and-visual-review",
+          "required": true
+        }
+      ],
+      "acceptanceGate": "owner design review, independent financial/security fixtures, native and deployed verification before live use"
+    }
+  }
+}
