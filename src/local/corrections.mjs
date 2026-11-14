@@ -10,6 +10,7 @@ export function previewReversal(engine,tenant,actor,input){
  const source=JSON.parse(original.payload);engine.policy(tenant,actor,'journal.read',source);engine.policy(tenant,actor,'journal.prepare',source);
  check(typeof input.date==='string'&&input.date>=original.posting_date,'A reversal cannot precede its source posting date');
  check(!db.prepare('SELECT 1 FROM stock_operations WHERE command_id=?').get(input.originalId),'Stock must be corrected through an operational stock workflow');
+ check(!db.prepare('SELECT 1 FROM trade_operations WHERE command_id=?').get(input.originalId),'Trade documents need their operational credit/refund workflow');
  check(!db.prepare('SELECT 1 FROM journal_corrections WHERE original_id=?').get(input.originalId),'Source already has a recorded correction');
  const journal={company:original.company,branch:original.branch,date:input.date,narrative:'Reversal of '+original.id+': '+input.reason.trim(),lines:source.lines.map(l=>({account:l.account,debit:decimal(l.credit),credit:decimal(l.debit)}))};
  const normalized=normalizedJournal(journal);engine.policy(tenant,actor,'journal.prepare',normalized);

@@ -32,6 +32,9 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/administration/member-state'&&method==='POST')response=json(runtime.setMemberActive(tenant,actor,input));
     else if(path==='/api/administration/assignments'&&method==='POST')response=json(runtime.assignRole(tenant,actor,input));
     else if(path==='/api/masters'&&method==='GET')response=json(runtime.masters(tenant,actor,company,branch));
+    else if(path==='/api/trade'&&method==='GET')response=json(runtime.trade(tenant,actor,{company,branch,...(url.searchParams.has('asOf')?{asOf:url.searchParams.get('asOf')}:{})}));
+    else if(path==='/api/trade/parties'&&method==='POST')response=json(runtime.tradeParty(tenant,actor,input),201);
+    else if(path==='/api/trade/prepare'&&method==='POST')response=json(runtime.prepareTrade(tenant,actor,commandId,input),201);
     else if(path==='/api/ledger'&&method==='GET')response=json(runtime.ledger(tenant,actor,options));
     else if(path==='/api/trial'&&method==='GET')response=json(runtime.trial(tenant,actor,options));
     else if(path==='/api/statements'&&method==='GET')response=json(runtime.statements(tenant,actor,options));
@@ -54,7 +57,7 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/assistant'&&method==='POST')response=json(await runtime.assistant(tenant,actor,company,branch,input));
     else fail(404,'Customer endpoint unavailable');
    }
-  }else if(request.method==='GET'&&['/','/app.js','/administration.js','/style.css','/logo.svg'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html','Cache-Control':'no-store'}});}
+  }else if(request.method==='GET'&&['/','/app.js','/administration.js','/trade.js','/style.css','/logo.svg'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html','Cache-Control':'no-store'}});}
   else fail(404,'Not found');
   if(url.pathname.startsWith('/api/')&&!['/api/login','/api/logout'].includes(url.pathname))runtime.session(token,realm);
  }catch(error){response=json({error:error.status?error.message:'Request refused; check your scope, values and current operation state.'},error.status??422);}

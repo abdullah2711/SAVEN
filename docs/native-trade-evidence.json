@@ -1,0 +1,61 @@
+{
+  "date": "2026-11-14",
+  "profile": "owner-server runtime; Cloudflare DNS/TLS/tunnel only",
+  "applicationOrigin": "https://app.economicsystems.cc",
+  "operatorOrigin": "https://ops.economicsystems.cc",
+  "image": "sha256:d24a9827557584529b3f6f8ec045e84516ae24d3e4ad19323e2473fea209cb1e",
+  "tag": "saven-native:trade-20261114-b",
+  "tenantSchema": 7,
+  "identitySchema": 3,
+  "localTests": 149,
+  "linuxFocusedTests": 54,
+  "parsedJavaScriptFiles": 152,
+  "preUpgradeRehearsal": {
+    "tenants": 8,
+    "unchangedHistoricalTables": 190,
+    "existingOperatorLogin": true
+  },
+  "publicSyntheticCycle": {
+    "tenant": "trade-probe-f86dcb04",
+    "invoice": "100.03",
+    "receipt": "60.02",
+    "unpaidReceivable": "40.01",
+    "bill": "40.01",
+    "payment": "10.01",
+    "unpaidPayable": "30.00",
+    "cash": "50.01",
+    "controlDifferences": [
+      "0.00",
+      "0.00"
+    ],
+    "replayedExactlyOnce": true,
+    "overpaymentRefused": true,
+    "foreignRealmRefused": true
+  },
+  "finalIndependentRestore": {
+    "stores": 13,
+    "originalObjects": 4,
+    "tradeBusinesses": 1,
+    "postedTradeDocuments": 2,
+    "zeroControlDifferences": true
+  },
+  "browser": {
+    "existingOwnerAppAndOpsLogin": true,
+    "centeredOriginalLogoLogin": true,
+    "invoiceAndPaymentScreens": true
+  },
+  "limitations": "docs/45-native-invoices-and-settlements.md; no client import, no main promotion, no complete Accounting/Inventory/MVP claim",
+  "deployedSourceSha256": {
+    "src/local/trade.mjs": "acc1441deb62501b257d814100770019c7444511281376401c64b4eec76bec83",
+    "src/local/schema.mjs": "838866bad0d9e729d1328679d6c6b15736bab63ca3f6dc7d9c543b08c3fbb751",
+    "src/local/runtime.mjs": "4c9635a769e5df73f2529fe549393533fda1d97dedd0965c4d8d721338166dd9",
+    "src/local/http.mjs": "b7f2378252f3ec1ce1a51f970eb2be44541190c110c7a0f3985c78d934e14a9d",
+    "src/local/corrections.mjs": "1b6abec1c148f3a94889ee65ad7f0bc7a859cdd52035ee90ad0a6b7ce54327c2",
+    "public/live/trade.js": "46a7b6d9b569c9b0749b7d69f1b6b806ad0ff56d5b32186f02aa6e39d6cba63b",
+    "public/live/app.js": "367fd4312d17a88bc3d7b75d825148e17b41ccabf1bc48f9cf4bddd53ca3acc1",
+    "public/live/style.css": "7f44f06d5a2647553f68f6754422a3a5219d21e07b9be58eb6b0446f51b1adca",
+    "tests/native-trade.test.mjs": "9bfefb1bf1d08be11a024dc032c98da581781d13e53de3c02800fc0ee636f850",
+    "tests/native-migrations.test.mjs": "f921a79739eab4b1b9a69f004ccdfc5fc205caf08a202b92fc64fa1cdd10995a",
+    "tests/native-frontend.test.mjs": "e0ccebd0de7f052fd75dd52020f97853acf1d00593e9bd1b09769bf22121b782"
+  }
+}

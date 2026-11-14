@@ -114,3 +114,20 @@ END;
 identity.push(`
 CREATE TABLE business_member_operations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,actor TEXT NOT NULL REFERENCES users(id),user_id TEXT NOT NULL REFERENCES users(id),digest TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('PREPARED','NEEDS_RETRY','COMPLETED')),created_at INTEGER NOT NULL) STRICT;
 `);
+
+tenant.push(`
+CREATE TABLE trade_controls(company TEXT NOT NULL,branch TEXT NOT NULL,account TEXT NOT NULL REFERENCES accounts(code),PRIMARY KEY(company,branch,account)) STRICT;
+CREATE TABLE trade_parties(company TEXT NOT NULL,branch TEXT NOT NULL,id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('customer','supplier')),name TEXT NOT NULL,PRIMARY KEY(company,branch,id)) STRICT;
+CREATE TABLE trade_operations(command_id TEXT PRIMARY KEY REFERENCES command_inbox(id),input_digest TEXT NOT NULL,payload TEXT NOT NULL) STRICT;
+CREATE TABLE trade_documents(command_id TEXT PRIMARY KEY REFERENCES trade_operations(command_id),company TEXT NOT NULL,branch TEXT NOT NULL,party_id TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('invoice','bill')),reference TEXT NOT NULL,posting_date TEXT NOT NULL,due_date TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>0),FOREIGN KEY(company,branch,party_id) REFERENCES trade_parties(company,branch,id),UNIQUE(company,branch,party_id,kind,reference)) STRICT;
+CREATE TABLE trade_lines(command_id TEXT NOT NULL REFERENCES trade_documents(command_id),line_no INTEGER NOT NULL,description TEXT NOT NULL,account TEXT NOT NULL REFERENCES accounts(code),amount INTEGER NOT NULL CHECK(amount>0),PRIMARY KEY(command_id,line_no)) STRICT;
+CREATE TABLE trade_allocations(command_id TEXT NOT NULL REFERENCES trade_operations(command_id),document_id TEXT NOT NULL REFERENCES trade_documents(command_id),amount INTEGER NOT NULL CHECK(amount>0),PRIMARY KEY(command_id,document_id)) STRICT;
+CREATE TRIGGER trade_control_source BEFORE UPDATE OF state ON command_inbox WHEN NEW.state='POSTED' AND OLD.state<>'POSTED' BEGIN
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM journal_lines l JOIN journals j ON j.id=l.journal_id JOIN trade_controls c ON c.company=j.company AND c.branch=j.branch AND c.account=l.account WHERE j.id=NEW.id) AND NOT EXISTS(SELECT 1 FROM trade_operations WHERE command_id=NEW.id) THEN RAISE(ABORT,'Trade control accounts require an invoice/bill/settlement source') END;
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM trade_documents d WHERE d.command_id=NEW.id AND d.total<>(SELECT sum(amount) FROM trade_lines WHERE command_id=NEW.id)) THEN RAISE(ABORT,'Trade lines and document total differ') END;
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM trade_allocations a JOIN trade_documents d ON d.command_id=a.document_id WHERE a.command_id=NEW.id AND d.total<(SELECT sum(amount) FROM trade_allocations WHERE document_id=d.command_id)) THEN RAISE(ABORT,'Trade allocation exceeds document total') END;
+END;
+CREATE TRIGGER trade_correction_source BEFORE INSERT ON journal_corrections WHEN EXISTS(SELECT 1 FROM trade_operations WHERE command_id=NEW.original_id) BEGIN SELECT RAISE(ABORT,'Trade documents require an operational credit/refund source'); END;
+${['trade_controls','trade_parties','trade_operations','trade_documents','trade_lines','trade_allocations'].map(table=>`CREATE TRIGGER ${table}_retained_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'Trade source is immutable'); END;
+CREATE TRIGGER ${table}_retained_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Trade source is retained'); END;`).join('\n')}
+`);
