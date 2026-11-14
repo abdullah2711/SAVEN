@@ -1,5 +1,7 @@
 # SAVEN Architecture AI and Security
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 > Historical baseline: target architecture and development ordering are superseded where conflicting by [owner mandate v2](sources/SAVEN-mandate-v2.md) and [reconciliation](26-owner-decisions-2026-11-13-v2.md). Existing implementation evidence remains valid for its recorded environment.
 
 Prepared for Abdullah Nauman and Economic Systems Consulting

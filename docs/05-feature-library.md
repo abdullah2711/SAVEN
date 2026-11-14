@@ -1,8 +1,8 @@
 # SAVEN Feature and Acceptance Library
 
-13 November 2026 | Baseline 2.3
+14 November 2026 | Baseline 2.3 plus Accounting-first owner revision
 
-255 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.
+269 requirements across 20 families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.
 
 Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.
 
@@ -14,7 +14,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | FND-002 | Dimensions: Branches departments projects stores and cost centres | A report filters and reconciles each permitted dimension |
 | FND-003 | Currencies and precision: Decimal money quantities exchange rates and rounding policies | Boundary and conversion examples agree to independently calculated results |
 | FND-004 | Periods and dates: Financial years business dates timezones and locks | Every entry route rejects a locked period |
-| FND-005 | Numbering: Scoped unique document series with concurrency control | Simultaneous submissions cannot duplicate a document number |
+| FND-005 | Numbering: System-allocated immutable scoped document series with atomic high-water counters; cancellation rejection and correction never reuse a number; external reference is separate | Simultaneous submissions cannot duplicate a document number |
 | FND-006 | Membership lifecycle: Invite suspend revoke recover and switch companies | Revocation blocks new requests queued actions and downloads |
 | FND-007 | Permissions: Business-defined custom role types with module action row field branch company amount approval and AI conditions; explicit denies enforced consistently by a shared scoped-query and command service | Preview agrees with allow and deny tests |
 | FND-008 | Delegated administration: Company superadmin and module administrator grants | Delegation cannot exceed grantor authority or cross companies |
@@ -22,6 +22,8 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | FND-010 | Localization packs: Versioned language reporting tax and employment configuration | Unsupported pack rules are visible before activation |
 | FND-011 | Ultimate business ownership: Exactly one immutable ultimate_business_admin role definition and one active ultimate-owner principal per subscribed business; atomic protected transfer and recovery; arbitrary custom role names cannot clone authority | Delegated administrators cannot remove the ultimate owner or create other administrators without the owner's authority |
 | FND-012 | Resource-level controls: Customer supplier item account store and action-specific grants with preview and execution checks | A forbidden resource remains forbidden through forms APIs AI approvals and offline synchronization |
+| FND-013 | Permanent document lifecycle: Server drafts with optimistic revisions immutable submitted versions retained rejection/return duplicate-as-new and nonreused system numbering across modules | Cancelled voucher two is retained and the next voucher is three; draft saving creates no GL stock or tax effects |
+| FND-014 | Source attribution: Every source and GL row retains preparer actual poster company branch optional project and linked corrections | Filtered reports and exports reconcile and identify the authorized source and actors |
 
 ## Accounting and close
 
@@ -52,13 +54,15 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
 | SAL-001 | Customer records: Contacts terms credit limits addresses and tax identity | Duplicate and credit-policy checks run before submission |
-| SAL-002 | Quotations and orders: Optional acceptance and order steps | A company can invoice services without order or delivery paperwork |
+| SAL-002 | Quotations and orders: Optional quotations and sales orders with direct quote-to-order or quote-to-invoice; direct goods or service invoices remain possible | A company can invoice services without order or delivery paperwork |
 | SAL-003 | Service and goods invoices: Direct and linked invoices with tax discounts and dimensions | One invoice creates the expected receivable revenue tax and stock effects |
 | SAL-004 | Fulfilment: Partial delivery backorders reservations and returns | Delivered billed and remaining quantities agree |
 | SAL-005 | Recurring billing: Schedules end dates pauses and exception review | A retry cannot create a second invoice for the same period |
 | SAL-006 | Credit and refund: Linked credit notes returns and authorized refund records | Credit cannot silently exceed permitted original value or quantity |
 | SAL-007 | Receipts and allocation: Partial receipts advances withholding and unapplied balances | Customer balance agrees to invoices credits and allocations |
 | SAL-008 | Receivables oversight: Ageing statements collection tasks and disputed balances | Ageing agrees to control account at the stated as-of date |
+| SAL-009 | Bill and hold custody: Recognized control transfer can precede dispatch with substantive request segregated ready goods and no resale; customer custody is separate from owned stock | Recognize revenue and cost once at supported control transfer then dispatch custody without second revenue cost or owned-stock effects |
+| SAL-010 | Multi-source returns: Partial full and multi-invoice goods/service returns consideration refunds or credit notes with linked source and return statistics | Repeat returns cannot exceed remaining quantities values tax or refundable balances across POS and standard sales |
 
 ## Purchases and payables
 
@@ -72,6 +76,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | PUR-006 | Adjustments: Supplier credits returns landed costs and price differences | Inventory or expense and payable adjustments reconcile |
 | PUR-007 | Payment proposals: Due-date priorities cash constraints approvals and export | A proposal does not itself transfer funds or mark settlement |
 | PUR-008 | Payable oversight: Ageing statements advances retention and reconciliation | Supplier schedule agrees to the payable control account |
+| PUR-009 | Flexible source conversion: Direct quotations orders bills goods receipts and service acceptance with partial before/after invoicing matching | Quotation can become order or bill directly and goods/service documents generate correct reconciled clearing effects |
 
 ## Point of sale
 
@@ -87,6 +92,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | POS-008 | Offline scope decision: Restricted synchronized offline companion to Cloud or Fully Private with signed scoped device authority explicit conflicts and retained pending evidence | No offline promise is made before tax sync tender and oversell policies pass |
 | POS-009 | Recipe-linked production sales: POS sale consumes designated recipe inputs records production and sells finished output in one controlled process | A burger sale consumes the correct ingredients once and insufficient ingredients or retry cannot partially post |
 | POS-010 | Device connectors: Configured barcode scanners scales counters printers and other supported store or POS devices through scoped adapters | Duplicate or malformed device events cannot bypass quantity unit authority or posting validation |
+| POS-011 | POS profiles and invoice identity: User location product/group payment-method profiles with separate immutable POS invoice series unified filterable selling register and denomination records | Restricted cashier cannot sell excluded products; received and change denominations reconcile to tenders and returns |
 
 ## Inventory
 
@@ -99,13 +105,15 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | INV-005 | Reservation and release: Approval-before-release or authorized immediate issue policy | Pending release does not silently consume physical stock |
 | INV-006 | Cost formulas: Specific identification FIFO and weighted average under policy | Similar nature and use checks prevent arbitrary formula selection |
 | INV-007 | Cost policy transition: Effective date impact preview authorized migration and reconciliation | Historical valuation remains reproducible after an approved change |
-| INV-008 | Traceability: Batch serial expiry genealogy and recall queries | A selected lot traces to receipts transfers production and issues |
+| INV-008 | Traceability: Batch serial item/location identification with custody and invoice/GRN/GDN links; damage and value adjustments select valid units or batches explicitly | A selected lot traces to receipts transfers production and issues |
 | INV-009 | Counts and adjustments: Blind count variance review and cut-off | Count differences post only through authorized adjustment |
 | INV-010 | Landed cost and valuation: Cost allocation NRV review slow stock and ageing | Inventory valuation agrees to GL with explained timing differences |
 | INV-011 | Availability controls: Negative-stock policy concurrency and reservations | Two users cannot release the same last unit under no-negative policy |
 | INV-012 | Replenishment: Minimum levels lead times reorder proposals and commitments | Proposed supply accounts for approved open orders and reservations |
 | INV-013 | Retroactive costing: Explicit item policy for provisional issue costs later purchase costs and traceable cost adjustments | Later costs reconcile by linked adjustments with closed-period and historical-report handling rather than silent rewrites |
 | INV-014 | Item valuation selection: Effective-dated inventory valuation policy with FIFO or weighted average for IAS 2 interchangeable inventory and justified specific identification; no LIFO statutory IAS 2 option | Unsupported reporting-policy combinations are blocked and policy changes retain reproducible history |
+| INV-015 | Physical and owned stock distinction: Separate owned inventory customer custody supplier ownership and in-transit positions with GRN GDN invoice links | Physical custody counts and owned stock valuation reconcile without overstating assets or duplicate dispatch posting |
+| INV-016 | Damage and NRV selection: Item warehouse batch or serial damage and separate value-only NRV write-down with supported capped reversal | Physical loss changes selected quantity once while value-only write-down retains units and reversal cannot exceed restored cost |
 
 ## Fixed assets
 
@@ -118,6 +126,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | AST-005 | Subsequent changes: Impairment revaluation repair split and reassessment | Accounting treatment and future schedule are versioned and authorized |
 | AST-006 | Disposal: Sale scrap partial disposal gain loss and derecognition | Cost accumulated depreciation proceeds and gain or loss reconcile |
 | AST-007 | Retirement controls: Stop new acquisitions while preserving future obligations | Depreciation and historical reporting have an explicit continuing owner |
+| AST-008 | Asset lifecycle and identity: System number plus optional custom identity acquisition and later available-for-use date categories common locations individual/group prospective estimate changes revaluation and impairment | Depreciation begins on available-for-use date and schedule GL and carrying value reconcile through all supported changes |
 
 ## Manufacturing
 
@@ -193,12 +202,13 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | --- | --- | --- |
 | TAX-001 | Tax identity and applicability: Company registrations jurisdictions exemptions and effective dates | Applicable pack requirements cannot be disabled through invoice UI |
 | TAX-002 | Sales and purchase taxes: Rate versions inclusive exclusive recoverable and nonrecoverable treatment | Independent examples reconcile taxable base rounding and posting |
-| TAX-003 | Withholding: Deduction collection certificates party status and settlement schedules | Invoice receipt payment and withholding control accounts agree |
+| TAX-003 | Withholding: Separate income-tax and VAT withholding at invoice-time or later payment; expected versus actual balances defaults overrides certificates partial settlements and linked adjustment journals | Invoice receipt payment and withholding control accounts agree |
 | TAX-004 | Tax reconciliation: Return schedules input output withholding and ledger bridges | Every reported total traces to the relevant accepted documents |
 | TAX-005 | E-invoice obligations: Current FBR applicability licensed arrangement and required document status | Supported customer profile passes current sandbox and reconciliation cases |
 | TAX-006 | Corrections and cancellations: Authority-specific credit debit cancellation and amendment routes | Accepted tax invoices cannot be silently rewritten |
 | TAX-007 | Country pack lifecycle: Reviewed effective-dated rules current source and release notes | A law change preserves prior-period calculation basis |
 | TAX-008 | Compliance boundary: Supported entity province tax and employment cases plus missing coverage | Sales and onboarding flag unsupported statutory requirements before go-live |
+| TAX-009 | Expected and actual withholding: Separate income-tax and sales-tax withholding expected versus actually deducted accounts configured defaults overrides and linked journal adjustments | Gross settlement equals net cash plus valid deductions and adjustments reconcile certificate tax source and GL at each date |
 
 ## Financial statements and BI
 
@@ -227,8 +237,10 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | CFG-004 | Policy versions: Effective dates and explicit in-flight treatment | Material changes invalidate or migrate prior approvals explicitly |
 | CFG-005 | Form builder: Typed fields lists required values visibility defaults and attachments | Core financial or security validation cannot be removed |
 | CFG-006 | Schema evolution: Form versions old record interpretation and safe publication | An old document remains readable after a field change |
-| CFG-007 | Print layouts: Constrained components image reference preview and sanitization | Generated layout cannot execute script or fetch unauthorized data |
+| CFG-007 | Print layouts: Immutable standard print formats per document type; duplicate/create custom version with logo letterhead restricted HTML/image headers footers field/column toggles paper margins and default selection | Generated layout cannot execute script or fetch unauthorized data |
 | CFG-008 | Configuration recovery: Preview diff audit rollback for future work and migration plan | Failed publication leaves the last valid configuration active |
+| CFG-009 | Settings page delegation: One Settings module with named-user or role page grants configured independently of normal business role authority | Direct API calls enforce page grants without granting transaction owner or other protected powers |
+| CFG-010 | Immutable print originals: Per-document built-in immutable formats with duplicate-to-custom versioned letterhead image restricted HTML fields margins and defaults | Custom format can omit header footer or selected fields while original remains identical and authorized historical output is reproducible |
 
 ## Company Drive and evidence
 
@@ -327,6 +339,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | OPS-024 | Private package composition: Customer ERP identity business admin support and verifier are packaged without vendor billing issuer global registry signing keys or hidden accounts | A private artifact allowlist and runtime checks exclude vendor-only components and work without mandatory SAVEN connectivity |
 | OPS-025 | Local-first development and QA: Native SQLite control tenant jobs and local objects start reproducibly without D1 PostgreSQL SSH or external cloud dependencies; optional authorized authenticated remote preview | Fresh local boot works offline and no database secret debug or unrestricted operator endpoint is publicly exposed |
 | OPS-026 | Durable command receipt and recovery: Owning-tenant inbox approval posting audit and outbox states have explicit commit-before-ack and lease retry semantics | Crash before receipt yields no acceptance and commit-before-ACK replay cannot duplicate a journal; changed permissions period or entitlement are rechecked |
+| OPS-027 | Compatible tenant release waves: Explicit schema read/write ranges expand backfill switch contract durable per-file cursors canary waves fencing pause and recovery | Old data and accepted commands survive tested upgrades with measured tenant downtime; no billion-database or zero-outage claim without evidence |
 
 ## Security audit and assurance
 
@@ -351,12 +364,13 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | ID | Capability and supported scope | Acceptance condition |
 | --- | --- | --- |
 | UX-001 | Themes and glass: Muted warm ivory charcoal and restrained plum; layered charcoal dark surfaces with Economic Systems deep plum fills 24151c/38212b and readable low-saturation accent text; coherent readable layouts with few borders and no bright white cards or pink primary buttons | Light and dark review shows no gradient seam or contrast loss |
-| UX-002 | Navigation: Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps | User can locate each destination in both sidebar states |
+| UX-002 | Navigation: Expandable left-sidebar modules with their subpages beneath; separate Selling Buying Payments Customers and suppliers Taxes Cash and bank Accounting Inventory Assets POS and unified Settings | User can locate each destination in both sidebar states |
 | UX-003 | Brand: SA7EN visible display brand pronounced seven across application and account areas without a clarity tagline; theme-adaptive original mark; preserve existing repository domain protocol certificate and database identifiers | No provisional lion or obsolete product name appears in current application branding |
 | UX-004 | Task interaction: Keyboard scanning touch quick actions drafts and visible states | Frequent small issue requires no AI chat or specialist instruction |
 | UX-005 | Accessibility: WCAG 2.2 AA target focus labels contrast and reduced motion | Keyboard and assistive checks pass defined critical journeys |
 | UX-006 | Responsive and weak network: Small screens long values errors progress and safe retry | Interrupted submissions preserve intent without duplicate effects |
-| UX-007 | Product-wide workflow library: Complete UI and UX module by module before backend feature expansion; coherent registers documents configuration evidence states exports and accessibility; screen coverage is not completion | Every requirement maps to a route and contract with specification versus interactive versus implemented status made explicit |
+| UX-007 | Product-wide workflow library: Build working Accounting first then Settings then linked transactional modules then broader ops and remaining market MVP; use coherent focused registers forms drafts review evidence and print | Every requirement maps to a route and contract with specification versus interactive versus implemented status made explicit |
 | UX-008 | Global search and commands: Permission-scoped module record report settings search and accessible command palette with keyboard navigation | Denied records and totals do not leak and prototype search never calls business APIs |
 | UX-009 | Synthetic design boundary: New frontend at main testing root replaces old public UI while retained financial source/data stay intact; synthetic states and local sample drafts cannot masquerade as actual posting | Design pages cannot submit business API commands and reload resets synthetic transaction state |
 | UX-010 | Owner design approval: Dated module and cross-module review issues screenshots novice task observations and explicit approval | No design is called approved without recorded owner decision and no approved screen alone counts as backend implementation |
+| UX-011 | Expandable module pages: Accounting first then unified Settings then Selling Buying Payments Parties Taxes CashBank Inventory Assets POS; each module expands its focused pages under the sidebar | One selected page loads its authorized real workflow with usable forms document actions and print; crowded hidden-all-pages layouts do not count as completion |

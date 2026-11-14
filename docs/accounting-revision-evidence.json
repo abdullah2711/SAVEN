@@ -1,0 +1,51 @@
+{
+  "date": "2026-11-14",
+  "branch": "testing-1",
+  "sourceBase": "14e614476a60b62d430578050cdfc1078ad18d1c",
+  "productionChanged": false,
+  "clientReady": false,
+  "localTests": {
+    "passed": 138,
+    "failed": 0
+  },
+  "parses": 140,
+  "requirements": 269,
+  "checklistActions": 181,
+  "browser": {
+    "environment": "isolated synthetic local native business",
+    "savedAndPosted": "75.35",
+    "projectFilteredDebit": "75.35",
+    "projectFilteredCredit": "75.35",
+    "limits": "No complete mobile, keyboard, print, review or full-module acceptance"
+  },
+  "linux": {
+    "testedImage": "saven-native:accounting-dev-20261114-b",
+    "imageManifest": "sha256:3ff64756e4f4e55854fbc8f46cede19dc80fd990b544c700fb4835e83837142b",
+    "passed": 66,
+    "limits": "Final source has subsequent project/metadata/retry refinements and three extra document tests; final Linux verification delegated to GitHub CI after SSH DNS expired."
+  },
+  "restore": {
+    "stores": 13,
+    "tenants": 9,
+    "targetSchema": 9,
+    "originalTenantTablesPreserved": 227,
+    "originalObjects": 4,
+    "sourceSnapshotHashesUnchanged": true,
+    "backupReadOnly": true,
+    "limits": "Existing verified snapshot; not a fresh production backup or a completed fleet scheduler"
+  },
+  "historicalMigrations": {
+    "identity": 3,
+    "commerce": 2,
+    "fleet": 2,
+    "jobs": 2,
+    "tenant": 8,
+    "allOriginalSqlBytesMatch": true
+  },
+  "remaining": [
+    "Complete Accounting including opening subledgers, recurring, accruals, bank reconciliation, FX and full statutory statements",
+    "Settings page delegation and print-format library/designer",
+    "Remaining linked operational modules",
+    "Compatible fleet migrations, bounded connections, off-host recovery and availability benchmarks"
+  ]
+}

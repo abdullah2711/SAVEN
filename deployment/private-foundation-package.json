@@ -1,10 +1,26 @@
 {
   "status": "TESTED_FOUNDATION_ALLOWLIST_NOT_CUSTOMER_RELEASE",
   "mode": "fully-private",
-  "files": ["src/errors.mjs", "src/money.mjs", "src/local/sqlite.mjs", "src/local/schema.mjs", "src/local/engine.mjs", "src/local/licence.mjs"],
+  "files": [
+    "src/errors.mjs",
+    "src/money.mjs",
+    "src/local/sqlite.mjs",
+    "src/local/schema.mjs",
+    "src/local/engine.mjs",
+    "src/local/licence.mjs",
+    "src/local/documents.mjs",
+    "src/local/document-schema.mjs"
+  ],
   "vendorIssuer": false,
   "vendorBilling": false,
   "globalCustomerRegistry": false,
   "vendorPrivateSigningKey": false,
-  "releaseGatesStillRequired": ["installer", "authenticated API composition", "full financial parity", "licence lifecycle policy approval", "signed release images", "independent private acceptance"]
+  "releaseGatesStillRequired": [
+    "installer",
+    "authenticated API composition",
+    "full financial parity",
+    "licence lifecycle policy approval",
+    "signed release images",
+    "independent private acceptance"
+  ]
 }

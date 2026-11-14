@@ -145,3 +145,7 @@ END;
 ${['trade_credits','trade_credit_lines'].map(table=>`CREATE TRIGGER ${table}_retained_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'Credit source is immutable'); END;
 CREATE TRIGGER ${table}_retained_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Credit source is retained'); END;`).join('\n')}
 `);
+
+// Accounting document lifecycle is additive; retain all historical migration bytes.
+import {documentMigration} from './document-schema.mjs';
+tenant.push(documentMigration);

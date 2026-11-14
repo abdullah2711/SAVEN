@@ -1,5 +1,7 @@
 # Transaction authority and approval policies
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 The owner's 13 November feedback rejects mandatory independent approval for every administrator transaction. Schema 10 introduced configurable policy snapshots; schema 11 establishes the ordinary-use factory default: owners and administrators can directly post ordinary supported financial documents, while preparers require independent review. Opening snapshots remain subject to retained source evidence and independent review. An existing pending document keeps its recorded decision; upgrading does not approve a backlog or rewrite history.
 
 The ultimate owner can publish a different policy in Workspace settings, under Transaction permissions and approvals. Rules select a transaction type and preparing role; an all-types rule is the fallback. Rules can deny submission, permit direct posting up to an exact PKR amount, or require independent review. Supporting evidence can be mandatory. A type-specific rule overrides the all-types rule. Once a custom policy is published, unmatched role/type combinations require independent review rather than inheriting the factory direct-posting default.

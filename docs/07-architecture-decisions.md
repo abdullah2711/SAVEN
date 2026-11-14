@@ -1,5 +1,7 @@
 # SAVEN Architecture Decision Register
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 11 November 2026 | Proposed decisions for review
 
 ## ADR 001 One modular transaction core
@@ -98,3 +100,7 @@ Cloud targets app.saven.economicsystems.cc and operator.saven.economicsystems.cc
 ## ADR023 - verified native operational release increments
 
 The 14 November request authorizes progression beyond UI-only work and controlled production increments after verification. Native SQLite/control separation and immutable atomic posting remain. Add authenticated Cloud transport, private original storage, stock valuation through the shared kernel, separate app/operator realms and separate commercial/fleet scopes. Preserve the reference PostgreSQL installation until independent parity/cutover. See docs/42-first-operational-release.md; no feature-complete or client-ready claim follows from a candidate deployment.
+
+## ADR: Accounting-first working modules and compatible upgrades (14 November 2026)
+
+Accept the latest owner revision in docs48/49: Accounting then unified Settings then connected Selling/Buying/Payments/Parties/Taxes/CashBank/Inventory/Assets/POS, followed by broader ops and the retained suite. Use real server drafts and immutable submissions, system numbering, source-specific reversals and retained independent review decisions. Separate warehouse custody from economic ownership, and expected withholding from actual deductions with linked adjustment journals. Keep private/cloud packages and original Apps scope. Fleet safety requires measured, bounded compatible waves; current migration-on-open is not that scheduler. See the current handoff and small-action checklist for implementation evidence and limits.

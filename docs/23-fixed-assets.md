@@ -1,5 +1,7 @@
 # Fixed assets and accounting integration
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 Initial implementation under AST-002, AST-003 and AST-006. The complete AST family remains required. Check BUILD_STATE for source, native, hosted and recovery evidence separately.
 
 ## Working lifecycle

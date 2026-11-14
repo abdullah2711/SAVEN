@@ -97,3 +97,7 @@ The owner now authorizes progression beyond the UI-only sequence: make agreed ac
 ## Owner TLS/domain correction - 14 November 2026 (Asia/Karachi)
 
 The owner selected https://app.economicsystems.cc and https://ops.economicsystems.cc as the customer and administration hostnames when nested subdomain TLS failed. These replace the earlier app.saven/operator.saven Cloud targets; retain separate exact-origin security and existing marketing branding. See docs43 for actual deployment and release limits.
+
+## Latest Accounting-first revision and bill-and-hold clarification
+
+The 14 November detailed owner feedback is recorded in docs/48-accounting-first-owner-revision.md and docs/49-compatible-tenant-upgrades.md. Accounting first, Settings second, connected operational modules next, wider ops afterward. Include every detailed requested workflow in contracts/delivery-checklist.json. The owner's later clarification explicitly requires customer control transfer before physical collection; implement separate customer custody and owned valuation, with reviewable recognition evidence. Expected versus actual withholding differences may use a linked journal adjustment reflected in tax schedules. Prior scope and historical evidence remain intact; no completed full MVP is claimed.

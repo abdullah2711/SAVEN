@@ -1,5 +1,7 @@
 # First operational release increment
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 Owner authorization received 14 November 2026, Asia/Karachi. Development remains on testing-1. The owner requests an operational accounting/inventory MVP and supporting commercial/operator/settings/printing/AI layers, production customer/operator hostnames, local object storage, safe continuing releases and cleanup of project-created obsolete services. The requested two-hour deadline and zero-error expectation do not establish release readiness.
 
 ## Reconciled decisions

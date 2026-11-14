@@ -1,5 +1,7 @@
 # SAVEN Feedback Traceability
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 **Latest source:** the owner's additional “Input, Suggestions & Feedback” is mapped individually in [the additional implementation contract](11-additional-input.md). It adds 30 catalog records without renumbering the prior 209. [Foundation evidence](12-foundation.md) records partial implementation; all remaining launch scope is preserved.
 
 11 November 2026 | Baseline 1.1

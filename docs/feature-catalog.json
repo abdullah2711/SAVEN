@@ -2,8 +2,8 @@
   "product": "SAVEN",
   "display_brand": "SA7EN",
   "pronunciation": "seven",
-  "baseline": "2.3",
-  "date": "2026-11-13",
+  "baseline": "2.3+owner-20261114",
+  "date": "2026-11-14",
   "meaning": "Specified requirements are not implemented features. Public launch requires agreed family gates.",
   "requirements": [
     {
@@ -15,7 +15,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -32,7 +32,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [],
       "evidence": [],
@@ -47,7 +47,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -64,7 +64,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -76,12 +76,12 @@
       "id": "FND-005",
       "family": "Business foundation",
       "title": "Numbering",
-      "supported_scope": "Scoped unique document series with concurrency control",
+      "supported_scope": "System-allocated immutable scoped document series with atomic high-water counters; cancellation rejection and correction never reuse a number; external reference is separate",
       "acceptance": "Simultaneous submissions cannot duplicate a document number",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [],
       "evidence": [],
@@ -96,7 +96,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -113,7 +113,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -130,7 +130,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -147,7 +147,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -164,7 +164,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [],
       "evidence": [],
@@ -179,7 +179,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
@@ -196,12 +196,42 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [],
       "evidence": [
         "docs/12-foundation.md"
       ],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "FND-013",
+      "family": "Business foundation",
+      "title": "Permanent document lifecycle",
+      "supported_scope": "Server drafts with optimistic revisions immutable submitted versions retained rejection/return duplicate-as-new and nonreused system numbering across modules",
+      "acceptance": "Cancelled voucher two is retained and the next voucher is three; draft saving creates no GL stock or tax effects",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "FND-014",
+      "family": "Business foundation",
+      "title": "Source attribution",
+      "supported_scope": "Every source and GL row retains preparer actual poster company branch optional project and linked corrections",
+      "acceptance": "Filtered reports and exports reconcile and identify the authorized source and actors",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [],
+      "evidence": [],
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
@@ -213,7 +243,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -234,7 +264,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -255,7 +285,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -276,7 +306,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -297,7 +327,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -318,7 +348,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -339,7 +369,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -360,7 +390,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -377,7 +407,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -394,7 +424,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -411,7 +441,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -432,7 +462,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -453,7 +483,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -470,7 +500,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -487,7 +517,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -504,7 +534,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -521,7 +551,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -538,7 +568,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -559,7 +589,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -576,7 +606,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -588,12 +618,12 @@
       "id": "SAL-002",
       "family": "Sales and receivables",
       "title": "Quotations and orders",
-      "supported_scope": "Optional acceptance and order steps",
+      "supported_scope": "Optional quotations and sales orders with direct quote-to-order or quote-to-invoice; direct goods or service invoices remain possible",
       "acceptance": "A company can invoice services without order or delivery paperwork",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -610,7 +640,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -631,7 +661,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -648,7 +678,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -665,7 +695,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -686,7 +716,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -707,7 +737,41 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "SAL-009",
+      "family": "Sales and receivables",
+      "title": "Bill and hold custody",
+      "supported_scope": "Recognized control transfer can precede dispatch with substantive request segregated ready goods and no resale; customer custody is separate from owned stock",
+      "acceptance": "Recognize revenue and cost once at supported control transfer then dispatch custody without second revenue cost or owned-stock effects",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "SAL-010",
+      "family": "Sales and receivables",
+      "title": "Multi-source returns",
+      "supported_scope": "Partial full and multi-invoice goods/service returns consideration refunds or credit notes with linked source and return statistics",
+      "acceptance": "Repeat returns cannot exceed remaining quantities values tax or refundable balances across POS and standard sales",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -724,7 +788,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -741,7 +805,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -758,7 +822,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -775,7 +839,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -796,7 +860,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -813,7 +877,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -834,7 +898,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -851,7 +915,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -864,6 +928,23 @@
       "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
     },
     {
+      "id": "PUR-009",
+      "family": "Purchases and payables",
+      "title": "Flexible source conversion",
+      "supported_scope": "Direct quotations orders bills goods receipts and service acceptance with partial before/after invoicing matching",
+      "acceptance": "Quotation can become order or bill directly and goods/service documents generate correct reconciled clearing effects",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
       "id": "POS-001",
       "family": "Point of sale",
       "title": "Fast sale",
@@ -872,7 +953,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -889,7 +970,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -906,7 +987,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -923,7 +1004,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -940,7 +1021,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -957,7 +1038,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -974,7 +1055,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -991,7 +1072,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -1008,7 +1089,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -1025,7 +1106,24 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "SAL-003"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "POS-011",
+      "family": "Point of sale",
+      "title": "POS profiles and invoice identity",
+      "supported_scope": "User location product/group payment-method profiles with separate immutable POS invoice series unified filterable selling register and denomination records",
+      "acceptance": "Restricted cashier cannot sell excluded products; received and change denominations reconcile to tenders and returns",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-003"
@@ -1042,7 +1140,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1059,7 +1157,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1076,7 +1174,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1095,7 +1193,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1114,7 +1212,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1133,7 +1231,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1150,7 +1248,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1162,12 +1260,12 @@
       "id": "INV-008",
       "family": "Inventory",
       "title": "Traceability",
-      "supported_scope": "Batch serial expiry genealogy and recall queries",
+      "supported_scope": "Batch serial item/location identification with custody and invoice/GRN/GDN links; damage and value adjustments select valid units or batches explicitly",
       "acceptance": "A selected lot traces to receipts transfers production and issues",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1184,7 +1282,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1201,7 +1299,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1218,7 +1316,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1237,7 +1335,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1254,7 +1352,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1271,7 +1369,41 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "INV-015",
+      "family": "Inventory",
+      "title": "Physical and owned stock distinction",
+      "supported_scope": "Separate owned inventory customer custody supplier ownership and in-transit positions with GRN GDN invoice links",
+      "acceptance": "Physical custody counts and owned stock valuation reconcile without overstating assets or duplicate dispatch posting",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "INV-016",
+      "family": "Inventory",
+      "title": "Damage and NRV selection",
+      "supported_scope": "Item warehouse batch or serial damage and separate value-only NRV write-down with supported capped reversal",
+      "acceptance": "Physical loss changes selected quantity once while value-only write-down retains units and reversal cannot exceed restored cost",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1288,7 +1420,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1305,7 +1437,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1326,7 +1458,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1347,7 +1479,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1364,7 +1496,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1381,7 +1513,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -1402,7 +1534,24 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "AST-008",
+      "family": "Fixed assets",
+      "title": "Asset lifecycle and identity",
+      "supported_scope": "System number plus optional custom identity acquisition and later available-for-use date categories common locations individual/group prospective estimate changes revaluation and impairment",
+      "acceptance": "Depreciation begins on available-for-use date and schedule GL and carrying value reconcile through all supported changes",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1419,7 +1568,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1436,7 +1585,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1453,7 +1602,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1470,7 +1619,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1487,7 +1636,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1504,7 +1653,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1521,7 +1670,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1538,7 +1687,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1555,7 +1704,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1572,7 +1721,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1589,7 +1738,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1606,7 +1755,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "INV-003"
@@ -1623,7 +1772,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1640,7 +1789,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1657,7 +1806,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1674,7 +1823,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1691,7 +1840,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1708,7 +1857,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1725,7 +1874,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1742,7 +1891,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1759,7 +1908,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1776,7 +1925,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1793,7 +1942,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1810,7 +1959,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1827,7 +1976,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1844,7 +1993,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1861,7 +2010,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1878,7 +2027,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1895,7 +2044,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1912,7 +2061,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -1929,7 +2078,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1946,7 +2095,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1963,7 +2112,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1980,7 +2129,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -1997,7 +2146,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -2014,7 +2163,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "SAL-001"
@@ -2031,7 +2180,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2048,7 +2197,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2065,7 +2214,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2082,7 +2231,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2099,7 +2248,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2116,7 +2265,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2133,7 +2282,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2150,7 +2299,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2167,7 +2316,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2184,7 +2333,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2201,7 +2350,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2218,7 +2367,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2235,7 +2384,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2256,7 +2405,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2272,12 +2421,12 @@
       "id": "TAX-003",
       "family": "Tax and statutory localization",
       "title": "Withholding",
-      "supported_scope": "Deduction collection certificates party status and settlement schedules",
+      "supported_scope": "Separate income-tax and VAT withholding at invoice-time or later payment; expected versus actual balances defaults overrides certificates partial settlements and linked adjustment journals",
       "acceptance": "Invoice receipt payment and withholding control accounts agree",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2294,7 +2443,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2315,7 +2464,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2332,7 +2481,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2349,7 +2498,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2366,7 +2515,24 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "ACC-004"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "TAX-009",
+      "family": "Tax and statutory localization",
+      "title": "Expected and actual withholding",
+      "supported_scope": "Separate income-tax and sales-tax withholding expected versus actually deducted accounts configured defaults overrides and linked journal adjustments",
+      "acceptance": "Gross settlement equals net cash plus valid deductions and adjustments reconcile certificate tax source and GL at each date",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2383,7 +2549,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2404,7 +2570,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2421,7 +2587,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2438,7 +2604,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2455,7 +2621,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2472,7 +2638,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2489,7 +2655,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2506,7 +2672,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2523,7 +2689,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2540,7 +2706,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "ACC-004"
@@ -2560,7 +2726,7 @@
         "RPT-008",
         "ACC-004"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2583,7 +2749,7 @@
         "RPT-009",
         "FND-012"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "ACC-004"
@@ -2603,7 +2769,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2620,7 +2786,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2637,7 +2803,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2654,7 +2820,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2671,7 +2837,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2688,7 +2854,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2700,12 +2866,12 @@
       "id": "CFG-007",
       "family": "Configuration and workflows",
       "title": "Print layouts",
-      "supported_scope": "Constrained components image reference preview and sanitization",
+      "supported_scope": "Immutable standard print formats per document type; duplicate/create custom version with logo letterhead restricted HTML/image headers footers field/column toggles paper margins and default selection",
       "acceptance": "Generated layout cannot execute script or fetch unauthorized data",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2722,7 +2888,41 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "CFG-009",
+      "family": "Configuration and workflows",
+      "title": "Settings page delegation",
+      "supported_scope": "One Settings module with named-user or role page grants configured independently of normal business role authority",
+      "acceptance": "Direct API calls enforce page grants without granting transaction owner or other protected powers",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-007"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "CFG-010",
+      "family": "Configuration and workflows",
+      "title": "Immutable print originals",
+      "supported_scope": "Per-document built-in immutable formats with duplicate-to-custom versioned letterhead image restricted HTML fields margins and defaults",
+      "acceptance": "Custom format can omit header footer or selected fields while original remains identical and authorized historical output is reproducible",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2739,7 +2939,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2756,7 +2956,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2773,7 +2973,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2790,7 +2990,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2807,7 +3007,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2824,7 +3024,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2841,7 +3041,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2858,7 +3058,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2875,7 +3075,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2892,7 +3092,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2909,7 +3109,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2926,7 +3126,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2943,7 +3143,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2960,7 +3160,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2977,7 +3177,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -2994,7 +3194,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3011,7 +3211,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3028,7 +3228,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3045,7 +3245,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3062,7 +3262,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3079,7 +3279,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3096,7 +3296,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3113,7 +3313,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3130,7 +3330,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3147,7 +3347,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3164,7 +3364,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3181,7 +3381,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3198,7 +3398,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3215,7 +3415,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3232,7 +3432,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3249,7 +3449,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3266,7 +3466,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3283,7 +3483,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3300,7 +3500,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3317,7 +3517,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3334,7 +3534,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3351,7 +3551,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3368,7 +3568,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001",
@@ -3387,7 +3587,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-017",
@@ -3405,7 +3605,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-017",
@@ -3424,7 +3624,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-018",
@@ -3442,7 +3642,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-019"
@@ -3459,7 +3659,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-011",
@@ -3478,7 +3678,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-020",
@@ -3497,7 +3697,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-012",
@@ -3516,7 +3716,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "AI-017",
@@ -3535,7 +3735,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3552,7 +3752,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3569,7 +3769,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3586,7 +3786,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3603,7 +3803,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -3620,7 +3820,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -3639,7 +3839,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3656,7 +3856,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3673,7 +3873,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3690,7 +3890,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3707,7 +3907,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3724,7 +3924,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3741,7 +3941,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3758,7 +3958,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3775,7 +3975,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3792,7 +3992,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3809,7 +4009,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3826,7 +4026,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3843,7 +4043,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3860,7 +4060,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3877,7 +4077,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3894,7 +4094,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -3913,7 +4113,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-001"
@@ -3932,7 +4132,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3952,7 +4152,7 @@
         "OPS-002",
         "SEC-001"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3972,7 +4172,7 @@
         "OPS-010",
         "CFG-006"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -3992,7 +4192,7 @@
         "OPS-009",
         "SEC-002"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4012,7 +4212,7 @@
         "OPS-008",
         "OPS-016"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4032,7 +4232,7 @@
         "OPS-008",
         "OPS-014"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4052,7 +4252,7 @@
         "OPS-008",
         "SEC-005"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4072,7 +4272,7 @@
         "OPS-016",
         "OPS-017"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4093,7 +4293,24 @@
         "APP-006",
         "OPS-018"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-001"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "OPS-027",
+      "family": "Portals subscription and operations",
+      "title": "Compatible tenant release waves",
+      "supported_scope": "Explicit schema read/write ranges expand backfill switch contract durable per-file cursors canary waves fencing pause and recovery",
+      "acceptance": "Old data and accepted commands survive tested upgrades with measured tenant downtime; no billion-database or zero-outage claim without evidence",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-001"
@@ -4110,7 +4327,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4129,7 +4346,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4148,7 +4365,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4167,7 +4384,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4184,7 +4401,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4201,7 +4418,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4218,7 +4435,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4235,7 +4452,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4252,7 +4469,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4269,7 +4486,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-007"
@@ -4288,7 +4505,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4308,7 +4525,7 @@
         "SEC-001",
         "SEC-002"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4328,7 +4545,7 @@
         "SEC-003",
         "OPS-006"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-007"
@@ -4345,7 +4562,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4359,12 +4576,12 @@
       "id": "UX-002",
       "family": "Interface and accessibility",
       "title": "Navigation",
-      "supported_scope": "Collapsible sidebar separate Sales Purchases Reports BI Planning Finance and Apps",
+      "supported_scope": "Expandable left-sidebar modules with their subpages beneath; separate Selling Buying Payments Customers and suppliers Taxes Cash and bank Accounting Inventory Assets POS and unified Settings",
       "acceptance": "User can locate each destination in both sidebar states",
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4383,7 +4600,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4402,7 +4619,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4421,7 +4638,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-009"
@@ -4438,7 +4655,7 @@
       "commercial_release": "required",
       "design_status": "brief mapped",
       "parent_requirements": [],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4452,7 +4669,7 @@
       "id": "UX-007",
       "family": "Interface and accessibility",
       "title": "Product-wide workflow library",
-      "supported_scope": "Complete UI and UX module by module before backend feature expansion; coherent registers documents configuration evidence states exports and accessibility; screen coverage is not completion",
+      "supported_scope": "Build working Accounting first then Settings then linked transactional modules then broader ops and remaining market MVP; use coherent focused registers forms drafts review evidence and print",
       "acceptance": "Every requirement maps to a route and contract with specification versus interactive versus implemented status made explicit",
       "commercial_release": "required",
       "design_status": "brief mapped",
@@ -4460,7 +4677,7 @@
         "UX-002",
         "UX-004"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4483,7 +4700,7 @@
         "UX-002",
         "FND-012"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4506,7 +4723,7 @@
         "UX-004",
         "SEC-002"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "in progress",
       "dependencies": [
         "FND-009"
@@ -4528,7 +4745,24 @@
       "parent_requirements": [
         "UX-007"
       ],
-      "governing_source": "docs/sources/SAVEN-mandate-v2.3.md",
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
+      "status": "specified",
+      "dependencies": [
+        "FND-009"
+      ],
+      "evidence": [],
+      "approval": "Scope includes owner additions of 11 November; unresolved policy decisions remain explicit"
+    },
+    {
+      "id": "UX-011",
+      "family": "Interface and accessibility",
+      "title": "Expandable module pages",
+      "supported_scope": "Accounting first then unified Settings then Selling Buying Payments Parties Taxes CashBank Inventory Assets POS; each module expands its focused pages under the sidebar",
+      "acceptance": "One selected page loads its authorized real workflow with usable forms document actions and print; crowded hidden-all-pages layouts do not count as completion",
+      "commercial_release": "required",
+      "design_status": "brief mapped",
+      "parent_requirements": [],
+      "governing_source": "docs/48-accounting-first-owner-revision.md",
       "status": "specified",
       "dependencies": [
         "FND-009"

@@ -1,5 +1,7 @@
 # Accounting requirement status
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 12 November 2026. This matrix compares the actual module with the agreed accounting family. No whole-family completion or commercial release is claimed. The [implementation and acceptance boundary](16-accounting-delivery.md) gives the supported workflows; [BUILD_STATE](BUILD_STATE.md) distinguishes source, native tests, hosted acceptance and recovery observations.
 
 | Requirement | Working scope | Remaining before the agreed requirement is complete |

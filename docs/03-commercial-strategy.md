@@ -1,5 +1,7 @@
 # SAVEN Commercial Strategy and Sales Playbook
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 > Governing revision: [mandate v2](sources/SAVEN-mandate-v2.md) permits exactly SAVEN Cloud and Fully Private. No customer database attachment to SaaS, accounting-firm hosting or reseller fleet is offered. Referrals confer no hosting or customer-data rights.
 
 Prepared for Abdullah Nauman and Economic Systems Consulting

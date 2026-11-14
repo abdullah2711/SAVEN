@@ -1,5 +1,7 @@
 # Bookkeeping foundation and module distribution
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 The owner restated the priority on 13 November 2026: build a capable accounting/bookkeeping product and its settings before further Drive, planning, BI or AI development. Existing optional tools may remain accessible; unfinished menu destinations do not count as delivered business capabilities. The original product, configuration, permission and commercial requirements remain required.
 
 ## Reference review

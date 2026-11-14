@@ -24,8 +24,14 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/operator/businesses'&&method==='POST')response=json(runtime.provision(actor,input),201);
     else fail(404,'Operator endpoint unavailable');
    }else{
-    const tenant=url.searchParams.get('tenant'),company=url.searchParams.get('company'),branch=url.searchParams.get('branch'),options={company,branch,search:url.searchParams.get('search')??'',exporting:url.searchParams.get('export')==='1'},commandId=request.headers.get('idempotency-key');
-    if(path==='/api/administration'&&method==='GET')response=json(runtime.administration(tenant,actor));
+    const tenant=url.searchParams.get('tenant'),company=url.searchParams.get('company'),branch=url.searchParams.get('branch'),options={company,branch,...Object.fromEntries(['from','to','account','project','postedBy'].map(k=>[k,url.searchParams.get(k)??''])),search:url.searchParams.get('search')??'',exporting:url.searchParams.get('export')==='1'},commandId=request.headers.get('idempotency-key');
+    if(path==='/api/journal-drafts'&&method==='GET')response=json(runtime.journalDrafts(tenant,actor,company,branch));
+    else if(path==='/api/journal-drafts'&&method==='POST')response=json(runtime.saveJournalDraft(tenant,actor,input),201);
+    else if(path==='/api/journal-drafts/duplicate'&&method==='POST')response=json(runtime.duplicateJournalDraft(tenant,actor,input),201);
+    else if(path==='/api/journal-drafts/submit'&&method==='POST')response=json(runtime.submitJournalDraft(tenant,actor,input));
+    else if(path==='/api/journal-drafts/cancel'&&method==='POST')response=json(runtime.cancelJournalDraft(tenant,actor,input));
+    else if(path==='/api/review/decision'&&method==='POST')response=json(runtime.reviewCommand(tenant,actor,input));
+    else if(path==='/api/administration'&&method==='GET')response=json(runtime.administration(tenant,actor));
     else if(path==='/api/administration/roles'&&method==='POST')response=json(runtime.saveRole(tenant,actor,input));
     else if(path==='/api/administration/members'&&method==='POST')response=json(await runtime.createMember(tenant,actor,commandId,input),201);
     else if(path==='/api/administration/existing-members'&&method==='POST')response=json(runtime.addExistingMember(tenant,actor,commandId,input),201);
@@ -58,7 +64,7 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/assistant'&&method==='POST')response=json(await runtime.assistant(tenant,actor,company,branch,input));
     else fail(404,'Customer endpoint unavailable');
    }
-  }else if(request.method==='GET'&&['/','/app.js','/administration.js','/trade.js','/workspace.js','/icons.js','/style.css','/logo.svg'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html','Cache-Control':'no-store'}});}
+  }else if(request.method==='GET'&&['/','/app.js','/administration.js','/trade.js','/workspace.js','/accounting.js','/icons.js','/style.css','/logo.svg'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html','Cache-Control':'no-store'}});}
   else fail(404,'Not found');
   if(url.pathname.startsWith('/api/')&&!['/api/login','/api/logout'].includes(url.pathname))runtime.session(token,realm);
  }catch(error){response=json({error:error.status?error.message:'Request refused; check your scope, values and current operation state.'},error.status??422);}

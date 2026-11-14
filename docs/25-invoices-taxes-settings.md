@@ -1,5 +1,7 @@
 # Invoice lines, configured taxes and bookkeeping defaults
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 This continuation strengthens core bookkeeping before more Drive, planning, BI or AI work. It does not represent the complete sales, purchasing or tax module. Migration 016 is PostgreSQL schema 14; older single-amount invoices and bills retain their original payload, journal and history.
 
 ## Connected behavior

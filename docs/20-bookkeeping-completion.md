@@ -1,5 +1,7 @@
 # Bookkeeping completion and reference review
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 Owner feedback, 13 November 2026, supersedes the earlier implication that basic posted examples are a usable accounting module. The required product is a capable ERP made easier to use and configure. The original 239-requirement catalog remains required. Simpler forms do not authorize removing underlying workflows or capabilities. No module is complete merely because its navigation, a journal type or a few posting tests exist.
 
 The current delivery order is accounting, cash and bank, a distinct Payments module, sales, purchases, inventory, manufacturing and taxes; then the planned workspace settings and working operator portal. Complete the remaining suite afterward. Further AI development is paused until the software workflows exist; eventual AI must operate through those same configured controls.

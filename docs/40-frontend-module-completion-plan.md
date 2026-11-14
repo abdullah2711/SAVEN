@@ -1,5 +1,7 @@
 # Frontend completion gates after the owner UI revision
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 The new root frontend is a work in progress. All255 requirements remain required. No module has been marked complete or owner-approved. Financial service activation and backend parity are later gates; the existing schema13 reference remains untouched.
 
 ## Sequence and review depth

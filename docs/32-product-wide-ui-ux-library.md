@@ -1,5 +1,7 @@
 # Frontend design library and review gate
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 The isolated /design/ workspace uses conspicuously synthetic data and no business API connection. Existing live workspace routes stay intact. A presentation screen is not an implemented backend feature. Design actions explicitly simulate, draft or preview; no Post/Send/Save/Approve may claim a live write. Reload resets synthetic transactions; only theme/favorite preferences may persist under a design-only key.
 
 Generated inventory maps every catalog ID to a module, route, supported scope, acceptance, current implementation status and versioned workflow-contract reference. Mapping coverage is not UX completion. Priority packs are Accounting/COA/Journals/GL/Statements/Close; Cash & Bank; Sales; Purchases; Payments; Taxes; Inventory; Manufacturing; POS; Assets. Foundation, settings/workflows, HR/payroll, projects/CRM, finance, BI, Drive, Apps, AI, subscriptions/operator, security and offline remain navigable design families.

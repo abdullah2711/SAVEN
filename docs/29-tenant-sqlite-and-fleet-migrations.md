@@ -1,5 +1,7 @@
 # Tenant SQLite, reference mapping and fleet migration gates
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 > Historical v2 target where conflicting. [v2.3](sources/SAVEN-mandate-v2.3.md) now selects native SQLite for all stores, local-first QA, and a private package excluding vendor commercial/issuer services. See [current reconciliation](35-native-sqlite-local-first-v2.3.md).
 
 Preserve PostgreSQL migrations 001–016 and native contracts. The generated PG object inventory records source path/digest and every statically declared table, function, trigger and policy. Dynamic SQL objects require actual database inspection before cutover; a regex inventory is not a complete deployed schema dump.

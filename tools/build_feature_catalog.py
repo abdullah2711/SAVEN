@@ -321,7 +321,10 @@ from v2_requirements import ADDITIONS as V2_ADDITIONS, OVERRIDES as V2_OVERRIDES
 GROUPS=[(p,f,d,r+V2_ADDITIONS.get(p,'')) for p,f,d,r in GROUPS]
 from v23_requirements import ADDITIONS as V23_ADDITIONS, OVERRIDES as V23_OVERRIDES, TITLES as V23_TITLES, PARENTS as V23_PARENTS
 GROUPS=[(p,f,d,r+V23_ADDITIONS.get(p,'')) for p,f,d,r in GROUPS]
+from v24_requirements import ADDITIONS as V24_ADDITIONS, OVERRIDES as V24_OVERRIDES
+GROUPS=[(p,f,d,r+V24_ADDITIONS.get(p,'')) for p,f,d,r in GROUPS]
 V2_OVERRIDES.update(V23_OVERRIDES)
+V2_OVERRIDES.update(V24_OVERRIDES)
 V2_PARENTS.update(V23_PARENTS)
 IN_PROGRESS = {'FND-001','FND-003','FND-004','FND-006','FND-007','FND-008','FND-009',
                'FND-011','FND-012','ACC-001','ACC-004','ACC-005','ACC-018','SAL-003','SAL-007',
@@ -346,14 +349,14 @@ def build():
             requirements.append(dict(id=f'{prefix}-{n:03d}',family=family,title=title,
                 supported_scope=scope,acceptance=acceptance,commercial_release='required',
                 design_status='brief mapped',parent_requirements=V2_PARENTS.get(f'{prefix}-{n:03d}',[]),
-                governing_source='docs/sources/SAVEN-mandate-v2.3.md',
+                governing_source='docs/48-accounting-first-owner-revision.md',
                 status='in progress' if f'{prefix}-{n:03d}' in IN_PROGRESS else 'specified',dependencies=KNOWLEDGE_DEPENDENCIES.get(f'{prefix}-{n:03d}', [dependency] if dependency else []),
                 evidence=ACCOUNTING_EVIDENCE.get(f'{prefix}-{n:03d}',['docs/12-foundation.md']) if f'{prefix}-{n:03d}' in IN_PROGRESS else [],approval='Scope includes owner additions of 11 November; unresolved policy decisions remain explicit'))
-    data={'product':'SAVEN','display_brand':'SA7EN','pronunciation':'seven','baseline':'2.3','date':'2026-11-13',
+    data={'product':'SAVEN','display_brand':'SA7EN','pronunciation':'seven','baseline':'2.3+owner-20261114','date':'2026-11-14',
           'meaning':'Specified requirements are not implemented features. Public launch requires agreed family gates.',
           'requirements':requirements}
     (ROOT/'docs/feature-catalog.json').write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
-    lines=['# SAVEN Feature and Acceptance Library','','13 November 2026 | Baseline 2.3','',
+    lines=['# SAVEN Feature and Acceptance Library','','14 November 2026 | Baseline 2.3 plus Accounting-first owner revision','',
            f'{len(requirements)} requirements across {len(GROUPS)} families. The JSON tracks specified and in-progress work. In-progress work is partial, not release verification; see docs/BUILD_STATE.md and the evidence links in each JSON record for current limits. The v2 mandate supersedes conflicting historical decisions; design_status is separate from implementation status.','',
            'Dependencies identify foundation prerequisites; complete domain dependencies must be refined during implementation. Commercial scope is required unless an explicit reviewed decision changes it. AI exposure may remain internal or opted in until its task gates pass.','']
     for _,family,_,_ in GROUPS:

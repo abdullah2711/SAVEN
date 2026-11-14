@@ -1,0 +1,1542 @@
+{
+  "version": 1,
+  "governingRevision": "docs/48-accounting-first-owner-revision.md",
+  "sourceBranch": "testing-1",
+  "releaseClaim": "NOT_COMPLETE",
+  "tasks": [
+    {
+      "id": "ACCOUNTING001",
+      "area": "Accounting",
+      "title": "Render only the selected accounting page",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING002",
+      "area": "Accounting",
+      "title": "Expand Accounting subpages in the sidebar",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Isolated browser saved/posted 75.35 and filtered matching GL."
+    },
+    {
+      "id": "ACCOUNTING003",
+      "area": "Accounting",
+      "title": "Make journal entry the Accounting landing page",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Isolated browser saved/posted 75.35 and filtered matching GL."
+    },
+    {
+      "id": "ACCOUNTING004",
+      "area": "Accounting",
+      "title": "Persist incomplete journal drafts on server",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING005",
+      "area": "Accounting",
+      "title": "Reject stale draft revisions",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING006",
+      "area": "Accounting",
+      "title": "Submit exact saved revision",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Isolated browser saved/posted 75.35 and filtered matching GL."
+    },
+    {
+      "id": "ACCOUNTING007",
+      "area": "Accounting",
+      "title": "Retain immutable numbers through cancellation",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING008",
+      "area": "Accounting",
+      "title": "Allocate numbers atomically across sources",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING009",
+      "area": "Accounting",
+      "title": "Duplicate manual journal into fresh draft",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING010",
+      "area": "Accounting",
+      "title": "Recheck scopes on draft read and submit",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING011",
+      "area": "Accounting",
+      "title": "Review exact source and scanned evidence",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING012",
+      "area": "Accounting",
+      "title": "Approve and post independently once",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING013",
+      "area": "Accounting",
+      "title": "Reject with reason and retained history",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING014",
+      "area": "Accounting",
+      "title": "Return manual journal as linked correction draft",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING015",
+      "area": "Accounting",
+      "title": "Return trade and stock through source-specific editors",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING016",
+      "area": "Accounting",
+      "title": "Show preparer/poster/branch/project in GL",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING017",
+      "area": "Accounting",
+      "title": "Filter GL by date account project and poster",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING018",
+      "area": "Accounting",
+      "title": "Drill down GL to exact source",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING019",
+      "area": "Accounting",
+      "title": "Create accounts within chart page",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING020",
+      "area": "Accounting",
+      "title": "Add account hierarchy group and posting flags",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING021",
+      "area": "Accounting",
+      "title": "Protect control accounts against generic adjustments",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING022",
+      "area": "Accounting",
+      "title": "Separate financial position and profit pages",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING023",
+      "area": "Accounting",
+      "title": "Add trial opening movement closing columns",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING024",
+      "area": "Accounting",
+      "title": "Implement cash-flow statement reconciled to GL",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING025",
+      "area": "Accounting",
+      "title": "Implement changes-in-equity statement",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING026",
+      "area": "Accounting",
+      "title": "Implement descriptive financial notes and schedules",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING027",
+      "area": "Accounting",
+      "title": "Add comparative statements and saved views",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING028",
+      "area": "Accounting",
+      "title": "Implement opening trial import preview and mapping",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING029",
+      "area": "Accounting",
+      "title": "Implement opening AR AP stock asset reconciliations",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING030",
+      "area": "Accounting",
+      "title": "Implement recurring schedules with original anchors",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING031",
+      "area": "Accounting",
+      "title": "Implement accrual and prepayment schedules",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING032",
+      "area": "Accounting",
+      "title": "Complete journal reversal source/detail workflow",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING033",
+      "area": "Accounting",
+      "title": "Complete close checklist and authorized reopening",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ACCOUNTING034",
+      "area": "Accounting",
+      "title": "Render journal print with company identity and totals",
+      "status": "in-progress",
+      "evidence": [],
+      "note": "Basic print/desktop checked; complete format/mobile/keyboard acceptance remains."
+    },
+    {
+      "id": "ACCOUNTING035",
+      "area": "Accounting",
+      "title": "Verify responsive keyboard and print journeys",
+      "status": "in-progress",
+      "evidence": [],
+      "note": "Basic print/desktop checked; complete format/mobile/keyboard acceptance remains."
+    },
+    {
+      "id": "ACCOUNTING036",
+      "area": "Accounting",
+      "title": "Rehearse upgrade on restored current data",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-documents.test.mjs",
+        "tests/native-runtime.test.mjs",
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Bounded native increment; full module acceptance remains open."
+    },
+    {
+      "id": "ACCOUNTING037",
+      "area": "Accounting",
+      "title": "Publish tested Accounting increment on testing-1",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS001",
+      "area": "Settings",
+      "title": "Merge workspace and business admin navigation",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-frontend.test.mjs"
+      ],
+      "note": "Navigation only."
+    },
+    {
+      "id": "SETTINGS002",
+      "area": "Settings",
+      "title": "Separate business profile from people and roles",
+      "status": "source-tested",
+      "evidence": [
+        "tests/native-frontend.test.mjs"
+      ],
+      "note": "Navigation only."
+    },
+    {
+      "id": "SETTINGS003",
+      "area": "Settings",
+      "title": "Create branches and multipurpose location registry",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS004",
+      "area": "Settings",
+      "title": "Add named-user settings-page grants",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS005",
+      "area": "Settings",
+      "title": "Add role settings-page grants independent of ordinary role powers",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS006",
+      "area": "Settings",
+      "title": "Enforce page grants at server endpoints",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS007",
+      "area": "Settings",
+      "title": "Show effective settings access and protected boundaries",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS008",
+      "area": "Settings",
+      "title": "Add personal workspace preferences",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS009",
+      "area": "Settings",
+      "title": "Add periods currencies dimensions and document defaults",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS010",
+      "area": "Settings",
+      "title": "Add optional approval policies with direct-post default",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS011",
+      "area": "Settings",
+      "title": "Add module toggles preserving historical records",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS012",
+      "area": "Settings",
+      "title": "Add noneditable sequence settings and previews",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS013",
+      "area": "Settings",
+      "title": "Provide built-in immutable print formats per document",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS014",
+      "area": "Settings",
+      "title": "Duplicate standard format into custom version",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS015",
+      "area": "Settings",
+      "title": "Add logo and letterhead image upload",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS016",
+      "area": "Settings",
+      "title": "Add restricted HTML header and footer",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS017",
+      "area": "Settings",
+      "title": "Add header footer and field visibility per format",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS018",
+      "area": "Settings",
+      "title": "Add paper margins orientation repeated headings",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS019",
+      "area": "Settings",
+      "title": "Add print preview and document-type defaults",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS020",
+      "area": "Settings",
+      "title": "Pin template versions in historical outputs",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SETTINGS021",
+      "area": "Settings",
+      "title": "Validate print HTML against script and network access",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING001",
+      "area": "Selling",
+      "title": "Add selling dashboard and registers",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING002",
+      "area": "Selling",
+      "title": "Implement customer quotation draft lifecycle",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING003",
+      "area": "Selling",
+      "title": "Implement quote-to-order and quote-to-invoice",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING004",
+      "area": "Selling",
+      "title": "Implement direct service and goods invoices",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING005",
+      "area": "Selling",
+      "title": "Implement sales orders and partial fulfilment",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING006",
+      "area": "Selling",
+      "title": "Implement delivery GDN source links",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING007",
+      "area": "Selling",
+      "title": "Implement service completion evidence",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING008",
+      "area": "Selling",
+      "title": "Implement invoice before or after delivery matching",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING009",
+      "area": "Selling",
+      "title": "Implement bill-and-hold control evidence",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING010",
+      "area": "Selling",
+      "title": "Separate customer custody stock from owned valuation",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING011",
+      "area": "Selling",
+      "title": "Dispatch custody without duplicate revenue or COGS",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING012",
+      "area": "Selling",
+      "title": "Implement credit and consideration-based returns",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING013",
+      "area": "Selling",
+      "title": "Implement partial and multi-invoice returns",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING014",
+      "area": "Selling",
+      "title": "Reverse stock tax revenue and receivable consistently",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "SELLING015",
+      "area": "Selling",
+      "title": "Filter POS invoices with distinct numbering",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING001",
+      "area": "Buying",
+      "title": "Add buying dashboard and registers",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING002",
+      "area": "Buying",
+      "title": "Implement supplier quotations and conversion",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING003",
+      "area": "Buying",
+      "title": "Implement optional purchase requests and orders",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING004",
+      "area": "Buying",
+      "title": "Implement direct and matched supplier bills",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING005",
+      "area": "Buying",
+      "title": "Implement GRN and service acceptance",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING006",
+      "area": "Buying",
+      "title": "Implement received-not-invoiced clearing",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING007",
+      "area": "Buying",
+      "title": "Implement billed-not-received ownership treatment",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING008",
+      "area": "Buying",
+      "title": "Implement partial two-way and three-way matching",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING009",
+      "area": "Buying",
+      "title": "Implement purchase return and debit notes",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "BUYING010",
+      "area": "Buying",
+      "title": "Implement partial multi-bill returns and refunds",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS001",
+      "area": "Payments",
+      "title": "Create canonical voucher for invoice-time receipt",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS002",
+      "area": "Payments",
+      "title": "Create canonical voucher for invoice-time supplier payment",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS003",
+      "area": "Payments",
+      "title": "Implement advances and unallocated balances",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS004",
+      "area": "Payments",
+      "title": "Allocate earlier payments to later invoices",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS005",
+      "area": "Payments",
+      "title": "Implement partial multiple-document settlements",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS006",
+      "area": "Payments",
+      "title": "Implement reallocations without duplicate cash",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS007",
+      "area": "Payments",
+      "title": "Implement customer refund of paid credit",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS008",
+      "area": "Payments",
+      "title": "Implement supplier refund of paid credit",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS009",
+      "area": "Payments",
+      "title": "Implement payment reversals and reopened balances",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS010",
+      "area": "Payments",
+      "title": "Implement separate income and sales-tax withholding",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS011",
+      "area": "Payments",
+      "title": "Link withholding adjustment journals to schedules",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PAYMENTS012",
+      "area": "Payments",
+      "title": "Independently reconcile historical balances and controls",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PARTIES001",
+      "area": "Parties",
+      "title": "Add customer supplier and dual-role party record",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PARTIES002",
+      "area": "Parties",
+      "title": "Implement receivables schedule and ageing",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PARTIES003",
+      "area": "Parties",
+      "title": "Implement payables schedule and ageing",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PARTIES004",
+      "area": "Parties",
+      "title": "Implement statement drilldowns and as-of filters",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PARTIES005",
+      "area": "Parties",
+      "title": "Implement follow-up tasks and dispute status",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "PARTIES006",
+      "area": "Parties",
+      "title": "Implement reminder drafts and delivery history",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES001",
+      "area": "Taxes",
+      "title": "Implement registrations and versioned tax rules",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES002",
+      "area": "Taxes",
+      "title": "Implement sales tax input output recoverability",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES003",
+      "area": "Taxes",
+      "title": "Implement income-tax balances and schedules",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES004",
+      "area": "Taxes",
+      "title": "Implement income-tax withholding expected and actual",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES005",
+      "area": "Taxes",
+      "title": "Implement sales-tax withholding expected and actual",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES006",
+      "area": "Taxes",
+      "title": "Configure default expected and actual accounts",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES007",
+      "area": "Taxes",
+      "title": "Allow validated per-document account overrides",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES008",
+      "area": "Taxes",
+      "title": "Implement partial-payment withholding allocation",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES009",
+      "area": "Taxes",
+      "title": "Implement certificates and remittance evidence",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES010",
+      "area": "Taxes",
+      "title": "Implement linked journal adjustment differences",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES011",
+      "area": "Taxes",
+      "title": "Reconcile tax schedules to source and GL",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "TAXES012",
+      "area": "Taxes",
+      "title": "Add jurisdiction-specific verified tax packs",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK001",
+      "area": "CashBank",
+      "title": "Implement cash bank account register",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK002",
+      "area": "CashBank",
+      "title": "Implement cashbooks and bankbooks",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK003",
+      "area": "CashBank",
+      "title": "Implement internal transfers once on both sides",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK004",
+      "area": "CashBank",
+      "title": "Implement petty cash and count differences",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK005",
+      "area": "CashBank",
+      "title": "Implement statement import and duplicate detection",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK006",
+      "area": "CashBank",
+      "title": "Implement matching and split allocations",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "CASHBANK007",
+      "area": "CashBank",
+      "title": "Implement dated reconciliation and outstanding items",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY001",
+      "area": "Inventory",
+      "title": "Implement item groups and ungrouped items",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY002",
+      "area": "Inventory",
+      "title": "Implement UOM conversion and precision",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY003",
+      "area": "Inventory",
+      "title": "Implement batch and serial tracking",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY004",
+      "area": "Inventory",
+      "title": "Implement GRN GDN and invoice matching",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY005",
+      "area": "Inventory",
+      "title": "Implement stock counts and controlled variances",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY006",
+      "area": "Inventory",
+      "title": "Implement damage by item batch or serial",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY007",
+      "area": "Inventory",
+      "title": "Implement NRV write-down without quantity loss",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY008",
+      "area": "Inventory",
+      "title": "Implement capped NRV reversal",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY009",
+      "area": "Inventory",
+      "title": "Implement FIFO and specific-identification scopes",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY010",
+      "area": "Inventory",
+      "title": "Implement landed costs and backdated costing",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY011",
+      "area": "Inventory",
+      "title": "Implement reservations and returns",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "INVENTORY012",
+      "area": "Inventory",
+      "title": "Reconcile owned stock custody physical and GL",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS001",
+      "area": "Assets",
+      "title": "Implement asset register and categories",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS002",
+      "area": "Assets",
+      "title": "Assign immutable system and optional custom identity",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS003",
+      "area": "Assets",
+      "title": "Capture acquisition and available-for-use dates",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS004",
+      "area": "Assets",
+      "title": "Implement CWIP activation later without rewriting cost",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS005",
+      "area": "Assets",
+      "title": "Reuse multipurpose branch location registry",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS006",
+      "area": "Assets",
+      "title": "Implement straight-line reducing-balance units-of-production",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS007",
+      "area": "Assets",
+      "title": "Implement prospective rate life residual method changes",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS008",
+      "area": "Assets",
+      "title": "Apply reviewed changes to individual or group",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS009",
+      "area": "Assets",
+      "title": "Implement revaluation impairment and reversal",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS010",
+      "area": "Assets",
+      "title": "Implement custody transfer disposal and gain loss",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "ASSETS011",
+      "area": "Assets",
+      "title": "Reconcile schedule cost depreciation and carrying value",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS001",
+      "area": "POS",
+      "title": "Implement profiles assigned users and locations",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS002",
+      "area": "POS",
+      "title": "Restrict products groups and payment methods per profile",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS003",
+      "area": "POS",
+      "title": "Implement fast keyboard barcode touch checkout",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS004",
+      "area": "POS",
+      "title": "Implement cash received and change",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS005",
+      "area": "POS",
+      "title": "Record received and change denomination counts",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS006",
+      "area": "POS",
+      "title": "Implement split tender and external references",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS007",
+      "area": "POS",
+      "title": "Separate POS invoice numbering and unified sales filters",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS008",
+      "area": "POS",
+      "title": "Implement shifts floats close and cash reconciliation",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS009",
+      "area": "POS",
+      "title": "Implement fast original-sale lookup and partial return",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "POS010",
+      "area": "POS",
+      "title": "Share refund credit and stock-return kernel",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET001",
+      "area": "Fleet",
+      "title": "Declare release schema read write and protocol ranges",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET002",
+      "area": "Fleet",
+      "title": "Fingerprint immutable migration checksums",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET003",
+      "area": "Fleet",
+      "title": "Implement additive expand backfill switch contract manifest",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET004",
+      "area": "Fleet",
+      "title": "Implement bounded durable migration scheduler",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET005",
+      "area": "Fleet",
+      "title": "Implement per-tenant leases attempts cursors and resume",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET006",
+      "area": "Fleet",
+      "title": "Verify independent backup before invasive migration",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET007",
+      "area": "Fleet",
+      "title": "Reconcile GL subledgers originals audit and objects",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET008",
+      "area": "Fleet",
+      "title": "Implement canary pilot waves and pause thresholds",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET009",
+      "area": "Fleet",
+      "title": "Fence node ownership generation and stale writers",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET010",
+      "area": "Fleet",
+      "title": "Bound tenant connection cache and handle eviction",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET011",
+      "area": "Fleet",
+      "title": "Preserve compatible mixed-version sessions and commands",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET012",
+      "area": "Fleet",
+      "title": "Implement feature gates for not-yet-ready tenant schema",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET013",
+      "area": "Fleet",
+      "title": "Exercise migration crash disk-full lock and corrupt-file cases",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET014",
+      "area": "Fleet",
+      "title": "Measure per-tenant downtime and fleet throughput",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET015",
+      "area": "Fleet",
+      "title": "Verify off-host encrypted restore and keys",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "FLEET016",
+      "area": "Fleet",
+      "title": "Implement signed release reviewed CD and forward repair",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER001",
+      "area": "Later",
+      "title": "Complete customer commercial and infrastructure ops portal",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER002",
+      "area": "Later",
+      "title": "Complete manufacturing agreed MVP depth",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER003",
+      "area": "Later",
+      "title": "Complete Reports and BI including five-million-line benchmark",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER004",
+      "area": "Later",
+      "title": "Complete finance and planning",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER005",
+      "area": "Later",
+      "title": "Complete bounded AI workflows and usage",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER006",
+      "area": "Later",
+      "title": "Complete Drive and original-evidence lifecycle",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER007",
+      "area": "Later",
+      "title": "Preserve Apps APP-001 through APP-010",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER008",
+      "area": "Later",
+      "title": "Complete CRM Projects and HR/payroll",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER009",
+      "area": "Later",
+      "title": "Complete Fully Private packaging and monthly licensing",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER010",
+      "area": "Later",
+      "title": "Complete offline companion and duplicate-free sync",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER011",
+      "area": "Later",
+      "title": "Complete managed-client acceptance gate",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    },
+    {
+      "id": "LATER012",
+      "area": "Later",
+      "title": "Complete full market-ready MVP gate",
+      "status": "todo",
+      "evidence": [],
+      "note": ""
+    }
+  ]
+}

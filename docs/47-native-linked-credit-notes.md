@@ -1,5 +1,7 @@
 # Linked invoice and supplier credits — development increment
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 14 November 2026, Asia/Karachi. Development on testing-1; the deployed app/ops remains the schema-7 workspace image on main described in docs46. This document does not claim that credits have been released to the public service.
 
 ## Supported behavior

@@ -1,5 +1,7 @@
 # SAVEN Risk Register
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 11 November 2026 | Initial risk assessment
 
 Likelihood and impact below are planning judgments rather than measured frequencies. Responsibility names describe roles to assign when a delivery team is formed. None of these controls is claimed to exist in production yet.
@@ -66,3 +68,9 @@ Same-origin testing paths must not be mistaken for production origin isolation; 
 ## First operational release risks
 
 The two-hour expectation cannot substitute for missing workflows, independent live evidence or recovery. The new native runtime is bounded: substantial ACC/INV/commercial/workspace/AI scope remains. Never onboard clients merely because container tests pass. Existing reference data has not been migrated. Source and original-file retention are separate stores; failed metadata commits may leave orphans. Local-only backups share server failure risk; schedule/off-host recovery and fleet-safe upgrades remain release gates. Local AI has bounded memory/concurrency but needs actual inference evidence and cannot be presented as all-module AI. Exact hostname routing and worker/custom-domain conflicts require live checks before public cutover.
+
+## Current residual risks ? Accounting-first revision
+
+The additive schema 9 release cannot be opened by the retained schema 7/8 binaries under their newer-schema guard. It therefore does not prove rolling mixed-version deployment; use a reviewed bounded release window until explicit compatible readers/writers exist. The current tenant cache is unbounded and the migration executes on first open. Full-fleet backups still use a maintenance gate. These are open engineering gaps against the owner's high-availability and very-large-fleet goals, not achieved guarantees. Large report queries/registers still materialize full scoped results; pagination and measured memory/latency budgets remain required. Opening subledgers, taxes/withholding adjustments, returns/refunds/advances, bank reconciliation, statutory statements and broader Inventory are incomplete, so existing-client operational acceptance remains open.
+
+The read-only backup-media rehearsal found that WAL-mode SQLite can require sidecar files during read validation. The restore script now validates temporary copies and rechecks the copied output hashes. Original backup media remain unchanged. Temporary validation needs additional disk space; retention, encrypted off-host recovery and coordinated restore keys remain release gates.

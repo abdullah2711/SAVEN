@@ -1,3 +1,11 @@
+# Latest continuation — Accounting-first revision, 14 November 2026
+
+Read [CURRENT_HANDOFF.md](CURRENT_HANDOFF.md), [owner scope](48-accounting-first-owner-revision.md), [upgrade contract](49-compatible-tenant-upgrades.md), [small-action checklist](TASKS.md) and [evidence](accounting-revision-evidence.json) before historical checkpoints below.
+
+Development implements server drafts/revisions, immutable numbering, retained rejection/return and duplicate workflows; focused Accounting pages, expandable navigation, separate Selling/Buying, unified Settings navigation, source/actor/branch/project GL detail and trial opening/movement/closing. All 138 retained local tests and 140 parses pass; generators validate 269 requirements. Isolated browser saved and posted 75.35 with matching project-filtered GL. Linux image b passed 66 contracts; later refinements require final GitHub native CI. Independent read-only snapshot restore migrated nine tenants to schema9 and preserved all 227 original tenant tables and 13-store/four-object source hashes. Restore validation now uses temporary copies for WAL sidecars. Historical migration SQL bytes all match published source.
+
+Production/main remain the reviewed schema7 workspace release. No client onboarding or complete Accounting/MVP claim. Final source publication/CI must be recorded after the guarded branch update. SSH hostname expired again; source/CI can proceed. Checklist has 181 small actions; source/browser evidence is separate from released status. Open Accounting scope includes opening subledgers, recurring/accruals, bank work, FX, full statements/notes and complete document print/UX; Settings/connected modules and fleet scheduler are unfinished.
+
 # SAVEN build checkpoint
 
 ### Publication and final live checks for this continuation

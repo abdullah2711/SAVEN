@@ -6,6 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 def validate():
+    from checklist import render
+    checklist=json.loads((ROOT/'contracts/delivery-checklist.json').read_text(encoding='utf-8'))
+    assert (ROOT/'docs/TASKS.md').read_text(encoding='utf-8')==render(checklist), 'Checklist view is stale'
+    assert (ROOT/'docs/CURRENT_HANDOFF.md').is_file(), 'Missing current handoff'
     data=json.loads((ROOT/'docs/feature-catalog.json').read_text(encoding='utf-8'))
     rows=data['requirements']
     ids=[r['id'] for r in rows]

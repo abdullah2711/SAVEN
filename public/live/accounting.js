@@ -1,0 +1,84 @@
+const cents=value=>{if(!/^\d+(\.\d{0,2})?$/.test(value||'0'))throw Error('Use non-negative amounts with at most two decimals.');const [w,f='']=(value||'0').split('.');return BigInt(w)*100n+BigInt(f.padEnd(2,'0'));};
+const amount=value=>(value<0n?'-':'')+(value<0n?-value:value)/100n+'.'+String((value<0n?-value:value)%100n).padStart(2,'0');
+export async function accountingView(content,h){
+ const {api,el,btn,field,card,table,status,work,scope,business,masters,navigate,download,uploadEvidence,section='Journal entry',userId,markClean}=h;
+ const caps=business.capabilities??[],canPrepare=caps.includes('journal.prepare'),go=tab=>navigate('Accounting',{tab});
+ const commands=caps.includes('journal.read')?(await api('/api/commands')).rows:[];
+ const source=id=>go('Entry '+id);
+ const accountOptions=masters.accounts.map(a=>({value:a.code,label:a.code+' · '+a.title}));
+ const actions=el('div',{class:'toolbar'},...(canPrepare?[btn('New journal',()=>go('Journal entry')),btn('Saved drafts',()=>go('Drafts'),true)]:[]));
+ const lineTable=lines=>table(lines,[['account','Account'],['debit','Debit',true],['credit','Credit',true]]);
+ const documentLink=row=>caps.includes('journal.read')?btn(row.number??row.id,()=>source(row.id),true):row.number??row.id;
+ if(section==='Corrections'){h.correctionForm(content,commands);if(!content.children.length)content.append(card('Journal corrections',el('p',{},'No eligible posted manual journals. Stock, invoices and payments use their operational correction workflows.')));return;}
+ if(section.startsWith('Entry ')){
+  const row=commands.find(r=>r.id===section.slice(6));if(!row)throw Error('Entry unavailable in this business or permission scope.');
+  const review=row.reviewDecision,heading=el('div',{class:'document-title'},el('div',{},el('p',{class:'eyebrow'},'JOURNAL VOUCHER'),el('h2',{},row.number)),el('span',{class:'badge'},review?.decision??row.state));
+  const printIdentity=await api('/api/settings');const detail=card(business.name,el('p',{class:'small'},[printIdentity.address,printIdentity.tax_number].filter(Boolean).join(' ? ')),heading,el('dl',{class:'document-meta'},...Object.entries({Date:row.date,Branch:row.branch,Project:row.project||'—','Prepared by':row.actor,'Posted by':row.postedBy??'Not posted',Description:row.narrative,'Operation ID':row.id}).map(([key,value])=>el('div',{},el('dt',{},key),el('dd',{},value)))),lineTable(row.lines),...row.files.map(f=>el('p',{},el('a',{href:'/api/evidence?'+new URLSearchParams({tenant:business.tenantId,file:f.id}),download:f.name},f.name))));
+  const dr=row.lines.reduce((n,l)=>n+cents(l.debit),0n),cr=row.lines.reduce((n,l)=>n+cents(l.credit),0n);detail.append(el('div',{class:'journal-totals'},'Debit '+amount(dr)+' ? Credit '+amount(cr)),el('p',{class:'small'},printIdentity.print_footer));detail.classList.add('print-document');content.append(actions,detail);
+  const tools=el('div',{class:'toolbar'},btn('Print voucher',()=>window.print(),true));
+  if(canPrepare&&row.kind==='journal')tools.append(btn('Duplicate as draft',()=>work(async()=>{const result=await api('/api/journal-drafts/duplicate',{body:{id:crypto.randomUUID(),originalId:row.id,date:new Date().toISOString().slice(0,10)}});markClean();go('Draft '+result.id);}),true));
+  if(row.state==='AWAITING_APPROVAL'&&!review){
+   if(row.actor!==userId&&caps.includes(row.kind==='stock'?'inventory.approve':'journal.approve')){
+    const reason=field('Review note / reason','reason',{required:false,type:'textarea'});
+    tools.append(btn('Approve and post',()=>work(async()=>{await api('/api/approve',{body:{commandId:row.id}});markClean();source(row.id);})),btn('Reject',()=>work(()=>decision('REJECTED')),true));
+    if(row.kind==='journal')tools.append(btn('Return for correction',()=>work(()=>decision('RETURNED')),true));
+    content.append(card('Review this exact submission',el('p',{},'Check the accounts, amounts, source evidence and dimensions before deciding.'),reason));
+    async function decision(decision){const text=reason.querySelector('textarea').value.trim();if(!text)throw Error('Enter a reason before rejecting or returning an entry.');await api('/api/review/decision',{body:{id:row.id,decision,reason:text,...(decision==='RETURNED'?{replacementId:crypto.randomUUID()}:{})}});markClean();source(row.id);}
+   }
+  }
+  if(review)content.append(card('Review history',el('p',{},review.decision+' · '+review.reason),el('p',{class:'small'},'Reviewed by '+review.actor+' · '+new Date(review.happened_at).toLocaleString()),...(review.replacement_id&&row.actor===userId?[btn('Open returned draft',()=>go('Draft '+review.replacement_id),true)]:[])));
+  if(row.state==='ACCEPTED_PENDING'&&row.actor===userId){
+   const missing=(row.requiredFiles??[]).filter(f=>!row.files.some(saved=>saved.name===f.name&&saved.sha256===f.sha256));
+   if(missing.length){const required=el('input',{type:'file',multiple:true,ariaLabel:'Missing original evidence'});content.append(card('Complete accepted submission',el('p',{},'The source is safely accepted. Reattach the exact original files listed below, then retry posting.'),...missing.map(f=>el('p',{class:'small'},f.name+' - SHA-256 '+f.sha256)),required,btn('Upload originals and retry',()=>work(async()=>{for(const file of required.files)await uploadEvidence(file,row.id);await api('/api/execute',{body:{commandId:row.id}});markClean();source(row.id);}))));}
+   tools.append(btn('Retry submission',()=>work(async()=>{const result=await api('/api/execute',{body:{commandId:row.id}});markClean();source(result.id);})));}
+
+  content.append(tools);return;
+ }
+ if(section==='Journals'||section==='Approvals'){
+  const rows=section==='Approvals'?commands.filter(r=>r.state==='AWAITING_APPROVAL'||r.reviewDecision):commands;
+  content.append(actions,card(section==='Approvals'?'Review queue & history':'Journal register',table(rows,[['date','Date'],['number','Voucher',false,documentLink],['narrative','Description'],['actor','Prepared by'],['state','Status',false,r=>r.reviewDecision?.decision??r.state],['project','Project']])));return;
+ }
+ if(section==='Drafts'){
+  const drafts=(await api('/api/journal-drafts')).rows;content.append(actions,card('Saved journal drafts',table(drafts,[['number','Voucher',false,r=>btn(r.number,()=>go('Draft '+r.id),true)],['payload','Description',false,r=>r.payload.narrative||'Untitled journal'],['revision','Revision'],['updated_at','Saved',false,r=>new Date(r.updated_at).toLocaleString()]])));return;
+ }
+ if(section==='Journal entry'||section.startsWith('Draft ')){
+  if(!canPrepare)throw Error('Journal preparation is not allowed.');
+  let id=crypto.randomUUID(),revision=0,number='New journal',savedFingerprint='',accepted=false;
+  let payload={...scope(),date:new Date().toISOString().slice(0,10),narrative:'',project:'',lines:[{account:'',debit:'',credit:''},{account:'',debit:'',credit:''}]};
+  if(section.startsWith('Draft ')){const row=(await api('/api/journal-drafts')).rows.find(r=>r.id===section.slice(6));if(!row)throw Error('Draft unavailable or already submitted.');({id,revision,number,payload}=row);}
+  const date=field('Posting date','date',{type:'date',value:payload.date}),project=field('Project reference (optional)','project',{value:payload.project??'',required:false}),narrative=field('Narrative / source reference','narrative',{type:'textarea',value:payload.narrative});narrative.className='wide';
+  const heading=el('h2',{},number),state=el('span',{class:'badge'},revision?'Saved draft · revision '+revision:'Unsaved'),lines=el('tbody'),totals=el('div',{class:'journal-totals',ariaLive:'polite'}),files=el('input',{type:'file',multiple:true,ariaLabel:'Supporting documents'});
+  const read=()=>({...scope(),date:date.querySelector('input').value,project:project.querySelector('input').value,narrative:narrative.querySelector('textarea').value,lines:[...lines.children].map(r=>({account:r.querySelector('select').value,debit:r.querySelector('[name=debit]').value,credit:r.querySelector('[name=credit]').value}))});
+  function total(){try{let dr=0n,cr=0n;for(const l of read().lines){dr+=cents(l.debit);cr+=cents(l.credit);}totals.replaceChildren(el('span',{},'Debit '+amount(dr)),el('span',{},'Credit '+amount(cr)),el('strong',{class:dr===cr?'balanced':'unbalanced'},'Difference '+amount(dr-cr)));}catch(e){totals.textContent=e.message;}}
+  function addLine(line={account:'',debit:'',credit:''}){const tr=el('tr',{},el('td',{},String(lines.children.length+1)),el('td',{},el('select',{ariaLabel:'Account',onChange:total},el('option',{value:''},'Choose an account'),...accountOptions.map(o=>el('option',{value:o.value,selected:o.value===line.account},o.label)))),...['debit','credit'].map(side=>el('td',{},el('input',{name:side,ariaLabel:side,value:line[side],inputMode:'decimal',onInput:total}))),el('td',{},btn('Remove',()=>{if(lines.children.length<=2)return;tr.remove();[...lines.children].forEach((r,i)=>r.children[0].textContent=String(i+1));total();},true)));lines.append(tr);}
+  payload.lines.forEach(addLine);
+  const lineEditor=el('div',{class:'table-wrap'},el('table',{class:'journal-editor'},el('thead',{},el('tr',{},...['#','Account','Debit','Credit',''].map(t=>el('th',{},t)))),lines));
+  const save=async()=>{if(accepted)throw Error('This submission is frozen. Open its source entry.');const p=read(),fingerprint=JSON.stringify(p);if(revision&&fingerprint===savedFingerprint)return;const r=await api('/api/journal-drafts',{body:{id,revision,payload:p}});revision=r.revision;number=r.number;heading.textContent=number;state.textContent='Saved draft · revision '+revision;savedFingerprint=fingerprint;markClean();};
+  if(revision)savedFingerprint=JSON.stringify(payload);
+  let busy=false;const run=fn=>work(async()=>{if(busy)return;busy=true;for(const b of footer.querySelectorAll('button'))b.disabled=true;try{await fn();}catch(error){if(accepted){markClean();source(id);}throw error;}finally{busy=false;for(const b of footer.querySelectorAll('button'))b.disabled=false;}});
+  const footer=el('div',{class:'toolbar'},btn('Save draft',()=>run(async()=>{await save();status(number+' saved. No ledger entries were posted.');}),true),btn('Submit journal',()=>run(async()=>{
+   await save();const p=read(),dr=p.lines.reduce((n,l)=>n+cents(l.debit),0n),cr=p.lines.reduce((n,l)=>n+cents(l.credit),0n);if(dr!==cr||dr===0n)throw Error('Balance the journal before submitting.');
+   const evidence=await Promise.all([...files.files].map(async f=>({name:f.name,sha256:[...new Uint8Array(await crypto.subtle.digest('SHA-256',await f.arrayBuffer()))].map(b=>b.toString(16).padStart(2,'0')).join('')})));
+   await api('/api/journal-drafts/submit',{body:{id,revision,evidence}});accepted=true;state.textContent='Accepted · completing submission';for(const file of files.files)await uploadEvidence(file,id);const r=await api('/api/execute',{body:{commandId:id}});markClean();source(r.id);
+  })),btn('Cancel draft',()=>run(async()=>{if(!revision){markClean();go('Journals');return;}await api('/api/journal-drafts/cancel',{body:{id,revision}});markClean();go('Drafts');}),true));
+  const form=el('form',{class:'voucher-form',onSubmit:e=>e.preventDefault()},el('div',{class:'document-title'},heading,state),el('div',{class:'fields'},date,project,narrative),el('h3',{},'Journal lines'),lineEditor,totals,btn('Add line',()=>{addLine();total();},true),el('label',{class:'evidence-field'},'Supporting documents',files),el('p',{class:'small'},'Drafts remain editable. Submission freezes the source and follows your configured posting or approval permissions.'),footer);
+  content.append(el('section',{class:'card'},form));total();return;
+ }
+ if(section==='Chart of accounts'){
+  const filter=field('Find account','search',{required:false}),result=el('div'),load=()=>{const q=filter.querySelector('input').value.toLowerCase();result.replaceChildren(table(masters.accounts.filter(a=>(a.code+' '+a.title+' '+a.kind).toLowerCase().includes(q)),[['code','Code'],['title','Account name'],['kind','Classification']]));};filter.addEventListener('input',load);content.append(card('Chart of accounts',filter,result));load();
+  if(caps.includes('accounts.manage')){const fields=[field('Account code','code'),field('Account name','title'),field('Classification','kind',{options:['asset','liability','equity','income','expense'].map(value=>({value,label:value}))})],f=el('form',{},el('div',{class:'fields'},fields),el('button',{type:'submit'},'Create account'));f.addEventListener('submit',e=>{e.preventDefault();work(async()=>{await api('/api/accounts',{body:{...scope(),...Object.fromEntries(new FormData(f))}});markClean();go('Chart of accounts');});});content.append(card('New account',f));}return;
+ }
+ if(['General ledger','Trial balance','Financial position','Profit or loss'].includes(section)){
+  const from=field('From date','from',{type:'date',required:false}),to=field('To date','to',{type:'date',required:false}),account=field('Account','account',{required:false,options:[{value:'',label:'All allowed accounts'},...accountOptions]}),project=field('Project reference','project',{required:false}),poster=field('Posted by (user ID)','postedBy',{required:false}),result=el('div');let current=[];
+  const endpoint=section==='General ledger'?'/api/ledger':section==='Trial balance'?'/api/trial':'/api/statements';
+  const query=()=>'?'+new URLSearchParams({...(section==='Financial position'?{}:{from:from.querySelector('input').value}),to:to.querySelector('input').value,...(section==='General ledger'?{account:account.querySelector('select').value,project:project.querySelector('input').value,postedBy:poster.querySelector('input').value}:{})});
+  async function load(){const data=await api(endpoint+query());current=data.rows;
+   if(section==='General ledger')result.replaceChildren(table(current,[['posting_date','Date'],['number','Voucher',false,documentLink],['account','Account'],['narrative','Description'],['debit','Debit',true],['credit','Credit',true],['branch','Branch'],['project','Project'],['prepared_by','Prepared by'],['posted_by','Posted by']]),el('div',{class:'summary'},'Debit '+data.totalDebit+' · Credit '+data.totalCredit));
+   else if(section==='Trial balance')result.replaceChildren(table(current,[['account','Account'],['opening','Opening debit / (credit)',true],['debit','Period debit',true],['credit','Period credit',true],['closingDebit','Closing debit',true],['closingCredit','Closing credit',true]]),el('div',{class:'summary'},'Debit '+data.totalDebit+' · Credit '+data.totalCredit));
+   else{const kinds=section==='Profit or loss'?['income','expense']:['asset','liability','equity'];result.replaceChildren(el('p',{class:'small'},data.scope),table(current.filter(r=>kinds.includes(r.kind)).map(r=>section==='Profit or loss'?{...r,balance:r.movementBalance??r.balance}:r),[['account','Account'],['kind','Classification'],['balance','Debit / (credit)',true]]),el('div',{class:'summary'},section==='Profit or loss'?'Result '+data.profit:'Assets '+data.assets+' · Liabilities '+data.liabilities+' · Equity '+data.equity+' · Retained result '+data.profit+' · Difference '+data.difference));}
+  }
+  const filters=el('div',{class:'toolbar'},...(section==='Financial position'?[]:[from]),to,...(section==='General ledger'?[account,project,poster]:[]),btn('Apply filters',()=>work(load),true),btn('Export filtered report',()=>work(async()=>{const data=await api(endpoint+query(),{exporting:true});download(section.toLowerCase().replaceAll(' ','-')+'.csv',section==='Profit or loss'?data.rows.filter(r=>['income','expense'].includes(r.kind)):section==='Financial position'?data.rows.filter(r=>['asset','liability','equity'].includes(r.kind)):data.rows);}),true),btn('Print report',()=>window.print(),true));
+  content.append(card(section,filters,result));await load();return;
+ }
+ content.append(card('Accounting',el('p',{},'Choose a page in the Accounting navigation.')));
+}

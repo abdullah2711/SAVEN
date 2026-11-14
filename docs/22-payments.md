@@ -1,5 +1,7 @@
 # Payments workspace and reference lifecycle
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 Part of ACC-006, ACC-004, ACC-011, ACC-018, SAL-007 and PUR-006. This is a separate operating workspace, sharing the posting kernel with accounting. It is not completion of all payment, sales, purchasing or banking requirements.
 
 ## Supported lifecycle

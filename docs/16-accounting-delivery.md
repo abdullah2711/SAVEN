@@ -1,5 +1,7 @@
 # Accounting delivery and verification
 
+> Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
+
 The owner's delivery order is accounting and cash & bank first, then the remaining operating modules, then further AI work. AI development is paused. The broad commercial release contract is retained; module navigation and a passing ledger test are not completion of the full accounting family.
 
 The subsequent [opening reconciliation implementation](18-opening-reconciliation.md) covers a balanced new-ledger import or detail linked to existing controls without duplicate recognition. Its current source/CI and personal-server activation status is recorded separately in BUILD_STATE; the workbench stays gated off on schema 7.
