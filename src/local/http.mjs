@@ -35,6 +35,7 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/trade'&&method==='GET')response=json(runtime.trade(tenant,actor,{company,branch,...(url.searchParams.has('asOf')?{asOf:url.searchParams.get('asOf')}:{})}));
     else if(path==='/api/trade/parties'&&method==='POST')response=json(runtime.tradeParty(tenant,actor,input),201);
     else if(path==='/api/trade/prepare'&&method==='POST')response=json(runtime.prepareTrade(tenant,actor,commandId,input),201);
+    else if(path==='/api/trade/credits/prepare'&&method==='POST')response=json(runtime.prepareTradeCredit(tenant,actor,commandId,input),201);
     else if(path==='/api/ledger'&&method==='GET')response=json(runtime.ledger(tenant,actor,options));
     else if(path==='/api/trial'&&method==='GET')response=json(runtime.trial(tenant,actor,options));
     else if(path==='/api/statements'&&method==='GET')response=json(runtime.statements(tenant,actor,options));

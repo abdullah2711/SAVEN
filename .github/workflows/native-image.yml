@@ -21,6 +21,6 @@ jobs:
           docker run --rm --read-only --network none --tmpfs /tmp:rw,nosuid,nodev,size=4g
           -v "$GITHUB_WORKSPACE/tests:/app/tests:ro"
           --entrypoint node saven-native:${{ github.sha }}
-          --test tests/native-foundation.test.mjs tests/native-runtime.test.mjs tests/native-trade.test.mjs tests/native-administration.test.mjs tests/native-recovery.test.mjs tests/native-corrections.test.mjs tests/native-migrations.test.mjs tests/native-frontend.test.mjs tests/native-gateway.test.mjs tests/native-probe.test.mjs tests/assistant-provider.test.mjs
+          --test tests/native-foundation.test.mjs tests/native-runtime.test.mjs tests/native-trade.test.mjs tests/native-trade-credits.test.mjs tests/native-administration.test.mjs tests/native-recovery.test.mjs tests/native-corrections.test.mjs tests/native-migrations.test.mjs tests/native-frontend.test.mjs tests/native-gateway.test.mjs tests/native-probe.test.mjs tests/assistant-provider.test.mjs
       - name: Release boundary
         run: echo 'Candidate tests do not authorize client onboarding, migrate live reference data, change DNS or deploy main.'

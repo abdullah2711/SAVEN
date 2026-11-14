@@ -131,3 +131,17 @@ CREATE TRIGGER trade_correction_source BEFORE INSERT ON journal_corrections WHEN
 ${['trade_controls','trade_parties','trade_operations','trade_documents','trade_lines','trade_allocations'].map(table=>`CREATE TRIGGER ${table}_retained_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'Trade source is immutable'); END;
 CREATE TRIGGER ${table}_retained_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Trade source is retained'); END;`).join('\n')}
 `);
+
+tenant.push(`
+CREATE TABLE trade_credits(command_id TEXT PRIMARY KEY REFERENCES trade_operations(command_id),original_id TEXT NOT NULL REFERENCES trade_documents(command_id),total INTEGER NOT NULL CHECK(total>0),reason TEXT NOT NULL) STRICT;
+CREATE TABLE trade_credit_lines(command_id TEXT NOT NULL REFERENCES trade_credits(command_id),original_line INTEGER NOT NULL,amount INTEGER NOT NULL CHECK(amount>0),PRIMARY KEY(command_id,original_line)) STRICT;
+CREATE TRIGGER trade_credit_valid_source BEFORE INSERT ON trade_credits BEGIN
+ SELECT CASE WHEN (SELECT state FROM command_inbox WHERE id=NEW.command_id)<>'ACCEPTED_PENDING' OR (SELECT state FROM command_inbox WHERE id=NEW.original_id)<>'POSTED' THEN RAISE(ABORT,'Credit requires an accepted command and a posted source') END;
+END;
+CREATE TRIGGER trade_credit_post_check BEFORE UPDATE OF state ON command_inbox WHEN NEW.state='POSTED' AND OLD.state<>'POSTED' AND EXISTS(SELECT 1 FROM trade_credits WHERE command_id=NEW.id) BEGIN
+ SELECT CASE WHEN (SELECT total FROM trade_credits WHERE command_id=NEW.id)<>(SELECT sum(amount) FROM trade_credit_lines WHERE command_id=NEW.id) THEN RAISE(ABORT,'Credit lines do not reconcile') END;
+ SELECT CASE WHEN EXISTS(SELECT 1 FROM trade_credit_lines c JOIN trade_credits h ON h.command_id=c.command_id LEFT JOIN trade_lines l ON l.command_id=h.original_id AND l.line_no=c.original_line WHERE c.command_id=NEW.id AND (l.line_no IS NULL OR l.amount<(SELECT coalesce(sum(c2.amount),0) FROM trade_credit_lines c2 JOIN trade_credits h2 ON h2.command_id=c2.command_id JOIN command_inbox i2 ON i2.id=c2.command_id WHERE h2.original_id=h.original_id AND c2.original_line=c.original_line AND (i2.state='POSTED' OR i2.id=NEW.id)))) THEN RAISE(ABORT,'Credit exceeds its original source line') END;
+END;
+${['trade_credits','trade_credit_lines'].map(table=>`CREATE TRIGGER ${table}_retained_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'Credit source is immutable'); END;
+CREATE TRIGGER ${table}_retained_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Credit source is retained'); END;`).join('\n')}
+`);

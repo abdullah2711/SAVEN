@@ -9,7 +9,7 @@ import {LocalBucket,inspectFile,scanWithClamd} from '../object-store.mjs';
 import {businessAdministration,saveBusinessRole,createBusinessMember,setBusinessMemberActive,assignBusinessRole,addExistingBusinessMember} from './administration.mjs';
 import {responseSchema} from '../assistant-contract.mjs';
 import {previewReversal,acceptReversal} from './corrections.mjs';
-import {createTradeParty,prepareTrade,tradeExtension,tradeReport} from './trade.mjs';
+import {createTradeParty,prepareTrade,prepareTradeCredit,tradeExtension,tradeReport} from './trade.mjs';
 const check=(v,m)=>{if(!v)throw Error(m);};
 const text=(v,max=120)=>typeof v==='string'&&v.trim().length>0&&v.length<=max;
 const email=v=>typeof v==='string'&&v.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
@@ -46,6 +46,7 @@ export class NativeRuntime {
  administration(tenant,actor){return businessAdministration(this,tenant,actor);}
  tradeParty(tenant,actor,input){return createTradeParty(this,tenant,actor,input);}
  prepareTrade(tenant,actor,operation,input){return prepareTrade(this,tenant,actor,operation,input);}
+ prepareTradeCredit(tenant,actor,operation,input){return prepareTradeCredit(this,tenant,actor,operation,input);}
  trade(tenant,actor,options){return tradeReport(this,tenant,actor,options);}
  saveRole(tenant,actor,input){return saveBusinessRole(this,tenant,actor,input);}
  createMember(tenant,actor,operation,input){return createBusinessMember(this,tenant,actor,operation,input);}
