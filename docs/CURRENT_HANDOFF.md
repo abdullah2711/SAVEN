@@ -1,5 +1,12 @@
 # Current agent handoff
 
+## Latest live deployment — 15 November 2026 (Asia/Karachi)
+
+Owner explicitly requested updating the app to review it. Main now matches deployed source b9bdf75824b017cd813f55245f3c352d786fa864. Running tag accounting-b9bdf758 / image sha256:7eaf5d401fb503e3a5d33277cb8af69a6e1a8e2f559631867246c7be149ee5a2. Exact published146 runtime/test files verified before build;69 Linux contracts passed. Fresh backup and independent restored upgrade preserved227 original tenant tables; stopped-cutover snapshot retained. All nine active tenant stores now pass schema9 integrity/foreign-key checks. Existing public app sign-in and masters/drafts/commands/trial/trade reads pass; app/ops return200 and served app/accounting/workspace/CSS files match source. Backup/restore service passed before and after deployment. Permanent SSH recovered using existing cached Access authorization with explicit user profile; no temporary endpoint was needed. Synthetic testing deployment and unrelated services were preserved.
+
+This supersedes older not-deployed/main-schema7 checkpoints below. Full Accounting/MVP remains incomplete. Continue remaining Accounting on testing-1; main contains the version the owner is reviewing. The following evidence-only commit does not change deployed application code.
+
+
 ## Read first
 
 Read AGENTS.md, this file, docs/48-accounting-first-owner-revision.md, docs/49-compatible-tenant-upgrades.md and contracts/delivery-checklist.json. Historical mandate sources remain binding where nonconflicting. Newest user clarification includes bill-and-hold custody and linked withholding adjustment journals. Preserve the complete agreed market MVP; immediate development order is Accounting, Settings, connected operational modules, broader ops, then remaining modules.

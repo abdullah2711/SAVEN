@@ -1,5 +1,12 @@
 # Latest continuation — Accounting-first revision, 14 November 2026
 
+## Latest live deployment — 15 November 2026 (Asia/Karachi)
+
+Owner explicitly requested updating the app to review it. Main now matches deployed source b9bdf75824b017cd813f55245f3c352d786fa864. Running tag accounting-b9bdf758 / image sha256:7eaf5d401fb503e3a5d33277cb8af69a6e1a8e2f559631867246c7be149ee5a2. Exact published146 runtime/test files verified before build;69 Linux contracts passed. Fresh backup and independent restored upgrade preserved227 original tenant tables; stopped-cutover snapshot retained. All nine active tenant stores now pass schema9 integrity/foreign-key checks. Existing public app sign-in and masters/drafts/commands/trial/trade reads pass; app/ops return200 and served app/accounting/workspace/CSS files match source. Backup/restore service passed before and after deployment. Permanent SSH recovered using existing cached Access authorization with explicit user profile; no temporary endpoint was needed. Synthetic testing deployment and unrelated services were preserved.
+
+This supersedes older not-deployed/main-schema7 checkpoints below. Full Accounting/MVP remains incomplete. Continue remaining Accounting on testing-1; main contains the version the owner is reviewing. The following evidence-only commit does not change deployed application code.
+
+
 Read [CURRENT_HANDOFF.md](CURRENT_HANDOFF.md), [owner scope](48-accounting-first-owner-revision.md), [upgrade contract](49-compatible-tenant-upgrades.md), [small-action checklist](TASKS.md) and [evidence](accounting-revision-evidence.json) before historical checkpoints below.
 
 Development implements server drafts/revisions, immutable numbering, retained rejection/return and duplicate workflows; focused Accounting pages, expandable navigation, separate Selling/Buying, unified Settings navigation, source/actor/branch/project GL detail and trial opening/movement/closing. All 138 retained local tests and 140 parses pass; generators validate 269 requirements. Isolated browser saved and posted 75.35 with matching project-filtered GL. Linux image b passed 66 contracts; later refinements require final GitHub native CI. Independent read-only snapshot restore migrated nine tenants to schema9 and preserved all 227 original tenant tables and 13-store/four-object source hashes. Restore validation now uses temporary copies for WAL sidecars. Historical migration SQL bytes all match published source.

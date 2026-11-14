@@ -2,7 +2,7 @@
   "date": "2026-11-14",
   "branch": "testing-1",
   "sourceBase": "14e614476a60b62d430578050cdfc1078ad18d1c",
-  "productionChanged": false,
+  "productionChanged": true,
   "clientReady": false,
   "localTests": {
     "passed": 138,
@@ -62,5 +62,34 @@
       "conclusion": "success"
     },
     "finalNativeCiVerified": true
+  },
+  "deployment": {
+    "date": "2026-11-15",
+    "timezone": "Asia/Karachi",
+    "sourceCommit": "b9bdf75824b017cd813f55245f3c352d786fa864",
+    "mainMatches": true,
+    "image": "sha256:7eaf5d401fb503e3a5d33277cb8af69a6e1a8e2f559631867246c7be149ee5a2",
+    "tag": "saven-native:accounting-b9bdf758",
+    "linuxContracts": 69,
+    "tenants": 9,
+    "schema": 9,
+    "integrity": "ok",
+    "freshRestoreOriginalTablesPreserved": 227,
+    "backupServiceBeforeAndAfter": "success",
+    "stoppedCutoverSnapshot": "/var/backups/saven-native/cutover-20261114T200519Z/snapshot",
+    "publicHealth": [
+      "app",
+      "ops"
+    ],
+    "existingAppLogin": true,
+    "publicReadEndpoints": [
+      "masters",
+      "journal-drafts",
+      "commands",
+      "trial",
+      "trade"
+    ],
+    "servedAssetsMatch": true,
+    "fullMvp": false
   }
 }
