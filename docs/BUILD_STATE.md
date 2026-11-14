@@ -1,5 +1,13 @@
 # SAVEN build checkpoint
 
+### Publication and final live checks for this continuation
+
+Source published on testing-1 as 2307b0356b7471729c2120f3a84f1f25b1d3c026, with a non-force expected-head lease. All 37 written Git blobs matched local content; all 98 deployed files match the published tree. GitHub Verify SAVEN run43547347886 and Native SQLite candidate run43547347858 both succeeded. The retained testing Worker build/check132302087427 succeeded; served testing catalog matches source. Public customer index/script/stylesheet independently match source and both app/ops HTTPS services remain healthy. Main freshly remains bdf418ca3bf6ebac49115f45119cbe0f6548e907.
+
+An existing production-named saven Worker integration also tried to build testing-1 with wrangler preview and failed (check132301782141); it does not serve the new short hostnames. The authenticated dashboard showed production branch main with preview-branch builds enabled. Those preview builds were disabled and saved, preserving main and testing Worker configuration. The next checkpoint push should verify no new saven preview build starts. This is branch isolation, not completed production CD. No new Worker code, credential or custom domain was deployed by that correction.
+
+The final running image also passed the real backup service: nine stores/four retained original objects restored successfully, including the final isolated QA records. The service resumed healthy afterward. Final public inference explicitly asserted 50.05 in the answer, valid citations, a null proposal and zero actions. Browser sign-in pages for both origins were observed; deeper authenticated visual acceptance remains open. The next commit records evidence only and changes no application code. Continue outstanding module and release gates in docs42/43.
+
 ## Operational native increment - 14 November 2026, 02:44 Asia/Karachi
 
 The owner now requests an operational accounting/inventory release, critical settings/printing/commercial/operator/AI layers, local storage, production hostnames and controlled continuing main releases. This supersedes UI-only sequencing. See docs42 and the appended owner record. The requested full client-ready MVP is NOT complete.

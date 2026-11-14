@@ -133,10 +133,11 @@
     "originalTenantTableComparison": "all source rows match after schema 6 migration",
     "initialStores": 6,
     "initialObjects": 1,
-    "latestRehearsalStores": 8,
-    "latestRehearsalObjects": 3,
+    "latestRehearsalStores": 9,
+    "latestRehearsalObjects": 4,
     "dailyLocalBackup": "03:00 Asia/Karachi; systemd service rehearsal passed",
-    "offHostRecovery": "NOT_VERIFIED"
+    "offHostRecovery": "NOT_VERIFIED",
+    "finalImageRehearsal": "passed; includes all final QA records"
   },
   "browser": {
     "customerSignIn": "rendered over HTTPS",
@@ -146,5 +147,39 @@
   "clientMvpReleased": false,
   "mainPromoted": false,
   "referencePostgresqlRetained": true,
-  "relayGatewayCommissioned": false
+  "relayGatewayCommissioned": false,
+  "sourceCommit": "2307b0356b7471729c2120f3a84f1f25b1d3c026",
+  "publication": {
+    "verifiedBlobCount": 37,
+    "expectedHeadLease": true,
+    "publishedAndDeployedFilesMatch": 98
+  },
+  "ci": {
+    "verifySaven": {
+      "run": 43547347886,
+      "result": "success"
+    },
+    "nativeContainer": {
+      "run": 43547347858,
+      "result": "success"
+    },
+    "testingWorker": {
+      "check": 132302087427,
+      "result": "success",
+      "servedCatalogMatches": true
+    },
+    "legacyProductionWorkerPreview": {
+      "oldCheck": 132301782141,
+      "result": "failed before configuration correction",
+      "previewsNowDisabled": true,
+      "productionBranch": "main",
+      "notUsedByNewPublicDomains": true
+    }
+  },
+  "publicAssetHashesMatch": [
+    "application index",
+    "application script",
+    "application stylesheet",
+    "retained testing catalog"
+  ]
 }

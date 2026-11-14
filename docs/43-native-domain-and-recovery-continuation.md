@@ -35,3 +35,9 @@ Existing PostgreSQL/reference data and services, Listmonk, Nextcloud, antivirus 
 The complete operational Accounting/Inventory MVP remains unfinished as enumerated in docs42: AR/AP invoices and settlements, full opening/recurring and bank reconciliation, broader inventory costing/returns/counts/UOM/traceability, complete user/role/onboarding/recovery workflows, commercial billing/subscriptions, print-format design, wider AI tools/ingestion and independent security/browser/release acceptance. Source CI builds/tests candidates; fully commissioned production CD, signed artifacts and fleet rollout are still required. Continue those workflows on testing-1 and preserve client data; do not call public reachability a market-ready release.
 
 Final public workflow, inference, browser and source-publication evidence is recorded in BUILD_STATE and the adjacent machine-readable evidence file.
+
+## Observed source publication
+
+Source 2307b0356b7471729c2120f3a84f1f25b1d3c026 passed both GitHub test workflows and the retained testing Worker build. All 98 deployed source files match that published tree; app index/script/stylesheet and retained testing catalog also match served bytes. The final local backup/restore service passed with nine databases and four original objects.
+
+The legacy saven Worker separately attempted a failing testing-1 preview build. Its production branch was already main; preview-branch builds were enabled and have now been disabled in the authenticated dashboard. This preserves the testing Worker and the actual new tunneled app/ops services, and prevents development pushes from attempting production Worker previews. Main was not promoted. Fully commissioned native production CD remains open.
