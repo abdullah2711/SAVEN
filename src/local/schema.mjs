@@ -41,6 +41,8 @@ CREATE TRIGGER posted_requires_effects BEFORE UPDATE OF state ON command_inbox W
 END;
 `];
 
+
+
 // Append-only operational migrations. Version1 remains byte-for-byte compatible.
 identity.push(`
 CREATE TABLE credentials(user_id TEXT PRIMARY KEY REFERENCES users(id), email TEXT NOT NULL UNIQUE COLLATE NOCASE, encoded TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1) STRICT;
@@ -107,4 +109,8 @@ END;
 CREATE TRIGGER correction_exact_reversal BEFORE UPDATE OF state ON command_inbox WHEN NEW.state='POSTED' AND OLD.state<>'POSTED' AND EXISTS(SELECT 1 FROM journal_corrections WHERE command_id=NEW.id) BEGIN
  SELECT CASE WHEN (SELECT count(*) FROM journal_lines WHERE journal_id=NEW.id)<>(SELECT count(*) FROM journal_lines WHERE journal_id=(SELECT original_id FROM journal_corrections WHERE command_id=NEW.id)) OR EXISTS(SELECT 1 FROM journal_lines r LEFT JOIN journal_lines o ON o.journal_id=(SELECT original_id FROM journal_corrections WHERE command_id=NEW.id) AND o.line_no=r.line_no WHERE r.journal_id=NEW.id AND (o.line_no IS NULL OR r.account<>o.account OR r.debit<>o.credit OR r.credit<>o.debit)) THEN RAISE(ABORT,'Correction must exactly reverse its immutable source') END;
 END;
+`);
+
+identity.push(`
+CREATE TABLE business_member_operations(id TEXT PRIMARY KEY,tenant_id TEXT NOT NULL,actor TEXT NOT NULL REFERENCES users(id),user_id TEXT NOT NULL REFERENCES users(id),digest TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('PREPARED','NEEDS_RETRY','COMPLETED')),created_at INTEGER NOT NULL) STRICT;
 `);

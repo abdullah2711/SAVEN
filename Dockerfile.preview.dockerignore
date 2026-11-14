@@ -1,0 +1,12 @@
+*
+!Dockerfile.preview
+!public/
+!public/index.html
+!public/logo.svg
+!public/ui/
+!public/ui/**
+!src/
+!src/frontend-assets.mjs
+!src/server-preview.mjs
+!scripts/
+!scripts/frontend-server.mjs

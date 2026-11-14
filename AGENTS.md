@@ -20,6 +20,7 @@
 ## Current project stage
 
 - The 14 November TLS/domain revision selects `https://app.economicsystems.cc` and `https://ops.economicsystems.cc`. These supersede the nested Cloud application/operator hostnames. Preserve separate exact origins and host-only realm sessions. See docs/43-native-domain-and-recovery-continuation.md for observed deployment and remaining release gates.
+- The subsequent owner direction requires all active SAVEN runtime layers on the owner's server. Cloudflare supplies DNS/TLS and the tunnel only; Workers, D1, R2, Durable Objects, VPC bindings and hosted model inference must not be required by the active profile. GitHub remains source/CI, never an online transaction dependency. See docs/44-server-hosted-runtime.md and contracts/runtime-hosting-v1.json. Retain historical adapters/reference data without routing active .cc application or testing traffic through them.
 
 - The owner authorized construction on 11 November 2026. Read docs/BUILD_STATE.md, docs/11-additional-input.md and docs/12-foundation.md before continuing implementation.
 - Requirements in this baseline are specified, not implemented. Do not describe prototype behaviour or planning checks as production functionality.

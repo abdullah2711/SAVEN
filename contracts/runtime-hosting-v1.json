@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "status": "OWNER_AUTHORIZED_SERVER_HOSTED_PROFILE",
+  "activeApplicationOrigin": "https://app.economicsystems.cc",
+  "activeAdministrationOrigin": "https://ops.economicsystems.cc",
+  "retainedTestingOrigin": "https://saventesting.economicsystems.cc",
+  "runtimeLocation": "owner-controlled-server",
+  "localLayers": ["frontend", "API", "identity-and-sessions", "authorization", "native-SQLite-controls", "tenant-SQLite", "durable-command-approval-and-outbox-state", "original-file-storage", "malware-scanning", "model-inference", "backup-and-restore"],
+  "cloudflareRole": ["DNS", "TLS-edge", "tunnel"],
+  "requiredCloudflareRuntimeProducts": [],
+  "workersRequired": false,
+  "D1Required": false,
+  "R2Required": false,
+  "durableObjectsRequired": false,
+  "workersAIRequired": false,
+  "VPCBindingRequired": false,
+  "githubRole": "source-control-and-CI-only; ordinary-runtime-does-not-call-GitHub",
+  "testingReference": {"database": "retained-local-PostgreSQL-schema-13", "frontend": "server-hosted-synthetic-review-UI", "businessDataMigrated": false},
+  "historicalAdaptersDeleted": false,
+  "clientMvpReleased": false,
+  "offHostRecoveryVerified": false
+}
