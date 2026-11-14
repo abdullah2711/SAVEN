@@ -208,7 +208,7 @@
         "tests/native-runtime.test.mjs",
         "docs/CURRENT_HANDOFF.md"
       ],
-      "note": "Bounded native increment; full module acceptance remains open."
+      "note": "Exact accepted journal source/evidence opens; richer operational-document editor links remain."
     },
     {
       "id": "ACCOUNTING019",
@@ -378,9 +378,11 @@
       "id": "ACCOUNTING037",
       "area": "Accounting",
       "title": "Publish tested Accounting increment on testing-1",
-      "status": "todo",
-      "evidence": [],
-      "note": ""
+      "status": "source-tested",
+      "evidence": [
+        "docs/accounting-revision-evidence.json"
+      ],
+      "note": "Published f125092 on testing-1;57 source blobs match; native and full GitHub checks passed. Not deployed."
     },
     {
       "id": "SETTINGS001",

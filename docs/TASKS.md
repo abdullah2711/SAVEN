@@ -25,7 +25,7 @@ Generated from contracts/delivery-checklist.json. Update one action with tools/c
 | ACCOUNTING015 | Return trade and stock through source-specific editors | todo |  |
 | ACCOUNTING016 | Show preparer/poster/branch/project in GL | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
 | ACCOUNTING017 | Filter GL by date account project and poster | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
-| ACCOUNTING018 | Drill down GL to exact source | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
+| ACCOUNTING018 | Drill down GL to exact source | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Exact accepted journal source/evidence opens; richer operational-document editor links remain. |
 | ACCOUNTING019 | Create accounts within chart page | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
 | ACCOUNTING020 | Add account hierarchy group and posting flags | todo |  |
 | ACCOUNTING021 | Protect control accounts against generic adjustments | todo |  |
@@ -44,7 +44,7 @@ Generated from contracts/delivery-checklist.json. Update one action with tools/c
 | ACCOUNTING034 | Render journal print with company identity and totals | in-progress | Basic print/desktop checked; complete format/mobile/keyboard acceptance remains. |
 | ACCOUNTING035 | Verify responsive keyboard and print journeys | in-progress | Basic print/desktop checked; complete format/mobile/keyboard acceptance remains. |
 | ACCOUNTING036 | Rehearse upgrade on restored current data | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
-| ACCOUNTING037 | Publish tested Accounting increment on testing-1 | todo |  |
+| ACCOUNTING037 | Publish tested Accounting increment on testing-1 | source-tested | docs/accounting-revision-evidence.json; Published f125092 on testing-1;57 source blobs match; native and full GitHub checks passed. Not deployed. |
 
 ## Settings
 

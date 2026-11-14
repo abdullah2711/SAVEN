@@ -47,5 +47,20 @@
     "Settings page delegation and print-format library/designer",
     "Remaining linked operational modules",
     "Compatible fleet migrations, bounded connections, off-host recovery and availability benchmarks"
-  ]
+  ],
+  "publication": {
+    "commit": "f125092290e677ed9d2c2adcbca8172cec88d5ac",
+    "files": 57,
+    "allPublishedBlobsMatch": true,
+    "mainUnchanged": "132b7810c2477e006168af30d8117cc79b0aab67",
+    "nativeCi": {
+      "run": 43634614279,
+      "conclusion": "success"
+    },
+    "fullCi": {
+      "run": 43634614354,
+      "conclusion": "success"
+    },
+    "finalNativeCiVerified": true
+  }
 }
