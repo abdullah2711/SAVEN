@@ -16,7 +16,7 @@ Activating a customer/supplier control refuses any pre-existing manual posting h
 
 ## Verification and deployed increment
 
-Eight native trade contract groups cover independently expected balances, dated unpaid reports, partial/multiple allocations, exact cents, repeated IDs/references, stale overpayment, foreign party/direction/date, original clean evidence, period locks, revoked access, independent approval, failed-write rollback, immutable sources, control-source enforcement and existing-history refusal. The final full local suite passed 149 tests and 152 JavaScript files parse. Both generators and plan validation pass. The final Linux image independently passed 54 focused contracts.
+Eight native trade contract groups cover independently expected balances, dated unpaid reports, partial/multiple allocations, exact cents, repeated IDs/references, stale overpayment, foreign party/direction/date, original clean evidence, period locks, revoked access, independent approval, failed-write rollback, immutable sources, control-source enforcement and existing-history refusal. The final full local suite passed 149 tests and 152 JavaScript files parse. Both generators and plan validation pass. The broader Linux image independently passed 54 contracts; the final strict-evidence refinement passed the 21 affected runtime/trade/frontend contracts.
 
 A stopped backup/independent restore retained 12 databases and four original objects. The new image upgraded all eight restored tenant databases to schema 7, authenticated the existing operator, and independent Python comparisons found all 190 pre-existing tenant tables unchanged. Only a new checksummed tenant migration is appended; historical migration checksums are preserved. Identity remains schema 3.
 
@@ -28,4 +28,4 @@ Complete operational credit notes, debit adjustments, refunds, advances and corr
 
 An older Docker image cannot reverse a schema upgrade. Retained pre-upgrade backup and independent restored directory are the recovery basis; after new writes, rollback requires an explicit data-aware recovery decision. Continue on testing-1 and preserve all customer/reference records.
 
-Final deployed image: saven-native:trade-20261114-b, immutable ID sha256:d24a9827557584529b3f6f8ec045e84516ae24d3e4ad19323e2473fea209cb1e. Both approved public health endpoints returned 200. A subsequent backup independently restored 13 databases and four objects, then the restored trade business still reconciled both posted documents with zero control differences.
+Final deployed image: saven-native:trade-20261114-c, immutable ID sha256:7a1d05fdea778e6fda26ea6d9b48087fa6824325039fe2242aa6e2063030e7b5. Both approved public health endpoints returned 200. A subsequent backup independently restored 13 databases and four objects, then the restored trade business still reconciled both posted documents with zero control differences.

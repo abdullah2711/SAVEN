@@ -25,7 +25,7 @@ function journalFor(engine,tenant,actor,p){
   validateTargets(engine,tenant,actor,p);
   if(customer){add(p.cashAccount,total,0n);add('1100',0n,total);}else{add('2000',total,0n);add(p.cashAccount,0n,total);}
  }
- return {company:p.company,branch:p.branch,date:p.date,narrative:p.reference+' - '+who.name,...(p.evidence?{evidence:p.evidence}:{}),lines};
+ return {company:p.company,branch:p.branch,date:p.date,narrative:p.reference+' - '+who.name,...(p.evidence!==undefined?{evidence:p.evidence}:{}),lines};
 }
 export function createTradeParty(runtime,tenant,actor,input){
  check(input&&Object.keys(input).every(k=>['company','branch','id','kind','name'].includes(k)),'Unknown party fields');const {company,branch,kind,name}=input;

@@ -3,12 +3,12 @@
   "profile": "owner-server runtime; Cloudflare DNS/TLS/tunnel only",
   "applicationOrigin": "https://app.economicsystems.cc",
   "operatorOrigin": "https://ops.economicsystems.cc",
-  "image": "sha256:d24a9827557584529b3f6f8ec045e84516ae24d3e4ad19323e2473fea209cb1e",
-  "tag": "saven-native:trade-20261114-b",
+  "image": "sha256:7a1d05fdea778e6fda26ea6d9b48087fa6824325039fe2242aa6e2063030e7b5",
+  "tag": "saven-native:trade-20261114-c",
   "tenantSchema": 7,
   "identitySchema": 3,
   "localTests": 149,
-  "linuxFocusedTests": 54,
+  "linuxFocusedTests": 21,
   "parsedJavaScriptFiles": 152,
   "preUpgradeRehearsal": {
     "tenants": 8,
@@ -46,7 +46,7 @@
   },
   "limitations": "docs/45-native-invoices-and-settlements.md; no client import, no main promotion, no complete Accounting/Inventory/MVP claim",
   "deployedSourceSha256": {
-    "src/local/trade.mjs": "acc1441deb62501b257d814100770019c7444511281376401c64b4eec76bec83",
+    "src/local/trade.mjs": "0efbf1762b7add1c6b2ebf23d1a2b626f7bcb4575bd9ede6b9eb20669682b5aa",
     "src/local/schema.mjs": "838866bad0d9e729d1328679d6c6b15736bab63ca3f6dc7d9c543b08c3fbb751",
     "src/local/runtime.mjs": "4c9635a769e5df73f2529fe549393533fda1d97dedd0965c4d8d721338166dd9",
     "src/local/http.mjs": "b7f2378252f3ec1ce1a51f970eb2be44541190c110c7a0f3985c78d934e14a9d",
@@ -54,8 +54,14 @@
     "public/live/trade.js": "46a7b6d9b569c9b0749b7d69f1b6b806ad0ff56d5b32186f02aa6e39d6cba63b",
     "public/live/app.js": "367fd4312d17a88bc3d7b75d825148e17b41ccabf1bc48f9cf4bddd53ca3acc1",
     "public/live/style.css": "7f44f06d5a2647553f68f6754422a3a5219d21e07b9be58eb6b0446f51b1adca",
-    "tests/native-trade.test.mjs": "9bfefb1bf1d08be11a024dc032c98da581781d13e53de3c02800fc0ee636f850",
+    "tests/native-trade.test.mjs": "5daf41d8899fbe3ed4af08f4f084607422b3a5f5c5a9d293f2ae45f22c16d3bd",
     "tests/native-migrations.test.mjs": "f921a79739eab4b1b9a69f004ccdfc5fc205caf08a202b92fc64fa1cdd10995a",
     "tests/native-frontend.test.mjs": "e0ccebd0de7f052fd75dd52020f97853acf1d00593e9bd1b09769bf22121b782"
+  },
+  "previousBroaderLinuxTests": 54,
+  "priorSourceCi": {
+    "commit": "1117eabb35738536e8cfe2a2c26facfb0023f9b9",
+    "foundation": "success",
+    "nativeRelease": "success"
   }
 }
