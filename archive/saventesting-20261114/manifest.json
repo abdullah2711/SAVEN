@@ -1,0 +1,128 @@
+{
+  "sourceCommit": "0d462956e98d8f1e58ec91bc439fb44a0d844eee",
+  "frozen": true,
+  "deploymentUnchanged": true,
+  "files": [
+    {
+      "from": "public/ui/accounting-model.js",
+      "to": "archive/saventesting-20261114/public/ui/accounting-model.js",
+      "sha256": "9e1697a1a4f54f9c4bedfdbf3d093aee2e13c1a135d94cd8f2e21ad7a3b16005"
+    },
+    {
+      "from": "public/ui/accounting-setup.js",
+      "to": "archive/saventesting-20261114/public/ui/accounting-setup.js",
+      "sha256": "62be3bcc3af9d38538ffd881c5181f1db68c8ba8f19b907c11ceae94b4a579dc"
+    },
+    {
+      "from": "public/ui/accounting-ui.js",
+      "to": "archive/saventesting-20261114/public/ui/accounting-ui.js",
+      "sha256": "bd9a871177cce7cf3052f950cf0f86eb88cd46b8a9edca0d038b8be9853c9bfe"
+    },
+    {
+      "from": "public/ui/app.js",
+      "to": "archive/saventesting-20261114/public/ui/app.js",
+      "sha256": "ab1fc667d214d04be41176d699955ba842d35d1098337e1e9c8e824871fa2327"
+    },
+    {
+      "from": "public/ui/catalog.js",
+      "to": "archive/saventesting-20261114/public/ui/catalog.js",
+      "sha256": "042c0d7c128d797d5d1fafe893b60319fa911b3245713df0227e62e0ff83272f"
+    },
+    {
+      "from": "public/ui/icons.js",
+      "to": "archive/saventesting-20261114/public/ui/icons.js",
+      "sha256": "e4c8adb683763222a3e76ce276802926d7aa934116343246bfd1b140103f9b47"
+    },
+    {
+      "from": "public/ui/invoice-model.js",
+      "to": "archive/saventesting-20261114/public/ui/invoice-model.js",
+      "sha256": "0b900f01403d48f097ddf80f9e1cc2fa818b20b274dad016ab42176bbe39bae8"
+    },
+    {
+      "from": "public/ui/model.js",
+      "to": "archive/saventesting-20261114/public/ui/model.js",
+      "sha256": "6d0601bd8bb2099bbbfa2b4c7e65215c688617322b58502421439c4789c1bf09"
+    },
+    {
+      "from": "public/ui/portals.js",
+      "to": "archive/saventesting-20261114/public/ui/portals.js",
+      "sha256": "791f5755eb8296f23b413aeae5563bf22d35cc6a3dc18e936b8b8b45be017e7d"
+    },
+    {
+      "from": "public/ui/theme.css",
+      "to": "archive/saventesting-20261114/public/ui/theme.css",
+      "sha256": "e1725ee2966c038367a6bef296454d33278388217fb7984aac62e87e5503b412"
+    },
+    {
+      "from": "public/ui/workspaces.js",
+      "to": "archive/saventesting-20261114/public/ui/workspaces.js",
+      "sha256": "c2550944ca2243ef8e08a7c3a5699cdb1a3f1f282b0beb4107b4cc1f51ea2a60"
+    },
+    {
+      "from": "public/index.html",
+      "to": "archive/saventesting-20261114/public/index.html",
+      "sha256": "f050acdd3586cbb89dc1fa1e0126f3f2c979d201eed7f3310f6815f3bce0038a"
+    },
+    {
+      "from": "public/logo.svg",
+      "to": "archive/saventesting-20261114/public/logo.svg",
+      "sha256": "3530b29f5b3d59c5ccf509dd00f909d50dc9e3ec4d7d93c172f9fef3eac7b21d"
+    },
+    {
+      "from": "Dockerfile.preview",
+      "to": "archive/saventesting-20261114/Dockerfile.preview",
+      "sha256": "8cff2b26d5732bd959ada893bab18a00e51d57d30dde3d520071673fe04e0f69"
+    },
+    {
+      "from": "Dockerfile.preview.dockerignore",
+      "to": "archive/saventesting-20261114/Dockerfile.preview.dockerignore",
+      "sha256": "23db1934c9dd883405d27d3aa3aabf574d52164e54a94b447f6746bf0c74104f"
+    },
+    {
+      "from": "tests/accounting-ui-model.test.mjs",
+      "to": "archive/saventesting-20261114/tests/accounting-ui-model.test.mjs",
+      "sha256": "084723b88129eba1d0953a3a2a3d61ef875b1fab08b80786b4eb6c07eb829bbf"
+    },
+    {
+      "from": "tests/accounting-setup.test.mjs",
+      "to": "archive/saventesting-20261114/tests/accounting-setup.test.mjs",
+      "sha256": "0821b7444bbccc7ab123639812da3fc63e7c10203a270c705e73d0ac11ce8cfa"
+    },
+    {
+      "from": "tests/design-assets.test.mjs",
+      "to": "archive/saventesting-20261114/tests/design-assets.test.mjs",
+      "sha256": "0fa68bcd2cd3e819e2cc63f005e2fe533dd9f3573d53e5708dcaa1c5e042ea44"
+    },
+    {
+      "from": "tests/design-invoices.test.mjs",
+      "to": "archive/saventesting-20261114/tests/design-invoices.test.mjs",
+      "sha256": "e9e08c86c4fe5fe35c64f5c1b36dbe1403178fe3df84b3a076971ac10ded9d0e"
+    },
+    {
+      "from": "tests/design-library.test.mjs",
+      "to": "archive/saventesting-20261114/tests/design-library.test.mjs",
+      "sha256": "e2668342ae4cada34ff2c8309fdad05a117d804103370b36f2cf7deccfc422eb"
+    },
+    {
+      "from": "tests/frontend-context.test.mjs",
+      "to": "archive/saventesting-20261114/tests/frontend-context.test.mjs",
+      "sha256": "d72a172c3b08e7dfe07b8b230029455b5ca5f253a45bd987fe0763a4a4fce714"
+    },
+    {
+      "from": "tests/frontend-startup.test.mjs",
+      "to": "archive/saventesting-20261114/tests/frontend-startup.test.mjs",
+      "sha256": "ee9c9ae40db9cb45fcf6ecd108abc82bad1fc15bc1b90be2fd8c7ecd813ab7f1"
+    },
+    {
+      "from": "tests/server-preview.test.mjs",
+      "to": "archive/saventesting-20261114/tests/server-preview.test.mjs",
+      "sha256": "d0d072d243369392b726f3c94cfdb8d86e14625c7ac74d37c913af1044314c73"
+    },
+    {
+      "from": "tests/server-preview-image.mjs",
+      "to": "archive/saventesting-20261114/tests/server-preview-image.mjs",
+      "sha256": "0e6234552e3a727be1fcced36efc3bf87a34e07b3af38ffb71eabdd8a76be5f0"
+    }
+  ],
+  "digestFormat": "UTF-8 LF-normalized source"
+}

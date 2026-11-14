@@ -6,13 +6,13 @@ SA7EN (repository: SAVEN), pronounced **seven**, is Economic Systems Consulting'
 
 The [consolidated owner mandate v2.3](docs/sources/SAVEN-mandate-v2.3.md) and [agent handoff](docs/sources/SAVEN-agent-handoff-v2.3.md) supersede conflicts. The full [v2 baseline](docs/sources/SAVEN-mandate-v2.md) retains nonconflicting scope. Read the [current reconciliation](docs/35-native-sqlite-local-first-v2.3.md), [ADRs](docs/07-architecture-decisions.md) and [checkpoint](docs/BUILD_STATE.md) before continuing.
 
-The existing testing app still uses PostgreSQL schema13. Schema14 line invoices/basic taxes/defaults passed source contracts but have not been activated on the server. Preserve this working reference until SQLite equivalence, financial/security reconciliation and authorized migration gates pass. No D1 fallback writer is configured.
+The active app.economicsystems.cc and ops.economicsystems.cc services use native SQLite on the owner server, with Cloudflare DNS/TLS/tunnel only. The retained reference API still uses PostgreSQL schema13. Schema14 line invoices/basic taxes/defaults passed source contracts but have not been activated on the server. Preserve this working reference until SQLite equivalence, financial/security reconciliation and authorized migration gates pass. No D1 fallback writer is configured.
 
 The v2.3 target has exactly two commercial models: SAVEN Cloud and Fully Private, both with native SQLite controls and business databases. D1 and PostgreSQL are not new-code targets. Cloudflare hosting and object storage are replaceable adapters. Offline is a restricted synchronized companion, not another hosting tier. No customer-supplied database can attach to shared SaaS; no accounting-firm or reseller hosting is offered.
 
-## Main testing frontend
+## Archived testing frontend
 
-The [main frontend source](public/index.html) maps the complete catalog. It contains synthetic data, explicit simulations, global search and priority module examples. Specification briefs, interactive drafts, existing partial implementation and owner design approval are separate. It cannot call business APIs; it is not the working ERP or an offline client. Owner approval is still required.
+The frozen [testing frontend source](archive/saventesting-20261114/public/index.html) preserves the earlier synthetic catalog. Its existing deployment is retained; it is not an actively developed application. Working software is public/live and src/local. It contains synthetic data, explicit simulations, global search and priority module examples. Specification briefs, interactive drafts, existing partial implementation and owner design approval are separate. It cannot call business APIs; it is not the working ERP or an offline client. Owner approval is still required.
 
 Run the frontend locally with Node24:
 

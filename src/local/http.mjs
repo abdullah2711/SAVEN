@@ -57,7 +57,7 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/assistant'&&method==='POST')response=json(await runtime.assistant(tenant,actor,company,branch,input));
     else fail(404,'Customer endpoint unavailable');
    }
-  }else if(request.method==='GET'&&['/','/app.js','/administration.js','/trade.js','/style.css','/logo.svg'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html','Cache-Control':'no-store'}});}
+  }else if(request.method==='GET'&&['/','/app.js','/administration.js','/trade.js','/workspace.js','/icons.js','/style.css','/logo.svg'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.svg')?'image/svg+xml':'text/html','Cache-Control':'no-store'}});}
   else fail(404,'Not found');
   if(url.pathname.startsWith('/api/')&&!['/api/login','/api/logout'].includes(url.pathname))runtime.session(token,realm);
  }catch(error){response=json({error:error.status?error.message:'Request refused; check your scope, values and current operation state.'},error.status??422);}

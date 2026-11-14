@@ -40,3 +40,7 @@
 - Keep the catalog JSON, feature library and explicit generator records consistent.
 - Record unresolved decisions, unsupported depth and required evidence honestly.
 
+
+## Owner continuation and interface correction - 14 November 2026
+
+The owner authorized synchronizing main with the reviewed deployed version while unfinished work continues on testing-1. The synthetic saventesting frontend is now frozen under archive/saventesting-20261114; preserve its existing deployed container/DNS/tunnel route, but do not regenerate its catalog or build it in active CI. Maintain the operational frontend in public/live using the approved reference visual language, real API data, focused registers/editors and accessible light/dark layouts. Keep all requirements active in docs/contracts. Current source on main must correspond to reviewed deployed behavior, not unverified ongoing features.

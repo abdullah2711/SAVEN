@@ -16,8 +16,6 @@ def build():
    screens.append(dict(id=f"{mid}/{r['id']}",requirement=r['id'],module=mid,title=r['title'],route=f"{'/operator/' if mid=='operator' else '/subscriptions/' if mid=='commerce' else '/'}#module={mid}&screen={r['id']}",designStatus='interactive draft' if INTERACTIVE.get(mid)==r['id'] else 'specification brief',backendStatus=r['status'],contract=f"design.{mid}.{r['id'].lower()}.v1",approval='NOT_APPROVED',fieldsContract='module editor plus requirement-specific scope; see design brief',states=['sample','empty','loading','denied','validation','stale','review','offline','conflict','suspended','queued','unsaved','partial-failure'],permissionContract='authority.v1',financialContract='posting.v1'))
  covered={s['requirement'] for s in screens};assert covered=={r['id'] for r in rows}
  result=dict(version=1,governingMandate='v2.3',dataMode='SYNTHETIC_DESIGN_ONLY',ownerApproval=None,modules=modules,requirements=[{k:(r[k].replace('SAVEN','SA7EN') if isinstance(r[k],str) else r[k]) for k in ['id','family','title','supported_scope','acceptance','status']} for r in rows],screens=[{k:s[k] for k in ['requirement','module','contract','designStatus']} for s in screens],workflowContracts=contracts())
- target=ROOT/'public/ui';target.mkdir(parents=True,exist_ok=True)
- (target/'catalog.js').write_text('export const catalog='+json.dumps(result,ensure_ascii=True,separators=(',',':'))+';\n',encoding='utf-8')
  (ROOT/'docs/workflow-contracts-v1.json').write_text(json.dumps(contracts(),indent=2)+'\n',encoding='utf-8')
  (ROOT/'docs/ui-screen-inventory.json').write_text(json.dumps(dict(version=1,coverage=len(covered),screens=screens),indent=2)+'\n',encoding='utf-8')
  objects=[]

@@ -7,7 +7,7 @@ const port=Number(process.env.PREVIEW_PORT??8792);
 if(!Number.isInteger(port)||port<1024||port>65535)throw Error('Invalid preview port');
 const handle=createServerPreview({origins,forward:request=>fetch(request,{signal:AbortSignal.timeout(100000)}),readAsset:async request=>{
  const pathname=new URL(request.url).pathname,file=pathname==='/'?'/index.html':pathname;
- const bytes=await readFile(new URL('../public'+file,import.meta.url));
+ const bytes=await readFile(new URL('../archive/saventesting-20261114/public'+file,import.meta.url));
  return new Response(request.method==='HEAD'?null:bytes,{headers:{'Content-Type':file.endsWith('.js')?'text/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':file.endsWith('.svg')?'image/svg+xml':'text/html; charset=utf-8'}});
 }});
 const server=http.createServer(async(req,res)=>{try{
