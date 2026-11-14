@@ -303,7 +303,7 @@ Dependencies identify foundation prerequisites; complete domain dependencies mus
 | --- | --- | --- |
 | OPS-001 | Application portal: Package selection company details bank-transfer evidence and status | Submission or screenshot alone cannot activate an app account |
 | OPS-002 | Verification and provisioning: Operator review receipt entitlement and nominated company admin | Provisioning retries cannot create duplicate companies or entitlements |
-| OPS-003 | Operator administration: Separate administration origin operator.saven.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.saven.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing | Ordinary operator role cannot silently browse confidential business data |
+| OPS-003 | Operator administration: Separate administration origin ops.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing | Ordinary operator role cannot silently browse confidential business data |
 | OPS-004 | Subscription lifecycle: Renewal due notices grace restrictions and read-export policy | Expiry does not erase ledger attachments or audit history |
 | OPS-005 | Backups and restoration: Database objects configuration identity and work queues | Rehearsal demonstrates measured recovery and reconciled totals |
 | OPS-006 | Technical telemetry: Structured redacted logs metrics tracing alerts and error queues | Credentials and unnecessary payroll content never appear in routine logs |

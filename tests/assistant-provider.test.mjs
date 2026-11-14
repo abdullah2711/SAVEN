@@ -2,6 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ModelProvider} from '../src/assistant-provider.mjs';
 const valid={reply:'Review the proposed document.',tool:'none',arguments:'',document:'',configuration:'',page:'sales',citations:['workspace']};
+
+test('local inference uses its configured resource budget and rejects oversized context before contacting the model',async()=>{
+ let sent;
+ const provider=new ModelProvider({url:'http://127.0.0.1:11434',contextTokens:8192,outputTokens:512,fetcher:async(url,options)=>{sent=JSON.parse(options.body);return new Response(JSON.stringify({message:{content:JSON.stringify(valid)}}));}});
+ await provider.complete([{role:'user',content:'Read these authorized facts.'}]);
+ assert.equal(sent.options.num_ctx,8192);assert.equal(sent.options.num_predict,512);assert.equal(sent.think,false);assert.equal(sent.keep_alive,0);
+ sent=null;await assert.rejects(()=>provider.complete([{role:'user',content:'x'.repeat(9000)}]),e=>e.code==='AI_CONTEXT_LIMIT');assert.equal(sent,null);
+ assert.throws(()=>new ModelProvider({url:'http://127.0.0.1:11434',contextTokens:100}),e=>e.code==='AI_CONFIGURATION');
+});
 test('model adapter requires structured output, bounds generation and keeps the key server-side',async()=>{
  let sent;const provider=new ModelProvider({url:'https://provider.example/v1',protocol:'openai-compatible',model:'approved-model',apiKey:'synthetic-provider-secret',fetcher:async(url,options)=>{sent={url,options,payload:JSON.parse(options.body)};return new Response(JSON.stringify({choices:[{message:{content:JSON.stringify(valid)}}],usage:{prompt_tokens:10,completion_tokens:20}}));}});
  const result=await provider.complete([{role:'user',content:'Prepare an entry'}]);assert.equal(sent.payload.response_format.json_schema.strict,true);assert.equal(sent.payload.max_completion_tokens,1100);assert.equal(sent.options.headers.authorization,'Bearer synthetic-provider-secret');assert.equal(result.inputTokens,10);assert.equal(JSON.stringify(result).includes('synthetic-provider-secret'),false);

@@ -1,6 +1,7 @@
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 WORKDIR /app
 ENV NODE_ENV=production BIND_HOST=0.0.0.0 PORT=8790 SAVEN_DATA_DIR=/data
+COPY package.json ./
 COPY src ./src
 COPY scripts ./scripts
 COPY public/live ./public/live

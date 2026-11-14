@@ -1,0 +1,13 @@
+[Unit]
+Description=SA7EN native candidate backup and independent restore
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/saven-native-staging/backup.env
+ExecStart=/usr/local/sbin/saven-native-backup
+UMask=0077
+TimeoutStartSec=300
+Nice=10
+IOSchedulingClass=idle

@@ -16,7 +16,7 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
   else if(url.pathname.startsWith('/api/')){
    let session;try{session=runtime.session(token,realm);}catch{fail(401,'Sign in required');}if(writing)try{runtime.csrf(session,request.headers.get('x-csrf-token'));}catch{fail(403,'CSRF verification failed');}
    const actor=session.user_id,method=request.method,path=url.pathname;
-   if(path==='/api/session'&&method==='GET')response=json({email:session.email,realm,businesses:realm==='app'?runtime.businesses(actor):undefined,clientOnboarding:'NOT_RELEASED'});
+   if(path==='/api/session'&&method==='GET')response=json({email:session.email,userId:actor,realm,businesses:realm==='app'?runtime.businesses(actor):undefined,clientOnboarding:'NOT_RELEASED'});
    else if(path==='/api/logout'&&method==='POST'){runtime.logout(token);response=json({ok:true});response.headers.set('Set-Cookie',cookie(''));}
    else if(realm==='operator'){
     if(path==='/api/operator'&&method==='GET')response=json(runtime.operatorState(actor));
@@ -38,6 +38,8 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
     else if(path==='/api/inventory'&&method==='GET')response=json(runtime.inventory(tenant,actor,options));
     else if(path==='/api/inventory/masters'&&method==='POST')response=json(runtime.configureInventory(tenant,actor,input),201);
     else if(path==='/api/journals'&&method==='POST')response=json(runtime.postJournal(tenant,actor,commandId,input),201);
+    else if(path==='/api/reversals/preview'&&method==='POST')response=json(runtime.previewReversal(tenant,actor,input));
+    else if(path==='/api/reversals'&&method==='POST')response=json(runtime.reverseJournal(tenant,actor,commandId,input),201);
     else if(path==='/api/journals/prepare'&&method==='POST')response=json(runtime.prepareJournal(tenant,actor,commandId,input),201);
     else if(path==='/api/execute'&&method==='POST'){if(Object.keys(input).some(k=>k!=='commandId'))fail(400,'Unknown execution fields');response=json(runtime.execute(tenant,actor,input.commandId));}
     else if(path==='/api/evidence'&&method==='POST')response=json(await runtime.uploadEvidence(tenant,actor,url.searchParams.get('command'),decodeURIComponent(request.headers.get('x-file-name')??''),await fileBody(request)),201);
@@ -48,6 +50,7 @@ export function createNativeHandler(runtime,{appOrigin,operatorOrigin,publicRoot
    }
   }else if(request.method==='GET'&&['/','/app.js','/style.css'].includes(url.pathname)){const file=url.pathname==='/'?'index.html':url.pathname.slice(1);response=new Response(await readFile(resolve(publicRoot,file)),{headers:{'Content-Type':file.endsWith('.js')?'text/javascript':file.endsWith('.css')?'text/css':'text/html','Cache-Control':'no-store'}});}
   else fail(404,'Not found');
+  if(url.pathname.startsWith('/api/')&&!['/api/login','/api/logout'].includes(url.pathname))runtime.session(token,realm);
  }catch(error){response=json({error:error.status?error.message:'Request refused; check your scope, values and current operation state.'},error.status??422);}
  response.headers.set('X-Content-Type-Options','nosniff');response.headers.set('Referrer-Policy','no-referrer');response.headers.set('X-Frame-Options','DENY');response.headers.set('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");return response;
  };

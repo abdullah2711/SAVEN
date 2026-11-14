@@ -38,3 +38,7 @@ Projects and CRM are separate modules. PRJ-001 maps to CRM relationship/opportun
 Complete UI/UX module by module before expanding backend application logic, workers or infrastructure. Existing native proof code and financial regressions remain available; no new backend feature batch is part of this UI increment. The detailed next gates are in docs/40-frontend-module-completion-plan.md. Menu coverage and synthetic examples are not complete modules or approval.
 
 Offline implementation follows main infrastructure. It must not be forgotten during design: every eligible workflow retains versioned commands, operation IDs, device scope, entitlement/policy bounds, pending versus posted status, retained evidence, conflict resolution and duplicate-free financial synchronization. Offline is a companion, not a third hosting model or separate ERP fork. Its UI currently indicates a later phase; no installed offline app or synchronization capability is claimed.
+
+## Superseding short-hostname revision - 14 November 2026
+
+The owner now selects https://app.economicsystems.cc and https://ops.economicsystems.cc after nested-domain TLS issues. These supersede the Cloud targets in the earlier table; separate hostname/session/authorization requirements remain. See docs43 and contracts/origins-v1.json.

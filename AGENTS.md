@@ -19,6 +19,8 @@
 
 ## Current project stage
 
+- The 14 November TLS/domain revision selects `https://app.economicsystems.cc` and `https://ops.economicsystems.cc`. These supersede the nested Cloud application/operator hostnames. Preserve separate exact origins and host-only realm sessions. See docs/43-native-domain-and-recovery-continuation.md for observed deployment and remaining release gates.
+
 - The owner authorized construction on 11 November 2026. Read docs/BUILD_STATE.md, docs/11-additional-input.md and docs/12-foundation.md before continuing implementation.
 - Requirements in this baseline are specified, not implemented. Do not describe prototype behaviour or planning checks as production functionality.
 - Foundation code now exists. Catalog items marked in progress remain partial until all supported-scope and release evidence passes. Keep build checkpoints current after interruptions and handoffs.

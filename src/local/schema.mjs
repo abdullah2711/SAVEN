@@ -51,6 +51,7 @@ CREATE TABLE operator_staff(user_id TEXT PRIMARY KEY REFERENCES users(id),active
 CREATE TABLE operator_scopes(user_id TEXT NOT NULL REFERENCES operator_staff(user_id),scope TEXT NOT NULL CHECK(scope IN('commercial.read','commercial.manage','fleet.read','staff.manage')),PRIMARY KEY(user_id,scope)) STRICT;
 `);
 jobs.push(`CREATE TABLE ai_requests(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,tenant_id TEXT NOT NULL,company TEXT NOT NULL,question_digest TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('RUNNING','COMPLETED','FAILED')),created_at INTEGER NOT NULL,model TEXT,input_tokens INTEGER,output_tokens INTEGER) STRICT;`);
+fleet.push(`CREATE TABLE migration_events(id INTEGER PRIMARY KEY,tenant_id TEXT NOT NULL,from_version INTEGER NOT NULL,to_version INTEGER NOT NULL,state TEXT NOT NULL CHECK(state IN('SUCCEEDED','QUARANTINED')),detail TEXT NOT NULL,happened_at INTEGER NOT NULL) STRICT;`);
 commerce.push(`
 CREATE TABLE subscriber_accounts(tenant_id TEXT PRIMARY KEY,name TEXT NOT NULL,owner_id TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('PROVISIONING','ACTIVE','QUARANTINED')),created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE commercial_audit(id INTEGER PRIMARY KEY,actor TEXT NOT NULL,event TEXT NOT NULL,detail TEXT NOT NULL,happened_at INTEGER NOT NULL) STRICT;
@@ -92,5 +93,18 @@ CREATE TRIGGER inventory_control_source BEFORE UPDATE OF state ON command_inbox 
  SELECT CASE WHEN EXISTS(SELECT 1 FROM stock_operations s WHERE s.command_id=NEW.id AND s.kind='transfer') AND EXISTS(SELECT 1 FROM journals WHERE id=NEW.id) THEN RAISE(ABORT,'Warehouse transfer cannot create a general ledger journal') END;
  SELECT CASE WHEN EXISTS(SELECT 1 FROM stock_operations s WHERE s.command_id=NEW.id AND s.kind<>'transfer' AND (SELECT coalesce(sum(quantity_delta),0) FROM stock_movements WHERE command_id=NEW.id)=0) THEN RAISE(ABORT,'Stock source requires its physical movement') END;
  SELECT CASE WHEN EXISTS(SELECT 1 FROM stock_operations s JOIN stock_items i ON i.company=json_extract(s.payload,'$.company') AND i.id=json_extract(s.payload,'$.item') WHERE s.command_id=NEW.id AND s.kind<>'transfer' AND (SELECT coalesce(sum(l.debit-l.credit),0) FROM journal_lines l WHERE l.journal_id=NEW.id AND l.account=i.inventory_account)<>(SELECT coalesce(sum(value_delta),0) FROM stock_movements WHERE command_id=NEW.id)) THEN RAISE(ABORT,'Stock value and inventory control journal differ') END;
+END;
+`);
+tenant.push(`
+CREATE TABLE journal_corrections(command_id TEXT PRIMARY KEY REFERENCES command_inbox(id),original_id TEXT NOT NULL UNIQUE REFERENCES journals(id),reason TEXT NOT NULL) STRICT;
+CREATE TRIGGER correction_no_update BEFORE UPDATE ON journal_corrections BEGIN SELECT RAISE(ABORT,'Correction link is immutable'); END;
+CREATE TRIGGER correction_no_delete BEFORE DELETE ON journal_corrections BEGIN SELECT RAISE(ABORT,'Correction link is retained'); END;
+CREATE TRIGGER correction_valid_source BEFORE INSERT ON journal_corrections BEGIN
+ SELECT CASE WHEN (SELECT state FROM command_inbox WHERE id=NEW.command_id)<>'ACCEPTED_PENDING' THEN RAISE(ABORT,'Correction metadata must be accepted before posting') END;
+ SELECT CASE WHEN (SELECT state FROM command_inbox WHERE id=NEW.original_id)<>'POSTED' OR EXISTS(SELECT 1 FROM stock_operations WHERE command_id=NEW.original_id) THEN RAISE(ABORT,'Use the original operational correction workflow') END;
+ SELECT CASE WHEN (SELECT json_extract(payload,'$.company') FROM command_inbox WHERE id=NEW.command_id)<>(SELECT company FROM journals WHERE id=NEW.original_id) OR (SELECT json_extract(payload,'$.branch') FROM command_inbox WHERE id=NEW.command_id)<>(SELECT branch FROM journals WHERE id=NEW.original_id) OR (SELECT json_extract(payload,'$.date') FROM command_inbox WHERE id=NEW.command_id)<(SELECT posting_date FROM journals WHERE id=NEW.original_id) THEN RAISE(ABORT,'Correction must retain its original company/branch and cannot precede its source date') END;
+END;
+CREATE TRIGGER correction_exact_reversal BEFORE UPDATE OF state ON command_inbox WHEN NEW.state='POSTED' AND OLD.state<>'POSTED' AND EXISTS(SELECT 1 FROM journal_corrections WHERE command_id=NEW.id) BEGIN
+ SELECT CASE WHEN (SELECT count(*) FROM journal_lines WHERE journal_id=NEW.id)<>(SELECT count(*) FROM journal_lines WHERE journal_id=(SELECT original_id FROM journal_corrections WHERE command_id=NEW.id)) OR EXISTS(SELECT 1 FROM journal_lines r LEFT JOIN journal_lines o ON o.journal_id=(SELECT original_id FROM journal_corrections WHERE command_id=NEW.id) AND o.line_no=r.line_no WHERE r.journal_id=NEW.id AND (o.line_no IS NULL OR r.account<>o.account OR r.debit<>o.credit OR r.credit<>o.debit)) THEN RAISE(ABORT,'Correction must exactly reverse its immutable source') END;
 END;
 `);

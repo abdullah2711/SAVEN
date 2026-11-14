@@ -24,6 +24,6 @@ OVERRIDES.update({
  'UX-007':'Complete UI and UX module by module before backend feature expansion; coherent registers documents configuration evidence states exports and accessibility; screen coverage is not completion',
  'UX-009':'New frontend at main testing root replaces old public UI while retained financial source/data stay intact; synthetic states and local sample drafts cannot masquerade as actual posting',
  'PRJ-001':'Separate CRM module for contacts leads activities opportunities and explicit quote/project handoff; project delivery tasks time budgets and billing remain in Projects',
- 'OPS-003':'Separate administration origin operator.saven.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.saven.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing',
+ 'OPS-003':'Separate administration origin ops.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing',
  'OPS-018':'Offline companion implementation follows main infrastructure while frontend and backend contracts retain versioned canonical commands device scope policy entitlement bounds immutable operation IDs pending evidence conflicts and duplicate-free bidirectional synchronization'
 })

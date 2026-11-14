@@ -3668,7 +3668,7 @@
       "id": "OPS-003",
       "family": "Portals subscription and operations",
       "title": "Operator administration",
-      "supported_scope": "Separate administration origin operator.saven.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.saven.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing",
+      "supported_scope": "Separate administration origin ops.economicsystems.cc hosts commercial subscription management and separately authorized platform operations; customer app remains app.economicsystems.cc; private uses distinct configured app/admin origins without vendor issuer/global billing",
       "acceptance": "Ordinary operator role cannot silently browse confidential business data",
       "commercial_release": "required",
       "design_status": "brief mapped",

@@ -4,8 +4,8 @@
   "displayBrand": "SA7EN",
   "pronunciation": "seven",
   "cloud": {
-    "customerApplication": "https://app.saven.economicsystems.cc",
-    "administration": "https://operator.saven.economicsystems.cc",
+    "customerApplication": "https://app.economicsystems.cc",
+    "administration": "https://ops.economicsystems.cc",
     "administrationSections": [
       "subscriptions-onboarding-businesses-billing",
       "platform-operator-operations"
