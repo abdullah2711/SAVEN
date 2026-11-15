@@ -25,7 +25,7 @@ Seventeen project-local skills from all four requested repositories and pinned o
 
 ## Verification of current source
 
-All 145 Node tests pass, including the removed-draft direct edit/submit/cancel regression and three provider configuration/request/failure contracts. All 143 JavaScript files parse. Generators retain 269 specified requirements. Skill validation checks 17 entry points, four pinned sources, licenses, local guide links and 271 file checksums. Planning/checklist validation passes. Final commit-specific CI is to be inspected after publication; do not equate the first checkpoint's runs with the follow-up commit.
+All 145 Node tests pass, including the removed-draft direct edit/submit/cancel regression and three provider configuration/request/failure contracts. All 144 JavaScript files parse. Generators retain 269 specified requirements. Skill validation checks 17 entry points, four pinned sources, licenses, local guide links and 271 file checksums. Planning/checklist validation passes. Tested follow-up source e348422410d09d5556b3262d965f55bb80a44b1a passed Native SQLite43660392119 and Verify SAVEN43660392085. The subsequent portable-preview/evidence checkpoint does not deploy anything; inspect its own CI as usual. Its new launcher was syntax checked and returned HTTP200 from its fresh isolated fixture.
 
 An isolated synthetic browser confirmed Accounting dashboard, register/form separation, submitted and saved-draft register rows, desktop rail collapse and standalone Approvals. Follow-up desktop/320px observation confirms grouped amounts, no split metric text, icon Back/Forward controls, correct Open/Close drawer labels and Escape from a sidebar control returning focus to the toggle. No real client records were touched. Full keyboard/focus trapping, print, RTL, all review transitions and complete accessibility audits remain open.
 
@@ -49,6 +49,11 @@ The installed agent-browser 0.43.0 CLI serves its core guide and reports its ver
 
 Use a real git clone for CLI; this Work Mode directory has no .git. Source changes are published through Git Data APIs with an expected-head lease. Preserve unrelated local text differences in docs08 and docs10; they are not part of this change and must not overwrite remote source. CRLF-only local differences are not meaningful changes. Never upload var/, node_modules, databases, backups, credentials or raw private feedback.
 
-Server access must be obtained securely. An existing cached Cloudflare Access session previously worked via ssh.economicsystems.cc; temporary Pinggy endpoints expire. Do not assume the last chat endpoint is alive. Passwords and API keys are deliberately absent. The SSH helper in ignored var/ is not a portable tool contract. Use standard authorized SSH in CLI and verify the host key. Deployment/root access is only needed after local/source gates.
+Server access must be obtained securely. An existing cached Cloudflare Access session previously worked via ssh.economicsystems.cc; temporary Pinggy endpoints expire. Do not assume the last chat endpoint is alive. Passwords and API keys are deliberately absent. The SSH helper in ignored var/ is not a portable tool contract. Historical local PostgreSQL001 migration differences are also excluded from these commits; applied SQL bytes on GitHub are unchanged. Use standard authorized SSH in CLI and verify the host key. Deployment/root access is only needed after local/source gates.
 
 For ordinary continuation use docs51 and the checklist; no hidden chat state, private memory, Work Mode plugin or another account's token is required. Before acting after interruption, inspect git status, fresh branch heads, CI and live source separately.
+
+
+## One-command local UI for CLI continuation
+
+Run npm ci --ignore-scripts, then npm run native:preview. Open http://127.0.0.1:4180/#Accounting/Overview and sign in with public synthetic fixture credentials preview@example.invalid / Preview-only-password-2026. scripts/native-ui-preview.mjs creates its own OS-temp business, loopback-only server and sample journals/trade/stock; no production data, private key or hosted AI is connected. Ctrl+C closes and removes its own fixture. The CLI engineer can reproduce the real UI without SSH or copying ignored files from this workstation. Do not confuse this QA setup with deployment or client onboarding.

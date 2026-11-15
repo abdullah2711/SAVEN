@@ -6,6 +6,8 @@ SA7EN (repository: SAVEN), pronounced **seven**, is Economic Systems Consulting'
 
 Start with [CURRENT_HANDOFF.md](docs/CURRENT_HANDOFF.md), the [CLI/engineer process](docs/51-codex-cli-and-engineer-operating-model.md), [latest scope revision](docs/50-accounting-dashboard-and-mvp1-revision.md) and [skill/AI configuration](docs/52-project-skills-and-ai-configuration.md). The current checkpoint contains unfinished Accounting dashboard/register work and project-local skills; it is not a deployed or client-ready MVP. Main represents the prior reviewed live release. Model keys and deployment credentials are deliberately excluded.
 
+For a fresh local UI with disposable synthetic books, run `npm run native:preview`; the CLI guide provides the public fixture sign-in. It uses a fresh OS-temp directory and never connects production or hosted AI.
+
 ## Governing specification and current evidence
 
 The [consolidated owner mandate v2.3](docs/sources/SAVEN-mandate-v2.3.md) and [agent handoff](docs/sources/SAVEN-agent-handoff-v2.3.md) supersede conflicts. The full [v2 baseline](docs/sources/SAVEN-mandate-v2.md) retains nonconflicting scope. Read the [current reconciliation](docs/35-native-sqlite-local-first-v2.3.md), [ADRs](docs/07-architecture-decisions.md) and [checkpoint](docs/BUILD_STATE.md) before continuing.

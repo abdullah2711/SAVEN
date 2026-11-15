@@ -19,7 +19,7 @@
     "bothPassed": true
   },
   "currentTests": 145,
-  "currentParses": 143,
+  "currentParses": 144,
   "requirements": 269,
   "checklistActions": 204,
   "skillFiles": 271,
@@ -31,5 +31,18 @@
     "privacySettingsChanged": false,
     "paidFallback": false
   },
-  "currentCi": "Inspect exact published follow-up commit"
+  "currentCi": "Inspect latest portable-preview/evidence commit",
+  "portableUiPreview": "npm run native:preview",
+  "testedFollowUp": "e348422410d09d5556b3262d965f55bb80a44b1a",
+  "followUpVerifiedFiles": 24,
+  "followUpCi": {
+    "native": 43660392119,
+    "verify": 43660392085,
+    "bothPassed": true
+  },
+  "portableUiPreviewVerified": {
+    "syntax": true,
+    "freshSyntheticRootHttp": 200,
+    "productionConnected": false
+  }
 }

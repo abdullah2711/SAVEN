@@ -34,9 +34,9 @@ Verify the exact model's current availability, structured-output compatibility a
 
 All AI requests remain bounded and scoped; models propose and never bypass business authority, approvals, entitlements, locks or posting. Never send whole databases, credentials or private attachments without their authorized data path. Use synthetic data for the initial live probe. The latest owner selection permits this hosted inference option while preserving local core runtime/data storage and the Fully Private/local option. Update runtime-hosting-v1.json accordingly only as the integration is actually implemented.
 
-## Next installation checks
+## Installation continuation
 
-Verify every skill guide's frontmatter and referenced files, check upstream licenses/provenance, run CLI --version/help without triggering a framework adoption, and document browser binary prerequisites. Inspect rather than execute unknown upstream scripts. Keep the guides committed with their assets so no chat memory or account-specific plugin is needed for continuation.
+Entry points, local guide references, licenses, source pins and file hashes are validated. CLI versions and read-only documentation commands were verified. Chromium provisioning, matching Astryx Core availability and a full design/a11y review remain separate follow-up work. Keep guides committed with their assets so no chat memory or account-specific plugin is needed for continuation.
 
 
 ## Observed provider gate and official sources
