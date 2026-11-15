@@ -243,7 +243,7 @@ Local diagnostic disclosure: in the Windows `embedded-postgres` emulation, `veri
 
 - The local disposable cluster was stopped; loopback port 55432 is closed.
 - The temporary data directory `var/pg-test/data-pivot002d-*` and the private credential file were removed.
-- No `saven_pivot_*` roles or databases remained after the gate; the fixture's pre-flight/cleanup checks reported `roles []` and `databases []` before shutdown.
+- The fixture's own cleanup ran as part of the passing gate (a cleanup failure would be aggregated into the test failure), and the entire disposable cluster data directory was then deleted. No fixture role or database persists. An explicit post-gate `roles []`/`databases []` query was not rerun in this session because the cluster had already stopped; the PIVOT-002c local run recorded that empty result for its identical fixture.
 - No owner-server, SSH, production or shared-cluster access was used.
 - Local evidence logs remain outside the repository under `context/` (`pivot-002d-gate.log`, `pivot-002d-no-pg.log`, `pivot-002d-fail-closed.log`, `pivot-002d-workflow-local.log`, `pivot-002d-clean-replay.log`, `pivot-002d-exports-error.log`). No secret is stored in them.
 
