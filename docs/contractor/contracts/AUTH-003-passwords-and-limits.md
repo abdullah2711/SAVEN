@@ -1,0 +1,7 @@
+TASK: AUTH-003 ? Add versioned password policy/KDF adapter and durable non-enumerating login/reset throttles.
+TOUCH: src/auth/password-policy.mjs; src/auth/rate-limit.mjs; src/auth/routes.mjs; src/auth/README.md; tests/auth-003-passwords.test.mjs
+FORBIDDEN: All paths outside TOUCH; in particular src/local, postgresql, archive, existing application entry points, production data and credentials.
+DONE WHEN: node scripts/check.mjs && node --test tests/auth-003-passwords.test.mjs
+INVARIANTS: Argon2id preferred and compatible bounded scrypt retained; no bcrypt/plaintext; timing-safe dummy verification; bounded KDF/input; trusted-ingress rate identity; deterministic configurable lockout; no secret logging. No direct SQL authority from client ids; tenant/user context from verified server session only; no runtime superuser/BYPASSRLS/table ownership; append-only audit; no new hardcoded growing domains or cross-module concrete coupling; SQLite/reference code, applied migrations and production unchanged.
+PATTERN: src/passwords.mjs; src/local/runtime.mjs login
+NOTES: ADR03 Passwords; owner AUTH-003. Depends AUTH-001/002; fixture8 failures/15 minutes is not an approved production constant. /v1/auth/login and /v1/auth/forgot-password share audited rate policy; do not send reset mail before AUTH-005. Concurrent failures, unknown user, forwarded-header spoof and provider errors must not bypass limits.

@@ -1,0 +1,7 @@
+TASK: AUTH-010 ? Document auth threat model, lifecycle, recovery and allowed versus ADR-gated changes.
+TOUCH: docs/security/auth.md; docs/contractor/CONVENTIONS.md; src/auth/README.md; src/db/README.md
+FORBIDDEN: All paths outside TOUCH; in particular src/local, postgresql, archive, existing application entry points, production data and credentials.
+DONE WHEN: node scripts/check.mjs && git diff --check -- docs/security/auth.md docs/contractor/CONVENTIONS.md src/auth/README.md src/db/README.md
+INVARIANTS: Preserve verbatim owner mandate/prohibitions in CONVENTIONS; no invented verification/deployment evidence; no secrets, bypass account or unsigned completed recovery drill; specify identity/tenant/MFA/session/control boundaries and extension points. No direct SQL authority from client ids; tenant/user context from verified server session only; no runtime superuser/BYPASSRLS/table ownership; append-only audit; no new hardcoded growing domains or cross-module concrete coupling; SQLite/reference code, applied migrations and production unchanged.
+PATTERN: docs/pivot-notes/03-adr-auth.md; docs/contractor/CONVENTIONS.md
+NOTES: Owner AUTH-010; ADR03 Acceptance/Extension points. Depends AUTH-001..009 before acceptance. Cover enumeration/CSRF/BOLA/session theft/replay/IdP compromise/pool leakage, credential incidents, admin MFA and Private recovery, Access policy break-glass, session ceilings, and how future constraints may change. Documentation diff cleanliness is not a security approval; engineer reviews content.

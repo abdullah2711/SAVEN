@@ -1,0 +1,7 @@
+TASK: AUTH-007 ? Implement Cloud operator Access JWT validation and scoped local subject mapping without local Cloud operator passwords.
+TOUCH: src/auth/access.mjs; src/auth/routes.mjs; src/auth/README.md; db/postgres/06-operator-identity.sql; tests/auth-007-access.test.mjs
+FORBIDDEN: All paths outside TOUCH; in particular src/local, postgresql, archive, existing application entry points, production data and credentials.
+DONE WHEN: node scripts/check.mjs && node --test tests/auth-007-access.test.mjs
+INVARIANTS: Fixed trusted issuer/JWKS/algorithm/audience/time; active authorized subject plus MFA-assurance policy; no attacker-directed key fetch; no local Cloud operator password/TOTP; no new universal support access; Private local auth remains independent. No direct SQL authority from client ids; tenant/user context from verified server session only; no runtime superuser/BYPASSRLS/table ownership; append-only audit; no new hardcoded growing domains or cross-module concrete coupling; SQLite/reference code, applied migrations and production unchanged.
+PATTERN: src/local/runtime.mjs requireOperator; src/local/transport.mjs
+NOTES: ADR03 Operator identity; owner AUTH-007. Depends AUTH-001/002/006. Test valid assertion, expired/missing/wrong-audience/issuer/subject, key rollover fail-closed, captured-token misuse and consumed exchange nonce replay. Ordinary unexpired bearer reuse is legitimate; no impossible replay-proof claim. No real Access policy/DNS/tunnel changes; use mocked keys/assertions. Operator reads still require PIVOT-007 grants/audit.

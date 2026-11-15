@@ -1,0 +1,7 @@
+TASK: AUTH-002 ? Implement versioned PG login/logout/me and hash-at-rest session adapter without changing active SQLite routes.
+TOUCH: src/auth/server.mjs; src/auth/session-store.mjs; src/auth/routes.mjs; src/auth/README.md; tests/auth-002-sessions.test.mjs
+FORBIDDEN: All paths outside TOUCH; in particular src/local, postgresql, archive, existing application entry points, production data and credentials.
+DONE WHEN: node scripts/check.mjs && node --test tests/auth-002-sessions.test.mjs
+INVARIANTS: Random opaque token; SHA-256-only persistence;30-day idle/90-day absolute limits; rotate/revoke with epochs; host-only secure realm cookies and origin/CSRF; no cookie-only cached authority. No direct SQL authority from client ids; tenant/user context from verified server session only; no runtime superuser/BYPASSRLS/table ownership; append-only audit; no new hardcoded growing domains or cross-module concrete coupling; SQLite/reference code, applied migrations and production unchanged.
+PATTERN: src/local/runtime.mjs login/session/logout; src/local/http.mjs
+NOTES: ADR03 Library/Sessions; owner AUTH-002. Depends AUTH-001. New versioned routes under /v1/auth with documented /auth aliases only if required; do not remove existing /api routes. Prove library hooks/adapter keep tokens hash-only across create/read/refresh/revoke; expired/disabled/wrong-realm identities fail. README must document extension points.
