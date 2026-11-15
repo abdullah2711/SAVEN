@@ -249,4 +249,3 @@ No plugin, connector, provider or profile was enabled; pins were not changed.
 - Questions: none outstanding. The review settled the tenant-FK deferral, the `SAVEN_PIVOT_TEST_CLUSTER` opt-in and the README ownership. The README section added here is the serialized AUTH edit; PIVOT-003-R1 appends its tenant section after it.
 - Deviations: `db/postgres/migrations/` is introduced as the documented additive-correction location, exactly as the review's PATTERN and TOUCH specify; the original `05` bytes are untouched. One draft predicate was corrected during this session after its own regression case proved it still admitted a null key version; the failure and fix are described above rather than hidden.
 - Cleanup: the disposable cluster was stopped and its data directory deleted after the gate; loopback port 55438 is closed; post-gate query reported no `saven_auth_%` roles and no `saven_auth_%` databases. Evidence logs remain in git-ignored `var/`.
-
