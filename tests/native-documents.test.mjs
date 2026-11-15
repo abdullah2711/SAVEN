@@ -86,3 +86,14 @@ test('failure after draft financial effects keeps its accepted number and retry 
  r.engine.afterFinancialWrite=()=>{};assert.equal(r.execute('alpha',owner,'faulted').state,'POSTED');assert.equal(r.execute('alpha',owner,'faulted').replayed,true);
  assert.equal(db.prepare("SELECT number FROM document_numbers WHERE id='faulted'").get().number,'JRN-000001');assert.equal(db.prepare("SELECT next_number FROM document_sequences WHERE kind='JRN'").get().next_number,2);
 });
+
+test('journal register unifies saved cancelled pending and submitted sources without changing the GL',async t=>{
+ const {r,owner,db}=await setup(t);r.saveJournalDraft('alpha',owner,{id:'saved',revision:0,payload:payload()});r.saveJournalDraft('alpha',owner,{id:'cancelled',revision:0,payload:payload()});r.cancelJournalDraft('alpha',owner,{id:'cancelled',revision:1});r.postJournal('alpha',owner,'posted',payload());
+ const rows=r.journalRegister('alpha',owner,'co','main').rows;assert.equal(rows.find(x=>x.id==='saved').displayState,'Draft');assert.equal(rows.find(x=>x.id==='cancelled').displayState,'Cancelled');assert.equal(rows.find(x=>x.id==='posted').displayState,'Submitted');assert.equal(rows.length,3);assert.equal(db.prepare('SELECT count(*) AS n FROM journals').get().n,1);
+});
+test('removing a draft hides it while preserving number and audit, restoration is explicit and posted entries cannot be removed',async t=>{
+ const {r,owner,db}=await setup(t);r.saveJournalDraft('alpha',owner,{id:'hidden',revision:0,payload:payload()});r.removeJournal('alpha',owner,{id:'hidden'});assert.equal(r.journalRegister('alpha',owner,'co','main').rows.length,0);assert.equal(r.journalDrafts('alpha',owner,'co','main').rows.length,0);assert.equal(db.prepare("SELECT number FROM document_numbers WHERE id='hidden'").get().number,'JRN-000001');assert.equal(db.prepare("SELECT count(*) AS n FROM journal_drafts WHERE id='hidden'").get().n,1);r.removeJournal('alpha',owner,{id:'hidden',restore:true});assert.equal(r.journalRegister('alpha',owner,'co','main').rows.length,1);r.submitJournalDraft('alpha',owner,{id:'hidden',revision:1});r.execute('alpha',owner,'hidden');assert.throws(()=>r.removeJournal('alpha',owner,{id:'hidden'}),/unsubmitted/);assert.equal(db.prepare('SELECT count(*) AS n FROM journals').get().n,1);
+});
+test('register permissions and removal do not let another account view or discard a private draft',async t=>{
+ const {r,owner,operator}=await setup(t);r.saveJournalDraft('alpha',owner,{id:'private-register',revision:0,payload:payload()});assert.throws(()=>r.journalRegister('alpha',operator,'co','main'),/membership/);assert.throws(()=>r.removeJournal('alpha',operator,{id:'private-register'}),/drafts/);assert.equal(r.journalRegister('alpha',owner,'co','main').rows.length,1);
+});

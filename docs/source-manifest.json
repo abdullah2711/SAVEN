@@ -33,5 +33,13 @@
     "lines": 319,
     "handoff": "docs/sources/SAVEN-agent-handoff-v2.3.md",
     "precedence": "Supersedes earlier addenda and conflicting v2 storage/licensing/QA clauses; full v2 remains baseline"
+  },
+  "latest_owner_revision": {
+    "date": "2026-11-15",
+    "scope": "docs/50-accounting-dashboard-and-mvp1-revision.md",
+    "handoff": "docs/CURRENT_HANDOFF.md",
+    "operating_model": "docs/51-codex-cli-and-engineer-operating-model.md",
+    "skills_and_ai": "docs/52-project-skills-and-ai-configuration.md",
+    "private_credentials_included": false
   }
 }

@@ -47,7 +47,7 @@ export function saveDraft(engine,tenant,actor,id,input,revision=0,{sourceId=null
 }
 export function listDrafts(engine,tenant,actor,company,branch){
  engine.policy(tenant,actor,'journal.prepare',{company,branch});
- return engine.tenant(tenant).prepare("SELECT d.*,n.number FROM journal_drafts d JOIN document_numbers n ON n.id=d.id WHERE d.actor=? AND d.company=? AND d.branch=? AND d.state='DRAFT' ORDER BY updated_at DESC").all(actor,company,branch).flatMap(row=>{const payload=JSON.parse(row.payload);try{authority(engine,tenant,actor,payload);return [{...row,payload}];}catch{return [];}});
+ return engine.tenant(tenant).prepare("SELECT d.*,n.number FROM journal_drafts d JOIN document_numbers n ON n.id=d.id WHERE d.actor=? AND d.company=? AND d.branch=? AND d.state='DRAFT' ORDER BY updated_at DESC").all(actor,company,branch).flatMap(row=>{const payload=JSON.parse(row.payload);try{authority(engine,tenant,actor,payload);const event=engine.tenant(tenant).prepare("SELECT event FROM audit WHERE command_id=? AND event IN('JOURNAL_REMOVED','JOURNAL_RESTORED') ORDER BY id DESC LIMIT 1").get(row.id)?.event;if(event==='JOURNAL_REMOVED')return [];return [{...row,payload}];}catch{return [];}});
 }
 export function submitDraft(engine,tenant,actor,id,revision,evidence=[]){
  const db=engine.tenant(tenant),row=db.prepare('SELECT * FROM journal_drafts WHERE id=?').get(id);check(row?.actor===actor,'Draft unavailable');

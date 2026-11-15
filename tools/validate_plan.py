@@ -34,7 +34,7 @@ def validate():
         for child in graph[k]: visit(child,path+[k])
     for k in graph: visit(k,[])
     for file in ROOT.rglob('*.md'):
-        if any(part in {'var','node_modules','.git','.codex','.agents'} for part in file.relative_to(ROOT).parts):
+        if any(part in {'var','node_modules','.git','.codex','.agents','.tools'} for part in file.relative_to(ROOT).parts):
             continue
         text=file.read_text(encoding='utf-8')
         for match in re.finditer(r'\[[^\]]+\]\(([^)]+)\)',text):

@@ -10,7 +10,7 @@ Generated from contracts/delivery-checklist.json. Update one action with tools/c
 | --- | --- | --- | --- |
 | ACCOUNTING001 | Render only the selected accounting page | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
 | ACCOUNTING002 | Expand Accounting subpages in the sidebar | browser-tested | docs/CURRENT_HANDOFF.md; Isolated browser saved/posted 75.35 and filtered matching GL. |
-| ACCOUNTING003 | Make journal entry the Accounting landing page | browser-tested | docs/CURRENT_HANDOFF.md; Isolated browser saved/posted 75.35 and filtered matching GL. |
+| ACCOUNTING003 | Make Accounting overview dashboard the landing page | browser-tested | docs/CURRENT_HANDOFF.md; Supersedes journal-form landing. Synthetic desktop/mobile observed;320px amount wrapping remains open. |
 | ACCOUNTING004 | Persist incomplete journal drafts on server | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
 | ACCOUNTING005 | Reject stale draft revisions | source-tested | tests/native-documents.test.mjs; tests/native-runtime.test.mjs; docs/CURRENT_HANDOFF.md; Bounded native increment; full module acceptance remains open. |
 | ACCOUNTING006 | Submit exact saved revision | browser-tested | docs/CURRENT_HANDOFF.md; Isolated browser saved/posted 75.35 and filtered matching GL. |
@@ -249,3 +249,40 @@ Generated from contracts/delivery-checklist.json. Update one action with tools/c
 | LATER010 | Complete offline companion and duplicate-free sync | todo |  |
 | LATER011 | Complete managed-client acceptance gate | todo |  |
 | LATER012 | Complete full market-ready MVP gate | todo |  |
+
+## UI revision
+
+| ID | Action | State | Evidence / limit |
+| --- | --- | --- | --- |
+| UIREV001 | Remove decorative sidebar subpage line | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| UIREV002 | Open journal editor only through New journal or exact draft | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| UIREV003 | Show authorized draft and submitted sources in journal register | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| UIREV004 | Provide separate Approvals area and status views | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| UIREV005 | Expose agreed MVP1 destinations with truthful planned states | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| UIREV006 | Verify desktop rail and mobile drawer interactions | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| UIREV007 | Fix 320px financial metric wrapping and grouped amounts | todo | Checkpoint source WIP; not released. |
+| UIREV008 | Make mobile toggle label and expanded state accurate | todo | Checkpoint source WIP; not released. |
+| UIREV009 | Restore accessible icon history controls | todo | Checkpoint source WIP; not released. |
+| UIREV010 | Verify keyboard focus and drawer accessibility | todo | Checkpoint source WIP; not released. |
+| UIREV011 | Guard removed drafts against direct save or submit until restored | todo | Checkpoint source WIP; not released. |
+| UIREV012 | Re-run full source tests and both CI workflows for current increment | todo | Checkpoint source WIP; not released. |
+| UIREV013 | Verify exact Linux source and independent backup before deployment | todo | Checkpoint source WIP; not released. |
+| UIREV014 | Deploy verified source and reconcile main with live behavior | todo | Checkpoint source WIP; not released. |
+
+## Continuation and tooling
+
+| ID | Action | State | Evidence / limit |
+| --- | --- | --- | --- |
+| TOOLS001 | Checkpoint 17 upstream project-local skill guides and licenses | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| TOOLS002 | Validate installed skills and references | todo | Checkpoint source WIP; not released. |
+| TOOLS003 | Verify pinned optional CLI versions and browser prerequisites | todo | Checkpoint source WIP; not released. |
+| TOOLS004 | Document cross-account CLI and engineer operating process | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| TOOLS005 | Publish complete current WIP and handoff to testing-1 | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+
+## AI provider
+
+| ID | Action | State | Evidence / limit |
+| --- | --- | --- | --- |
+| AIROUTER001 | Implement explicit OpenRouter configuration with protected secret | todo | Checkpoint source WIP; not released. |
+| AIROUTER002 | Verify official model availability structured output and free limits | todo | Checkpoint source WIP; not released. |
+| AIROUTER003 | Test scoped synthetic inference and provider failure without writes | todo | Checkpoint source WIP; not released. |

@@ -6,13 +6,13 @@ export async function accountingView(content,h){
  const commands=caps.includes('journal.read')?(await api('/api/commands')).rows:[];
  const source=id=>go('Entry '+id);
  const accountOptions=masters.accounts.map(a=>({value:a.code,label:a.code+' · '+a.title}));
- const actions=el('div',{class:'toolbar'},...(canPrepare?[btn('New journal',()=>go('Journal entry')),btn('Saved drafts',()=>go('Drafts'),true)]:[]));
+ const actions=el('div',{class:'toolbar'},...(canPrepare?[btn('New journal',()=>go('New journal')),btn('Saved drafts',()=>go('Journal entries'),true)]:[]));
  const lineTable=lines=>table(lines,[['account','Account'],['debit','Debit',true],['credit','Credit',true]]);
  const documentLink=row=>caps.includes('journal.read')?btn(row.number??row.id,()=>source(row.id),true):row.number??row.id;
  if(section==='Corrections'){h.correctionForm(content,commands);if(!content.children.length)content.append(card('Journal corrections',el('p',{},'No eligible posted manual journals. Stock, invoices and payments use their operational correction workflows.')));return;}
  if(section.startsWith('Entry ')){
   const row=commands.find(r=>r.id===section.slice(6));if(!row)throw Error('Entry unavailable in this business or permission scope.');
-  const review=row.reviewDecision,heading=el('div',{class:'document-title'},el('div',{},el('p',{class:'eyebrow'},'JOURNAL VOUCHER'),el('h2',{},row.number)),el('span',{class:'badge'},review?.decision??row.state));
+  const review=row.reviewDecision,heading=el('div',{class:'document-title'},el('div',{},el('p',{class:'eyebrow'},'JOURNAL VOUCHER'),el('h2',{},row.number)),el('span',{class:'badge'},review?.decision??(row.state==='POSTED'?'Submitted':row.state==='AWAITING_APPROVAL'?'Approval pending':row.state)));
   const printIdentity=await api('/api/settings');const detail=card(business.name,el('p',{class:'small'},[printIdentity.address,printIdentity.tax_number].filter(Boolean).join(' ? ')),heading,el('dl',{class:'document-meta'},...Object.entries({Date:row.date,Branch:row.branch,Project:row.project||'—','Prepared by':row.actor,'Posted by':row.postedBy??'Not posted',Description:row.narrative,'Operation ID':row.id}).map(([key,value])=>el('div',{},el('dt',{},key),el('dd',{},value)))),lineTable(row.lines),...row.files.map(f=>el('p',{},el('a',{href:'/api/evidence?'+new URLSearchParams({tenant:business.tenantId,file:f.id}),download:f.name},f.name))));
   const dr=row.lines.reduce((n,l)=>n+cents(l.debit),0n),cr=row.lines.reduce((n,l)=>n+cents(l.credit),0n);detail.append(el('div',{class:'journal-totals'},'Debit '+amount(dr)+' ? Credit '+amount(cr)),el('p',{class:'small'},printIdentity.print_footer));detail.classList.add('print-document');content.append(actions,detail);
   const tools=el('div',{class:'toolbar'},btn('Print voucher',()=>window.print(),true));
@@ -34,14 +34,35 @@ export async function accountingView(content,h){
 
   content.append(tools);return;
  }
- if(section==='Journals'||section==='Approvals'){
-  const rows=section==='Approvals'?commands.filter(r=>r.state==='AWAITING_APPROVAL'||r.reviewDecision):commands;
-  content.append(actions,card(section==='Approvals'?'Review queue & history':'Journal register',table(rows,[['date','Date'],['number','Voucher',false,documentLink],['narrative','Description'],['actor','Prepared by'],['state','Status',false,r=>r.reviewDecision?.decision??r.state],['project','Project']])));return;
+ if(h.approvalPage){
+  const names=['To review','My requests','Returned for correction','Rejected','Approved'],selected=names.includes(section)?section:names[0];
+  content.append(el('div',{class:'tabs'},...names.map(name=>{const b=btn(name,()=>navigate('Approvals',{tab:name}),true);if(name===selected)b.className+=' selected';b.setAttribute?.('aria-current',name===selected?'page':'false');return b;})));
+  const requests=commands.filter(r=>r.state==='AWAITING_APPROVAL'||r.reviewDecision||(r.state==='POSTED'&&r.postedBy&&r.postedBy!==r.actor));
+  const rows=requests.filter(r=>selected==='My requests'?r.actor===userId:selected==='To review'?r.state==='AWAITING_APPROVAL'&&!r.reviewDecision&&r.actor!==userId&&caps.includes(r.kind==='stock'?'inventory.approve':'journal.approve'):selected==='Returned for correction'?r.reviewDecision?.decision==='RETURNED':selected==='Rejected'?r.reviewDecision?.decision==='REJECTED':r.state==='POSTED');
+  content.append(card(selected,table(rows,[['date','Date'],['number','Document',false,documentLink],['narrative','Description'],['actor','Requested by'],['state','Status',false,r=>r.reviewDecision?.decision??(r.state==='POSTED'?'Approved and submitted':'Approval pending')],['reviewDecision','Review note',false,r=>r.reviewDecision?.reason??'']])));return;
+ }
+ if(section==='Overview'){
+  const register=caps.includes('journal.read')?(await api('/api/journal-register')).rows:[],trial=await api('/api/trial'),statement=await api('/api/statements');
+  const stats=[['Drafts',register.filter(r=>['Draft','Correction pending'].includes(r.displayState)).length,'Saved and editable'],['Waiting for approval',register.filter(r=>r.displayState==='Approval pending').length,'Not posted to the ledger'],['Submitted journals',register.filter(r=>r.displayState==='Submitted').length,'Posted to the general ledger'],['Result to date',statement.profit,business.currency]];
+  content.append(el('section',{class:'accounting-summary'},el('div',{},el('p',{class:'eyebrow'},business.name),el('h2',{},'Your books, at a glance'),el('p',{},'Review the work in progress, then open the register or a report.')),el('div',{class:'toolbar'},...(canPrepare?[btn('New journal',()=>go('New journal'))]:[]),btn('Journal register',()=>go('Journal entries'),true))),el('div',{class:'accounting-metrics'},...stats.map(([title,value,note])=>el('div',{class:'accounting-metric'},el('span',{},title),el('strong',{},String(value)),el('small',{},note)))));
+  const recent=card('Recent journals',table(register.slice(0,5),[['date','Date'],['number','Journal',false,r=>btn(r.number,()=>r.recordType==='draft'&&r.state!=='DRAFT'?go('Journal entries'):go((r.recordType==='draft'?'Draft ':'Entry ')+r.id),true)],['narrative','Description'],['displayState','Status']]),btn('View journal register',()=>go('Journal entries'),true));
+  const controls=card('Ledger check',el('dl',{class:'accounting-check'},...Object.entries({'Total debits':trial.totalDebit,'Total credits':trial.totalCredit,'Statement difference':statement.difference}).map(([label,value])=>el('div',{},el('dt',{},label),el('dd',{},value+' '+business.currency)))),el('p',{class:'small'},'These totals cover the accounts you are allowed to view.'));
+  content.append(el('div',{class:'accounting-columns'},recent,controls));
+  const groups=[['Books',['Journal entries','Chart of accounts','General ledger','Trial balance']],['Statements',['Financial position','Profit or loss','Cash flow','Changes in equity','Notes & schedules']],['Period work',['Opening balances','Recurring journals','Accruals & prepayments','Corrections','Period close']]];
+  content.append(el('div',{class:'accounting-shortcuts'},...groups.map(([title,pages])=>card(title,...pages.map(name=>btn(name,()=>go(name),true))))));return;
+ }
+ if(['Journal entries','Journals'].includes(section)){
+  const rows=(await api('/api/journal-register')).rows,search=el('input',{type:'search',value:'',placeholder:'Search journal number or description',ariaLabel:'Search journals'}),state=el('select',{ariaLabel:'Journal status'},...['All statuses','Draft','Correction pending','Approval pending','Submission pending','Submitted','Cancelled','Rejected','Returned for correction'].map(value=>el('option',{value},value))),results=el('div');
+  const open=r=>r.recordType==='draft'?(r.state==='DRAFT'?go('Draft '+r.id):showCancelled(r)):source(r.id);
+  const remove=r=>work(async()=>{if(!confirm('Remove this journal from the register? Its number and audit history will be retained.'))return;await api('/api/journal-register/remove',{body:{id:r.id}});markClean();go('Journal entries');});
+  function showCancelled(r){results.replaceChildren(card(r.number,el('span',{class:'badge'},'Cancelled'),el('p',{},r.narrative),btn('Back to register',load,true),btn('Remove from register',()=>remove(r),true)));}
+  function load(){const q=search.value.trim().toLowerCase();const visible=rows.filter(r=>(state.value==='All statuses'||!state.value||r.displayState===state.value)&&(r.number+' '+r.narrative+' '+r.project).toLowerCase().includes(q));results.replaceChildren(table(visible,[['date','Date'],['number','Journal',false,r=>btn(r.number,()=>open(r),true)],['narrative','Description'],['displayState','Status'],['project','Project'],['actor','Prepared by'],['id','',false,r=>r.recordType==='draft'?btn('Remove',()=>remove(r),true):'']]),el('p',{class:'small'},visible.length+' journals'));}
+  search.addEventListener('input',load);state.addEventListener('change',load);content.append(card('Journal entries',el('div',{class:'register-toolbar'},search,state,...(canPrepare?[btn('New journal',()=>go('New journal'))]:[])),results));load();return;
  }
  if(section==='Drafts'){
   const drafts=(await api('/api/journal-drafts')).rows;content.append(actions,card('Saved journal drafts',table(drafts,[['number','Voucher',false,r=>btn(r.number,()=>go('Draft '+r.id),true)],['payload','Description',false,r=>r.payload.narrative||'Untitled journal'],['revision','Revision'],['updated_at','Saved',false,r=>new Date(r.updated_at).toLocaleString()]])));return;
  }
- if(section==='Journal entry'||section.startsWith('Draft ')){
+ if(section==='New journal'||section==='Journal entry'||section.startsWith('Draft ')){
   if(!canPrepare)throw Error('Journal preparation is not allowed.');
   let id=crypto.randomUUID(),revision=0,number='New journal',savedFingerprint='',accepted=false;
   let payload={...scope(),date:new Date().toISOString().slice(0,10),narrative:'',project:'',lines:[{account:'',debit:'',credit:''},{account:'',debit:'',credit:''}]};
@@ -60,7 +81,7 @@ export async function accountingView(content,h){
    await save();const p=read(),dr=p.lines.reduce((n,l)=>n+cents(l.debit),0n),cr=p.lines.reduce((n,l)=>n+cents(l.credit),0n);if(dr!==cr||dr===0n)throw Error('Balance the journal before submitting.');
    const evidence=await Promise.all([...files.files].map(async f=>({name:f.name,sha256:[...new Uint8Array(await crypto.subtle.digest('SHA-256',await f.arrayBuffer()))].map(b=>b.toString(16).padStart(2,'0')).join('')})));
    await api('/api/journal-drafts/submit',{body:{id,revision,evidence}});accepted=true;state.textContent='Accepted · completing submission';for(const file of files.files)await uploadEvidence(file,id);const r=await api('/api/execute',{body:{commandId:id}});markClean();source(r.id);
-  })),btn('Cancel draft',()=>run(async()=>{if(!revision){markClean();go('Journals');return;}await api('/api/journal-drafts/cancel',{body:{id,revision}});markClean();go('Drafts');}),true));
+  })),btn('Cancel draft',()=>run(async()=>{if(!revision){markClean();go('Journals');return;}await api('/api/journal-drafts/cancel',{body:{id,revision}});markClean();go('Journal entries');}),true));
   const form=el('form',{class:'voucher-form',onSubmit:e=>e.preventDefault()},el('div',{class:'document-title'},heading,state),el('div',{class:'fields'},date,project,narrative),el('h3',{},'Journal lines'),lineEditor,totals,btn('Add line',()=>{addLine();total();},true),el('label',{class:'evidence-field'},'Supporting documents',files),el('p',{class:'small'},'Drafts remain editable. Submission freezes the source and follows your configured posting or approval permissions.'),footer);
   content.append(el('section',{class:'card'},form));total();return;
  }

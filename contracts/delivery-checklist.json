@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "governingRevision": "docs/48-accounting-first-owner-revision.md",
+  "governingRevision": "docs/50-accounting-dashboard-and-mvp1-revision.md",
   "sourceBranch": "testing-1",
   "releaseClaim": "NOT_COMPLETE",
   "tasks": [
@@ -29,12 +29,12 @@
     {
       "id": "ACCOUNTING003",
       "area": "Accounting",
-      "title": "Make journal entry the Accounting landing page",
+      "title": "Make Accounting overview dashboard the landing page",
       "status": "browser-tested",
       "evidence": [
         "docs/CURRENT_HANDOFF.md"
       ],
-      "note": "Isolated browser saved/posted 75.35 and filtered matching GL."
+      "note": "Supersedes journal-form landing. Synthetic desktop/mobile observed;320px amount wrapping remains open."
     },
     {
       "id": "ACCOUNTING004",
@@ -1539,6 +1539,200 @@
       "status": "todo",
       "evidence": [],
       "note": ""
+    },
+    {
+      "id": "UIREV001",
+      "area": "UI revision",
+      "title": "Remove decorative sidebar subpage line",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV002",
+      "area": "UI revision",
+      "title": "Open journal editor only through New journal or exact draft",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV003",
+      "area": "UI revision",
+      "title": "Show authorized draft and submitted sources in journal register",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV004",
+      "area": "UI revision",
+      "title": "Provide separate Approvals area and status views",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV005",
+      "area": "UI revision",
+      "title": "Expose agreed MVP1 destinations with truthful planned states",
+      "status": "in-progress",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV006",
+      "area": "UI revision",
+      "title": "Verify desktop rail and mobile drawer interactions",
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV007",
+      "area": "UI revision",
+      "title": "Fix 320px financial metric wrapping and grouped amounts",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV008",
+      "area": "UI revision",
+      "title": "Make mobile toggle label and expanded state accurate",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV009",
+      "area": "UI revision",
+      "title": "Restore accessible icon history controls",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV010",
+      "area": "UI revision",
+      "title": "Verify keyboard focus and drawer accessibility",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV011",
+      "area": "UI revision",
+      "title": "Guard removed drafts against direct save or submit until restored",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV012",
+      "area": "UI revision",
+      "title": "Re-run full source tests and both CI workflows for current increment",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV013",
+      "area": "UI revision",
+      "title": "Verify exact Linux source and independent backup before deployment",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "UIREV014",
+      "area": "UI revision",
+      "title": "Deploy verified source and reconcile main with live behavior",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "TOOLS001",
+      "area": "Continuation and tooling",
+      "title": "Checkpoint 17 upstream project-local skill guides and licenses",
+      "status": "in-progress",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "TOOLS002",
+      "area": "Continuation and tooling",
+      "title": "Validate installed skills and references",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "TOOLS003",
+      "area": "Continuation and tooling",
+      "title": "Verify pinned optional CLI versions and browser prerequisites",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "TOOLS004",
+      "area": "Continuation and tooling",
+      "title": "Document cross-account CLI and engineer operating process",
+      "status": "in-progress",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "TOOLS005",
+      "area": "Continuation and tooling",
+      "title": "Publish complete current WIP and handoff to testing-1",
+      "status": "in-progress",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md"
+      ],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "AIROUTER001",
+      "area": "AI provider",
+      "title": "Implement explicit OpenRouter configuration with protected secret",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "AIROUTER002",
+      "area": "AI provider",
+      "title": "Verify official model availability structured output and free limits",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
+    },
+    {
+      "id": "AIROUTER003",
+      "area": "AI provider",
+      "title": "Test scoped synthetic inference and provider failure without writes",
+      "status": "todo",
+      "evidence": [],
+      "note": "Checkpoint source WIP; not released."
     }
   ]
 }

@@ -1,3 +1,13 @@
+# Current continuation - 15 November 2026
+
+The owner requested a complete GitHub/CLI checkpoint before further implementation. Read [CURRENT_HANDOFF.md](CURRENT_HANDOFF.md), [latest UI/MVP1 revision](50-accounting-dashboard-and-mvp1-revision.md), [CLI operating model](51-codex-cli-and-engineer-operating-model.md), [skills and AI configuration](52-project-skills-and-ai-configuration.md) and [TASKS.md](TASKS.md).
+
+Current dashboard/register/navigation/Approvals changes are WIP and not deployed. Known direct-API removed-draft guard and narrow-screen metric/label defects are recorded in CURRENT_HANDOFF. Focused frontend and13 document checks passed; full current-suite/CI/release gates remain open. Seventeen project-local upstream skills plus optional pinned CLI manifests are checkpointed, with actual-use/installation limits. OpenRouter model selection is recorded; the key is excluded and integration is pending.
+
+Main/live remains b9bdf75824b017cd813f55245f3c352d786fa864, tenant schema9. Prior release evidence below is dated, not current WIP evidence. This section and CURRENT_HANDOFF supersede conflicting historical statements below, including old claims that main is schema7 or production was unchanged.
+
+# Historical checkpoints (retained evidence)
+
 # Latest continuation — Accounting-first revision, 14 November 2026
 
 ## Latest live deployment — 15 November 2026 (Asia/Karachi)

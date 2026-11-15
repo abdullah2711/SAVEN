@@ -1,5 +1,8 @@
 # Accounting-first owner revision — 14 November 2026
 
+> Latest owner revision (15 November 2026): [Accounting dashboard, standalone Approvals and MVP 1](50-accounting-dashboard-and-mvp1-revision.md) supersedes conflicting navigation/sequence below. [Current handoff](CURRENT_HANDOFF.md), [CLI process](51-codex-cli-and-engineer-operating-model.md) and [skills/AI configuration](52-project-skills-and-ai-configuration.md) identify actual WIP, live state and remaining gates. Full prior scope is retained.
+
+
 This is the newest owner direction. It supersedes conflicting sequencing in earlier plans, not their unfulfilled scope. Source development is on testing-1; main represents the reviewed deployed release. Frozen saventesting stays deployed. Completion requires working commands, realistic forms, independent financial checks, recovery and browser acceptance, not menu coverage.
 
 ## Delivery order and release boundaries

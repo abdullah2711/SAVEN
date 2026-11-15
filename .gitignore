@@ -9,3 +9,8 @@ var/
 coverage/
 playwright-report/
 test-results/
+
+# Optional tooling caches; pinned manifests and skill guides stay in Git.
+.tools/ui/node_modules/
+.tools/ui/.npm/
+.agents/skills/**/.DS_Store

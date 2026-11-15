@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "scope": "repository",
+  "pins": [
+    {
+      "repo": "vercel-labs/agent-browser",
+      "commit": "f18b8bb5275ea2be22fca5e6856886827468f41e",
+      "prefix": "skills/agent-browser/"
+    },
+    {
+      "repo": "jakubkrehel/skills",
+      "commit": "a72290d140249813898ba8648becf6415abcb059",
+      "prefix": "skills/"
+    },
+    {
+      "repo": "Nutlope/hallmark",
+      "commit": "04977e15f3dfd6ee4b74c887dac3eb52665d6c92",
+      "prefix": "skills/hallmark/"
+    },
+    {
+      "repo": "meta/astryx",
+      "commit": "935e25a3c94c9a1bfafe1e3df539f0b9a429432d",
+      "prefix": "plugins/astryx/skills/astryx/"
+    }
+  ],
+  "personalInstall": "Blocked: personal checkout directories denied; authenticated fallback unavailable",
+  "policy": "Pinned upstream guidance; project and host policies take precedence. Astryx runtime framework is not adopted."
+}

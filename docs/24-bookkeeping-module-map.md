@@ -1,5 +1,8 @@
 # Bookkeeping foundation and module distribution
 
+> Latest owner revision (15 November 2026): [Accounting dashboard, standalone Approvals and MVP 1](50-accounting-dashboard-and-mvp1-revision.md) supersedes conflicting navigation/sequence below. [Current handoff](CURRENT_HANDOFF.md), [CLI process](51-codex-cli-and-engineer-operating-model.md) and [skills/AI configuration](52-project-skills-and-ai-configuration.md) identify actual WIP, live state and remaining gates. Full prior scope is retained.
+
+
 > Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
 
 The owner restated the priority on 13 November 2026: build a capable accounting/bookkeeping product and its settings before further Drive, planning, BI or AI development. Existing optional tools may remain accessible; unfinished menu destinations do not count as delivered business capabilities. The original product, configuration, permission and commercial requirements remain required.

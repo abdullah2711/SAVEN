@@ -2,6 +2,10 @@
 
 SA7EN (repository: SAVEN), pronounced **seven**, is Economic Systems Consulting's ERP with connected accounting and controlled AI.
 
+## Continue in Codex CLI
+
+Start with [CURRENT_HANDOFF.md](docs/CURRENT_HANDOFF.md), the [CLI/engineer process](docs/51-codex-cli-and-engineer-operating-model.md), [latest scope revision](docs/50-accounting-dashboard-and-mvp1-revision.md) and [skill/AI configuration](docs/52-project-skills-and-ai-configuration.md). The current checkpoint contains unfinished Accounting dashboard/register work and project-local skills; it is not a deployed or client-ready MVP. Main represents the prior reviewed live release. Model keys and deployment credentials are deliberately excluded.
+
 ## Governing specification and current evidence
 
 The [consolidated owner mandate v2.3](docs/sources/SAVEN-mandate-v2.3.md) and [agent handoff](docs/sources/SAVEN-agent-handoff-v2.3.md) supersede conflicts. The full [v2 baseline](docs/sources/SAVEN-mandate-v2.md) retains nonconflicting scope. Read the [current reconciliation](docs/35-native-sqlite-local-first-v2.3.md), [ADRs](docs/07-architecture-decisions.md) and [checkpoint](docs/BUILD_STATE.md) before continuing.
@@ -20,7 +24,7 @@ Run the frontend locally with Node24:
 npm run ui
 ```
 
-Open the printed loopback URL. No database, real login or API setup is needed for this preview. All synthetic transactions reset on reload. Existing working app paths are retained separately.
+The earlier synthetic preview is frozen historical review material. For the working native application and QA prerequisites, follow docs51 and inspect scripts/native-server.mjs. Do not infer active financial functionality from the archived catalog.
 
 ## Verify and reproduce
 

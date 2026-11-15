@@ -1,5 +1,8 @@
 # Accounting delivery and verification
 
+> Latest owner revision (15 November 2026): [Accounting dashboard, standalone Approvals and MVP 1](50-accounting-dashboard-and-mvp1-revision.md) supersedes conflicting navigation/sequence below. [Current handoff](CURRENT_HANDOFF.md), [CLI process](51-codex-cli-and-engineer-operating-model.md) and [skills/AI configuration](52-project-skills-and-ai-configuration.md) identify actual WIP, live state and remaining gates. Full prior scope is retained.
+
+
 > Current owner revision: [Accounting-first scope](48-accounting-first-owner-revision.md), [compatible tenant upgrades](49-compatible-tenant-upgrades.md), and [small-action checklist](TASKS.md) govern conflicting sequence and expanded depth. Historical implementation claims below remain dated evidence, not completion of the new scope.
 
 The owner's delivery order is accounting and cash & bank first, then the remaining operating modules, then further AI work. AI development is paused. The broad commercial release contract is retained; module navigation and a passing ledger test are not completion of the full accounting family.

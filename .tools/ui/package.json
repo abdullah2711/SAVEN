@@ -1,0 +1,9 @@
+{
+  "name": "saven-ui-agent-tools",
+  "private": true,
+  "description": "Optional developer tooling; not a production runtime dependency",
+  "devDependencies": {
+    "agent-browser": "0.43.0",
+    "@astryxdesign/cli": "0.7.16"
+  }
+}
