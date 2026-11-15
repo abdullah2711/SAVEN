@@ -1,0 +1,7 @@
+TASK: AUTH-005 ? Implement email verification and non-enumerating single-use password reset using a controlled mail adapter.
+TOUCH: src/auth/recovery.mjs; src/auth/mail.mjs; src/auth/routes.mjs; src/auth/session-store.mjs; src/auth/README.md; tests/auth-005-recovery.test.mjs
+FORBIDDEN: All paths outside TOUCH; in particular src/local, postgresql, archive, existing application entry points, production data and credentials.
+DONE WHEN: node scripts/check.mjs && node --test tests/auth-005-recovery.test.mjs
+INVARIANTS: Hash-stored random purpose/account-bound expiry; atomically one consume; reset invalidates every session/credential epoch; no plaintext tokens in logs or retained DB; no owner/role reassignment; tests send mail only to a fake capture adapter. No direct SQL authority from client ids; tenant/user context from verified server session only; no runtime superuser/BYPASSRLS/table ownership; append-only audit; no new hardcoded growing domains or cross-module concrete coupling; SQLite/reference code, applied migrations and production unchanged.
+PATTERN: src/security.mjs authenticated credential change; src/passwords.mjs
+NOTES: ADR03 Passwords/Recovery; owner AUTH-005. Depends AUTH-001..004. Cover invalid/expired/reused token, two consumers, unknown email, mail failure and stale credentials. Fixture TTL24h verification/30min reset remains configurable proposed policy. Existing reference password-change source is read-only; canonical PG endpoints remain versioned.

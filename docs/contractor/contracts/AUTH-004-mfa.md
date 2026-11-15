@@ -1,0 +1,7 @@
+TASK: AUTH-004 ? Implement enforced tenant-admin TOTP, recovery and factor lifecycle behind the auth adapter.
+TOUCH: src/auth/factors.mjs; src/auth/routes.mjs; src/auth/session-store.mjs; src/auth/README.md; tests/auth-004-mfa.test.mjs
+FORBIDDEN: All paths outside TOUCH; in particular src/local, postgresql, archive, existing application entry points, production data and credentials.
+DONE WHEN: node scripts/check.mjs && node --test tests/auth-004-mfa.test.mjs
+INVARIANTS: Encrypted recoverable TOTP seed; hash-only atomic single-use recovery; administrator enrollment-only session until verified; reauth/factor required for disable/re-enroll; current role/owner authority drives assurance; no MFA bypass via passkey/social defaults. No direct SQL authority from client ids; tenant/user context from verified server session only; no runtime superuser/BYPASSRLS/table ownership; append-only audit; no new hardcoded growing domains or cross-module concrete coupling; SQLite/reference code, applied migrations and production unchanged.
+PATTERN: src/passwords.mjs; src/local/administration.mjs
+NOTES: ADR03 MFA; owner AUTH-004. Depends AUTH-001..003. Test clock window/reused TOTP step, concurrent recovery consume, enrollment/verification/disable and restricted pre-MFA requests. Cloud operator MFA is delegated to validated Access/IdP assurance in AUTH-007, not a local operator password/factor. Do not activate Private/Cloud profiles without independent acceptance.
