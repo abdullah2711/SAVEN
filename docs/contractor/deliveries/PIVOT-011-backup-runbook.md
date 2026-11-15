@@ -1,7 +1,7 @@
 CONTRACT: docs/contractor/contracts/PIVOT-011-backup-runbook.md
 STATUS: DONE (drafting only — unsigned runbook, drill NOT PERFORMED, no production action)
 
-Revision 2 (PIVOT-011-R1) is recorded at the end of this report. It applies the five findings of the engineering review at `aaf2c27` (`docs/contractor/reviews/PIVOT-011-backup-runbook.md`). The runbook remains unsigned and NOT PERFORMED.
+Revision 2 (PIVOT-011-R1) and Revision 3 (PIVOT-011-R2) are recorded at the end of this report. It applies the five findings of the engineering review at `aaf2c27` (`docs/contractor/reviews/PIVOT-011-backup-runbook.md`). The runbook remains unsigned and NOT PERFORMED.
 
 ## What was delivered
 
@@ -72,7 +72,7 @@ No test suite, build, generator or live-database command was run: the contract's
 
 ## QUESTIONS FOR ENGINEER
 
-Status after the R1 review: all five questions below were answered by the engineering review (`aaf2c27`). The answers are applied in §Revision 2; the questions are retained unchanged as the original delivery record.
+Status after the R1 review: all five questions below were answered by the engineering review (`aaf2c27`). R1's remaining defects were then corrected under PIVOT-011-R2 (`a253807`), recorded in Revision 3. The answers are applied in §Revision 2; the questions are retained unchanged as the original delivery record.
 
 1. Off-host destination, RPO/RTO, retention, capacity and encryption tool/key custody are `MISSING` in the runbook. Should a follow-up contract name those decisions (owner input required), or stay out of scope until the owner supplies them in the drill record?
 2. The archive/restore wrapper (`<SAVEN_WAL_ARCHIVER>`, `restore_command` restorer) is intentionally not authored here — it is executable code outside PIVOT-011's TOUCH. Should a separate contract own those wrappers plus their tests (fail-closed, atomic rename, idempotent re-archive)?
@@ -172,3 +172,70 @@ compliant: no new hardcoded domains or role lists; no executable code, schema, m
 ### GIT (R1)
 
 branch=opencode/pivot-011-backup-runbook base=testing-1 @ 6c8bc25 commits=223d588 (runbook draft), 95824ef (first delivery report), plus the R1 revision commits recorded in the delivery message pushed=yes merged=no
+
+## Revision 3 — PIVOT-011-R2 corrections
+
+Contract: the `IF REVISE` block of `docs/contractor/reviews/PIVOT-011-R1-backup-runbook.md` (engineer verdict at `a253807`). Documentation only: no backup, restore, drill, schema, tool or service was created or run. The runbook remains **DRAFT — UNSIGNED — NOT PERFORMED** and the owner signature block stays blank.
+
+### Finding → section mapping
+
+| Finding | Old state | New state |
+| --- | --- | --- |
+| 1. Admission reconciliation referenced a nonexistent column (§10.1) | `tm.user_uuid = m.user_uuid` against `auth.tenant_membership`, plus an "owners outside the expected set" query that failed suspended/provisioning tenants for retaining an owner | §10.1 rewritten: the canonical UUID is `auth.tenant_membership.user_id` and the projection is `tenant_data.members.user_uuid`, bound by PIVOT-004's composite keys. 10.1a checks activated tenants for exactly one protected role and one **active** owner (member active, `auth.users.status = 'active'`, membership `active` with no `suspended_at`/`revoked_at`). 10.1b flags only orphan ownership (no tenant record). 10.1c lists retained owners on non-activated tenants as an informational review, not a failure. 10.1d is the projection-direction admission check. The RLS example now keeps its own verified context, adds a positive own-tenant control, queries a known foreign tenant the principal is **not** admitted to under that unchanged context, and states that a multi-tenant user's authorized switch is not a leak. |
+| 2. Persisted state could change without changing the claimed "complete" hashes (§10.4) | `string_agg` digests that omitted `lease_token`, `lease_until`, `error`, `updated_at/updated_by`; outbox compared by state counts; registry/approval/decision/revision hashes omitted metadata and provenance | §10.4 rewritten as complete persisted-state reconciliation: one canonical text per row via `to_jsonb(t)::text` (every column, explicit JSON `null`, UTC pinned), per-row `sha256` over ordered rows, streamed through `psql \| sha256sum` as the required bounded method, with a whole-table `string_agg` explicitly demoted to a small-dataset convenience that cannot be called a production verifier. A coverage matrix lists every authoritative table with its ordering key — including outbox `id/event/state/attempts`, command lease/error state, review payloads and provenance — plus keyed counts anchored to the expected activated-tenant set so a missing tenant cannot disappear. The three audit streams (`audit`, `audit_event`, `auth.auth_audit`) are compared separately with no merge or back-fill. Canonicalisation edge rows and the missing streaming wrapper are recorded as blocking gaps. |
+| 3. Target was not a demonstrated, reachable, transaction-aligned recovery point (§6.3/§6.6) | `pg_switch_wal()` + `pg_current_wal_lsn()` treated as the target, `recovery_target_lsn`, "base manifest WAL range covers" confusion, default latest timeline, commit-boundary inferred from an absence of sessions | §6.3 now creates a unique named restore point with `pg_create_restore_point()` **after** the fence and **after** the chosen base backup completes, records its name/LSN and pinned timeline, forces the containing segment to archive and proves a contiguous chain from the base's stop location through that segment for that timeline (no gap, no foreign-timeline substitute, no `last_archived_wal` shortcut). §6.6 uses exactly one target kind — `recovery_target_name` together with an explicit `recovery_target_timeline` (never `latest`) and `recovery_target_inclusive = off` — and §6.8 verifies promotion at the named point on the pinned timeline. Targets older than the base backup, timeline mismatches and unreachable points are explicit failure cases (§11), never forced forward. |
+
+Supporting updates: §7 acceptance criteria now require the named/pinned target, contiguous chain and complete-row comparison; §8 adds V2a (target before base), V2b (timeline mismatch), V3a (outbox-swap and lease-mutation detection) and V3b (canonicalisation stability); §11 adds restore-point, timeline and count-equal/digest-divergent failure handling; §12 gained restore-point name/LSN, pinned timeline and base start/stop fields; §15 cites the PostgreSQL 18 restore-point and recovery-target documentation.
+
+### GATE EVIDENCE (R2)
+
+Contract `DONE WHEN` (documentation-only gate), run with both TOUCH files modified:
+
+```text
+$ git diff --check -- docs/pivot-notes/06-backup-restore-runbook.md docs/contractor/deliveries/PIVOT-011-backup-runbook.md
+(no output)
+EXIT=0
+```
+
+Supporting evidence:
+
+```text
+$ grep -n "tm.user_uuid" docs/pivot-notes/06-backup-restore-runbook.md
+(no output; exit 1)        # the nonexistent column is gone
+
+$ grep -c '^```' docs/pivot-notes/06-backup-restore-runbook.md
+58                         # balanced fenced code blocks (29 pairs)
+
+$ wc -l docs/pivot-notes/06-backup-restore-runbook.md
+936
+
+$ grep -c "NOT PERFORMED" docs/pivot-notes/06-backup-restore-runbook.md
+29
+
+$ grep -n "postgres://\|postgresql://\|BEGIN .*PRIVATE KEY" docs/pivot-notes/06-backup-restore-runbook.md
+(no output; exit 1)
+```
+
+No database, backup, restore, drill, credential or infrastructure action was performed; the only execution gate for this task is the whitespace/conflict check above.
+
+### QUESTIONS FOR ENGINEER (R2)
+
+1. The canonical row digest uses `to_jsonb(t)::text` with `TimeZone = 'UTC'`. Should the drill mandate `DateStyle = ISO, MDY` explicitly as well (it is PostgreSQL's default and recorded in the procedure), or is pinning the time zone sufficient for the accepted canonical form?
+2. The streaming comparison is specified as `psql -At … | sha256sum` because no checked-in comparator exists. Should a later contract provide a small comparator that enforces the coverage matrix and fails closed on a missing table, or is the recorded manual pipeline acceptable for drill evidence?
+3. §10.4 includes the Cloud-profile `operator.*` control tables and states that Fully Private uses local equivalents. Confirm the accepted Private mapping rather than assuming these tables exist there.
+4. `recovery_target_inclusive = off` was chosen to stop exactly at the restore point. Confirm that is the intended semantic (the alternative stops at the first commit after the point).
+
+### DEVIATIONS (R2)
+
+1. Documentation-only, as contracted: no executable, tool, service, schema or generated artefact changed; the two TOUCH files are the entire diff.
+2. The previous "complete-row" SQL examples were replaced rather than patched, because keeping a subset labelled complete would repeat the defect; the new section states the streaming method and records canonicalisation/tooling gaps as blocking.
+3. The runbook now references PostgreSQL 18 `pg_create_restore_point()`/`recovery_target_name`/`recovery_target_timeline` semantics and cites the official pages; no version claim beyond the pinned PostgreSQL 18 target is made.
+4. The owner signature block gained three fields (restore point name, LSN, pinned timeline) required by the corrected drill identity; it remains blank and NOT PERFORMED.
+
+### EXTENSIBILITY (R2)
+
+compliant: no hardcoded domain lists, no module coupling, no executable change; unresolved destination/RPO/RTO/key/monitoring decisions remain explicit extension points and blocking gaps; the correction is reversible by a dated documentation revision and does not alter any schema or accepted bytes.
+
+### GIT (R2)
+
+branch=opencode/pivot-011-backup-runbook base=testing-1 @ 6c8bc25 previous=f125977 (reviewed) commits=recorded in the delivery message pushed=yes merged=no
