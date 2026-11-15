@@ -1,6 +1,8 @@
 CONTRACT: docs/contractor/contracts/PIVOT-004-tenant-rls.md
 STATUS: DONE
 
+Revision 2 (PIVOT-004-R1) is recorded at the end of this report. It applies the four findings of the engineering review at `a253807` (`docs/contractor/reviews/PIVOT-004-tenant-rls.md`): forced membership isolation, a narrow dedicated admission owner, completed scoped references and full authority-boundary evidence. The earlier delivery body is retained unchanged as the original record.
+
 ## What was delivered
 
 `db/postgres/30-rls-policies.sql` is a single additive transaction that lands, together: the constrained canonical-principal projection, `ENABLE` + `FORCE ROW LEVEL SECURITY` on all 47 `tenant_data` tables, the three-policy isolation/admission model, and per-table least-privilege grants for `saven_customer_app`.
@@ -129,3 +131,94 @@ compliant:
 ## GIT
 
 branch=opencode/pivot-004-tenant-rls base=testing-1 @ d0a50cd commits=recorded in the delivery message pushed=yes merged=no
+
+## Revision 2 — PIVOT-004-R1 corrections
+
+Contract: the `IF REVISE` block of `docs/contractor/reviews/PIVOT-004-tenant-rls.md` (engineer verdict at `a253807`). The delivered base `30-rls-policies.sql` and every earlier SQL byte are unchanged; all corrections are the additive `db/postgres/migrations/031-rls-corrections.sql`, applied by the separate offline administrator.
+
+### Finding → change mapping
+
+| Finding | Old state | New state |
+| --- | --- | --- |
+| 1. Required auth membership isolation was missing | `auth.tenant_membership` had no RLS; README claimed AUTH-002/006 owned it | `ENABLE` + `FORCE ROW LEVEL SECURITY` on `auth.tenant_membership` with exactly two permissive, role-scoped, non-`PUBLIC`, non-blanket policies: `tenant_membership_preselect` (`saven_auth_service`, `user_id =` verified `app.current_user_id`) and `tenant_membership_admission_lookup` (`saven_tenant_admission_definer`, `(tenant_id, user_id) =` the verified context pair). No policy on `auth.users`/`auth.sessions`; no blanket truth. Preselection still permits listing a multi-tenant user's memberships after credential verification, and unset/empty/malformed context yields nothing. Membership writes have no policy and fail closed until the contract that implements them adds its own reviewed policy. |
+| 2. Admission ran with full migrator authority | `session_admitted()` was `SECURITY DEFINER` owned by `saven_migrator` | New `saven_tenant_admission_definer` (NOLOGIN, NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOINHERIT, NOBYPASSRLS, NOREPLICATION), validated/refused if pre-existing incompatible; granted only `USAGE` on `auth`/`tenant_data`, column-level `SELECT` on `auth.tenant_membership (tenant_id, user_id, status, suspended_at, revoked_at)`, `auth.users (id, status)` and `tenant_data.members (tenant_id, user_uuid, active)`, and `EXECUTE` on the two context helpers. The function body now also requires `p_tenant = current_tenant_id()` and `p_user = current_user_id()`, so an arbitrary-principal probe returns false. Ownership transferred to the dedicated role as the offline administrator; no runtime is a member of it. |
+| 3. Scoped references incomplete | Only the two member FKs existed; `journals.company` and `periods.company` accepted unknown companies | Six represented company columns now reference `tenant_data.company_profiles (tenant_id, id)`: `journals`, `periods`, `journal_drafts`, `document_registry` (nullable), `trade_controls`, `trade_parties`. Each is added `NOT VALID` then `VALIDATE`d, so incompatible rows fail loudly. Lookup indexes added for the new parents. Payload-only company/branch fields and every branch string (no branch master exists) are inventoried in `db/postgres/README.md` as application-level, together with the transitive `trade_documents` party constraint. Catalog coverage checks now use `relkind IN ('r', 'p')`. |
+| 4. Least privilege and evidence | Blanket `USAGE, SELECT ON ALL SEQUENCES`; tests encoded omissions; mismatch test could pass on either FK; no atomic-failure evidence | Blanket runtime sequence grant revoked; only `tenant_data.audit_id_seq` is granted (`audit_event_id_seq` withheld). Tests rewritten as real-role evidence: dedicated-owner attributes/ACL/ownership, denied role assumption, denied arbitrary-pair oracle, principal-bound preselection, membership write fail-closed, same-tenant wrong-parent company rejections, and an atomic-failure probe. The mapping-mismatch case now has a valid membership and a wrong text/UUID pair and must fail on `members_canonical_identity_fkey` specifically. |
+
+### Fixture support (authorized TOUCH)
+
+`tests/helpers/pg-pivot-fixture.mjs` gained: an explicit `adminSqlFiles` opt-in that applies a correction as the fixture's private superuser after the migration files (needed for role provisioning and ownership transfer); a namespaced, preflight-checked `saven_tenant_admission_definer` extra role that is never part of the default seven-role bootstrap and is cleaned up; a `namespaceSql` export so a test applies a migration (or a deliberately failing variant) through the same role mapping; and simple-protocol `adminQuery` when no parameters are supplied, so multi-statement bodies with dollar-quoted blocks execute. Default behaviour for PIVOT-002/003 and the auth fixture is unchanged, and PIVOT-002 still passes in full.
+
+### GATE EVIDENCE (R1)
+
+Environment: dedicated disposable local PostgreSQL 18.6 cluster on loopback `127.0.0.1:55433`; `SAVEN_PIVOT_TEST_CLUSTER=1`; private generated test credential; Node **v24.19.0** supplied through `npm exec --package=node@24.19.0` (pinned range `>=24.13 <25`); no owner-server/SSH/production/shared-cluster access. Fixture created only `saven_pivot_%` objects; post-run counts: roles 0, databases 0.
+
+```text
+$ node scripts/check.mjs
+PASS: 150 JavaScript files parsed; package manifest valid.
+
+$ node --test tests/pivot-002-operator.test.mjs tests/pivot-003-schema.test.mjs tests/pivot-004-rls.test.mjs
+✔ PIVOT-002 operator bootstrap enforces Purpose A authority boundaries
+✔ PIVOT-002 fixture refuses pre-existing cluster roles before mutation
+✔ PIVOT-002 checked-in role bootstrap refuses incompatible pre-existing roles atomically
+✔ PIVOT-002 fixture namespaces isolate concurrent runs
+✔ PIVOT-002 fixture reports run and cleanup failures together
+✔ PIVOT-003 ... (three cases)
+✔ PIVOT-004 static contract: forced RLS, atomic grants, membership isolation and exact binding
+✔ PIVOT-004 catalog: tenant and membership isolation, no foreign policies, no bypass
+✔ PIVOT-004 grants: dedicated admission owner, minimum sequences, no foreign access
+✔ PIVOT-004 runtime: verified context isolates reads, writes and the admission oracle
+✔ PIVOT-004 auth membership: principal-bound preselection and no cross-principal read
+✔ PIVOT-004 scoped references: same-tenant wrong-parent and cross-tenant are both refused
+✔ PIVOT-004 principal mapping: exact text/UUID membership and identity binding
+✔ PIVOT-004 resists an extra permissive policy and an attacker permissive policy on auth
+✔ PIVOT-004 correction 031 is atomic: a failing application leaves no partial state
+ℹ tests 17
+ℹ pass 17
+ℹ fail 0
+EXIT=0
+```
+
+Full Node suite on the same cluster and Node version (nothing removed, skipped or weakened):
+
+```text
+$ node --test tests/*.test.mjs
+ℹ tests 178
+ℹ pass 178
+ℹ fail 0
+EXIT=0
+```
+
+Behavioural evidence from the focused gate:
+
+- **Membership preselection:** `saven_auth_service` with `app.current_user_id = U1` sees exactly U1's two memberships (T1 and T2) and none of U2's; with `U2` sees only U2's one; with no context or a malformed id sees zero. A membership INSERT as the auth service is refused by RLS.
+- **Admission owner:** function owner is `saven_tenant_admission_definer`; `prosecdef` true; `proconfig = {search_path=pg_catalog, auth, tenant_data}`; customer `EXECUTE` true, auth service `EXECUTE` false, no `PUBLIC` execute; the role is `NOLOGIN`, no superuser/`BYPASSRLS`/`CREATEROLE`/inherit/replication; it holds column-level SELECT only (table-level SELECT false; no write, no tenant table other than `members`, no `CREATE` on the schema, no operator access); no runtime role is a member of it, and `SET LOCAL ROLE` to it is denied.
+- **Oracle denial:** as the runtime with verified T1/U1 context, `session_admitted(T1,U1)` is true while `(T2,U2)`, `(T1,U2)` and `(T2,U1)` are false.
+- **Scoped references:** unknown company in the same tenant is rejected for `journals`, `periods`, `journal_drafts`, `trade_controls`, `trade_parties` and `document_registry`; a party id that exists only in another tenant is rejected; a valid same-tenant parent is accepted.
+- **Sequence least privilege:** runtime `USAGE` on `audit_id_seq` is true, on `audit_event_id_seq` false, and exactly one tenant sequence appears in its ACL.
+- **Atomic failure:** a variant of `031` with an injected exception before `COMMIT` is rejected and the catalog snapshot (role existence, membership RLS, auth policy count, company constraints, sequence grant, function owner) is byte-identical before and after; the real `031` then applies cleanly, and a second application is refused with `031-rls-corrections.sql is already applied`.
+- **Regression:** the earlier PIVOT-004 evidence still holds — three policies per tenant table, `FORCE` on the owner with `row_security = off` refused, missing/malformed/mismatched context denial, append-only privilege denials, tenant-key `WITH CHECK` refusals, and resistance to an injected extra permissive policy on both `tenant_data` and `auth.tenant_membership`.
+
+### QUESTIONS FOR ENGINEER
+
+1. `031` requires the **offline administrator (superuser)** because it provisions a role and transfers function ownership; the ordinary migration login cannot do either under the accepted mutual non-membership role model. The file refuses any other principal and says so in its first guard. Confirm that an administrator-applied correction is the intended deployment step (README run order 8 records it).
+2. Membership **writes** (invite, accept, role change, revocation) have no policy in this correction, so they fail closed. That is deliberate: a policy allowing them needs the verified inviter/administrator context that the contract implementing those flows owns. Confirm the invitation/acceptance contract is expected to add that narrow policy rather than this one.
+3. `auth.users` and `auth.sessions` are global principal/service records and still have no tenant RLS. The review's finding explicitly did not require blanket tenant policies there; their isolation is stated as a separate authority boundary. Confirm that this is the accepted boundary rather than an omission.
+4. The sequence grant is now exactly `audit_id_seq`. If a later kernel schema adds identity-backed tenant inserts, it must grant its own sequence explicitly; there is no default privilege. Confirm that is the intended least-privilege convention.
+5. No operator FK was added (the review confirms Private excludes vendor tables); tenant identity remains a service-contract relationship. The full company/branch/payload inventory is in the README so the application-level validation work is visible.
+
+### DEVIATIONS (R1)
+
+1. A fifth path was used as authorized: `tests/helpers/pg-pivot-fixture.mjs` (the correction contract lists it in TOUCH) for the administrator hook, the extra-role namespace/preflight/cleanup and the SQL namespace export.
+2. `031` transfers only the function owner and grants column-level privileges; it creates no runtime principal, no membership and no login. `saven_tenant_admission_definer` is provisioned only if absent and is validated/refused if a pre-existing definition is unconstrained.
+3. The membership write path is intentionally not granted. That is a narrow, reversible omission recorded as a question rather than a security relaxation.
+4. The sequence privilege change revokes a grant made by `30`, not a semantic change to `30`'s file; the delivered SQL bytes are untouched.
+5. Test context is still set with `set_config(..., true)` inside the disposable fixture transaction; the auth service preselection test does the same for `app.current_user_id`. This is scaffolding for proving policy behaviour, not a claim that application context is verified — AUTH-002/006 gate that, and the README says so.
+
+### EXTENSIBILITY (R1)
+
+compliant: no new hardcoded business enums or domain lists; the only new literal role is the dedicated non-login admission owner required by the ruling; the policies are predicates over verified context, not business rules; the correction is additive, transactional and reversible; the auth-side boundary and the invitation-write path are recorded as explicit extension points with named future owners rather than silently closed.
+
+### GIT (R1)
+
+branch=opencode/pivot-004-tenant-rls base=testing-1 @ d0a50cd previous=ed87e81 (reviewed) commits=recorded in the delivery message pushed=yes merged=no
