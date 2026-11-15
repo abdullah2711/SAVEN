@@ -21,3 +21,10 @@ GitHub rejected testing-1/codex/postgresql-engineering-20261115 (422; ref prefix
 ## Status
 
 Items are committed separately in the required session order. At this item2 checkpoint the dependency graph is deliberately absent; item12 adds it. Contracts describe future gates and exact allowed files; no green gate or completed pivot is claimed. Runtime, existing migrations, tests, frozen testing frontend and credentials remain unchanged.
+
+
+## Item11 committed-output check
+
+Observed git status --porcelain was empty at7a75ac69a94a3c84708abc75b0a1341ad22902e2 after item10. All30 required documentation files are tracked: reading log, project state, conventions, original pivot spec, storage/auth ADRs, full source table-purpose map, auth audit,10 AUTH contracts and12 PIVOT contracts. AGENTS has only the required pivot annotation. PIVOT-001 is the storage ADR, not a duplicate contract. No runtime, migration, test, archived-frontend, BUILD_STATE or verification-evidence implementation file is changed by this session.
+
+The conventions contain the exact EXTENSIBILITY MANDATE and HARD PROHIBITIONS, and the stored pivot spec matches the supplied source verbatim (including its markers). This is document/Git inspection only; no scripts/check.mjs, test suite, parity, generator, RLS query or contract DONE WHEN gate was executed. Existing baseline CI counts are not PG evidence. This item11 record is committed separately; item12 adds the dependency graph, then item13 stops without reviewing or running a contractor task.
