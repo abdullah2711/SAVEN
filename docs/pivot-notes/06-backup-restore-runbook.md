@@ -32,7 +32,7 @@ Not covered:
 
 - The retained schema-13 PostgreSQL reference installation on loopback `8788` used by `saventesting` **[OBSERVED in docs/44]**. Its retained runbook, services and data are not edited or replaced by this document.
 - Native SQLite stores and tenant files (`scripts/native-backup.mjs`, `scripts/native-restore.mjs`, `deployment/saven-native-backup.service`, `deployment/saven-testing-backup.service`) **[OBSERVED]**. Their stopped-application verified-backup procedure continues unchanged.
-- Fully Private packaging, which needs its own frozen copy with local key custody and no vendor dependency.
+- Fully Private packaging, which needs its own frozen copy with local key custody, no vendor dependency and its **own reviewed manifest/local-authority mapping**. This Cloud runbook does not approve an invented Private equivalent for any `operator.*` table; until that mapping is reviewed and accepted, Private recovery coverage is a **[BLOCKING GAP]** owned by the Private packaging contract.
 - Production data migration and cutover, which require separate contracts and explicit owner authorization.
 
 ## 2. Required inputs before this runbook may be operated
@@ -271,7 +271,7 @@ SELECT pg_walfile_name('<RESTORE-POINT-LSN>');
 - Do not substitute `pg_stat_archiver.last_archived_wal`, which names only the latest successful archive and can belong to a later segment or a different timeline.
 - Do not accept a target that the chosen base backup cannot reach: the base's stop point must be at or before the restore point, and every segment in between must be archived.
 
-5. Record as the drill identity: system identifier, **pinned timeline**, **restore-point name**, **restore-point LSN**, base backup label and manifest digest, base start/stop locations, and the fenced-baseline identifier. A restore without all of these is not verifiable and must not be described as a recovery test.
+5. Record as the drill identity: system identifier, **pinned timeline id (decimal)**, **restore-point name**, **restore-point LSN**, base backup label and manifest digest, base start/stop locations, and the fenced-baseline identifier. A restore without all of these is not verifiable and must not be described as a recovery test.
 
 Why this is transaction-aligned: the restore point is a WAL record, so recovery stops at a defined WAL position rather than at an arbitrary write offset; the fence ensures the baseline, base backup and restore point describe one continuous, committed state. Absence of application sessions is used only to keep the fence honest, never as proof of a commit boundary.
 
@@ -330,8 +330,7 @@ touch "$RESTORE_ROOT/pgdata/recovery.signal"
 # postgresql.auto.conf / additional configuration in the restore cluster (template)
 restore_command = '<SAVEN_WAL_RESTORER> %f %p'
 recovery_target_name = '<RECORDED-RESTORE-POINT-NAME>'
-recovery_target_timeline = '<PINNED-TIMELINE-HEX>'   # never 'latest'
-recovery_target_inclusive = off                      # stop exactly at the restore point
+recovery_target_timeline = '<PINNED-TIMELINE-ID>'    # decimal timeline id, or 0x-prefixed hex; never 'latest'
 recovery_target_action = 'promote'
 ```
 
@@ -342,7 +341,9 @@ recovery_target_action = 'promote'
 - Must exit non-zero if the segment is absent, undecryptable, digest-mismatched or the namespace has no such object. Never write to stdout, never pick a different segment, never treat "closest available" as success.
 - Must not read from, or write to, the source archive or the source cluster.
 
-Exactly one recovery target kind is used: `recovery_target_name`. Do not combine it with an LSN, time or XID target. The timeline is pinned explicitly so promotion cannot follow a newer timeline by default; `latest` is never used for a drill. `recovery_target_inclusive = off` keeps the restored state at the restore point rather than the first commit after it. Recovery stops at that target and promotes.
+Exactly one recovery target kind is used: `recovery_target_name`. Do not combine it with an LSN, time or XID target. The named record itself defines the stop position, so recovery reaches that record and no later commit; `recovery_target_inclusive` is **not** used here because it applies only to LSN, time and XID targets, not to name targets.
+
+The timeline is pinned explicitly so promotion cannot follow a newer timeline by default; `latest` is never used for a drill. Record the pinned timeline as the **decimal** id returned by `pg_control_checkpoint().timeline_id` (or an explicitly `0x`-prefixed hexadecimal value); never an unqualified "hex string", which is ambiguous. Recovery stops at the named record and promotes.
 
 If the restore point cannot be reached — missing segment, gap, wrong timeline, or a base backup whose stop point is later than the point — stop and classify it (§11). Never substitute a different target, a different timeline or a "closest available" segment to obtain a green result.
 
@@ -445,6 +446,12 @@ Checks that this draft cannot perform are listed as **[BLOCKING GAP]** in §10.5
 | V13 | Read-only promotion fence | Attempt business writes after promotion | Refused; no archive object created | **[NOT PERFORMED]** |
 | V14 | Snapshot-order consistency | Compare an unfenced observation to the fenced baseline | Procedure uses only the fenced baseline; drift is detected, not ignored | **[NOT PERFORMED]** |
 | V15 | Repeatability | Run V1 twice in one week | Both restores reconcile; measured time recorded | **[NOT PERFORMED]** |
+| V16 | Manifest drift | Drop one table from the manifest, and separately add a table not in the manifest | Catalog-to-manifest check fails in both directions before any digest comparison | **[NOT PERFORMED]** |
+| V17 | SQL failure in the exporter | Query a missing table, and separately revoke a column mid-run | The fail-closed pipeline returns non-zero and publishes no digest; no "success" from an empty stream | **[NOT PERFORMED]** |
+| V18 | Interrupted stream | Terminate the exporter mid-table | Partial output is detected via the completion/line-count checks and never compared as evidence | **[NOT PERFORMED]** |
+| V19 | Vacuous comparison | Run both clusters with an empty dataset and no controls | The drill fails the non-vacuous control requirement instead of reporting matching empty digests | **[NOT PERFORMED]** |
+| V20 | Secret non-export | Inspect the export files and logs | They contain only opaque keys, row digests and counts; no token, seed, verifier, recovery code or credential appears | **[NOT PERFORMED]** |
+| V21 | Snapshot consistency across tables | Change a row between two per-table exports when the exported-snapshot protocol is not used | The drill detects inconsistent snapshots and requires one exported snapshot (or one exporter session) | **[NOT PERFORMED]** |
 
 ## 9. Monitoring and page-out conditions
 
@@ -480,7 +487,8 @@ Zero-row queries are not sufficient: a tenant with no role rows disappears inste
 `auth.tenant_membership` has canonical UUID `user_id` (there is no `user_uuid` there); the UUID projection lives only in `tenant_data.members.user_uuid`, and the two are bound by PIVOT-004's composite foreign keys.
 
 ```sql
--- Anchor set. Cloud profile: vendor operator directory. Private profile: local equivalent.
+-- Anchor set (Cloud profile: the vendor operator directory). Private packaging has no
+-- approved equivalent here; see §1 and the blocking gap in §10.4/§10.5.
 SELECT tenant_id, status FROM operator.tenant ORDER BY tenant_id;
 
 -- 10.1a Activated tenants must have exactly one protected owner role and exactly one
@@ -647,32 +655,83 @@ ORDER BY 1, 2, 3;                 -- expect zero rows
 
 Counts are not a comparison. A count can stay identical while a lease, an outbox event, a policy snapshot or a provenance column changes. Because the source is fenced for the whole drill, mutability during normal work is no reason to exclude a column from the comparison: the restored state must match the fenced state exactly, including lease, error, review, pending and provenance fields.
 
-**Canonical form.** For every authoritative table:
+**Canonical form — complete internally, opaque externally.** For every authoritative table:
 
-- One canonical text per row: `to_jsonb(t)::text`, which includes **every** column with its column name, renders SQL `NULL` as JSON `null` (explicit, not an empty string), and canonicalises JSONB key order.
-- The session time zone is pinned (`SET TimeZone = 'UTC'`) so `timestamptz` values render identically on both clusters. Native epoch-millisecond `bigint` values render as integers.
+- One canonical text per row: `to_jsonb(t)::text`, which includes **every** persisted column with its column name, renders SQL `NULL` as JSON `null` (explicit, not an empty string), and canonicalises JSONB key order. This includes secrets: token digests, MFA seed ciphertext, recovery-code hashes and PKCE verifier ciphertext are part of the row being hashed.
+- The digest is computed **server-side**, inside the database. Exports contain only an opaque ordering key, the row digest and a count — never a secret value, a raw token, a seed, a verifier or a credential. Secret bytes participate in the comparison without ever leaving the server or reaching a log.
+- All format settings are pinned in the same session: `SET LOCAL TimeZone = 'UTC'` and `SET LOCAL DateStyle = 'ISO, MDY'` (the accepted default; recording it prevents a later default change from silently altering the digest). Server encoding is UTF8 and is recorded. Native epoch-millisecond `bigint` values render as integers; no floating-point columns exist.
 - The row digest is `encode(sha256(convert_to(<canonical row text>, 'UTF8')), 'hex')` — core PostgreSQL 18 `sha256(bytea)`, no extension.
-- Rows are exported in a deterministic key order and hashed as a streamed sequence. Compute the same ordered stream on the fenced source snapshot and on the restored cluster and compare the two stream digests.
+- Rows are exported in a deterministic key order and hashed as a streamed sequence.
 
-```sql
--- Template applied to each table/key pair in the coverage matrix below.
-SET LOCAL TimeZone = 'UTC';
-SELECT <ordering-key columns>,
-       encode(sha256(convert_to(to_jsonb(t)::text, 'UTF8')), 'hex') AS row_digest
-FROM tenant_data.<table> t
-ORDER BY <ordering-key columns>;
-```
+**One fenced snapshot, not one session per table.** The baseline must come from the single repeatable-read snapshot opened in §6.2. Opening a new `psql -c` per table would read a different snapshot each time and could miss a change that happened between two tables. Use one of:
+
+- one exporter session that emits every table's ordered digests in one transaction; or
+- an **exported snapshot**: keep session A open with `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SELECT pg_export_snapshot();`, and have each per-table exporter run `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '<EXPORTED-SNAPSHOT-ID>';` before its query, then commit. The exporting transaction must stay open until every exporter finishes.
+
+**Fail-closed pipeline.** A plain `psql … | sha256sum` can report success after a SQL error: `ON_ERROR_STOP` does not propagate through a pipe by itself, so a missing table or permission failure can hash an empty or truncated stream. The export must be a shell function with `set -euo pipefail` and explicit completion checks:
 
 ```sh
-# Streamed comparison: bounded memory, no whole-table string_agg.
-# Run once against the fenced source snapshot transaction and once against the
-# restored cluster; the two digests must be identical.
-psql -X -A -t -v ON_ERROR_STOP=1 "<CONNECTION>" \
-  -c "SET TimeZone = 'UTC'; SELECT <ordering-key columns>, encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex') FROM tenant_data.<table> t ORDER BY <ordering-key columns>;" \
-  | sha256sum
+#!/bin/sh
+set -euo pipefail
+
+# One table, one pinned snapshot. All settings are local to the exporting transaction.
+export_table() {
+  table="$1"; keys="$2"; out="$3"
+  test -n "$table" && test -n "$keys" && test -n "$out"
+  psql -X -q -A -t -v ON_ERROR_STOP=1 "<CONNECTION>" <<SQL > "$out"
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET TRANSACTION SNAPSHOT '<EXPORTED-SNAPSHOT-ID>';
+SET LOCAL TimeZone = 'UTC';
+SET LOCAL DateStyle = 'ISO, MDY';
+SELECT $keys, encode(sha256(convert_to(to_jsonb(t)::text,'UTF8')),'hex')
+FROM tenant_data.$table t
+ORDER BY $keys;
+COMMIT;
+SQL
+  # Fail closed: the file must exist, be non-empty and end with a complete row record.
+  test -s "$out"
+  test "$(tail -n 1 "$out" | wc -l)" -eq 1
+}
+
+# Non-vacuous controls and manifest bookkeeping are required, not optional:
+#   * expected table count == digests produced        (a skipped table must fail)
+#   * expected row count per table == digest lines    (an empty export must fail)
+#   * at least one control table with a known non-zero row count is present
+#   * every digest file is non-empty and its line count matches the captured count
+export_table accounts 'tenant_id, code' digests/accounts.txt
+# … one call per row of the coverage matrix …
+
+# Publish only after every check passes; an interrupted run publishes nothing.
+sha256sum digests/*.txt > digests/stream.sha256
 ```
 
-A single `string_agg()` over a whole table is **not** a production-scale verifier: it accumulates the entire stream in memory and hits the 1 GB aggregate limit. It may be used for a small drill dataset only, and must be labelled as such. The streamed form above is the required method.
+`set -o pipefail` (or `set -euo pipefail` as above) makes a failing exporter return non-zero to the caller. Do not write the digest file before the exporter's exit status is checked, and do not compare a digest produced by a run that skipped its completion checks. The same function runs against the restored cluster, and the two published digest sets must be identical.
+
+```sql
+-- Catalog-to-manifest coverage check. Run against the fenced source and the restore.
+-- Any table present in the schemas but absent from the manifest fails the drill, and
+-- any manifest entry missing from the catalog fails as well. A newly added table must
+-- never disappear from the comparison simply because the manifest was not updated.
+WITH actual AS (
+  SELECT n.nspname || '.' || c.relname AS table_name
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  WHERE n.nspname IN ('tenant_data', 'auth', 'operator') AND c.relkind IN ('r', 'p')
+), manifest AS (
+  SELECT unnest(ARRAY[ '<MANIFEST-ENTRY-1>', '<MANIFEST-ENTRY-2>' /* … one per matrix row … */ ]) AS table_name
+)
+SELECT 'unlisted in manifest' AS finding, table_name FROM actual
+EXCEPT
+SELECT 'unlisted in manifest', table_name FROM manifest
+UNION ALL
+SELECT 'missing from catalog', table_name FROM manifest
+EXCEPT
+SELECT 'missing from catalog', table_name FROM actual
+ORDER BY 1, 2;   -- expect zero rows
+```
+
+A single `string_agg()` over a whole table is **not** a production-scale verifier: it accumulates the entire stream in memory and hits the 1 GB aggregate limit. It may be used for a small drill dataset only, and must be labelled as such.
+
+**Comparator gap.** The shell function above is a template, not a checked-in tool: nothing in this repository enforces the matrix, the settings, the manifest comparison or the completion checks automatically. Until a separately contracted fail-closed comparator exists, a drill's comparison is manual and must be recorded as manual; two matching digests from an unchecked run are **not** evidence. **[BLOCKING GAP]**
 
 **Coverage matrix.** Every row is compared; none is optional. Order keys are the accepted primary keys.
 
@@ -725,13 +784,18 @@ A single `string_agg()` over a whole table is **not** a production-scale verifie
 | `document_registry` | `(tenant_id, document_id)` |
 | `document_revisions` | `(tenant_id, document_id, revision)` |
 | `verified_entitlement` | `(tenant_id, entitlement_id)` |
-| `auth.users` | `(id)` — identity status and credential epoch; the export excludes secret columns |
+| `auth.users` | `(id)` — complete identity row hashed **server-side**; secret columns are never exported |
 | `auth.tenant_membership` | `(tenant_id, user_id)` — canonical admission state, including status and suspended/revoked timestamps |
 | `auth.roles` | `(role_id)` — assurance classes |
 | `auth.reference_value` | `(domain, value)` — auth reference domains |
-| `auth.accounts` | `(provider_id, account_id)` — provider bindings; token ciphertext is compared in place, never exported |
+| `auth.accounts` | `(id)` — provider bindings, including token ciphertext, hashed server-side and never exported |
+| `auth.sessions` | `(id)` — session rows including revocation and expiry columns; token digests are hashed, never exported |
+| `auth.verification` | `(id)` — single-use challenge rows and their consumption state |
+| `auth.two_factor` | `(id)` — MFA factor rows, including encrypted seed material hashed server-side |
+| `auth.recovery_codes` | `(id)` — recovery-code hashes and single-use consumption state |
+| `auth.oauth_state` | `(id)` — OAuth readiness state, nonce/PKCE binding and expiry |
 | `auth.auth_audit` | `(id)` — independent append-only identity audit stream; never merged with the business audit streams |
-| `operator.tenant` | `(tenant_id)` — Cloud profile only; Private uses its local tenant registry |
+| `operator.tenant` | `(tenant_id)` — Cloud profile only; Private mapping is a separate blocking gap, not assumed here |
 | `operator.entitlement` | `(tenant_id, version)` — Cloud profile only |
 | `operator.operator_audit` | `(id)` — Cloud profile only, append-only |
 | `operator.feature_flag` | `(id)` — Cloud profile only |
@@ -741,12 +805,13 @@ A single `string_agg()` over a whole table is **not** a production-scale verifie
 | `operator.migration_events` | `(id)` — Cloud profile only, append-only |
 | `operator.source_store_migrations` | `(source_store, tenant_id, version)` — Cloud profile only |
 | `operator.pg_schema_migrations` | `(version)` — Cloud profile only |
+| `operator.reference_value` | `(domain, value)` — Cloud profile reference/seed rows |
 
 Counts and keys are additionally anchored to the expected tenant set, so a tenant that lost every row still appears:
 
 ```sql
 WITH expected AS (
-  SELECT tenant_id FROM operator.tenant WHERE status = 'ACTIVE'   -- Private: local equivalent
+  SELECT tenant_id FROM operator.tenant WHERE status = 'ACTIVE'   -- Cloud only; Private mapping is a blocking gap
 ), counts AS (
   SELECT tenant_id, count(*) AS n FROM tenant_data.<table> GROUP BY tenant_id
 )
@@ -763,7 +828,7 @@ Run that keyed count for every table in the matrix and compare it with the basel
 
 | Gap | Detail |
 | --- | --- |
-| Streaming digest tooling | The `psql … \| sha256sum` pipeline is the required method; there is no checked-in wrapper that enforces the coverage matrix, pinned formatting or a fail-closed comparison. Without it, the comparison is manual and must be recorded as such. **[BLOCKING GAP]** |
+| Streaming digest tooling | The fail-closed `export_table` template (pipefail, pinned settings, completion and count checks) is the required method, together with the catalog-to-manifest coverage check. There is no checked-in comparator that enforces the matrix, the manifest, the settings or non-vacuous controls; until one exists the comparison is manual, must be recorded as manual, and two matching digests from an unchecked run are not evidence. **[BLOCKING GAP]** |
 | Canonicalisation edge rows | Before trusting the digest, the drill must include at least one row with a JSONB payload, one `NULL`, one numeric with trailing scale, one epoch-millisecond integer and one `timestamptz`, and confirm both clusters render them identically under the pinned settings. **[NOT PERFORMED]** |
 | Object/evidence bytes | `command_files` stores metadata only; the private object store and its manifest are outside PostgreSQL and this runbook's scope. **[BLOCKING GAP]** — see §10.5 |
 | Production-scale volume | A representative-size run is not possible on the current empty target; the matrix is written to be bounded and streamed so it can be used at scale, but no volume claim is made. **[NOT PERFORMED]** |
@@ -883,7 +948,7 @@ Drill performed:        [ ] NOT PERFORMED
 Source system id:       ______________________________________________
 Restore point name:     ______________________________________________
 Restore point LSN:      ______________________________________________
-Pinned timeline:        ______________________________________________
+Pinned timeline id:     ______________________________________________
 Required segment(s):    ______________________________________________
 Base start/stop WAL:    ______________________________________________
 Base label/manifest:    ______________________________________________
@@ -905,6 +970,8 @@ Until this block is completed, every downstream document must describe off-host 
 - No off-host destination, RPO, RTO, retention period, capacity bound or key-custody arrangement is approved. The plain-format/SHA256 choice in §5 is a draft engineering preference, not infrastructure or retention approval.
 - Every wrapper, restorer, scheduler, exporter and alert route described here is an interface, not a working implementation.
 - No availability, durability or recovery-time guarantee is made. Elapsed time becomes a measurement only after §8 runs.
+- No Private control-table mapping is approved: this draft covers the Cloud profile and records Private packaging as a blocking gap for its own reviewed manifest.
+- No checked-in comparator exists. A comparison performed with the §10.4 template is manual, and two matching digests produced without its completion checks are not recovery evidence.
 - PostgreSQL remains a target, not the production store. RLS coverage (PIVOT-004), posted-source immutability (PIVOT-005), audit triggers (PIVOT-006), the posting kernel port (PIVOT-013), parity (PIVOT-009/010) and verification evidence (PIVOT-012) are separate gates; this runbook substitutes for none of them.
 - A backup of an unservable skeleton proves the mechanism, not production readiness.
 - Example commands and SQL in this document are illustrative and unexecuted. They are not evidence and must be reviewed against the pinned server version before use.

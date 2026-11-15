@@ -1,7 +1,7 @@
 CONTRACT: docs/contractor/contracts/PIVOT-011-backup-runbook.md
 STATUS: DONE (drafting only — unsigned runbook, drill NOT PERFORMED, no production action)
 
-Revision 2 (PIVOT-011-R1) and Revision 3 (PIVOT-011-R2) are recorded at the end of this report. It applies the five findings of the engineering review at `aaf2c27` (`docs/contractor/reviews/PIVOT-011-backup-runbook.md`). The runbook remains unsigned and NOT PERFORMED.
+Revision 2 (PIVOT-011-R1), Revision 3 (PIVOT-011-R2) and Revision 4 (PIVOT-011-R3) are recorded at the end of this report. It applies the five findings of the engineering review at `aaf2c27` (`docs/contractor/reviews/PIVOT-011-backup-runbook.md`). The runbook remains unsigned and NOT PERFORMED.
 
 ## What was delivered
 
@@ -72,7 +72,7 @@ No test suite, build, generator or live-database command was run: the contract's
 
 ## QUESTIONS FOR ENGINEER
 
-Status after the R1 review: all five questions below were answered by the engineering review (`aaf2c27`). R1's remaining defects were then corrected under PIVOT-011-R2 (`a253807`), recorded in Revision 3. The answers are applied in §Revision 2; the questions are retained unchanged as the original delivery record.
+Status after the R1 review: all five questions below were answered by the engineering review (`aaf2c27`). R1's remaining defects were corrected under PIVOT-011-R2 (`a253807`), recorded in Revision 3, and R2's remaining defects under PIVOT-011-R3 (`577423c`), recorded in Revision 4. The answers are applied in §Revision 2; the questions are retained unchanged as the original delivery record.
 
 1. Off-host destination, RPO/RTO, retention, capacity and encryption tool/key custody are `MISSING` in the runbook. Should a follow-up contract name those decisions (owner input required), or stay out of scope until the owner supplies them in the drill record?
 2. The archive/restore wrapper (`<SAVEN_WAL_ARCHIVER>`, `restore_command` restorer) is intentionally not authored here — it is executable code outside PIVOT-011's TOUCH. Should a separate contract own those wrappers plus their tests (fail-closed, atomic rename, idempotent re-archive)?
@@ -239,3 +239,70 @@ compliant: no hardcoded domain lists, no module coupling, no executable change; 
 ### GIT (R2)
 
 branch=opencode/pivot-011-backup-runbook base=testing-1 @ 6c8bc25 previous=f125977 (reviewed) commits=recorded in the delivery message pushed=yes merged=no
+
+## Revision 4 — PIVOT-011-R3 corrections
+
+Contract: the `IF REVISE` block of `docs/contractor/reviews/PIVOT-011-R2-backup-runbook.md` (engineer verdict at `577423c`). Documentation only: no backup, restore, drill, SQL execution, schema or tool change. The runbook remains **DRAFT — UNSIGNED — NOT PERFORMED** with the owner block blank.
+
+### Finding → section mapping
+
+| Finding | Old state | New state |
+| --- | --- | --- |
+| 1. Coverage still excluded recoverable security state (§10.4) | Matrix omitted `auth.sessions`, `auth.verification`, `auth.two_factor`, `auth.recovery_codes`, `auth.oauth_state` and `operator.reference_value`; `auth.users` was described as excluding secret columns from the comparison | All six tables are now matrix rows with their primary keys. A new "complete internally, opaque externally" rule states that **every persisted column — including token digests, MFA seed ciphertext, recovery-code hashes and PKCE verifier ciphertext — participates in a server-side row digest**, while exports carry only an opaque key, the digest and a count. A catalog-to-manifest SQL check compares the actual `tenant_data`/`auth`/`operator` relation inventory against the manifest in **both directions**, so a new or missing table fails instead of disappearing. Private control-table mapping is explicitly a blocking gap, not an invented equivalent. |
+| 2. Streaming command could falsely pass on SQL failure (§10.4) | `psql … \| sha256sum` with no pipeline-status handling, a new session per table, no completion or non-vacuity checks, and the manual command implied to be sufficient | Replaced by a fail-closed `export_table` shell template with `set -euo pipefail`, `ON_ERROR_STOP`, checks that the output file exists and is non-empty, a completion line check, and mandatory expected-table-count, expected-row-count, control-table and per-file line-count checks before any digest is published. Snapshot consistency is specified explicitly: one exporter session, or an exported snapshot via `pg_export_snapshot()`/`SET TRANSACTION SNAPSHOT` with the exporting transaction held open, with formats pinned inside that transaction (`TimeZone = 'UTC'` and `DateStyle = 'ISO, MDY'`). A "Comparator gap" paragraph states the template is not a checked-in tool and that matching digests from an unchecked run are not evidence — **[BLOCKING GAP]** for a separately contracted comparator. |
+| 3. Named-target semantics and timeline encoding were wrong (§6.6) | `recovery_target_inclusive = off` presented as making a named restore stop exactly at the record; timeline shown as an ambiguous `'<PINNED-TIMELINE-HEX>'` | `recovery_target_inclusive` is removed from the configuration and the text now states it applies only to LSN/time/XID targets; a **named** target stops at the named record by definition. The timeline is recorded as the **decimal** id from `pg_control_checkpoint().timeline_id` (or an explicitly `0x`-prefixed value), never `latest` and never an unqualified hex string. The unique name, returned LSN, completed-base prerequisite and archive-chain checks are unchanged. §12 and §7 use the decimal timeline id. |
+
+Review answers applied: `DateStyle` is now pinned and recorded alongside UTC; a separately contracted fail-closed comparator is required before complete drill evidence is claimed; and this Cloud runbook does **not** approve an invented Private control-table mapping — Private packaging is recorded as its own blocking gap, and the "Private: local equivalent" assumptions were removed from §1 and §10.1.
+
+### Supporting updates
+
+- §8 gains V16 (manifest drift both directions), V17 (SQL failure in the exporter), V18 (interrupted stream), V19 (vacuous comparison), V20 (secret non-export) and V21 (snapshot consistency across tables), all `[NOT PERFORMED]`.
+- §10.5's streaming-tooling gap now points at the fail-closed template and the required comparator instead of the old pipeline.
+- §13 states that no Private mapping and no checked-in comparator are approved, so a manual comparison cannot be presented as recovery evidence.
+
+### GATE EVIDENCE (R3)
+
+```text
+$ git diff --check -- docs/pivot-notes/06-backup-restore-runbook.md docs/contractor/deliveries/PIVOT-011-backup-runbook.md
+(no output)
+EXIT=0
+```
+
+```text
+$ grep -c '^```' docs/pivot-notes/06-backup-restore-runbook.md
+58                         # balanced fenced code blocks (29 pairs)
+
+$ wc -l docs/pivot-notes/06-backup-restore-runbook.md
+1003
+
+$ grep -c "NOT PERFORMED" docs/pivot-notes/06-backup-restore-runbook.md
+35
+
+$ grep -n "recovery_target_inclusive" docs/pivot-notes/06-backup-restore-runbook.md
+344: ... is **not** used here because it applies only to LSN, time and XID targets ...
+```
+
+No database, backup, restore, drill, credential or infrastructure action was performed; the whitespace/conflict check is the task's only execution gate.
+
+### QUESTIONS FOR ENGINEER (R3)
+
+1. The coverage matrix now includes every persisted table in the accepted Cloud schemas. Confirm that `operator.jobs`, `operator.ai_requests` and `operator.migration_events` are required in the matrix as written (they are included) rather than being treated as regenerable control state.
+2. The manifest check is specified as SQL over `pg_class` because no checked-in manifest file exists. Should a later contract generate the manifest from the schema inventory so the two can never drift, or is the runbook's manual list the accepted source?
+3. The exported-snapshot protocol requires the exporting transaction to stay open for the whole export. Confirm that is acceptable for the drill host, or whether a single long-running exporter session should be the only accepted method.
+4. Secret bytes are hashed server-side and never exported. Confirm that no operator needs a separate "secret fingerprint" export for key-rotation verification, or specify its shape in the comparator contract.
+
+### DEVIATIONS (R3)
+
+1. Documentation-only, as contracted; both TOUCH files are the entire diff.
+2. The old pipeline example was replaced rather than annotated: leaving a command that can report success after SQL failure, even as an "example", would repeat the finding.
+3. `recovery_target_inclusive` was removed from the accepted configuration rather than kept with a corrected comment; an irrelevant setting on a named target invites misreading.
+4. The matrix acquired tables that do not yet have live data in the Phase-1 target. That is intentional: coverage is a manifest requirement, not a data-volume claim, and the table rows remain `[NOT PERFORMED]`.
+5. Private packaging is now a first-class blocking gap; no Private mapping is invented or assumed.
+
+### EXTENSIBILITY (R3)
+
+compliant: no hardcoded business domains, no module coupling, no executable change; the comparator, Private manifest and secret-export questions remain explicit extension contracts with named future owners; the correction is reversible by a dated documentation revision and touches no schema, data or credential.
+
+### GIT (R3)
+
+branch=opencode/pivot-011-backup-runbook base=testing-1 @ 6c8bc25 previous=f2af409 (reviewed) commits=recorded in the delivery message pushed=yes merged=no
