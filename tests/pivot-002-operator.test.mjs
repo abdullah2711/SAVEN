@@ -5,12 +5,17 @@ import {randomBytes} from 'node:crypto';
 import {
   withPivotDatabase,
   connectClusterAdmin,
+  connectDatabaseAdmin,
   roleNamesForSuffix,
+  generatedRoleNames,
+  roleBootstrapSql,
+  targetRoleKeys,
   combineRunAndCleanupErrors,
 } from './helpers/pg-pivot-fixture.mjs';
 
 const repoRoot = new URL('../', import.meta.url);
 const tenantId = '11111111-1111-4111-8111-111111111111';
+const quoteRole = name => `"${String(name).replaceAll('"', '""')}"`;
 const operatorTables = [
   'ai_requests',
   'entitlement',
@@ -32,6 +37,8 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
   const schemaSql = await readFile(new URL('db/postgres/10-operator-schema.sql', repoRoot), 'utf8');
   assert.doesNotMatch(rolesSql, /\bPASSWORD\b|postgres(?:ql)?:\/\//i);
   assert.doesNotMatch(schemaSql, /\bPASSWORD\b|postgres(?:ql)?:\/\//i);
+  assert.doesNotMatch(rolesSql, /ALTER\s+ROLE/i);
+  assert.match(rolesSql, /refused incompatible/i);
   assert.doesNotMatch(
     schemaSql,
     /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?operator\.(?:user_identity|tenant_membership)\b/i,
@@ -39,10 +46,11 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
   assert.match(schemaSql, /entitlement_no_mutation/);
   assert.match(schemaSql, /entitlement_no_truncate/);
   assert.match(schemaSql, /value_schema_version/);
-  assert.match(rolesSql, /saven_customer_app/);
 
   await withPivotDatabase(async (db) => {
     const targetRoles = db.targetRoles;
+    const runtimeRoles = db.runtimeRoles;
+    const runtimeLogins = db.runtimeLogins;
     const roleRows = (
       await db.adminQuery(
         `SELECT rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolcanlogin, rolinherit, rolreplication
@@ -66,7 +74,7 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
     ).rows[0].owner;
     assert.equal(targetRoles.includes(databaseOwner), false, 'No SAVEN target role may own the disposable database');
 
-    const memberships = (
+    const targetMemberships = (
       await db.adminQuery(
         `SELECT r.rolname AS member, g.rolname AS granted
          FROM pg_auth_members m
@@ -76,7 +84,132 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
         [targetRoles],
       )
     ).rows;
-    assert.deepEqual(memberships, [], 'SAVEN target roles must not be members of each other');
+    assert.deepEqual(targetMemberships, [], 'SAVEN target roles must not be members of each other');
+
+    const roleOids = Object.fromEntries(
+      (
+        await db.adminQuery(
+          'SELECT rolname, oid FROM pg_roles WHERE rolname = ANY($1)',
+          [[...targetRoles, ...runtimeLogins, db.migrationLogin]],
+        )
+      ).rows.map(row => [row.rolname, row.oid]),
+    );
+
+    const schemaOwner = (
+      await db.adminQuery(`SELECT nspowner::regrole::text AS owner FROM pg_namespace WHERE nspname = 'operator'`)
+    ).rows[0].owner;
+    assert.equal(schemaOwner, db.roles.migrator, 'The operator schema must be owned by the offline migrator');
+
+    const relationOwners = (
+      await db.adminQuery(
+        `SELECT c.relkind, c.relowner::regrole::text AS owner
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'operator' AND c.relkind IN ('r', 'i', 'S')`,
+      )
+    ).rows;
+    assert.ok(relationOwners.length > 0);
+    assert.ok(relationOwners.every(row => row.owner === db.roles.migrator), 'All operator relations must be owned by the migrator');
+
+    const functionOwners = (
+      await db.adminQuery(
+        `SELECT p.proowner::regrole::text AS owner
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'operator'`,
+      )
+    ).rows;
+    assert.ok(functionOwners.length > 0);
+    assert.ok(functionOwners.every(row => row.owner === db.roles.migrator), 'All operator functions must be owned by the migrator');
+
+    const runtimeOids = [...runtimeRoles, ...runtimeLogins].map(name => roleOids[name]);
+    const runtimeRelations = (
+      await db.adminQuery(
+        `SELECT count(*)::int AS n
+         FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'operator' AND c.relowner = ANY($1::oid[])`,
+        [runtimeOids],
+      )
+    ).rows[0].n;
+    assert.equal(runtimeRelations, 0, 'Runtime roles/logins must not own operator relations');
+    const runtimeFunctions = (
+      await db.adminQuery(
+        `SELECT count(*)::int AS n
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+         WHERE n.nspname = 'operator' AND p.proowner = ANY($1::oid[])`,
+        [runtimeOids],
+      )
+    ).rows[0].n;
+    assert.equal(runtimeFunctions, 0, 'Runtime roles/logins must not own operator functions');
+
+    async function hasRole(member, granted, mode = 'MEMBER') {
+      return (
+        await db.adminQuery('SELECT pg_has_role($1, $2, $3) AS allowed', [member, granted, mode])
+      ).rows[0].allowed;
+    }
+    for (const member of [...runtimeRoles, ...runtimeLogins]) {
+      for (const granted of [db.roles.migrator, db.roles.operatorDefiner, db.roles.authDefiner]) {
+        assert.equal(await hasRole(member, granted, 'MEMBER'), false, `${member} must not be a member of ${granted}`);
+        assert.equal(await hasRole(member, granted, 'SET'), false, `${member} must not assume ${granted}`);
+      }
+    }
+    const forbiddenMemberships = (
+      await db.adminQuery(
+        `SELECT r.rolname AS member, g.rolname AS granted
+         FROM pg_auth_members m
+         JOIN pg_roles r ON r.oid = m.member
+         JOIN pg_roles g ON g.oid = m.roleid
+         WHERE r.rolname = ANY($1) AND g.rolname = ANY($2)`,
+        [[...runtimeRoles, ...runtimeLogins], [db.roles.migrator, db.roles.operatorDefiner, db.roles.authDefiner]],
+      )
+    ).rows;
+    assert.deepEqual(forbiddenMemberships, []);
+
+    for (const key of ['customerApp', 'authService', 'operatorRead', 'operatorAdmin']) {
+      for (const targetKey of ['migrator', 'operatorDefiner', 'authDefiner']) {
+        await db.asLogin(key, async client => {
+          await assert.rejects(
+            () => client.query(`SET ROLE ${quoteRole(db.roles[targetKey])}`),
+            /permission denied|must be member/,
+          );
+        });
+      }
+    }
+    await assert.rejects(
+      () => db.asRole('operatorAdmin', client => client.query('ALTER TABLE operator.tenant ADD COLUMN probe integer')),
+      /permission denied|must be owner/,
+    );
+    await assert.rejects(
+      () => db.asRole('operatorAdmin', client => client.query('DROP TABLE operator.tenant')),
+      /permission denied|must be owner/,
+    );
+    await assert.rejects(
+      () => db.asLogin('operatorAdmin', client => client.query('ALTER TABLE operator.tenant ADD COLUMN probe integer')),
+      /permission denied/,
+    );
+
+    const targetSnapshot = async () => ({
+      roles: (
+        await db.adminQuery(
+          `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolbypassrls, rolreplication
+           FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname`,
+          [targetRoles],
+        )
+      ).rows,
+      memberships: (
+        await db.adminQuery(
+          `SELECT r.rolname AS member, g.rolname AS granted
+           FROM pg_auth_members m
+           JOIN pg_roles r ON r.oid = m.member
+           JOIN pg_roles g ON g.oid = m.roleid
+           WHERE r.rolname = ANY($1) OR g.rolname = ANY($1)
+           ORDER BY r.rolname, g.rolname`,
+          [targetRoles],
+        )
+      ).rows,
+    });
+    const beforeBootstrap = await targetSnapshot();
+    await db.applyRoleBootstrap();
+    const afterBootstrap = await targetSnapshot();
+    assert.deepEqual(afterBootstrap, beforeBootstrap, 'Compatible bootstrap re-entry must not alter roles or memberships');
 
     const actualTables = (
       await db.adminQuery(
@@ -319,7 +452,7 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
     });
     await db.asRole('migrator', client => client.query(
       `INSERT INTO operator.pg_schema_migrations(version, description, checksum)
-       VALUES(1, 'pivot-002b', 'checksum-pivot-002b')`,
+       VALUES(1, 'pivot-002c', 'checksum-pivot-002c')`,
     ), {commit: true});
 
     const immutableStatements = [
@@ -356,12 +489,12 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
 test('PIVOT-002 fixture refuses pre-existing cluster roles before mutation', async () => {
   const suffix = suffixFor('refuse');
   const names = roleNamesForSuffix(suffix);
-  const allRoles = [...Object.values(names).filter(value => value !== names.database)];
+  const allRoles = generatedRoleNames(names);
   const cluster = await connectClusterAdmin();
   let created = false;
   try {
     await cluster.query(
-      `CREATE ROLE "${names.customerApp}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+      `CREATE ROLE ${quoteRole(names.customerApp)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
     );
     created = true;
     const before = (
@@ -391,7 +524,70 @@ test('PIVOT-002 fixture refuses pre-existing cluster roles before mutation', asy
     );
     assert.equal(otherRoles.rowCount, 0, 'pre-flight refusal must not create any other fixture role');
   } finally {
-    if (created) await cluster.query(`DROP ROLE IF EXISTS "${names.customerApp}"`);
+    if (created) await cluster.query(`DROP ROLE IF EXISTS ${quoteRole(names.customerApp)}`);
+    await cluster.end();
+  }
+});
+
+test('PIVOT-002 checked-in role bootstrap refuses incompatible pre-existing roles atomically', async () => {
+  const suffix = suffixFor('boot');
+  const names = roleNamesForSuffix(suffix);
+  const targetNames = targetRoleKeys.map(key => names[key]);
+  const unrelated = names.database + '_unrelated';
+  const tempLogin = names.database + '_bootstrap_login';
+  const bootstrapSql = await roleBootstrapSql(names);
+  const cluster = await connectClusterAdmin();
+  let databaseAdmin;
+  try {
+    await cluster.query(`CREATE DATABASE ${quoteRole(names.database)}`);
+    databaseAdmin = await connectDatabaseAdmin(names.database);
+    await cluster.query(
+      `CREATE ROLE ${quoteRole(names.customerApp)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+    );
+    await cluster.query(
+      `CREATE ROLE ${quoteRole(unrelated)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+    );
+    await cluster.query(
+      `CREATE ROLE ${quoteRole(tempLogin)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+    );
+    await cluster.query(`GRANT ${quoteRole(names.customerApp)} TO ${quoteRole(tempLogin)}`);
+
+    const watchedRoles = [...targetNames, unrelated, tempLogin];
+    const snapshot = async () => ({
+      roles: (
+        await cluster.query(
+          `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolbypassrls, rolreplication
+           FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname`,
+          [watchedRoles],
+        )
+      ).rows,
+      memberships: (
+        await cluster.query(
+          `SELECT r.rolname AS member, g.rolname AS granted
+           FROM pg_auth_members m
+           JOIN pg_roles r ON r.oid = m.member
+           JOIN pg_roles g ON g.oid = m.roleid
+           WHERE r.rolname = ANY($1) OR g.rolname = ANY($1)
+           ORDER BY r.rolname, g.rolname`,
+          [watchedRoles],
+        )
+      ).rows,
+    });
+    const before = await snapshot();
+    await assert.rejects(() => databaseAdmin.query(bootstrapSql), /SAVEN bootstrap refused incompatible/);
+    const after = await snapshot();
+    assert.deepEqual(after, before, 'refused bootstrap must leave every role and membership unchanged');
+    const otherTargets = await cluster.query(
+      'SELECT rolname FROM pg_roles WHERE rolname = ANY($1) AND rolname <> $2 ORDER BY rolname',
+      [targetNames, names.customerApp],
+    );
+    assert.equal(otherTargets.rowCount, 0, 'refused bootstrap must not create any other target role');
+  } finally {
+    if (databaseAdmin) await databaseAdmin.end().catch(() => {});
+    await cluster.query(`DROP DATABASE IF EXISTS ${quoteRole(names.database)} WITH (FORCE)`).catch(() => {});
+    for (const role of [tempLogin, unrelated, ...targetNames]) {
+      await cluster.query(`DROP ROLE IF EXISTS ${quoteRole(role)}`).catch(() => {});
+    }
     await cluster.end();
   }
 });

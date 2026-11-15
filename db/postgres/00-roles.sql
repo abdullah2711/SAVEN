@@ -7,8 +7,7 @@
 DO $$
 DECLARE
   role_name text;
-BEGIN
-  FOREACH role_name IN ARRAY ARRAY[
+  target_roles text[] := ARRAY[
     'saven_customer_app',
     'saven_auth_service',
     'saven_operator_read',
@@ -16,26 +15,38 @@ BEGIN
     'saven_migrator',
     'saven_operator_definer',
     'saven_auth_definer'
-  ] LOOP
+  ];
+  incompatible text[] := ARRAY[]::text[];
+BEGIN
+  -- Validate every existing target role before creating anything. A pre-existing
+  -- role is never ALTERed: if its definition differs from the constrained target,
+  -- the whole bootstrap refuses before mutation.
+  FOREACH role_name IN ARRAY target_roles LOOP
+    IF EXISTS (
+      SELECT 1
+      FROM pg_roles
+      WHERE rolname = role_name
+        AND (
+          rolcanlogin OR rolsuper OR rolcreatedb OR rolcreaterole OR
+          rolinherit OR rolbypassrls OR rolreplication
+        )
+    ) THEN
+      incompatible := incompatible || role_name;
+    END IF;
+  END LOOP;
+
+  IF cardinality(incompatible) > 0 THEN
+    RAISE EXCEPTION
+      'SAVEN bootstrap refused incompatible pre-existing role(s): %',
+      array_to_string(incompatible, ', ');
+  END IF;
+
+  -- Create only missing roles. Compatible existing roles are a no-op, and
+  -- memberships/grants are never changed by this bootstrap.
+  FOREACH role_name IN ARRAY target_roles LOOP
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = role_name) THEN
       EXECUTE format(
         'CREATE ROLE %I NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
-        role_name
-      );
-    ELSE
-      -- A CREATEROLE migration login cannot change SUPERUSER, BYPASSRLS or
-      -- REPLICATION attributes. Fail closed if a pre-existing role carries them,
-      -- then narrow only the attributes that are safe to alter.
-      IF EXISTS (
-        SELECT 1 FROM pg_roles
-        WHERE rolname = role_name AND (rolsuper OR rolbypassrls OR rolreplication)
-      ) THEN
-        RAISE EXCEPTION
-          'Role % has forbidden SUPERUSER/BYPASSRLS/REPLICATION; correct it with a superuser before rerunning',
-          role_name;
-      END IF;
-      EXECUTE format(
-        'ALTER ROLE %I NOLOGIN NOCREATEDB NOCREATEROLE NOINHERIT',
         role_name
       );
     END IF;

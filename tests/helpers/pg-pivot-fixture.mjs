@@ -18,12 +18,14 @@ export const targetRoleKeys = Object.freeze([
   'authDefiner',
 ]);
 
-export const switchableRoleKeys = Object.freeze([
+export const runtimeRoleKeys = Object.freeze([
   'customerApp',
+  'authService',
   'operatorRead',
   'operatorAdmin',
-  'migrator',
 ]);
+
+export const switchableRoleKeys = Object.freeze([...runtimeRoleKeys, 'migrator']);
 
 const roleSuffixes = Object.freeze({
   customerApp: 'customer_app',
@@ -33,6 +35,13 @@ const roleSuffixes = Object.freeze({
   migrator: 'migrator',
   operatorDefiner: 'operator_definer',
   authDefiner: 'auth_definer',
+});
+
+const loginSuffixes = Object.freeze({
+  customerApp: 'customer_app_login',
+  authService: 'auth_service_login',
+  operatorRead: 'operator_read_login',
+  operatorAdmin: 'operator_admin_login',
 });
 
 const defaultSqlFiles = Object.freeze(['db/postgres/10-operator-schema.sql']);
@@ -101,16 +110,32 @@ export async function connectClusterAdmin() {
   return connect(connectionConfig());
 }
 
+export async function connectDatabaseAdmin(database) {
+  requireTestCluster();
+  return connect(connectionConfig(database));
+}
+
 export function roleNamesForSuffix(suffix) {
   if (typeof suffix !== 'string' || !/^[a-z0-9]{8,32}$/.test(suffix)) {
     throw new Error('PIVOT-002 fixture requires an [a-z0-9]{8,32} namespace suffix.');
   }
   const prefix = 'saven_pivot_' + suffix;
-  const names = {database: prefix, login: prefix + '_login', migration: prefix + '_migration'};
+  const names = {database: prefix, migration: prefix + '_migration', logins: {}};
   for (const [key, roleSuffix] of Object.entries(roleSuffixes)) {
     names[key] = prefix + '_' + roleSuffix;
   }
+  for (const [key, loginSuffix] of Object.entries(loginSuffixes)) {
+    names.logins[key] = prefix + '_' + loginSuffix;
+  }
   return names;
+}
+
+export function generatedRoleNames(names) {
+  return [
+    ...targetRoleKeys.map(key => names[key]),
+    names.migration,
+    ...Object.values(names.logins),
+  ];
 }
 
 export function combineRunAndCleanupErrors(runError, cleanupErrors) {
@@ -123,13 +148,17 @@ export function combineRunAndCleanupErrors(runError, cleanupErrors) {
   return new AggregateError([runError, cleanupError], 'PIVOT-002 fixture run and cleanup both failed');
 }
 
-function rewriteSql(sql, names) {
+function rewriteRoleNames(sql, names) {
   let rewritten = sql;
   for (const key of targetRoleKeys) {
     const fixed = 'saven_' + roleSuffixes[key];
     rewritten = rewritten.replaceAll(fixed, names[key]);
   }
   return rewritten;
+}
+
+export async function roleBootstrapSql(names) {
+  return rewriteRoleNames(await readFile(join(repoRoot, 'db/postgres/00-roles.sql'), 'utf8'), names);
 }
 
 export async function withPivotDatabase(options, run) {
@@ -143,11 +172,13 @@ export async function withPivotDatabase(options, run) {
   const suffix = options?.namespaceSuffix ?? randomUUID().replaceAll('-', '').slice(0, 12);
   const names = roleNamesForSuffix(suffix);
   const sqlFiles = options?.sqlFiles ?? defaultSqlFiles;
-  const allRoleNames = [...targetRoleKeys.map(key => names[key]), names.login, names.migration];
+  const allRoleNames = generatedRoleNames(names);
   const clusterConfig = connectionConfig();
   const adminUser = clusterConfig.user;
   const migrationPassword = randomBytes(32).toString('base64url');
-  const loginPassword = randomBytes(32).toString('base64url');
+  const loginPasswords = Object.fromEntries(
+    runtimeRoleKeys.map(key => [key, randomBytes(32).toString('base64url')]),
+  );
   const createdRoles = [];
   const cleanupErrors = [];
   let createdDatabase = false;
@@ -183,28 +214,35 @@ export async function withPivotDatabase(options, run) {
     createdDatabase = true;
     databaseAdmin = await connect(connectionConfig(names.database));
 
-    for (const key of targetRoleKeys) {
-      const role = names[key];
-      await clusterAdmin.query(
-        `CREATE ROLE ${quoteIdent(role)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+    // Exercise the checked-in bootstrap, rewritten only into the disposable
+    // namespace. It validates every target before creating any missing role.
+    const bootstrapSql = await roleBootstrapSql(names);
+    await databaseAdmin.query(bootstrapSql);
+    for (const key of targetRoleKeys) createdRoles.push(names[key]);
+
+    for (const key of runtimeRoleKeys) {
+      const login = names.logins[key];
+      await databaseAdmin.query(
+        `CREATE ROLE ${quoteIdent(login)} LOGIN PASSWORD ${quoteLiteral(loginPasswords[key])} ` +
+        'NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
       );
-      createdRoles.push(role);
+      createdRoles.push(login);
+      await databaseAdmin.query(`GRANT ${quoteIdent(names[key])} TO ${quoteIdent(login)}`);
     }
 
-    await clusterAdmin.query(
+    await databaseAdmin.query(
       `CREATE ROLE ${quoteIdent(names.migration)} LOGIN PASSWORD ${quoteLiteral(migrationPassword)} ` +
       'NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
     );
     createdRoles.push(names.migration);
-    await clusterAdmin.query(`GRANT ${quoteIdent(names.migrator)} TO ${quoteIdent(names.migration)}`);
-    await clusterAdmin.query(`GRANT CREATE ON DATABASE ${quoteIdent(names.database)} TO ${quoteIdent(names.migration)}`);
+    await databaseAdmin.query(`GRANT ${quoteIdent(names.migrator)} TO ${quoteIdent(names.migration)}`);
+    await databaseAdmin.query(`GRANT CREATE ON DATABASE ${quoteIdent(names.database)} TO ${quoteIdent(names.migration)}`);
 
     migrationClient = await connect(
       connectionConfig(names.database, {user: names.migration, password: migrationPassword}),
     );
     for (const file of sqlFiles) {
-      const sql = rewriteSql(await readFile(join(repoRoot, file), 'utf8'), names);
-      await migrationClient.query(sql);
+      await migrationClient.query(rewriteRoleNames(await readFile(join(repoRoot, file), 'utf8'), names));
     }
     // The fixture's private admin needs schema USAGE to resolve operator.*
     // names in has_table_privilege checks. This is database-local and temporary.
@@ -214,22 +252,17 @@ export async function withPivotDatabase(options, run) {
     await migrationClient.end();
     migrationClient = null;
 
-    await clusterAdmin.query(
-      `CREATE ROLE ${quoteIdent(names.login)} LOGIN PASSWORD ${quoteLiteral(loginPassword)} ` +
-      'NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
-    );
-    createdRoles.push(names.login);
-    for (const key of switchableRoleKeys) {
-      await clusterAdmin.query(`GRANT ${quoteIdent(names[key])} TO ${quoteIdent(names.login)}`);
-    }
-
-    const loginConfig = connectionConfig(names.database, {user: names.login, password: loginPassword});
+    const loginConfigs = Object.fromEntries(runtimeRoleKeys.map(key => [
+      key,
+      connectionConfig(names.database, {user: names.logins[key], password: loginPasswords[key]}),
+    ]));
+    loginConfigs.migrator = connectionConfig(names.database, {user: names.migration, password: migrationPassword});
 
     async function asRole(roleKey, action, {commit = false} = {}) {
       if (!switchableRoleKeys.includes(roleKey)) {
         throw new Error('PIVOT-002 fixture refused an unknown switchable role.');
       }
-      const client = await connect(loginConfig);
+      const client = await connect(loginConfigs[roleKey]);
       try {
         await client.query('BEGIN');
         await client.query(`SET LOCAL ROLE ${quoteIdent(names[roleKey])}`);
@@ -244,16 +277,31 @@ export async function withPivotDatabase(options, run) {
       }
     }
 
+    async function asLogin(roleKey, action) {
+      if (!switchableRoleKeys.includes(roleKey)) {
+        throw new Error('PIVOT-002 fixture refused an unknown login principal.');
+      }
+      const client = await connect(loginConfigs[roleKey]);
+      try {
+        return await action(client);
+      } finally {
+        await client.end().catch(() => {});
+      }
+    }
+
     result = await run({
       suffix,
       database: names.database,
       roles: names,
       targetRoles: targetRoleKeys.map(key => names[key]),
-      loginRole: names.login,
-      loginPassword,
+      runtimeRoles: runtimeRoleKeys.map(key => names[key]),
+      runtimeLogins: runtimeRoleKeys.map(key => names.logins[key]),
+      migrationLogin: names.migration,
       admin: databaseAdmin,
       adminQuery: (sql, params = []) => databaseAdmin.query(sql, params),
+      applyRoleBootstrap: () => databaseAdmin.query(bootstrapSql),
       asRole,
+      asLogin,
     });
   } catch (error) {
     runError = error;
