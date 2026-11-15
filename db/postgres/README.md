@@ -68,7 +68,11 @@ All SAVEN target roles are `NOLOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE
 
 The test exercises the checked-in bootstrap for fresh creation and compatible no-op re-entry, and separately proves that an incompatible pre-existing target role causes an atomic refusal with unchanged role attributes and memberships. It also asserts actual object ownership, runtime inability to assume migrator/definer roles, and denied runtime `ALTER`/`DROP` behavior. The production role/bootstrap SQL remains the source for deployment; the fixture never substitutes handwritten target-role creation.
 
-The `scripts/check.mjs` gate currently requires the same explicit PostgreSQL configuration and runs the focused PIVOT-002 test. It fails loudly when `SAVEN_PIVOT_TEST_CLUSTER`, `PGHOST` or `PGUSER` is missing; it never silently skips or borrows a shared/owner database. The `Verify SAVEN` workflow supplies the disposable PostgreSQL service environment to `node scripts/check.mjs` and `node --test tests/*.test.mjs`.
+`node scripts/check.mjs` — and therefore `npm run check` and `npm run build` — is a database-independent parser/build check. It parses every JavaScript file under `src`, `scripts`, `tests`, `public` and `reference`, then validates `package.json`; it does not connect to PostgreSQL and needs no database environment.
+
+The explicit PostgreSQL tests are separate and mandatory. The PIVOT-002 fixture fails clearly before any mutation when `SAVEN_PIVOT_TEST_CLUSTER=1` is absent and never silently skips or borrows a shared/owner database. The `Verify SAVEN` workflow supplies the disposable PostgreSQL service environment to `node --test tests/*.test.mjs` and the later verifier steps.
+
+Run the explicit tests only against a dedicated disposable local/CI cluster with the following environment:
 
 ```text
 SAVEN_PIVOT_TEST_CLUSTER=1
@@ -79,4 +83,4 @@ PGPASSWORD=<private test-only credential>
 PGADMIN_DATABASE=postgres
 ```
 
-The contract test is `tests/pivot-002-operator.test.mjs`.
+The contract test is `tests/pivot-002-operator.test.mjs`; the full Node suite is `node --test tests/*.test.mjs`.
