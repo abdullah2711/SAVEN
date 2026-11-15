@@ -78,3 +78,143 @@ compliant — realms, assurance roles and audit events are reference rows, not c
 ## GIT
 
 branch=opencode/auth-002-sessions commit=`50eab39` pushed=yes
+
+# AUTH-002-R1 revision — 15 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-002-sessions.md` delivered at
+`a253807` on `codex/pivot-003-rulings`. Contract executed: the `IF REVISE` block of
+that review, on branch `opencode/auth-002-sessions` (base `d0a50cd`). Implementation
+commit `a788861`, plus this report commit.
+
+Scope stayed exactly on TOUCH. No package, schema, migration, native route, connector,
+MFA or rate-limit change was made.
+
+## Finding 1 — atomic successful transitions
+
+The store now requires a pool with `connect()` and exposes `withTransaction`, which
+runs `BEGIN`/`COMMIT`/`ROLLBACK` on one checked-out client. Login creates the session
+and writes `login_success` through that same client and only returns the cookie after
+commit. Logout locks and validates the session, revokes and writes `logout` in one
+transaction. Failed-login audit is intentional autocommit, so a refused attempt is
+still recorded.
+
+Evidence (`AUTH-002 success and audit commit atomically while failure audit stays durable`):
+
+- injected `login_success` audit failure → HTTP 503, no cookie, zero session rows, zero
+  success audit rows (rollback observed in stored state, not just the response);
+- injected `logout` audit failure → HTTP 503, `revoked_at` still NULL, session still
+  usable, zero logout audit rows;
+- failed login still leaves exactly one durable `login_failure` row.
+
+## Finding 2 — race-safe, non-resurrectable lifecycle
+
+- `rotateSession` selects the source `FOR UPDATE`, re-validates revoked, idle, absolute,
+  user status and credential epoch at the mutation boundary, inserts one successor with
+  the original absolute ceiling, consumes the source with a conditional `UPDATE`, and
+  rolls back if the source cannot be consumed.
+- `refreshSession` is a guarded `UPDATE … FROM auth.users` that only matches a live,
+  unexpired, active, current-epoch row; it can never revive an idle-expired row.
+  `/v1/auth/me` fails closed when the refresh matches nothing (no stale success and no
+  blanket-suppressed rejection).
+
+Evidence:
+
+- two concurrent `rotateSession` calls → exactly one successor, one live session, source
+  revoked with `privilege_change`, second call returns `null`;
+- rotation after revoke → `null`; rotation after idle expiry (before absolute) → `null`,
+  row untouched;
+- refresh after idle expiry → `null`;
+- a rolled-back rotation (thrown after successor insert) leaves the source live, no
+  successor, and the returned successor token does not resolve.
+
+## Finding 3 — bounded configuration and effective dates
+
+`resolveSessionConfig` now rejects non-integer, non-positive, reordered or
+over-ceiling values (`idleMs ≤ 30 days`, `absoluteMs ≤ 90 days`), and requires 32–64
+random token bytes. Shorter policies remain supported and are exercised (1h idle / 2h
+absolute spans asserted). Realm and assurance-role lookups now check both
+`effective_from <= now` and `effective_to` using the same injected application clock as
+session expiry; a future-dated realm and a future-dated role are both refused. The
+README states that the injected clock is authoritative and that the database supplies
+structural constraints and the immutable ceiling only.
+
+## Finding 4 — pinned-library adapter proven
+
+`createBetterAuthSessions` (in `server.mjs`) instantiates the pinned `better-auth`
+with a custom adapter over the canonical schema. It hashes the raw token before every
+SQL statement, maps the library's session `expiresAt` to `idle_expires_at` capped by
+the immutable `absolute_expires_at`, converts library delete/deleteMany into
+revocation `UPDATE`s, joins `auth.users` for session validation, disables cookie cache
+and disables library schema validation. The gate drives the library's own
+`internalAdapter.createSession` / `findSession` / `updateSession` / `deleteSession` and
+asserts: strong token, digest-only row, wrong token unresolved, refresh cannot move the
+ceiling, revoke is a revocation row, revoked token unresolved, and no plaintext token
+in any SQL text or parameter.
+
+This is still an isolated composition path: no entry point, connector, MFA/passkey
+plugin or profile was activated, and no pin changed. Accounts/verification/plugin model
+parity remains future work, which the README now states explicitly along with the fact
+that a working realm needs the fixed `REALMS` cookie/request map and exact origin, not
+just a reference row.
+
+## Finding 5 — real runtime role and corrected spy
+
+Every lifecycle, race, failure, rotation and library test now runs through a real
+non-owner login created for the test and granted only the fixture's namespaced
+`auth_service` role; fixture administration is used only for setup and observation.
+The SQL-boundary spy wraps that real-role pool. The spy case now calls
+`revokeAllSessions(userId)` with the verified user id (previously a session id).
+Assertions include: the auth-service principal cannot `ALTER TABLE auth.sessions`
+(SQLSTATE 42501), and the observation connection remains administrative.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-002-sessions.test.mjs
+PASS: 153 JavaScript files parsed; package manifest valid.
+✔ AUTH-002 login persists only a digest and issues a host-only secure cookie (559.045588ms)
+✔ AUTH-002 sessions fail closed on expiry, revocation, disablement and credential epochs (982.127344ms)
+✔ AUTH-002 activity extends idle expiry but never the absolute ceiling (468.624353ms)
+✔ AUTH-002 rotation is serialized, preserves the ceiling and cannot be replayed (547.087405ms)
+✔ AUTH-002 rotation and refresh cannot revive an idle-expired session (512.347902ms)
+✔ AUTH-002 success and audit commit atomically while failure audit stays durable (689.326712ms)
+✔ AUTH-002 CSRF, origin, content-type and field boundaries refuse client authority (472.51555ms)
+✔ AUTH-002 failures are non-enumerating and audited without secrets (657.592929ms)
+✔ AUTH-002 plaintext tokens never cross the database boundary on the real role (495.857234ms)
+✔ AUTH-002 configuration enforces ADR ceilings and effective dates (385.206055ms)
+✔ AUTH-002 lifecycle and failure paths run under the real auth-service role (510.900505ms)
+✔ AUTH-002 pinned Better Auth drives the digest-only session lifecycle (743.262916ms)
+✔ AUTH-002 cookie policy distinguishes realms and local fixtures (0.490829ms)
+ℹ tests 13
+ℹ pass 13
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0`. Full suite on the same runtime/cluster: `182` tests, `182` pass, `0` fail,
+`0` skipped. Without the dedicated-cluster opt-in: exit `1`, one database-independent
+pass and twelve refusals.
+
+Environment: Node `v24.19.0`; dedicated disposable PostgreSQL 18.6 cluster on loopback
+`127.0.0.1:55441`; fixture-created `saven_auth_*` objects and the per-test auth-service
+login were removed; post-gate queries returned no `saven_auth_%` roles or databases;
+the cluster was stopped and its data directory deleted.
+
+## R1 questions, deviations and cleanup
+
+- Questions: none blocking. The library adapter covers sessions only; accounts,
+  verification, 2FA/passkey and OIDC remain later contracts, as the review's scope
+  allows. If the engineer wants the library's account/verification models mapped now,
+  that is a separate contract, not an AUTH-002 change.
+- Deviations: the test clock starts at real current time so seeded `effective_from`
+  rows are effective while remaining advanceable; the test login is created with
+  `INHERIT` (not `NOINHERIT`) so it actually receives the auth-service grants while
+  still owning nothing; both are test scaffolding choices and are documented above.
+- Cleanup: cluster stopped, data directory and `var/` logs deleted, `node_modules`
+  symlink removed, no cluster objects left.
+
+## GIT (R1)
+
+branch=opencode/auth-002-sessions commits=`a788861`,report commit pushed=yes
