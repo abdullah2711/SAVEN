@@ -10,6 +10,7 @@
 
 - Read docs/sources/SAVEN-mandate-v2.3.md and docs/sources/SAVEN-agent-handoff-v2.3.md completely, plus the full v2 baseline for nonconflicting scope. Newest explicit owner feedback governs.
 - Native SQLite is the sole selected next database engine, including central controls. No new D1 or PostgreSQL dependency. Local-first development/QA must work without SSH or cloud services.
+  See docs/pivot-notes/01-adr-postgresql-pivot.md for the owner-authorized PostgreSQL pivot. SQLite remains the production path until the retirement gate in that ADR is satisfied.
 - Exactly Cloud and Fully Private; Offline is a companion. No SaaS customer-node attachment or reseller hosting. Private excludes vendor issuer/billing/global customer/operator components and uses monthly signed public-key-verified entitlements.
 - One immutable ultimate-owner role definition and exactly one active principal per subscribed business. Custom role names grant no protected authority. Pending, approval, posted and outbox states are distinct durable contracts.
 - Preserve existing PG code/data/services/tests until independent SQLite parity, restore/reconciliation and explicit cutover/decommission authorization. The 14 November operational-release request authorizes verified production increments and controlled main promotion after testing; it does not authorize destructive deletion, unverified client onboarding or an irreversible reference-data cutover.
