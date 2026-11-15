@@ -1,5 +1,5 @@
 CONTRACT: docs/contractor/contracts/PIVOT-003-tenant-schema.md
-STATUS: DONE
+STATUS: DONE — revised under PIVOT-003-R1. The tenant skeleton, canonical seed and gate are delivered; the PIVOT-003-R1 corrections (native empty-stock valuation, canonical tax default/notes, externalized severity domain, corrected claims) are applied and recorded in the revision section below.
 
 ## What was delivered
 
@@ -141,3 +141,88 @@ compliant, with these explicit narrowing notes:
 ## GIT
 
 branch=opencode/pivot-003 commits=f6d3821 (implementation, based on testing-1 @ 6c8bc25), plus this report commit pushed=<recorded in the delivery message>
+
+
+# PIVOT-003-R1 revision — 15 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/PIVOT-003-tenant-schema.md` delivered at `50b67491cf44d47b488545968a6093b59f32c9ac` on `codex/pivot-003-rulings`. Contract executed: the `IF REVISE` block of that review, on branch `opencode/pivot-003`, after AUTH-001-R1 completed.
+
+## README serialization
+
+The shared `db/postgres/README.md` is serialized. Commit `aa7638d` first carried the completed AUTH-001-R1 README sections (auth schema, run-order steps 3–4, auth boundaries, auth fixture) onto this branch; commit `73a9cfa` then applied the PIVOT-003-R1 corrections. No AUTH-001 text was removed or rewritten, and no AUTH implementation file was added to this branch. Both edits can merge in either order without conflict.
+
+## Correction 1 — native empty-stock valuation restored
+
+`db/postgres/migrations/021-tenant-schema-corrections.sql` is additive and applied after `20`:
+
+```text
+ALTER TABLE tenant_data.stock_balances
+  ADD CONSTRAINT stock_balances_quantity_value_chk
+  CHECK (quantity > 0 OR value = 0)
+  NOT VALID;
+
+ALTER TABLE tenant_data.stock_balances
+  VALIDATE CONSTRAINT stock_balances_quantity_value_chk;
+```
+
+- This restores native `src/local/schema.mjs` `stock_balances` `CHECK(quantity>0 OR value=0)`; the target had kept only independent nonnegative bounds, so `(quantity=0, value=100, version=1)` was accepted where SQLite rejects it.
+- Live cases: `INSERT` with `quantity = 0, value = 100` rejected; `INSERT` with `0/0` accepted; `UPDATE` adding value to an empty balance rejected; `UPDATE` to `0/0` accepted; positive quantity with zero value accepted (free stock). `convalidated = true` and the exact predicate are asserted from `pg_constraint`.
+- `NOT VALID` + explicit `VALIDATE` refuses invalid pre-existing rows instead of repairing them. A rolled-back probe table inserts `(0, 100)` before the constraint, then proves `VALIDATE` fails with `violated by some row`.
+- Not bill-and-hold custody: the affected table is the native owned-stock balance, and PIVOT-005/013 were not treated as a reason to omit a native structural CHECK.
+
+## Correction 2 — tax default and notes reconciled
+
+- `ALTER TABLE tenant_data.tax_profile ALTER COLUMN tax_type SET DEFAULT 'SALES_TAX'`. A defaulted profile now returns `SALES_TAX`, which is an actual seeded `tax_type` value; the previous lower-case `sales_tax` default could not resolve.
+- The JSON authority note now says `origin_type ai` (the seeded value) instead of `origin_type AI`.
+- Consistency coverage was extended beyond domain names: the static test resolves every `COMMENT ON COLUMN … reference domain:` annotation to its table column, applies `SET DEFAULT` overrides from the correction file, and fails if an effective default is not a seeded value of that domain. It also checks `document_status`/`origin_type` tokens quoted in `authority_notes` against their seeds, so defaults and canonical notes cannot silently drift. This check found exactly one mismatch before the fix (`tax_type`) and passes after it.
+
+## Correction 3 — configurable severity externalized
+
+- New reference domain `posting_constraint_severity` with values `block` (Block posting) and `warn` (Warn and allow posting), a documented validation rule (effective-dated `tenant_data.reference_values` rows, interpreted only by the registered deterministic handler named in `handler_key`, unknown value/handler fails closed) and the table annotation `tenant_data.posting_constraint (nested rule_jsonb.severity)`.
+- The JSON Schema for `posting_constraint.rule_jsonb.severity` is now a structural string (`minLength 1`, `maxLength 40`) whose description names the reference domain; the inline `enum` is gone.
+- `021` annotates the domain on `tenant_data.posting_constraint.rule_jsonb` so the SQL annotation set and the canonical seed remain equal.
+- The static test recursively rejects any `enum` anywhere in `json_schemas` (not only top level), asserts the severity domain is seeded with exactly `block`/`warn`, and asserts the annotation/seed match. A new reference value still cannot install executable policy.
+
+## Corrected claims
+
+- README no longer claims "append-only policy versions". It now states that a duplicate policy-version key is rejected — uniqueness only — and that existing versions are not immutable until PIVOT-005/006.
+- README no longer implies exactly one active owner. It states that the skeleton proves at most one protected role and at most one owner assignment; existence of exactly one active owner after activation is not enforced by a trigger-free skeleton.
+- The live test label for the duplicate-version case says "key uniqueness only; existing versions are not yet immutable".
+
+## DONE WHEN evidence
+
+Environment: `node v24.19.0` (`.nvmrc`, required `>=24.13 <25`), dedicated disposable PostgreSQL 18.6 cluster from `initdb`, loopback `127.0.0.1:55439`, trust-local test-only admin `postgres`. Variables exported before the gate so the opt-in reaches the test process.
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/pivot-003-schema.test.mjs
+PASS: 147 JavaScript files parsed; package manifest valid.
+✔ PIVOT-003 static schema contract: scoped tenant tables, exact money, no growing enums (12.971292ms)
+✔ PIVOT-003 tenant schema applies with scoped identity, no RLS yet and no runtime grants (372.688505ms)
+✔ PIVOT-003 tenant constraints enforce scoped money, ownership and cross-tenant isolation (519.141381ms)
+ℹ tests 3
+ℹ pass 3
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit status `0`. Full Node suite on the same runtime and cluster: `153` tests, `153` pass, `0` fail, `0` skipped (this branch does not carry the AUTH-001 test; the combined suite is 166 on `opencode/auth-001`). Fail-closed without the opt-in remains as previously recorded: the two fixture-backed cases refuse before mutation and the static case passes.
+
+Documented full run order verified with AUTH-001 applied as well (`05`/`006` read from `opencode/auth-001` commit `991bc06`):
+
+```text
+$ psql -v ON_ERROR_STOP=1 -f db/postgres/00-roles.sql -f db/postgres/10-operator-schema.sql \
+    -f 05-auth-schema.sql -f 006-auth-schema-corrections.sql \
+    -f db/postgres/20-tenant-schema.sql -f db/postgres/migrations/021-tenant-schema-corrections.sql
+RUN_ORDER_EXIT=0
+schemas: auth,operator,tenant_data
+```
+
+`db/postgres/20-tenant-schema.sql` is byte-identical to `62405d2` (`8562311802a6204353964ec63a754a978123e7a5`); `00`/`10` are unchanged. The only changed paths versus `62405d2` are this report, `db/postgres/README.md`, `db/postgres/migrations/021-tenant-schema-corrections.sql`, `contracts/postgres-business-rules-v1.json` and `tests/pivot-003-schema.test.mjs`.
+
+## R1 questions and deviations
+
+- Questions: none outstanding. The review settled the schema/default/severity findings and the already-accepted deferrals. README ownership was serialized as instructed.
+- Deviations: `db/postgres/migrations/` is now the additive-correction location (`006` from AUTH-001-R1, `021` here), exactly as both reviews require. The static default-consistency check considers correction-file `SET DEFAULT` overrides, because the base `20` bytes must not change. No RLS, grant, trigger, policy, identity authority or runtime privilege was added; no existing rows were rewritten.
+- Cleanup: the disposable cluster was stopped and its data directory deleted; loopback port 55439 is closed; no `saven_pivot_%` role or database remains. Evidence logs stay in git-ignored `var/`.
