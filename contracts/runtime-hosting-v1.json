@@ -5,8 +5,23 @@
   "activeAdministrationOrigin": "https://ops.economicsystems.cc",
   "retainedTestingOrigin": "https://saventesting.economicsystems.cc",
   "runtimeLocation": "owner-controlled-server",
-  "localLayers": ["frontend", "API", "identity-and-sessions", "authorization", "native-SQLite-controls", "tenant-SQLite", "durable-command-approval-and-outbox-state", "original-file-storage", "malware-scanning", "model-inference", "backup-and-restore"],
-  "cloudflareRole": ["DNS", "TLS-edge", "tunnel"],
+  "localLayers": [
+    "frontend",
+    "API",
+    "identity-and-sessions",
+    "authorization",
+    "native-SQLite-controls",
+    "tenant-SQLite",
+    "durable-command-approval-and-outbox-state",
+    "original-file-storage",
+    "malware-scanning",
+    "backup-and-restore"
+  ],
+  "cloudflareRole": [
+    "DNS",
+    "TLS-edge",
+    "tunnel"
+  ],
   "requiredCloudflareRuntimeProducts": [],
   "workersRequired": false,
   "D1Required": false,
@@ -15,8 +30,21 @@
   "workersAIRequired": false,
   "VPCBindingRequired": false,
   "githubRole": "source-control-and-CI-only; ordinary-runtime-does-not-call-GitHub",
-  "testingReference": {"database": "retained-local-PostgreSQL-schema-13", "frontend": "server-hosted-synthetic-review-UI", "businessDataMigrated": false},
+  "testingReference": {
+    "database": "retained-local-PostgreSQL-schema-13",
+    "frontend": "server-hosted-synthetic-review-UI",
+    "businessDataMigrated": false
+  },
   "historicalAdaptersDeleted": false,
   "clientMvpReleased": false,
-  "offHostRecoveryVerified": false
+  "offHostRecoveryVerified": false,
+  "modelInference": {
+    "default": "local-ollama",
+    "optionalOwnerSelectedProvider": "OpenRouter",
+    "model": "nvidia/nemotron-3.5-lightning:free",
+    "secret": "server-only environment or protected file",
+    "businessDataPolicy": "deny provider data collection; fail closed when unavailable",
+    "liveActivation": "NOT_ACTIVATED",
+    "supersedes": "Prior all-local inference requirement only; core data/storage/authority remain local"
+  }
 }

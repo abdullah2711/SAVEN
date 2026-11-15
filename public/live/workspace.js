@@ -27,9 +27,11 @@ export function workspaceFrame({el,btn,brand,context,business,page,activeTab,nav
   return el('div',{class:'nav-module'},el('div',{class:'nav-parent'},parent,...(expander?[expander]:[])),children);
  })));
  sidebar.append(brand(),el('nav',{},...groupNodes),el('div',{class:'sidebar-foot'},'Economic Systems'));
- const menu=btn('',()=>{if(window.matchMedia?.('(max-width:760px)').matches)setMobile(!sidebar.classList.contains('open'));else setCollapsed(!layout.classList.contains('nav-collapsed'));},true);menu.className='icon-button nav-toggle';menu.append(visual(el,'menu'));menu.ariaLabel=collapsed?'Expand navigation':'Collapse navigation';menu.setAttribute?.('aria-controls','business-navigation');menu.setAttribute?.('aria-expanded',String(!collapsed));
- function setCollapsed(value){layout.classList.toggle('nav-collapsed',value);menu.ariaLabel=value?'Expand navigation':'Collapse navigation';menu.setAttribute?.('aria-expanded',String(!value));try{localStorage.setItem('sa7en_nav_collapsed',JSON.stringify(value));}catch{}}
- function setMobile(value){sidebar.classList.toggle('open',value);layout.classList.toggle('mobile-nav-open',value);menu.setAttribute?.('aria-expanded',String(value));}
+ const menu=btn('',()=>{if(window.matchMedia?.('(max-width:760px)').matches)setMobile(!sidebar.classList.contains('open'));else setCollapsed(!layout.classList.contains('nav-collapsed'));},true);menu.className='icon-button nav-toggle';menu.append(visual(el,'menu'));menu.setAttribute?.('aria-controls','business-navigation');syncMenu();
+ function syncMenu(){const mobile=window.matchMedia?.('(max-width:760px)').matches,expanded=mobile?sidebar.classList.contains('open'):!layout.classList.contains('nav-collapsed');menu.ariaLabel=mobile?(expanded?'Close navigation':'Open navigation'):(expanded?'Collapse navigation':'Expand navigation');menu.setAttribute?.('aria-expanded',String(expanded));}
+ function setCollapsed(value){layout.classList.toggle('nav-collapsed',value);menu.ariaLabel=value?'Expand navigation':'Collapse navigation';syncMenu();try{localStorage.setItem('sa7en_nav_collapsed',JSON.stringify(value));}catch{}}
+ function setMobile(value){sidebar.classList.toggle('open',value);layout.classList.toggle('mobile-nav-open',value);syncMenu();if(!value)menu.focus?.();}
+ sidebar.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();setMobile(false);}});
  const search=el('input',{type:'search',placeholder:'Find a page...',ariaLabel:'Find a page'}),results=el('div',{class:'page-search-results',hidden:true});
  const searchRows=()=>nav.flatMap(name=>[{name,tab:''},...modulePages(name,business).map(tab=>({name,tab}))]).filter(x=>(x.name+' '+x.tab).toLowerCase().includes(search.value.trim().toLowerCase()));
  search.addEventListener('input',()=>{results.hidden=!search.value.trim();results.replaceChildren(...searchRows().slice(0,12).map(x=>btn(x.name+(x.tab?' / '+x.tab:''),()=>navigate(x.name,{tab:x.tab}),true)));});search.addEventListener('keydown',e=>{if(e.key==='Escape'){results.hidden=true;search.blur();}if(e.key==='Enter'&&search.value.trim()){const x=searchRows()[0];if(x)navigate(x.name,{tab:x.tab});}});
@@ -38,7 +40,8 @@ export function workspaceFrame({el,btn,brand,context,business,page,activeTab,nav
  const title=activeTab?.startsWith('Draft ')?'Journal draft':activeTab?.startsWith('Entry ')?'Journal voucher':activeTab==='Overview'||!activeTab?page:activeTab;
  const topbar=el('header',{class:'topbar'},menu,el('div',{class:'page-search'},visual(el,'search'),search,results),el('div',{class:'top-context'},picker,el('span',{class:'branch-label'},business?.branch??'Platform'),theme,btn('Sign out',signOut,true)));
  const heading=el('div',{class:'page-heading'},el('div',{},el('p',{class:'eyebrow'},page+(activeTab&&activeTab!=='Overview'?' / '+title:'')),el('h1',{},title),el('p',{},pageInfo[page]?.[1]??'')));
- const workspace=el('div',{class:'workspace'},el('div',{class:'crumbs'},btn('Back',()=>history.back(),true),btn('Forward',()=>history.forward(),true)),...(page==='Workspace'?[]:[heading]),el('div',{id:'status',role:'status',ariaLive:'polite'}),content);
+ const historyButton=(label,symbol,action)=>{const b=btn('',action,true);b.className='icon-button';b.ariaLabel=label;b.title=label;b.append(visual(el,symbol));return b;};
+ const workspace=el('div',{class:'workspace'},el('div',{class:'crumbs'},historyButton('Back','arrow-left',()=>history.back()),historyButton('Forward','arrow-right',()=>history.forward())),...(page==='Workspace'?[]:[heading]),el('div',{id:'status',role:'status',ariaLive:'polite'}),content);
  layout.append(sidebar,scrim,el('main',{class:'main'},topbar,workspace));return {layout,content,search};
 }
 export function tabs(content,names,selected,{el,btn,navigate,page}){

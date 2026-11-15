@@ -29,3 +29,7 @@
 @media print{.nav-scrim,.accounting-shortcuts,.accounting-summary .toolbar{display:none!important}}
 
 .sidebar nav{overscroll-behavior:contain}.nav-parent .nav-symbol{flex:none}.nav-parent .nav-item{width:auto}.nav-expander .nav-symbol svg{width:14px;height:14px}.accounting-shortcuts .button{border-radius:4px}.accounting-shortcuts .button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+
+/* Keep financial values readable in the smallest supported phone viewport. */
+.accounting-metric strong{font-variant-numeric:tabular-nums;white-space:nowrap;overflow-wrap:normal;font-size:clamp(1.2rem,2.4vw,2rem)}
+@media(max-width:400px){.accounting-metrics{grid-template-columns:minmax(0,1fr)}.accounting-metric strong{font-size:1.6rem}}

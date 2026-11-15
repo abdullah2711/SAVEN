@@ -18,6 +18,6 @@
     "native:demo": "node scripts/native-demo.mjs",
     "ui": "node scripts/design-server.mjs",
     "native:server": "node scripts/native-server.mjs",
-    "native:test": "node --test tests/native-foundation.test.mjs tests/native-runtime.test.mjs tests/native-administration.test.mjs tests/native-trade.test.mjs tests/native-trade-credits.test.mjs tests/native-recovery.test.mjs tests/native-corrections.test.mjs tests/native-migrations.test.mjs tests/native-frontend.test.mjs tests/native-documents.test.mjs"
+    "native:test": "node --test tests/native-foundation.test.mjs tests/native-runtime.test.mjs tests/native-administration.test.mjs tests/native-trade.test.mjs tests/native-trade-credits.test.mjs tests/native-recovery.test.mjs tests/native-corrections.test.mjs tests/native-migrations.test.mjs tests/native-frontend.test.mjs tests/native-documents.test.mjs tests/native-model-config.test.mjs"
   }
 }

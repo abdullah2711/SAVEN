@@ -28,6 +28,7 @@ node scripts/check.mjs
 node --test tests/*.test.mjs
 python tools/build_feature_catalog.py
 python tools/build_design_library.py
+python tools/validate_project_skills.py
 python tools/checklist.py --check
 python tools/validate_plan.py
 ```

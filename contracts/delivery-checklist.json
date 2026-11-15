@@ -1604,25 +1604,34 @@
       "id": "UIREV007",
       "area": "UI revision",
       "title": "Fix 320px financial metric wrapping and grouped amounts",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "tests/native-documents.test.mjs"
+      ],
+      "note": "Grouped amounts and single-column metrics at320px verified."
     },
     {
       "id": "UIREV008",
       "area": "UI revision",
       "title": "Make mobile toggle label and expanded state accurate",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "tests/native-documents.test.mjs"
+      ],
+      "note": "Open/Close and expanded state verified on mobile after reload."
     },
     {
       "id": "UIREV009",
       "area": "UI revision",
       "title": "Restore accessible icon history controls",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "browser-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "tests/native-documents.test.mjs"
+      ],
+      "note": "Accessible icon controls observed on desktop/mobile."
     },
     {
       "id": "UIREV010",
@@ -1636,17 +1645,23 @@
       "id": "UIREV011",
       "area": "UI revision",
       "title": "Guard removed drafts against direct save or submit until restored",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "source-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "tests/native-documents.test.mjs"
+      ],
+      "note": "Direct edit/submit/cancel removed-draft regression passes."
     },
     {
       "id": "UIREV012",
       "area": "UI revision",
       "title": "Re-run full source tests and both CI workflows for current increment",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "in-progress",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "tests/native-documents.test.mjs"
+      ],
+      "note": "All145 local tests pass; final exact-commit CI must be inspected."
     },
     {
       "id": "UIREV013",
@@ -1668,71 +1683,97 @@
       "id": "TOOLS001",
       "area": "Continuation and tooling",
       "title": "Checkpoint 17 upstream project-local skill guides and licenses",
-      "status": "in-progress",
+      "status": "source-tested",
       "evidence": [
-        "docs/CURRENT_HANDOFF.md"
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
       ],
-      "note": "Checkpoint source WIP; not released."
+      "note": "17 guides and271 files checkpointed with four pins/licenses."
     },
     {
       "id": "TOOLS002",
       "area": "Continuation and tooling",
       "title": "Validate installed skills and references",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "source-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
+      ],
+      "note": "Portable entry-point/link/license/hash validator passes; not full upstream audit."
     },
     {
       "id": "TOOLS003",
       "area": "Continuation and tooling",
       "title": "Verify pinned optional CLI versions and browser prerequisites",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "source-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
+      ],
+      "note": "agent-browser0.43.0 core/version and Astryx0.7.16 version/docs verified. Core component install/Chromium remain unavailable."
     },
     {
       "id": "TOOLS004",
       "area": "Continuation and tooling",
       "title": "Document cross-account CLI and engineer operating process",
-      "status": "in-progress",
+      "status": "source-tested",
       "evidence": [
-        "docs/CURRENT_HANDOFF.md"
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
       ],
-      "note": "Checkpoint source WIP; not released."
+      "note": "Cross-account instructions and exact resume queue checkpointed."
     },
     {
       "id": "TOOLS005",
       "area": "Continuation and tooling",
       "title": "Publish complete current WIP and handoff to testing-1",
-      "status": "in-progress",
+      "status": "source-tested",
       "evidence": [
-        "docs/CURRENT_HANDOFF.md"
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
       ],
-      "note": "Checkpoint source WIP; not released."
+      "note": "309 intended hashes verified at checkpoint2bff157; follow-up published separately."
     },
     {
       "id": "AIROUTER001",
       "area": "AI provider",
       "title": "Implement explicit OpenRouter configuration with protected secret",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "source-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
+      ],
+      "note": "Server-only config and protected key source covered by native-model-config tests."
     },
     {
       "id": "AIROUTER002",
       "area": "AI provider",
       "title": "Verify official model availability structured output and free limits",
-      "status": "todo",
-      "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "status": "source-tested",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
+      ],
+      "note": "Official endpoint metadata and free-limit/routing docs checked; tool envelope required."
     },
     {
       "id": "AIROUTER003",
       "area": "AI provider",
       "title": "Test scoped synthetic inference and provider failure without writes",
+      "status": "blocked",
+      "evidence": [
+        "docs/CURRENT_HANDOFF.md",
+        "docs/52-project-skills-and-ai-configuration.md"
+      ],
+      "note": "Mocked failure guards pass; synthetic actual request rejected404 for free model training/data policy; no business records sent."
+    },
+    {
+      "id": "TOOLS006",
+      "area": "Continuation and tooling",
+      "title": "Review Hallmark source lint findings within the approved existing visual system",
       "status": "todo",
       "evidence": [],
-      "note": "Checkpoint source WIP; not released."
+      "note": "Source-only lint reported token/typography/stamp/spacing findings; no clean rendered review claimed."
     }
   ]
 }

@@ -1,11 +1,11 @@
 import http from 'node:http';
 import {NativeRuntime} from '../src/local/runtime.mjs';
 import {createNativeHandler} from '../src/local/http.mjs';
-import {ModelProvider} from '../src/assistant-provider.mjs';
+import {configuredModel} from '../src/local/model-config.mjs';
 import {requestOrigin} from '../src/local/transport.mjs';
 const appOrigin=process.env.APP_ORIGIN,operatorOrigin=process.env.OPERATOR_ORIGIN;
 if(!appOrigin||!operatorOrigin||!process.env.SAVEN_DATA_DIR)throw Error('APP_ORIGIN, OPERATOR_ORIGIN and SAVEN_DATA_DIR required');
-const provider=process.env.AI_URL?new ModelProvider({url:process.env.AI_URL,model:process.env.AI_MODEL??'qwen3:1.7b',protocol:'ollama',timeout:90000,contextTokens:8192,outputTokens:512}):null;
+const provider=configuredModel();
 const runtime=new NativeRuntime(process.env.SAVEN_DATA_DIR,{provider}),handle=createNativeHandler(runtime,{appOrigin,operatorOrigin});
 const transport={appOrigin,operatorOrigin,relayOrigin:process.env.RELAY_ORIGIN,relayKey:process.env.RELAY_KEY};
 const server=http.createServer(async(req,res)=>{try{const origin=requestOrigin(req.headers.host,req.headers,transport);if(!origin){res.writeHead(421);res.end();return;}let bytes=0;const chunks=[];for await(const chunk of req){bytes+=chunk.length;if(bytes>(req.url.split('?')[0]==='/api/evidence'?10*1024*1024:65536)){res.writeHead(413);res.end();return;}chunks.push(chunk);}const request=new Request(origin+req.url,{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})});const response=await handle(request);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));}catch{res.writeHead(500);res.end('Request failed');}});

@@ -97,3 +97,10 @@ test('removing a draft hides it while preserving number and audit, restoration i
 test('register permissions and removal do not let another account view or discard a private draft',async t=>{
  const {r,owner,operator}=await setup(t);r.saveJournalDraft('alpha',owner,{id:'private-register',revision:0,payload:payload()});assert.throws(()=>r.journalRegister('alpha',operator,'co','main'),/membership/);assert.throws(()=>r.removeJournal('alpha',operator,{id:'private-register'}),/drafts/);assert.equal(r.journalRegister('alpha',owner,'co','main').rows.length,1);
 });
+
+test('removed drafts reject direct edits submission and cancellation until restored, with no GL or revision change',async t=>{
+ const {r,owner,db}=await setup(t);r.saveJournalDraft('alpha',owner,{id:'removed-guard',revision:0,payload:payload()});r.removeJournal('alpha',owner,{id:'removed-guard'});
+ for(const action of [()=>r.saveJournalDraft('alpha',owner,{id:'removed-guard',revision:1,payload:payload({narrative:'Hidden overwrite'})}),()=>r.submitJournalDraft('alpha',owner,{id:'removed-guard',revision:1}),()=>r.cancelJournalDraft('alpha',owner,{id:'removed-guard',revision:1})])assert.throws(action,e=>e.status===409&&/removed/.test(e.message));
+ assert.equal(db.prepare("SELECT revision FROM journal_drafts WHERE id='removed-guard'").get().revision,1);assert.equal(db.prepare('SELECT count(*) AS n FROM command_inbox').get().n,0);assert.equal(db.prepare('SELECT count(*) AS n FROM journals').get().n,0);
+ r.removeJournal('alpha',owner,{id:'removed-guard',restore:true});const changed=r.saveJournalDraft('alpha',owner,{id:'removed-guard',revision:1,payload:payload()});assert.equal(changed.number,'JRN-000001');r.submitJournalDraft('alpha',owner,{id:'removed-guard',revision:2});assert.equal(r.execute('alpha',owner,'removed-guard').state,'POSTED');
+});

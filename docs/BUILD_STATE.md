@@ -1,3 +1,7 @@
+# Follow-up checkpoint - 15 November 2026
+
+The mandatory pre-implementation GitHub checkpoint2bff157f44de1a6aed665a274b0b2a004b07f0e3 was saved first and both CI workflows passed. Follow-up source closes the removed-draft direct API gap, repairs narrow-screen amount wrapping/mobile labels/history controls, and implements secure explicit OpenRouter provider configuration. All145 current Node tests and143 parses pass;269 requirements and203 actions remain traceable. Skill inventory validation passes for17 guides/four pins/271 files; CLI versions/docs verified, full Hallmark/rendered/accessibility audits remain open. Synthetic OpenRouter requests returned404 for data-policy eligibility; no privacy setting, model fallback or production AI was changed. Main/live remains b9bdf75824b017cd813f55245f3c352d786fa864 and schema9. No new deployment or whole-MVP completion is claimed. CURRENT_HANDOFF supersedes the historical limitations below and identifies precise next gates.
+
 # Current continuation - 15 November 2026
 
 The owner requested a complete GitHub/CLI checkpoint before further implementation. Read [CURRENT_HANDOFF.md](CURRENT_HANDOFF.md), [latest UI/MVP1 revision](50-accounting-dashboard-and-mvp1-revision.md), [CLI operating model](51-codex-cli-and-engineer-operating-model.md), [skills and AI configuration](52-project-skills-and-ai-configuration.md) and [TASKS.md](TASKS.md).

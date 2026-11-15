@@ -260,12 +260,12 @@ Generated from contracts/delivery-checklist.json. Update one action with tools/c
 | UIREV004 | Provide separate Approvals area and status views | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
 | UIREV005 | Expose agreed MVP1 destinations with truthful planned states | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
 | UIREV006 | Verify desktop rail and mobile drawer interactions | browser-tested | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
-| UIREV007 | Fix 320px financial metric wrapping and grouped amounts | todo | Checkpoint source WIP; not released. |
-| UIREV008 | Make mobile toggle label and expanded state accurate | todo | Checkpoint source WIP; not released. |
-| UIREV009 | Restore accessible icon history controls | todo | Checkpoint source WIP; not released. |
+| UIREV007 | Fix 320px financial metric wrapping and grouped amounts | browser-tested | docs/CURRENT_HANDOFF.md; tests/native-documents.test.mjs; Grouped amounts and single-column metrics at320px verified. |
+| UIREV008 | Make mobile toggle label and expanded state accurate | browser-tested | docs/CURRENT_HANDOFF.md; tests/native-documents.test.mjs; Open/Close and expanded state verified on mobile after reload. |
+| UIREV009 | Restore accessible icon history controls | browser-tested | docs/CURRENT_HANDOFF.md; tests/native-documents.test.mjs; Accessible icon controls observed on desktop/mobile. |
 | UIREV010 | Verify keyboard focus and drawer accessibility | todo | Checkpoint source WIP; not released. |
-| UIREV011 | Guard removed drafts against direct save or submit until restored | todo | Checkpoint source WIP; not released. |
-| UIREV012 | Re-run full source tests and both CI workflows for current increment | todo | Checkpoint source WIP; not released. |
+| UIREV011 | Guard removed drafts against direct save or submit until restored | source-tested | docs/CURRENT_HANDOFF.md; tests/native-documents.test.mjs; Direct edit/submit/cancel removed-draft regression passes. |
+| UIREV012 | Re-run full source tests and both CI workflows for current increment | in-progress | docs/CURRENT_HANDOFF.md; tests/native-documents.test.mjs; All145 local tests pass; final exact-commit CI must be inspected. |
 | UIREV013 | Verify exact Linux source and independent backup before deployment | todo | Checkpoint source WIP; not released. |
 | UIREV014 | Deploy verified source and reconcile main with live behavior | todo | Checkpoint source WIP; not released. |
 
@@ -273,16 +273,17 @@ Generated from contracts/delivery-checklist.json. Update one action with tools/c
 
 | ID | Action | State | Evidence / limit |
 | --- | --- | --- | --- |
-| TOOLS001 | Checkpoint 17 upstream project-local skill guides and licenses | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
-| TOOLS002 | Validate installed skills and references | todo | Checkpoint source WIP; not released. |
-| TOOLS003 | Verify pinned optional CLI versions and browser prerequisites | todo | Checkpoint source WIP; not released. |
-| TOOLS004 | Document cross-account CLI and engineer operating process | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
-| TOOLS005 | Publish complete current WIP and handoff to testing-1 | in-progress | docs/CURRENT_HANDOFF.md; Checkpoint source WIP; not released. |
+| TOOLS001 | Checkpoint 17 upstream project-local skill guides and licenses | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; 17 guides and271 files checkpointed with four pins/licenses. |
+| TOOLS002 | Validate installed skills and references | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; Portable entry-point/link/license/hash validator passes; not full upstream audit. |
+| TOOLS003 | Verify pinned optional CLI versions and browser prerequisites | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; agent-browser0.43.0 core/version and Astryx0.7.16 version/docs verified. Core component install/Chromium remain unavailable. |
+| TOOLS004 | Document cross-account CLI and engineer operating process | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; Cross-account instructions and exact resume queue checkpointed. |
+| TOOLS005 | Publish complete current WIP and handoff to testing-1 | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; 309 intended hashes verified at checkpoint2bff157; follow-up published separately. |
+| TOOLS006 | Review Hallmark source lint findings within the approved existing visual system | todo | Source-only lint reported token/typography/stamp/spacing findings; no clean rendered review claimed. |
 
 ## AI provider
 
 | ID | Action | State | Evidence / limit |
 | --- | --- | --- | --- |
-| AIROUTER001 | Implement explicit OpenRouter configuration with protected secret | todo | Checkpoint source WIP; not released. |
-| AIROUTER002 | Verify official model availability structured output and free limits | todo | Checkpoint source WIP; not released. |
-| AIROUTER003 | Test scoped synthetic inference and provider failure without writes | todo | Checkpoint source WIP; not released. |
+| AIROUTER001 | Implement explicit OpenRouter configuration with protected secret | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; Server-only config and protected key source covered by native-model-config tests. |
+| AIROUTER002 | Verify official model availability structured output and free limits | source-tested | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; Official endpoint metadata and free-limit/routing docs checked; tool envelope required. |
+| AIROUTER003 | Test scoped synthetic inference and provider failure without writes | blocked | docs/CURRENT_HANDOFF.md; docs/52-project-skills-and-ai-configuration.md; Mocked failure guards pass; synthetic actual request rejected404 for free model training/data policy; no business records sent. |

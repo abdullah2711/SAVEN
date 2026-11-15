@@ -4,12 +4,32 @@
   "parent": "367cb2a38d23cc61daa1f706846b2404f9775e1a",
   "liveSource": "b9bdf75824b017cd813f55245f3c352d786fa864",
   "checkpointDeployed": false,
-  "currentFullSuiteVerified": false,
+  "currentFullSuiteVerified": true,
   "focusedDocumentTests": 13,
   "projectSkills": 17,
   "personalSkillsInstalled": false,
   "openRouterSelected": true,
   "openRouterActivated": false,
   "credentialsIncluded": false,
-  "remaining": "docs/CURRENT_HANDOFF.md"
+  "remaining": "docs/CURRENT_HANDOFF.md",
+  "preImplementationCheckpoint": "2bff157f44de1a6aed665a274b0b2a004b07f0e3",
+  "preImplementationCi": {
+    "native": 43659574337,
+    "verify": 43659574334,
+    "bothPassed": true
+  },
+  "currentTests": 145,
+  "currentParses": 143,
+  "requirements": 269,
+  "checklistActions": 204,
+  "skillFiles": 271,
+  "openRouterSourceIntegrated": true,
+  "providerProbe": {
+    "status": 404,
+    "reason": "No endpoint matching privacy/data policy for free model training",
+    "businessRecordsSent": false,
+    "privacySettingsChanged": false,
+    "paidFallback": false
+  },
+  "currentCi": "Inspect exact published follow-up commit"
 }

@@ -20,7 +20,7 @@ MVP 2 is the broader market-ready release. Complete broader ops/commercial admin
 
 Dashboard totals reconcile to authorized source/report queries. Drafts never enter the GL. Review transitions and cancellations retain history. Numbers are permanent and not reused. Removed drafts cannot be submitted or overwritten through a direct API until explicitly restored. A posted source cannot be hidden by draft deletion. Test desktop, narrow mobile, collapsed navigation and keyboard operation. Verify printed output independently before claiming print completion.
 
-The removed-draft direct-API guard is unfinished at the CLI checkpoint; do not deploy this WIP until fixed and regression tested.
+The removed-draft direct-API guard was fixed and regression tested after the first checkpoint. Current source still requires commit-specific CI and deployment/recovery gates before release.
 
 ## Owner-requested tooling and AI
 

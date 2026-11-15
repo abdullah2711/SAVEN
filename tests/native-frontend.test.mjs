@@ -6,7 +6,7 @@ class NodeStub{
  replaceChildren(...nodes){this.children=[];this.append(...nodes);}
  addEventListener(event,fn){this.listeners[event]=fn;}
  insertBefore(node,before){const i=this.children.indexOf(before);assert(i>=0,'insertBefore target must belong to this parent');node.parent=this;this.children.splice(i,0,node);}
- get classList(){return {add:c=>{this.className+=' '+c;}};}
+ get classList(){return {add:c=>{this.className+=' '+c;},contains:c=>this.className.split(' ').includes(c),toggle:(c,value)=>{const values=new Set(this.className.split(' ').filter(Boolean)),on=value??!values.has(c);on?values.add(c):values.delete(c);this.className=[...values].join(' ');return on;}};}
  get textContent(){return (this._text??'')+this.children.map(c=>c.textContent).join(' ');}
  set textContent(value){this._text=value;this.children=[];}
  matches(part){if(part.startsWith('#'))return this.id===part.slice(1);if(part.startsWith('.'))return this.className.split(' ').includes(part.slice(1));const m=part.match(/^(?:([a-z]+))?(?:\[([a-z]+)=([a-z]+)\])?$/);return !!m&&(!m[1]||this.tag===m[1])&&(!m[2]||this[m[2]]===m[3]);}
