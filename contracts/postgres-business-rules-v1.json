@@ -11,7 +11,7 @@
   ],
   "extension_rule": "A new value in any domain below is an active/effective-dated tenant_data.reference_values row, not a migration and not a code constant. A new executable behaviour requires a registered typed handler plus tests; storing a JSON row never installs logic. Used policy rows are superseded with a new version, never mutated. Application and posting-kernel validation is authoritative; this file is the canonical seed list and JSON-schema registry, and it is not itself a live policy engine.",
   "authority_notes": [
-    "AI-origin ledger documents are ordinary documents with document_status PENDING_APPROVAL and origin_type AI. There is no ai_proposal table.",
+    "AI-origin ledger documents are ordinary documents with document_status PENDING_APPROVAL and origin_type ai. There is no ai_proposal table.",
     "ai_origin_direct_post_allowed defaults to false and must remain false in Phase 1.",
     "Monetary values in tenant ledgers are exact integer minor units (bigint). Approval thresholds are exact numeric decimals. No floats are used anywhere.",
     "A reference value can change the configured set of labels/domains; it can never grant protected owner authority or install posting logic."
@@ -161,6 +161,14 @@
         {"value": "transfer", "label": "Transfer"}
       ]
     },
+    "posting_constraint_severity": {
+      "table": "tenant_data.posting_constraint (nested rule_jsonb.severity)",
+      "validation": "Resolved against effective-dated tenant_data.reference_values rows when the posting_constraint row is written, and interpreted only by the registered deterministic handler named in handler_key. A new value is a reference row; it never installs executable policy, and an unknown value or handler fails closed at posting time.",
+      "values": [
+        {"value": "block", "label": "Block posting"},
+        {"value": "warn", "label": "Warn and allow posting"}
+      ]
+    },
     "tax_type": {
       "table": "tenant_data.tax_profile",
       "values": [
@@ -216,7 +224,12 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "severity": {"type": "string", "enum": ["block", "warn"]},
+        "severity": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40,
+          "description": "reference domain: posting_constraint_severity. Allowed values are effective-dated tenant_data.reference_values rows; the registered handler named by handler_key interprets the value, and a new value cannot install executable policy."
+        },
         "parameters": {"type": "object"}
       }
     },

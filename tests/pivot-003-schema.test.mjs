@@ -7,7 +7,11 @@ const repoRoot = new URL('../', import.meta.url);
 // Apply the accepted PIVOT-002 base and this contract's schema so the gate proves
 // the tenant skeleton lands on a real operator schema, not an empty database.
 // AUTH-001 owns auth.* on a separate branch and is not a dependency of this file.
-const schemaFiles = ['db/postgres/10-operator-schema.sql', 'db/postgres/20-tenant-schema.sql'];
+const schemaFiles = [
+  'db/postgres/10-operator-schema.sql',
+  'db/postgres/20-tenant-schema.sql',
+  'db/postgres/migrations/021-tenant-schema-corrections.sql',
+];
 
 const tenantA = '11111111-1111-4111-8111-111111111111';
 const tenantB = '22222222-2222-4222-8222-222222222222';
@@ -104,6 +108,12 @@ const moneyColumns = new Set([
 test('PIVOT-003 static schema contract: scoped tenant tables, exact money, no growing enums', async () => {
   const sql = await readFile(new URL('db/postgres/20-tenant-schema.sql', repoRoot), 'utf8');
   const rules = JSON.parse(await readFile(new URL('contracts/postgres-business-rules-v1.json', repoRoot), 'utf8'));
+  const correctionSql = await readFile(
+    new URL('db/postgres/migrations/021-tenant-schema-corrections.sql', repoRoot),
+    'utf8',
+  );
+  // Reference domains may be annotated in the base file or in an additive correction.
+  const annotationSql = sql + '\n' + correctionSql;
 
   // No secrets, no DSNs, no privileged escape hatch, no duplicated identity.
   assert.doesNotMatch(sql, /\bPASSWORD\b|postgres(?:ql)?:\/\//i);
@@ -218,7 +228,7 @@ test('PIVOT-003 static schema contract: scoped tenant tables, exact money, no gr
   assert.match(tables.get('approval_policy'), /requires_different_approver boolean NOT NULL DEFAULT false/);
 
   // Reference domains: SQL annotations and the canonical seed must agree.
-  const annotated = new Set([...sql.matchAll(/reference domain: ([a-z_]+)/g)].map(match => match[1]));
+  const annotated = new Set([...annotationSql.matchAll(/reference domain: ([a-z_]+)/g)].map(match => match[1]));
   const seeded = new Set(Object.keys(rules.reference_domains));
   assert.deepEqual([...annotated].sort(), [...seeded].sort());
   for (const [domain, definition] of Object.entries(rules.reference_domains)) {
@@ -243,6 +253,102 @@ test('PIVOT-003 static schema contract: scoped tenant tables, exact money, no gr
   // The lowercase origin default in SQL must be a seeded domain value.
   assert.match(tables.get('audit_event'), /origin_type text NOT NULL DEFAULT 'human'/);
   assert.match(tables.get('document_registry'), /origin_type text NOT NULL DEFAULT 'human'/);
+
+  // PIVOT-003-R1 correction is additive, validated and privilege-neutral.
+  assert.match(correctionSql, /ADD CONSTRAINT stock_balances_quantity_value_chk/);
+  assert.match(correctionSql, /CHECK \(quantity > 0 OR value = 0\)/);
+  assert.match(correctionSql, /NOT VALID/);
+  assert.match(correctionSql, /VALIDATE CONSTRAINT stock_balances_quantity_value_chk/);
+  assert.match(correctionSql, /ALTER COLUMN tax_type SET DEFAULT 'SALES_TAX'/);
+  assert.doesNotMatch(correctionSql, /DROP\s+CONSTRAINT|DROP\s+TABLE|ALTER\s+COLUMN\s+[a-z_]+\s+TYPE|DROP\s+COLUMN/i);
+  assert.doesNotMatch(correctionSql, /^\s*(?:GRANT|REVOKE|CREATE\s+ROLE|CREATE\s+POLICY|CREATE\s+TRIGGER)\s/im);
+  assert.doesNotMatch(correctionSql, /(?:ENABLE|FORCE)\s+ROW\s+LEVEL\s+SECURITY/i);
+  assert.doesNotMatch(correctionSql, /\bPASSWORD\s+(?:E)?'|postgres(?:ql)?:\/\//i);
+
+  // Every configured column default must resolve to its canonical seeded domain.
+  // Annotations live on COMMENT ON COLUMN; table-level comments are inventory prose.
+  const columnDomains = new Map();
+  for (const match of annotationSql.matchAll(/COMMENT ON COLUMN tenant_data\.([a-z_]+)\.([a-z_]+) IS([\s\S]*?);/g)) {
+    const domain = /reference domain: ([a-z_]+)/.exec(match[3]);
+    if (domain) columnDomains.set(`${match[1]}.${match[2]}`, domain[1]);
+  }
+  const overriddenDefaults = new Map();
+  for (const match of correctionSql.matchAll(
+    /ALTER TABLE tenant_data\.([a-z_]+)\s+ALTER COLUMN ([a-z_]+) SET DEFAULT '([^']*)'/g,
+  )) {
+    overriddenDefaults.set(`${match[1]}.${match[2]}`, match[3]);
+  }
+  assert.ok(columnDomains.size > 0, 'configured columns must carry reference-domain annotations');
+  for (const [tableAndColumn, domain] of columnDomains) {
+    const [table, column] = tableAndColumn.split('.');
+    assert.ok(rules.reference_domains[domain], `${tableAndColumn} annotates unknown domain ${domain}`);
+    const line = tables
+      .get(table)
+      .split('\n')
+      .map(raw => raw.trim())
+      .find(raw => raw.startsWith(`${column} `));
+    assert.ok(line, `${tableAndColumn} must exist in the table body`);
+    const literal = /DEFAULT\s+'([^']*)'/.exec(line);
+    const effectiveDefault = overriddenDefaults.get(tableAndColumn) ?? (literal ? literal[1] : null);
+    if (effectiveDefault !== null) {
+      const seededValues = rules.reference_domains[domain].values.map(entry => entry.value);
+      assert.ok(
+        seededValues.includes(effectiveDefault),
+        `${tableAndColumn} effective default '${effectiveDefault}' is not a seeded ${domain} value`,
+      );
+    }
+  }
+
+  // Canonical notes may not drift from the seed either.
+  const authorityNotes = rules.authority_notes.join(' ');
+  assert.match(authorityNotes, /origin_type ai\./);
+  assert.doesNotMatch(authorityNotes, /origin_type AI\b/);
+  for (const match of authorityNotes.matchAll(/document_status ([A-Z_]+)/g)) {
+    assert.ok(
+      rules.reference_domains.document_status.values.some(entry => entry.value === match[1]),
+      `authority note references unseeded document_status ${match[1]}`,
+    );
+  }
+  for (const match of authorityNotes.matchAll(/origin_type ([A-Za-z_]+)/g)) {
+    assert.ok(
+      rules.reference_domains.origin_type.values.some(entry => entry.value === match[1]),
+      `authority note references unseeded origin_type ${match[1]}`,
+    );
+  }
+
+  // Nested configurable values are reference data, never JSON-schema enums.
+  const collectEnums = (node, path, found) => {
+    if (Array.isArray(node)) {
+      node.forEach((value, index) => collectEnums(value, `${path}[${index}]`, found));
+      return found;
+    }
+    if (node && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) {
+        if (key === 'enum') found.push(`${path}.enum`);
+        collectEnums(value, `${path}.${key}`, found);
+      }
+    }
+    return found;
+  };
+  const enumPaths = collectEnums(rules.json_schemas, 'json_schemas', []);
+  assert.deepEqual(enumPaths, [], `JSON schemas must not embed configurable enums: ${enumPaths.join(', ')}`);
+
+  const severityDomain = rules.reference_domains.posting_constraint_severity;
+  assert.ok(severityDomain, 'posting-constraint severity must be a named reference domain');
+  assert.deepEqual(
+    severityDomain.values.map(entry => entry.value).sort(),
+    ['block', 'warn'],
+  );
+  assert.match(severityDomain.validation, /effective-dated tenant_data\.reference_values/);
+  assert.match(severityDomain.validation, /registered deterministic handler|fails closed/);
+  const severitySchema = rules.json_schemas['posting_constraint.rule_jsonb'].properties.severity;
+  assert.equal(severitySchema.type, 'string');
+  assert.equal(severitySchema.enum, undefined);
+  assert.match(severitySchema.description, /reference domain: posting_constraint_severity/);
+  assert.ok(
+    [...annotationSql.matchAll(/reference domain: ([a-z_]+)/g)].some(match => match[1] === 'posting_constraint_severity'),
+    'the SQL must annotate the configurable severity domain',
+  );
 });
 
 test('PIVOT-003 tenant schema applies with scoped identity, no RLS yet and no runtime grants', async () => {
@@ -505,7 +611,8 @@ test('PIVOT-003 tenant constraints enforce scoped money, ownership and cross-ten
         );
         await client.query(
           `INSERT INTO tenant_data.stock_items(tenant_id, company, id, name, uom, inventory_account, expense_account, receipt_account, active)
-           VALUES ($1, 'alpha', 'item-a', 'Item A', 'unit', '1000', '4000', '4000', true)`,
+           VALUES ($1, 'alpha', 'item-a', 'Item A', 'unit', '1000', '4000', '4000', true),
+                  ($1, 'alpha', 'item-b', 'Item B', 'unit', '1000', '4000', '4000', true)`,
           [tenantA],
         );
         await client.query(
@@ -634,13 +741,106 @@ test('PIVOT-003 tenant constraints enforce scoped money, ownership and cross-ten
       'a rule window must move forward',
     );
 
+    // PIVOT-003-R1: native empty-stock valuation parity. A zero quantity may never
+    // retain owned stock value, on INSERT or UPDATE.
+    const stockConstraint = (
+      await db.adminQuery(
+        `SELECT convalidated, pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+         WHERE conname = 'stock_balances_quantity_value_chk'
+           AND conrelid = 'tenant_data.stock_balances'::regclass`,
+      )
+    ).rows[0];
+    assert.ok(stockConstraint, 'the native empty-stock valuation constraint must exist');
+    assert.equal(stockConstraint.convalidated, true, 'the stock valuation constraint must be validated');
+    assert.match(stockConstraint.definition, /quantity > 0/);
+    assert.match(stockConstraint.definition, /value = 0/);
+
+    await check(
+      `INSERT INTO tenant_data.stock_balances(tenant_id, company, warehouse, item, quantity, value, version)
+       VALUES ($1, 'alpha', 'wh-a', 'item-b', 0, 100, 1)`,
+      [tenantA],
+      /stock_balances_quantity_value_chk/,
+      'a zero-quantity balance may not carry stock value',
+    );
+    await db.asRole('migrator', client => client.query(
+      `INSERT INTO tenant_data.stock_balances(tenant_id, company, warehouse, item, quantity, value, version)
+       VALUES ($1, 'alpha', 'wh-a', 'item-b', 0, 0, 1)`,
+      [tenantA],
+    ), {commit: true});
+    await check(
+      `UPDATE tenant_data.stock_balances SET value = 100
+       WHERE tenant_id = $1 AND company = 'alpha' AND warehouse = 'wh-a' AND item = 'item-b'`,
+      [tenantA],
+      /stock_balances_quantity_value_chk/,
+      'an UPDATE may not add value to an empty balance',
+    );
+    const zeroed = await db.asRole('migrator', client => client.query(
+      `UPDATE tenant_data.stock_balances SET quantity = 0, value = 0, version = 2
+       WHERE tenant_id = $1 AND company = 'alpha' AND warehouse = 'wh-a' AND item = 'item-a'
+       RETURNING quantity, value`,
+      [tenantA],
+    ), {commit: true});
+    assert.deepEqual(zeroed.rows, [{quantity: '0', value: '0'}]);
+    const freeStock = await db.asRole('migrator', client => client.query(
+      `UPDATE tenant_data.stock_balances SET quantity = 5, value = 0, version = 3
+       WHERE tenant_id = $1 AND company = 'alpha' AND warehouse = 'wh-a' AND item = 'item-b'
+       RETURNING quantity, value`,
+      [tenantA],
+    ), {commit: true});
+    assert.deepEqual(freeStock.rows, [{quantity: '5', value: '0'}]);
+
+    // Validation refuses invalid pre-existing rows and never repairs them.
+    await assert.rejects(
+      () => db.asRole('migrator', async client => {
+        await client.query(
+          `CREATE TABLE tenant_data.stock_valuation_probe (quantity bigint, value bigint)`,
+        );
+        await client.query(`INSERT INTO tenant_data.stock_valuation_probe VALUES (0, 100)`);
+        await client.query(
+          `ALTER TABLE tenant_data.stock_valuation_probe
+             ADD CONSTRAINT probe_stock_quantity_value_chk
+             CHECK (quantity > 0 OR value = 0)
+             NOT VALID`,
+        );
+        await client.query(
+          `ALTER TABLE tenant_data.stock_valuation_probe VALIDATE CONSTRAINT probe_stock_quantity_value_chk`,
+        );
+      }),
+      /violated by some row/,
+    );
+    const probe = await db.adminQuery(
+      `SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'tenant_data' AND c.relname = 'stock_valuation_probe'`,
+    ).then(result => result.rows[0].n);
+    assert.equal(probe, 0, 'the validation probe transaction must roll back');
+
+    // The SQL default must resolve to the canonical seeded tax_type value.
+    const rules = JSON.parse(await readFile(new URL('contracts/postgres-business-rules-v1.json', repoRoot), 'utf8'));
+    const taxDefault = (
+      await db.adminQuery(
+        `SELECT column_default FROM information_schema.columns
+         WHERE table_schema = 'tenant_data' AND table_name = 'tax_profile' AND column_name = 'tax_type'`,
+      )
+    ).rows[0].column_default;
+    assert.match(taxDefault, /SALES_TAX/);
+    const seededTaxTypes = rules.reference_domains.tax_type.values.map(entry => entry.value);
+    assert.ok(seededTaxTypes.includes('SALES_TAX'));
+    const defaultedTax = await db.asRole('migrator', client => client.query(
+      `INSERT INTO tenant_data.tax_profile(tenant_id, tax_code, version, jurisdiction, rate, currency)
+       VALUES ($1, 'GST-17', 1, 'PK', 0.17, 'PKR')
+       RETURNING tax_type`,
+      [tenantA],
+    ), {commit: true});
+    assert.deepEqual(defaultedTax.rows, [{tax_type: 'SALES_TAX'}]);
+
     // Purpose C buckets stay version-scoped.
     await check(
       `INSERT INTO tenant_data.approval_policy(tenant_id, policy_key, version, action_type, currency)
        VALUES ($1, 'journal-standard', 1, 'journal.post', 'PKR')`,
       [tenantA],
       /approval_policy_pkey/,
-      'policy versions are append-only identities',
+      'a duplicate policy version key is rejected (key uniqueness only; existing versions are not yet immutable)',
     );
 
     const counts = (
