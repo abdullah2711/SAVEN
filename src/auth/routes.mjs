@@ -1,14 +1,18 @@
 import {timingSafeEqual} from 'node:crypto';
-import {AuthError, digestToken} from './session-store.mjs';
+import {AuthError, digestToken, isTokenDigest} from './session-store.mjs';
 
-// AUTH-002 versioned auth routes. They are deliberately independent of the active
-// SQLite `/api` handler: nothing here is wired into the native entry points, and no
-// existing route changes. The handler is a pure Web-API (Request → Response) function
-// so it can be mounted by any future server without a framework dependency.
+// AUTH-002 versioned auth routes (AUTH-002-R1). They remain independent of the
+// active SQLite `/api` handler: nothing here is wired into a native entry point.
+//
+// Success transitions are atomic: the session row and its success audit row are
+// written on one checked-out transaction client, and the cookie is only issued after
+// commit. Failed-login audit is written independently so a rolled-back attempt is
+// still recorded. Rotation and logout validate the session under a row lock at the
+// mutation boundary.
 //
 // Realm separation: exact-origin allowlists only. Customer realm uses a host-only
-// `__Host-` cookie with SameSite=Lax; operator realm is reserved for AUTH-007 and
-// responds with an explicit refusal instead of accepting a local password.
+// `__Host-` cookie with SameSite=Lax; the operator realm is reserved for AUTH-007 and
+// fails closed instead of accepting a local password.
 
 const MAX_BODY_BYTES = 32 * 1024;
 const EMAIL_MAX = 320;
@@ -40,8 +44,6 @@ function failure(status, code, message) {
 export function cookieName(realm, secure) {
   const config = REALMS[realm];
   if (!config) throw new Error('Unknown cookie realm.');
-  // `__Host-` requires Secure, Path=/ and no Domain. Local non-TLS fixtures use an
-  // explicitly separate, obviously non-production name instead.
   return secure ? `__Host-${config.cookieBase}` : config.cookieBase;
 }
 
@@ -62,7 +64,7 @@ export function sessionCookie({realm, token, secure = true, maxAgeSeconds}) {
 // The client sends the plaintext CSRF value; only its digest is stored. Compare in
 // constant time over equal-length digests, and never echo the value back.
 function csrfMatches(provided, storedDigest) {
-  if (typeof storedDigest !== 'string' || !/^[0-9a-f]{64}$/.test(storedDigest)) return false;
+  if (!isTokenDigest(storedDigest) || typeof provided !== 'string' || provided.length === 0) return false;
   let digest;
   try {
     digest = digestToken(provided);
@@ -101,7 +103,9 @@ export function createAuthRoutes({
   secureCookies = true,
   clock = () => new Date(),
 }) {
-  if (!store || typeof store.createSession !== 'function') throw new Error('createAuthRoutes requires a session store.');
+  if (!store || typeof store.createSession !== 'function' || typeof store.withTransaction !== 'function') {
+    throw new Error('createAuthRoutes requires a transactional session store.');
+  }
   if (typeof findUserByEmail !== 'function') throw new Error('createAuthRoutes requires findUserByEmail.');
   if (typeof verifyPassword !== 'function') throw new Error('createAuthRoutes requires verifyPassword.');
   if (!origins || typeof origins !== 'object') throw new Error('createAuthRoutes requires exact realm origins.');
@@ -136,19 +140,6 @@ export function createAuthRoutes({
     return parsed;
   }
 
-  async function currentSession(request, realm) {
-    const token = readCookies(request)[cookieName(realm, secureCookies)];
-    if (!token) return null;
-    let session;
-    try {
-      session = await store.readSession(token, {realm});
-    } catch (error) {
-      if (error instanceof AuthError && error.status === 401) return null;
-      throw error;
-    }
-    return session ? {session, token} : null;
-  }
-
   async function login(request, url, realm) {
     // Cloud operator authentication is delegated to validated Cloudflare Access/IdP
     // assertions (AUTH-007). No local operator password path exists in this route.
@@ -177,6 +168,8 @@ export function createAuthRoutes({
       : null;
     const verified = await verifyPassword(password, credential);
     if (!user || !verified || user.status !== 'active') {
+      // Failure audit is its own durable statement path: no business transaction is
+      // open and nothing was created, so the record survives the refused request.
       await audit({
         eventType: 'login_failure',
         outcome: 'failure',
@@ -187,24 +180,31 @@ export function createAuthRoutes({
       });
       throw new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.');
     }
-    const created = await store.createSession({
-      userId: user.id,
-      realm,
-      roleId: null,
-      assuranceLevel: 'single_factor',
-      ipAddress: request.headers.get('cf-connecting-ip') ?? null,
-      userAgent: request.headers.get('user-agent') ?? null,
-      credentialVersion: user.credentialVersion,
+
+    // The session and its success audit commit together on one client. The cookie is
+    // only returned after commit, so an audit or commit failure leaves no live session.
+    const created = await store.withTransaction(async tx => {
+      const session = await store.createSession({
+        userId: user.id,
+        realm,
+        roleId: null,
+        assuranceLevel: 'single_factor',
+        ipAddress: request.headers.get('cf-connecting-ip') ?? null,
+        userAgent: request.headers.get('user-agent') ?? null,
+        credentialVersion: user.credentialVersion,
+      }, {tx});
+      await audit({
+        eventType: 'login_success',
+        outcome: 'success',
+        realm,
+        user,
+        request,
+        sessionId: session.session.id,
+        detail: {assurance: 'single_factor'},
+      }, {tx});
+      return session;
     });
-    await audit({
-      eventType: 'login_success',
-      outcome: 'success',
-      realm,
-      user,
-      request,
-      sessionId: created.session.id,
-      detail: {assurance: 'single_factor'},
-    });
+
     const response = json({
       realm,
       csrfToken: created.csrfToken,
@@ -223,18 +223,23 @@ export function createAuthRoutes({
     if (realm === 'operator') {
       throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator sessions are not enabled.');
     }
-    const found = await currentSession(request, realm);
-    if (!found) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-    // Touching the session is activity only; the absolute ceiling cannot move.
-    await store.refreshSession(found.session.id).catch(() => null);
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const session = await store.readSession(token, {realm});
+    if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    // Activity is a guarded UPDATE: if the window closed (idle, absolute, revoked,
+    // disabled, epoch) between the read and the refresh, the request fails closed
+    // instead of returning a stale success.
+    const refreshed = await store.refreshSession(session.id);
+    if (!refreshed) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     return json({
-      user: {id: found.session.userId, email: found.session.email},
+      user: {id: session.userId, email: session.email},
       session: {
-        realm: found.session.realm,
-        assuranceLevel: found.session.assuranceLevel,
-        selectedTenantId: found.session.selectedTenantId,
-        idleExpiresAt: found.session.idleExpiresAt,
-        absoluteExpiresAt: found.session.absoluteExpiresAt,
+        realm: refreshed.realm,
+        assuranceLevel: refreshed.assuranceLevel,
+        selectedTenantId: refreshed.selectedTenantId,
+        idleExpiresAt: refreshed.idleExpiresAt,
+        absoluteExpiresAt: refreshed.absoluteExpiresAt,
       },
     });
   }
@@ -246,23 +251,33 @@ export function createAuthRoutes({
     if (request.headers.get('origin') !== url.origin) {
       throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
     }
-    const found = await currentSession(request, realm);
-    if (!found) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const provided = request.headers.get('x-csrf-token');
-    if (typeof provided !== 'string' || !csrfMatches(provided, found.session.csrfTokenHash)) {
-      throw new AuthError(403, 'CSRF_FAILED', 'CSRF verification failed.');
-    }
-    await store.revokeSession(found.token, {reason: 'logout', actor: found.session.userId});
-    await audit({
-      eventType: 'logout',
-      outcome: 'success',
-      realm,
-      user: {id: found.session.userId},
-      request,
-      sessionId: found.session.id,
-      detail: {},
+    const revoked = await store.withTransaction(async tx => {
+      const session = await store.lockSession(token, {realm, tx});
+      if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      if (!csrfMatches(provided, session.csrfTokenHash)) {
+        throw new AuthError(403, 'CSRF_FAILED', 'CSRF verification failed.');
+      }
+      const result = await store.revokeSession(session.tokenHash, {
+        reason: 'logout',
+        actor: session.userId,
+        tx,
+      });
+      if (!result) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      await audit({
+        eventType: 'logout',
+        outcome: 'success',
+        realm,
+        user: {id: session.userId},
+        request,
+        sessionId: session.id,
+        detail: {},
+      }, {tx});
+      return result;
     });
-    const response = json({ok: true});
+    const response = json({ok: true, userId: revoked.user_id});
     response.headers.set('Set-Cookie', sessionCookie({realm, token: '', secure: secureCookies, maxAgeSeconds: 0}));
     return response;
   }

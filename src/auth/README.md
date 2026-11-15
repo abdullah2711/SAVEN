@@ -3,8 +3,9 @@
 Status: schema-backed auth service modules. Nothing here is imported by an active
 entry point. The SQLite `/api` handler in `src/local` remains the running
 authentication path, and no existing route, table or session was changed. This module
-is not a claim of a completed PostgreSQL auth cutover, and Better Auth is not yet
-active: the pinned dependency is a target, not a running connector.
+is not a claim of a completed PostgreSQL auth cutover. The pinned Better Auth package
+is exercised through the adapter in `server.mjs` and its session lifecycle is covered
+by the gate, but no entry point, connector or profile is switched to it.
 
 ## Routes
 
@@ -42,6 +43,25 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   use a separate, obviously non-production name.
 - No cookie-only authority: the cookie carries an opaque token only, and every
   request re-reads the server-side session. Session data is never cached in a cookie.
+- Atomic success: the session insert and its `login_success` audit row commit on one
+  checked-out transaction client, and the cookie is only set after commit. A failed
+  audit or commit leaves no live session. Logout revokes and audits in one
+  transaction; a failed logout audit rolls the revocation back. Failed-login audit is
+  a separate autocommit statement so a refused attempt is still recorded.
+- Race safety: rotation locks the source row (`SELECT … FOR UPDATE`), re-validates
+  revoked/idle/absolute/status/credential epoch at the mutation boundary, creates
+  exactly one successor and consumes the source, all in one transaction. Concurrent
+  rotations leave one live session; a rotation racing logout leaves none. `refresh`
+  is a guarded UPDATE that cannot revive an idle-expired, revoked, disabled or
+  credential-stale row, and `/v1/auth/me` fails closed if that update matches nothing.
+- Bounded configuration: durations must be integral, positive, shorter than or equal
+  to the ADR03 30-day idle / 90-day absolute ceilings, and token generation stays at
+  32–64 random bytes. Weaker or malformed overrides are refused at construction.
+- Trusted time: the injected application clock is authoritative for expiry checks and
+  writes; the database contributes structural constraints and the immutable absolute
+  ceiling, not the session clock. Reference-data checks use the same application
+  clock, including `effective_from`, so a future-dated realm or assurance class is
+  not usable early.
 - CSRF: the client keeps the plaintext CSRF value returned at login; only its digest
   is stored on the session row and compared in constant time on state-changing
   requests.
@@ -63,8 +83,12 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 
 ## Extension points
 
-- New realm values: add an active/effective-dated `auth.reference_value` row
-  (domain `realm`) and an exact origin; no code list needs editing.
+- Realm values are data, but a working realm still needs code and configuration: a
+  row in `auth.reference_value` (domain `realm`, active and effective) is required
+  and checked at session creation, while the cookie profile lives in the `REALMS` map
+  and the exact origin must be supplied to the server. `REALMS` is intentionally a
+  small fixed protocol map, so adding a realm is a reviewed code change, not a data
+  edit alone.
 - New assurance classes: add `auth.roles` rows. Business/ERP roles and the protected
   ultimate-owner definition stay in `tenant_data`; they are not authentication roles.
 - New audit events: add `auth.reference_value` rows (domain `auth_event_type`) and emit
@@ -80,16 +104,20 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 - Verification/reset: AUTH-005 owns the single-use challenge flows and mail adapter.
 - Cloud operator access: AUTH-007 validates the asserted identity provider and decides
   the operator realm; the operator branch here fails closed on purpose.
-- Better Auth adaptation: when the library is activated, it must run through this
-  adapter boundary. The library looks sessions up by the raw token, deletes rows on
-  revoke and defaults to a 7-day sliding expiry, so a custom adapter must hashing-map
-  the token, map revoke to `UPDATE`, keep cookie caching disabled, and enforce the
-  30/90-day ceilings. Session and verification table names and snake_case columns map
-  through the library's model/field configuration. None of that is claimed as done.
+- Better Auth adaptation: `createBetterAuthSessions` instantiates the pinned library
+  with a custom adapter over the canonical schema. It hashes the raw token before
+  every SQL lookup, maps revoke/delete to a revocation `UPDATE`, caps the library's
+  `expiresAt` at the immutable absolute ceiling, disables cookie cache and disables
+  library schema validation. The gate drives the library's own
+  `createSession`/`findSession`/`updateSession`/`deleteSession` lifecycle. Remaining
+  work is activation: model/field parity for accounts, verification and plugins
+  (2FA/passkey), route wiring and entry-point cutover are not part of this module.
 
 ## Non-claims
 
 - No login form, UI wiring, rate limit, MFA enforcement, email verification, password
   reset, OIDC connector or operator authentication is delivered here.
-- The gate uses a disposable database and injected clock; it is not production
-  evidence, and SQLite remains the production path.
+- The gate uses a disposable database, a test-only auth-service login and an injected
+  clock; it is not production evidence, and SQLite remains the production path. The
+  library adapter covers sessions only — accounts, verification, 2FA, passkey and any
+  OIDC connector remain future contracts.
