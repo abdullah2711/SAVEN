@@ -1,7 +1,7 @@
 CONTRACT: docs/contractor/contracts/PIVOT-004-tenant-rls.md
 STATUS: DONE
 
-Revision 2 (PIVOT-004-R1) is recorded at the end of this report. It applies the four findings of the engineering review at `a253807` (`docs/contractor/reviews/PIVOT-004-tenant-rls.md`): forced membership isolation, a narrow dedicated admission owner, completed scoped references and full authority-boundary evidence. The earlier delivery body is retained unchanged as the original record.
+Revision 3 (PIVOT-004-R2) is recorded at the end of this report. It applies the three findings of the engineering review at `577423c`. Revision 2 (PIVOT-004-R1) applies the four findings of the review at `a253807` (`docs/contractor/reviews/PIVOT-004-tenant-rls.md`): forced membership isolation, a narrow dedicated admission owner, completed scoped references and full authority-boundary evidence. The earlier delivery body is retained unchanged as the original record.
 
 ## What was delivered
 
@@ -222,3 +222,94 @@ compliant: no new hardcoded business enums or domain lists; the only new literal
 ### GIT (R1)
 
 branch=opencode/pivot-004-tenant-rls base=testing-1 @ d0a50cd previous=ed87e81 (reviewed) commits=recorded in the delivery message pushed=yes merged=no
+
+## Revision 3 — PIVOT-004-R2 corrections
+
+Contract: the `IF REVISE` block of `docs/contractor/reviews/PIVOT-004-R1-tenant-rls.md` (engineer verdict at `577423c`). The delivered `00/05/10/20/30/006/021/031` bytes are unchanged; all corrections are the additive, administrator-applied `db/postgres/migrations/032-rls-hardening.sql` plus authorized fixture, test, README and report updates.
+
+### Finding → change mapping
+
+| Finding | Old state | New state |
+| --- | --- | --- |
+| 1. Pre-flight refusal could delete a pre-existing role | The fixture's `finally` block dropped every untracked extra-role name unconditionally, so a refusal caused by an already-existing `saven_tenant_admission_definer` could delete it | Cleanup is now ownership-tracked and gated on a `preflightPassed` flag set only after the existing-object check passes. A refused pre-flight performs **no** object cleanup — no database drop, no role drop — and a completed pre-flight only drops objects this run created. New tests pre-create the namespaced owner with a membership, a role setting and a comment, snapshot attributes/memberships/settings/comment, force a pre-flight refusal, and assert byte-identical preservation plus no database creation. A second test fails the administrator hook after it creates the role and proves the database and role are removed while the primary error propagates. |
+| 2. Extra permissive policies bypassed membership isolation | `031` installed only PERMISSIVE membership policies; an added `PERMISSIVE … TO saven_auth_service USING (true)` would OR past preselection | `032` adds independent RESTRICTIVE partners carrying the same predicate: `tenant_membership_preselect_scope` (auth service, verified `app.current_user_id`) and `tenant_membership_admission_scope` (admission owner, verified `(tenant_id, user_id)` pair). Each privileged role now has exactly one permissive and one restrictive policy, so a permissive addition is AND-ed against the restrictive predicate. The attack test now creates a real `USING (true)` policy **targeting the auth service**, then proves own-user preselection still works (T1+T2 for U1), a foreign principal and missing/empty/malformed context return zero, and the policy is dropped afterwards. `031`'s permissive-only expectation is superseded by `032`'s validator; no applied bytes were edited. |
+| 3. A flag-compatible reused definer could retain excessive authority | `031` checked role flags and four named direct memberships only; table-level revokes did not clear independent column grants | `032` runs an exact allow-list validator before and after its policy work, inside the same rollback-on-failure transaction: role flags; direct and transitive outbound memberships (nothing it can `SET ROLE` into); inbound SAVEN principal paths (excluding the offline superuser); object ownership (only `tenant_data.session_admitted`); schema ACLs (exactly `USAGE` on `auth` and `tenant_data`, no `CREATE`, no `operator`); empty table/sequence ACLs; exactly the ten reviewed column `SELECT` grants; exactly the two helper `EXECUTE` grants plus the owner's own entry; no default-privilege path; no database or tablespace ownership. It refuses and rolls back rather than revoking, so unrelated grants are never silently stripped. The test exercises eight excess cases (column grant, table-level grant, schema `CREATE`, `operator` access, inbound runtime path, privileged outbound path, owned relation, owned function), proves each refusal adds no policy, then removes the excess and applies `032` cleanly. |
+
+Accepted decisions retained: administrator-applied corrections, the narrow NOLOGIN owner with principal-bound SELECT-only preselection, fail-closed membership writes (ownership of invitation/acceptance policies stays with that future contract), separate `auth.users`/`auth.sessions` service/principal boundary, `audit_id_seq` as the only runtime sequence, and no vendor operator FK.
+
+### Fixture support (authorized TOUCH)
+
+`tests/helpers/pg-pivot-fixture.mjs` gained: `preflightPassed` gating all object cleanup; ownership-tracked dropping (created roles plus the namespaced extra owner only after a completed pre-flight); an `adminSql` option for inline administrator SQL under the same role namespace (used to simulate a hook failure); and documentation of the rule that a refused pre-flight never mutates cluster objects. Default PIVOT-002/003 behaviour and the auth fixture are unchanged, and the PIVOT-002 suite still passes in full.
+
+### GATE EVIDENCE (R2)
+
+Environment: dedicated disposable local PostgreSQL 18.6 cluster on loopback `127.0.0.1:55433`; `SAVEN_PIVOT_TEST_CLUSTER=1`; private generated test credential; Node **v24.19.0** supplied through `npm exec --package=node@24.19.0` (pinned range `>=24.13 <25`); no owner-server/SSH/production/shared-cluster access. Fixture created only `saven_pivot_%` objects; post-run counts: roles 0, databases 0.
+
+```text
+$ node scripts/check.mjs
+PASS: 150 JavaScript files parsed; package manifest valid.
+
+$ node --test tests/pivot-002-operator.test.mjs tests/pivot-003-schema.test.mjs tests/pivot-004-rls.test.mjs
+✔ PIVOT-002 operator bootstrap enforces Purpose A authority boundaries
+✔ PIVOT-002 fixture refuses pre-existing cluster roles before mutation
+✔ PIVOT-002 checked-in role bootstrap refuses incompatible pre-existing roles atomically
+✔ PIVOT-002 fixture namespaces isolate concurrent runs
+✔ PIVOT-002 fixture reports run and cleanup failures together
+✔ PIVOT-003 ... (three cases)
+✔ PIVOT-004 static contract: forced RLS, atomic grants, membership isolation and exact binding
+✔ PIVOT-004 catalog: tenant and membership isolation, no foreign policies, no bypass
+✔ PIVOT-004 grants: dedicated admission owner, minimum sequences, no foreign access
+✔ PIVOT-004 runtime: verified context isolates reads, writes and the admission oracle
+✔ PIVOT-004 auth membership: principal-bound preselection and no cross-principal read
+✔ PIVOT-004 scoped references: same-tenant wrong-parent and cross-tenant are both refused
+✔ PIVOT-004 principal mapping: exact text/UUID membership and identity binding
+✔ PIVOT-004 resists an extra permissive policy and an attacker permissive policy on auth
+✔ PIVOT-004 correction 031 is atomic: a failing application leaves no partial state
+✔ PIVOT-004-R2 fixture preflight never mutates a pre-existing extra role
+✔ PIVOT-004-R2 fixture cleans role and database after an administrator hook failure
+✔ PIVOT-004-R2 refuses excessive admission-owner authority without repairing it
+ℹ tests 20
+ℹ pass 20
+ℹ fail 0
+EXIT=0
+```
+
+Full Node suite on the same cluster and Node version:
+
+```text
+$ node --test tests/*.test.mjs
+ℹ tests 181
+ℹ pass 181
+ℹ fail 0
+EXIT=0
+```
+
+Behavioural evidence:
+
+- **Pre-flight preservation:** a pre-existing owner role with a membership, `ALTER ROLE … SET search_path`, and a comment survives a refused `withPivotDatabase` with identical `pg_roles` row (including `rolconfig`), identical membership rows and identical comment; the disposable database is not created.
+- **Hook failure:** administrator SQL that creates the owner role and then raises `division by zero` leaves neither the role nor the database behind; the division-by-zero error is what surfaces.
+- **Permissive widening:** with a `PERMISSIVE … TO auth_service USING (true)` policy installed, the auth service still sees exactly its own principal's memberships (positive control T1+T2 for U1), zero for another principal, and zero with empty or malformed context.
+- **Authority refusal:** each of the eight excess cases is refused with an `R2-AUTHORITY` message, the transaction rolls back leaving the original two membership policies, and the excess is undone; the clean stack then applies `032` and has the four-policy pair set, and a re-application is refused as already applied.
+- **Regression:** all earlier PIVOT-004 evidence (tenant three-policy model, `FORCE` owner enforcement, context denial, append-only privileges, scoped references, mapping constraints) still passes.
+
+### QUESTIONS FOR ENGINEER (R2)
+
+1. `032` treats the owner's own `EXECUTE` entry on `session_admitted` (materialised in `proacl` by `ALTER FUNCTION … OWNER TO`) as part of the allow-list, since it is an ownership artifact rather than a grant. Confirm that reading is correct, or require an owner-entry check of a different shape.
+2. The inbound-membership check exempts superusers because `pg_has_role` always answers true for them; the offline administrator is otherwise not a runtime path. If a non-superuser administrator role is introduced later, it should be added to the SAVEN-prefix check rather than exempted.
+3. `032` refuses on any excess rather than stripping it, so a reused owner role with stale grants needs an operator decision. Confirm that refusal (with the `R2-AUTHORITY` detail) is the preferred operational failure instead of automatic revocation.
+4. The new restrictive membership policies are `FOR ALL` with matching `WITH CHECK`, so they also constrain future writes if membership write policies are added. Confirm that is intended, or scope them to `FOR SELECT` once write flows are specified.
+
+### DEVIATIONS (R2)
+
+1. No delivered SQL byte was edited; the correction is the new `032` file, applied by the offline administrator through the existing fixture hook.
+2. `032` contains no `GRANT`/`REVOKE`: it validates and refuses rather than repairing, per the finding. Privileges are only validated; the hardening consists solely of two restrictive policies.
+3. The fixture's cleanup semantics changed in a security-relevant way (refusal now performs no cleanup). That is the correction, not a behavioural convenience; it is documented in the README and covered by regression tests.
+4. The test suite grew to twelve cases and the per-run cost grew accordingly (about 5–6 s of fixture work); each refused 032 attempt is executed on a disposable database, never an owner/shared cluster.
+
+### EXTENSIBILITY (R2)
+
+compliant: no new hardcoded business domains; the only literals are the dedicated role name and the reviewed allow-list columns/functions required by the ruling; the authority validator is an explicit, replaceable policy rather than implicit trust; membership access now has a documented permissive+restrictive pattern for future roles; and the additive correction is reversible by a dated migration without rewriting applied bytes.
+
+### GIT (R2)
+
+branch=opencode/pivot-004-tenant-rls base=testing-1 @ d0a50cd previous=3769dda (reviewed) commits=recorded in the delivery message pushed=yes merged=no

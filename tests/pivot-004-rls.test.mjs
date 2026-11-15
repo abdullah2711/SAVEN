@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {withPivotDatabase, namespaceSql} from './helpers/pg-pivot-fixture.mjs';
+import {randomBytes} from 'node:crypto';
+import {
+  withPivotDatabase,
+  namespaceSql,
+  connectClusterAdmin,
+  roleNamesForSuffix,
+} from './helpers/pg-pivot-fixture.mjs';
 
 const repoRoot = new URL('../', import.meta.url);
 
@@ -15,8 +21,13 @@ const schemaFiles = [
   'db/postgres/migrations/021-tenant-schema-corrections.sql',
   'db/postgres/30-rls-policies.sql',
 ];
-const adminSqlFiles = ['db/postgres/migrations/031-rls-corrections.sql'];
+const adminSqlFiles = [
+  'db/postgres/migrations/031-rls-corrections.sql',
+  'db/postgres/migrations/032-rls-hardening.sql',
+];
 const rlsCorrectionsPath = 'db/postgres/migrations/031-rls-corrections.sql';
+const rlsHardeningPath = 'db/postgres/migrations/032-rls-hardening.sql';
+const quoteRole = name => `"${String(name).replaceAll('"', '""')}"`;
 
 const T1 = '11111111-1111-4111-8111-111111111111';
 const T2 = '22222222-2222-4222-8222-222222222222';
@@ -222,6 +233,38 @@ test('PIVOT-004 static contract: forced RLS, atomic grants, membership isolation
   assert.match(correction, /relkind IN \('r', 'p'\)/);
   assert.match(correction, /031-rls-corrections\.sql is already applied/);
   assert.doesNotMatch(correction, /GRANT\b[^;]*\bTO\s+(?:saven_auth_service|saven_auth_definer|saven_operator_read|saven_operator_admin)\b/i);
+
+  // 032 hardening: restrictive membership guards plus a full-authority validator that
+  // refuses rather than repairing, and changes no privilege at all.
+  const hardening = await readFile(new URL(rlsHardeningPath, repoRoot), 'utf8');
+  const hardeningExecutable = hardening
+    .split('\n')
+    .filter(line => !line.trim().startsWith('--'))
+    .join('\n');
+  assert.match(hardening, /\nBEGIN;\n/);
+  assert.match(hardening.trimEnd(), /COMMIT;$/);
+  assert.match(hardening, /032-rls-hardening\.sql is already applied/);
+  assert.match(hardening, /CREATE POLICY tenant_membership_preselect_scope ON auth\.tenant_membership\s+AS RESTRICTIVE FOR ALL TO saven_auth_service/);
+  assert.match(hardening, /CREATE POLICY tenant_membership_admission_scope ON auth\.tenant_membership\s+AS RESTRICTIVE FOR ALL TO saven_tenant_admission_definer/);
+  assert.match(hardening, /tenant_membership_preselect_scope/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner has forbidden role attributes/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner has direct role memberships/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner transitively holds privileges of/);
+  assert.match(hardening, /R2-AUTHORITY: a SAVEN principal can assume the admission owner/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner owns relations/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner schema privileges differ from the allow-list/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner holds table\/sequence-level privileges/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner column privileges differ from the allow-list/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner function privileges differ from the allow-list/);
+  assert.match(hardening, /R2-AUTHORITY: admission owner is named in default privileges/);
+  assert.match(hardening, /allowed_columns := ARRAY\[/);
+  assert.match(hardening, /allowed_functions := ARRAY\[/);
+  assert.match(hardening, /SELECT pg_temp\.saven_assert_admission_owner\(\);/g);
+  // It must not broaden or strip privileges: no GRANT/REVOKE at all.
+  assert.doesNotMatch(hardeningExecutable, /\b(?:GRANT|REVOKE)\b/);
+  // The validator names the flags it forbids; no role is created or altered here.
+  assert.doesNotMatch(hardeningExecutable, /\b(?:CREATE|ALTER)\s+ROLE\b/);
+  assert.match(hardeningExecutable, /'BYPASSRLS', r\.rolbypassrls/);
 });
 
 test('PIVOT-004 catalog: tenant and membership isolation, no foreign policies, no bypass', async () => {
@@ -294,19 +337,25 @@ test('PIVOT-004 catalog: tenant and membership isolation, no foreign policies, n
       )
     ).rows;
     assert.deepEqual(membershipPolicies.map(row => row.polname), [
-      'tenant_membership_admission_lookup', 'tenant_membership_preselect',
+      'tenant_membership_admission_lookup',
+      'tenant_membership_admission_scope',
+      'tenant_membership_preselect',
+      'tenant_membership_preselect_scope',
     ]);
     for (const policy of membershipPolicies) {
-      assert.equal(policy.polpermissive, true);
       assert.deepEqual(policy.roles.length, 1, `${policy.polname} must target exactly one role`);
       assert.equal(policy.roles.includes('PUBLIC'), false);
       assert.doesNotMatch(policy.using_expression, /session_admitted/);
       assert.doesNotMatch(policy.using_expression, /^true$/);
     }
-    assert.deepEqual(
-      membershipPolicies.map(row => row.roles[0]).sort(),
-      [db.roles.authService, db.extraRoles.tenantAdmissionDefiner].sort(),
-    );
+    // Each role with membership access has exactly one permissive and one restrictive
+    // policy with the same predicate, so an added permissive policy cannot widen it.
+    for (const roleName of [db.roles.authService, db.extraRoles.tenantAdmissionDefiner]) {
+      const own = membershipPolicies.filter(policy => policy.roles[0] === roleName);
+      assert.equal(own.length, 2, `${roleName} must have a permissive/restrictive pair`);
+      assert.equal(own.filter(policy => policy.polpermissive).length, 1);
+      assert.equal(own.filter(policy => !policy.polpermissive).length, 1);
+    }
 
     const otherAuthPolicies = (
       await db.adminQuery(
@@ -796,6 +845,30 @@ test('PIVOT-004 resists an extra permissive policy and an attacker permissive po
     await db.asRole('migrator', client => client.query('DROP POLICY pivot004_attack ON tenant_data.accounts'), {commit: true});
     await db.asRole('migrator', client => client.query('DROP POLICY pivot004_auth_attack ON auth.tenant_membership'), {commit: true});
 
+    // Real attacked-role test: a PERMISSIVE policy targeting the role that actually
+    // holds membership access must not widen its view, because the restrictive partner
+    // carries the same predicate.
+    await db.asRole('migrator', client => client.query(
+      `CREATE POLICY r2_auth_service_attack ON auth.tenant_membership AS PERMISSIVE FOR ALL TO ${quoteRole(db.roles.authService)} USING (true) WITH CHECK (true)`,
+    ), {commit: true});
+    const attacked = await db.asRole('authService', async client => {
+      const setUser = value => client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', value]);
+      await setUser(U1);
+      const ownRows = (await client.query('SELECT tenant_id::text AS t, user_id::text AS u FROM auth.tenant_membership ORDER BY tenant_id')).rows;
+      await setUser(U3);
+      const foreignRows = (await client.query('SELECT count(*)::int AS n FROM auth.tenant_membership')).rows[0].n;
+      await setUser('');
+      const emptyRows = (await client.query('SELECT count(*)::int AS n FROM auth.tenant_membership')).rows[0].n;
+      await setUser('not-a-uuid');
+      const malformedRows = (await client.query('SELECT count(*)::int AS n FROM auth.tenant_membership')).rows[0].n;
+      return {ownRows, foreignRows, emptyRows, malformedRows};
+    });
+    assert.deepEqual(attacked.ownRows, [{t: T1, u: U1}, {t: T2, u: U1}], 'own-user preselection still works');
+    assert.equal(attacked.foreignRows, 0, 'an extra permissive policy must not expose another principal');
+    assert.equal(attacked.emptyRows, 0);
+    assert.equal(attacked.malformedRows, 0);
+    await db.asRole('migrator', client => client.query('DROP POLICY r2_auth_service_attack ON auth.tenant_membership'), {commit: true});
+
     for (const role of ['operatorRead', 'operatorAdmin', 'authService']) {
       await assert.rejects(
         () => db.asRole(role, client => client.query('SELECT count(*) FROM tenant_data.accounts')),
@@ -862,5 +935,171 @@ test('PIVOT-004 correction 031 is atomic: a failing application leaves no partia
 
     // A second application is refused rather than silently reapplied.
     await assert.rejects(() => db.adminQuery(namespaceSql(original, db.roles)), /031-rls-corrections\.sql is already applied/);
+  });
+});
+
+
+test('PIVOT-004-R2 fixture preflight never mutates a pre-existing extra role', async () => {
+  const suffix = 'preserve' + randomBytes(4).toString('hex');
+  const names = roleNamesForSuffix(suffix);
+  const role = names.tenantAdmissionDefiner;
+  const probe = names.database + '_probe';
+  const cluster = await connectClusterAdmin();
+  let created = false;
+  try {
+    await cluster.query(`CREATE ROLE ${quoteRole(role)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`);
+    await cluster.query(`CREATE ROLE ${quoteRole(probe)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`);
+    created = true;
+    // Give it state a careless cleanup would destroy: a membership, a setting, a comment.
+    await cluster.query(`GRANT ${quoteRole(probe)} TO ${quoteRole(role)}`);
+    await cluster.query(`ALTER ROLE ${quoteRole(role)} SET search_path = pg_catalog`);
+    await cluster.query(`COMMENT ON ROLE ${quoteRole(role)} IS 'pre-existing role must survive a refused pre-flight'`);
+
+    const snapshot = async () => ({
+      role: (
+        await cluster.query(
+          `SELECT rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit,
+                  rolbypassrls, rolreplication, rolconfig
+           FROM pg_roles WHERE rolname = $1`,
+          [role],
+        )
+      ).rows,
+      memberships: (
+        await cluster.query(
+          `SELECT m.rolname AS member, g.rolname AS granted
+           FROM pg_auth_members am
+           JOIN pg_roles m ON m.oid = am.member
+           JOIN pg_roles g ON g.oid = am.roleid
+           WHERE m.rolname = $1 OR g.rolname = $1
+           ORDER BY 1, 2`,
+          [role],
+        )
+      ).rows,
+      comment: (
+        await cluster.query(
+          `SELECT shobj_description(oid, 'pg_authid') AS comment FROM pg_roles WHERE rolname = $1`,
+          [role],
+        )
+      ).rows,
+      grants: (
+        await cluster.query(
+          `SELECT count(*)::int AS n FROM pg_auth_members am
+           JOIN pg_roles m ON m.oid = am.member WHERE m.rolname = $1`,
+          [role],
+        )
+      ).rows,
+    });
+    const before = await snapshot();
+
+    await assert.rejects(
+      () => withPivotDatabase({namespaceSuffix: suffix}, async () => {
+        throw new Error('the run callback must not execute after a pre-flight refusal');
+      }),
+      /pre-flight refused/i,
+    );
+
+    assert.deepEqual(await snapshot(), before, 'a refused pre-flight must not alter the pre-existing role');
+    assert.equal(
+      (await cluster.query('SELECT 1 FROM pg_database WHERE datname = $1', [names.database])).rowCount,
+      0,
+      'a refused pre-flight must not create the disposable database',
+    );
+  } finally {
+    if (created) {
+      await cluster.query(`REVOKE ${quoteRole(probe)} FROM ${quoteRole(role)}`).catch(() => {});
+      await cluster.query(`DROP ROLE IF EXISTS ${quoteRole(role)}`).catch(() => {});
+      await cluster.query(`DROP ROLE IF EXISTS ${quoteRole(probe)}`).catch(() => {});
+    }
+    await cluster.end();
+  }
+});
+
+test('PIVOT-004-R2 fixture cleans role and database after an administrator hook failure', async () => {
+  const suffix = 'hookfail' + randomBytes(4).toString('hex');
+  const names = roleNamesForSuffix(suffix);
+  await assert.rejects(
+    () => withPivotDatabase({
+      namespaceSuffix: suffix,
+      sqlFiles: schemaFiles,
+      adminSql: [
+        'CREATE ROLE saven_tenant_admission_definer NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
+        'SELECT 1/0',
+      ],
+    }, async () => {
+      throw new Error('the run callback must not execute after an administrator hook failure');
+    }),
+    /division by zero/,
+  );
+  const cluster = await connectClusterAdmin();
+  try {
+    assert.equal(
+      (await cluster.query('SELECT 1 FROM pg_roles WHERE rolname = $1', [names.tenantAdmissionDefiner])).rowCount,
+      0,
+      'a hook-created role must be removed when the hook fails',
+    );
+    assert.equal(
+      (await cluster.query('SELECT 1 FROM pg_database WHERE datname = $1', [names.database])).rowCount,
+      0,
+      'the disposable database must be removed when the hook fails',
+    );
+  } finally {
+    await cluster.end();
+  }
+});
+
+test('PIVOT-004-R2 refuses excessive admission-owner authority without repairing it', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles: [rlsCorrectionsPath]}, async db => {
+    const hardening = namespaceSql(await readFile(new URL(rlsHardeningPath, repoRoot), 'utf8'), db.roles);
+    const definer = quoteRole(db.extraRoles.tenantAdmissionDefiner);
+    const membershipPolicyCount = async () => (
+      await db.adminQuery(
+        `SELECT count(*)::int AS n FROM pg_policy p
+         JOIN pg_class c ON c.oid = p.polrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'auth' AND c.relname = 'tenant_membership'`,
+      )
+    ).rows[0].n;
+    assert.equal(await membershipPolicyCount(), 2);
+
+    const cases = [
+      ['extra column grant', `GRANT SELECT (payload) ON tenant_data.command_inbox TO ${definer}`,
+        `REVOKE SELECT (payload) ON tenant_data.command_inbox FROM ${definer}`],
+      ['table-level grant', `GRANT SELECT ON tenant_data.accounts TO ${definer}`,
+        `REVOKE SELECT ON tenant_data.accounts FROM ${definer}`],
+      ['schema CREATE', `GRANT CREATE ON SCHEMA tenant_data TO ${definer}`,
+        `REVOKE CREATE ON SCHEMA tenant_data FROM ${definer}`],
+      ['operator schema access', `GRANT USAGE ON SCHEMA operator TO ${definer}`,
+        `REVOKE USAGE ON SCHEMA operator FROM ${definer}`],
+      ['inbound runtime path', `GRANT ${quoteRole(db.roles.customerApp)} TO ${definer}`,
+        `REVOKE ${quoteRole(db.roles.customerApp)} FROM ${definer}`],
+      ['privileged outbound path', `GRANT ${quoteRole(db.roles.migrator)} TO ${definer}`,
+        `REVOKE ${quoteRole(db.roles.migrator)} FROM ${definer}`],
+      ['owned relation', `CREATE TABLE public.r2_owned_probe(id integer); ALTER TABLE public.r2_owned_probe OWNER TO ${definer}`,
+        'DROP TABLE IF EXISTS public.r2_owned_probe'],
+      ['owned function', `CREATE FUNCTION public.r2_owned_fn() RETURNS integer LANGUAGE sql AS 'SELECT 1'; ALTER FUNCTION public.r2_owned_fn() OWNER TO ${definer}`,
+        'DROP FUNCTION IF EXISTS public.r2_owned_fn()'],
+    ];
+
+    for (const [label, excess, undo] of cases) {
+      await db.adminQuery(excess);
+      await assert.rejects(() => db.adminQuery(hardening), /R2-AUTHORITY/, `${label} must refuse`);
+      await db.adminQuery('ROLLBACK');
+      assert.equal(await membershipPolicyCount(), 2, `${label}: the refused run must add no policy`);
+      assert.equal(
+        (await db.adminQuery(
+          `SELECT count(*)::int AS n FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'auth' AND p.polname LIKE '%_scope'`,
+        )).rows[0].n,
+        0,
+        `${label}: no restrictive policy may survive a refusal`,
+      );
+      await db.adminQuery(undo);
+    }
+
+    // With the excess removed, the checked-in hardening applies and the pair exists.
+    await db.adminQuery(hardening);
+    assert.equal(await membershipPolicyCount(), 4);
+    await assert.rejects(() => db.adminQuery(hardening), /032-rls-hardening\.sql is already applied/);
   });
 });

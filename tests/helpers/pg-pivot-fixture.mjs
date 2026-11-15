@@ -202,6 +202,10 @@ export async function withPivotDatabase(options, run) {
   // cannot do. They run as the fixture's private superuser, after the migration
   // files, and every role they create is tracked for cleanup.
   const adminSqlFiles = options?.adminSqlFiles ?? [];
+  // Inline administrator SQL, role-name rewritten into the namespace, applied after
+  // adminSqlFiles. Used to simulate an administrator-hook failure or a reused
+  // pre-existing role with excessive authority in a disposable database.
+  const adminSql = options?.adminSql ?? [];
   const allRoleNames = generatedRoleNames(names);
   const clusterConfig = connectionConfig();
   const adminUser = clusterConfig.user;
@@ -211,6 +215,10 @@ export async function withPivotDatabase(options, run) {
   );
   const createdRoles = [];
   const cleanupErrors = [];
+  // Cleanup is ownership-tracked: nothing may be dropped until the pre-flight has
+  // proven that no pre-existing object is at risk. A refused pre-flight therefore
+  // performs no object cleanup at all.
+  let preflightPassed = false;
   let createdDatabase = false;
   let lockHeld = false;
   let runError = null;
@@ -239,6 +247,7 @@ export async function withPivotDatabase(options, run) {
         `PIVOT-002 fixture pre-flight refused: objects already exist (${objects}); refusing to alter or reuse pre-existing cluster objects.`,
       );
     }
+    preflightPassed = true;
 
     await clusterAdmin.query(`CREATE DATABASE ${quoteIdent(names.database)}`);
     createdDatabase = true;
@@ -284,6 +293,9 @@ export async function withPivotDatabase(options, run) {
 
     for (const file of adminSqlFiles) {
       await databaseAdmin.query(rewriteRoleNames(await readFile(join(repoRoot, file), 'utf8'), names));
+    }
+    for (const statement of adminSql) {
+      await databaseAdmin.query(rewriteRoleNames(statement, names));
     }
     for (const key of extraRoleKeys) {
       const exists = (
@@ -356,29 +368,31 @@ export async function withPivotDatabase(options, run) {
       await databaseAdmin.end().catch(error => cleanupErrors.push(error));
     }
     if (clusterAdmin) {
-      if (createdDatabase) {
+      if (preflightPassed && createdDatabase) {
         try {
           await clusterAdmin.query(`DROP DATABASE IF EXISTS ${quoteIdent(names.database)} WITH (FORCE)`);
         } catch (error) {
           cleanupErrors.push(error);
         }
       }
-      for (const role of [...createdRoles].reverse()) {
-        try {
-          await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
-        } catch (error) {
-          cleanupErrors.push(error);
+      // Only created objects are dropped, and only after a completed pre-flight.
+      if (preflightPassed) {
+        for (const role of [...createdRoles].reverse()) {
+          try {
+            await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
         }
-      }
-      // Administrator-applied corrections may provision the extra owner through a
-      // path the fixture did not track (for example a deliberate failure probe).
-      // Preflight proved these names did not exist, so dropping them is safe.
-      for (const key of extraRoleKeys) {
-        if (createdRoles.includes(names[key])) continue;
-        try {
-          await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(names[key])}`);
-        } catch (error) {
-          cleanupErrors.push(error);
+        // An administrator hook may provision the extra owner before failing; the
+        // completed pre-flight proved that name was free, so dropping it is safe.
+        for (const key of extraRoleKeys) {
+          if (createdRoles.includes(names[key])) continue;
+          try {
+            await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(names[key])}`);
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
         }
       }
       if (lockHeld) {
