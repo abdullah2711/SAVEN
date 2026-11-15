@@ -2,370 +2,692 @@
 
 Status: **DRAFT — UNSIGNED — DRILL NOT PERFORMED**
 
-Contract: PIVOT-011. Author: engineer-authored draft relayed to the contractor; the contractor executed only the writing of this file. Date drafted: 15 November 2026 (Asia/Karachi).
+Revision 2 (PIVOT-011-R1), 15 November 2026 (Asia/Karachi). Corrects the five engineering findings in the PIVOT-011 review (`VERDICT: REVISE`): PITR activation and restore isolation, backup-format/verification consistency and checksum policy, archive publication and idempotency, fenced snapshot ordering and recovery-target selection, and reconciliation checks that could falsely pass.
 
-This document is a proposed operating procedure for the `db/postgres` target. It is not evidence that any backup, archive, restore or drill has happened. No owner signature has been given, and none may be written by anyone except the owner. Read the marker legend before treating any statement here as approved.
+This document is a proposed operating procedure for the `db/postgres` target. It is not evidence that any backup, archive, restore or drill has happened. No procedure below has been executed. Read the marker legend before treating any statement as approved.
 
 | Marker | Meaning |
 | --- | --- |
 | **[OBSERVED]** | Checked directly in this repository at the stated commit. Not a live-server check. |
-| **[PROPOSED — NOT APPROVED]** | A recommended value, path, schedule or tool. It is a draft for owner review, not an authorization. |
-| **[MISSING]** | Unknown and required before operational use. It must be supplied by the owner or measured; it may not be invented, guessed or back-filled. |
-| **[NOT PERFORMED]** | A required test or drill that has not happened. Never convert this marker into a pass without independent evidence and the owner's signature. |
+| **[PROPOSED — NOT APPROVED]** | A recommended value, path, schedule, tool interface or verification method. A draft for owner review, not an authorization. |
+| **[MISSING]** | Unknown and required before operational use. Must be supplied or measured; never invented, guessed or back-filled. |
+| **[NOT PERFORMED]** | A required test, drill or measurement that has not happened. Never convert this marker into a pass without independent evidence and the owner's signature. |
+| **[BLOCKING GAP]** | A control that this draft cannot supply and that a later contract must implement. Recorded so the gap cannot be mistaken for coverage. |
 
 Hard boundaries that this runbook may not relax:
 
 1. SQLite remains the production database until the owner satisfies the retirement gate in `docs/pivot-notes/01-adr-postgresql-pivot.md`. Nothing here authorizes cutover, data migration or a production restore.
-2. PostgreSQL binds to loopback only. No inbound port is opened for it; Cloudflare Tunnel carries only the application's HTTP/S endpoint. **[OBSERVED]** in `AGENTS.md`, `docs/44-server-hosted-runtime.md` and the PIVOT role instructions.
-3. A restored snapshot is never a second writable live copy. Restores go to a new, isolated, fenced target and stay read-only evidence unless a separate, reconciled recovery decision authorizes otherwise. **[OBSERVED]** in ADR01 and `docs/49-compatible-tenant-upgrades.md`.
-4. Accepted live transactions are never overwritten by a restore. Prefer forward repair after new-format writes; an older snapshot cannot safely undo accepted work.
-5. No credential, connection string, encryption key or client data is ever committed, pasted into a ticket or stored in this file. The SQL under `db/postgres/` is credential-free. **[OBSERVED]**.
-6. No role gets `BYPASSRLS` or superuser for backup or restore convenience. Backup and restore use dedicated, narrowly granted roles.
+2. PostgreSQL binds to loopback only. No inbound port is opened for it; Cloudflare Tunnel carries only the application's HTTP/S endpoint. **[OBSERVED]** policy.
+3. A restored snapshot is never a second writable live copy. Restores go to new, isolated storage, stay fenced, and never become writable business systems without a separate reconciled recovery decision. **[OBSERVED]** in ADR01 and `docs/49-compatible-tenant-upgrades.md`.
+4. Accepted live transactions are never overwritten by a restore. Prefer forward repair after new-format writes.
+5. No credential, connection string, encryption key or client data is committed, pasted into a ticket or stored in this file.
+6. No role receives `BYPASSRLS` or superuser for backup/restore convenience. Administrative principals used for checkpoint/switch control are separately provisioned and are not granted to runtime or reconciliation roles.
+7. Engineering acceptance of this draft is not owner acceptance. Only the owner may sign a performed drill (§12).
 
 ## 1. Scope
 
-Covered: the proposed shared PostgreSQL target described by `db/postgres/00-roles.sql`, `05-auth-schema.sql` (AUTH-001, separate branch), `10-operator-schema.sql` and `20-tenant-schema.sql` (PIVOT-003) — that is, one cluster holding `operator`, `auth` and `tenant_data` in the Cloud profile.
+Covered: the proposed shared PostgreSQL target described by `db/postgres/00-roles.sql`, `05-auth-schema.sql` (AUTH-001), `10-operator-schema.sql`, `20-tenant-schema.sql` (PIVOT-003) and the accepted additive corrections `migrations/006-auth-schema-corrections.sql` (AUTH-001-R1) and `migrations/021-tenant-schema-corrections.sql` (PIVOT-003-R1). Those corrections are accepted on their own branches and are **not** claimed here as integrated or deployed. **[OBSERVED]**
 
-Not covered by this draft:
+Not covered:
 
-- The retained schema-13 PostgreSQL reference installation on loopback `8788` used by `saventesting` **[OBSERVED in docs/44]**. It keeps its existing backup arrangements and is not a dependency of the approved `.cc` runtime.
-- Native SQLite stores and tenant files. Their stopped-application, verified-backup and independent-restore procedure remains `scripts/native-backup.mjs` / `scripts/native-restore.mjs` with `deployment/saven-native-backup.service` and `deployment/saven-testing-backup.service` **[OBSERVED]**.
-- Fully Private packaging. A Private installation needs its own frozen copy of this runbook with local key custody and no vendor dependency.
+- The retained schema-13 PostgreSQL reference installation on loopback `8788` used by `saventesting` **[OBSERVED in docs/44]**. Its retained runbook, services and data are not edited or replaced by this document.
+- Native SQLite stores and tenant files (`scripts/native-backup.mjs`, `scripts/native-restore.mjs`, `deployment/saven-native-backup.service`, `deployment/saven-testing-backup.service`) **[OBSERVED]**. Their stopped-application verified-backup procedure continues unchanged.
+- Fully Private packaging, which needs its own frozen copy with local key custody and no vendor dependency.
 - Production data migration and cutover, which require separate contracts and explicit owner authorization.
 
 ## 2. Required inputs before this runbook may be operated
 
-None of the following is approved today. Each row is a blocking input, not a formality.
+None of the following is approved today. Each is a blocking input.
 
 | Input | Status | Notes |
 | --- | --- | --- |
-| Off-server archive destination (host/storage class, region, transport) | **[MISSING]** | Must be off the database server. A second directory on the same disk, host or volume is not a backup. No destination is named here because none is approved. |
-| Independent off-server copy of base backups | **[MISSING]** | Base backups must also leave the server and be verified at the destination, not only at the source. |
-| Recovery point objective (RPO) | **[MISSING]** | Determines archive frequency, `archive_timeout` and tolerated WAL loss. Not measurable until a drill runs. |
-| Recovery time objective (RTO) | **[MISSING]** | Must be measured during a drill, not promised. No availability SLA is claimed anywhere in this repository. |
-| Retention policy (base, WAL, off-site copies, legal/accounting retention) | **[MISSING]** | Retention is also constrained by the owner's accounting-record obligations, which are not established for this target. |
-| Encryption tooling and key custody/escrow | **[MISSING]** | Required decision: tool (age/gpg/openssl/LUKS-style volume), key holder, escrow, rotation and break-glass. Key loss means total loss of the backup. |
-| Backup storage capacity and growth assumption | **[MISSING]** | Needs measured base size, daily WAL volume and tenant growth. Must be a preflight condition, not discovered during an incident. |
-| Named application unit(s) that may be stopped in a drill | **[MISSING]** | Only the named test application may be stopped. `app.economicsystems.cc` native production must never be stopped for a PostgreSQL drill. |
-| Restore host, directory, port and operator identity | **[PROPOSED — NOT APPROVED]** | Placeholders below. Must be a loopback-only, disposable target distinct from the source cluster. |
+| Off-server archive destination (host/storage class, region, transport) | **[MISSING]** | Must be off the database server. A second directory, disk, host-adjacent volume or the same cloud project is not an independent copy. No destination is named here because none is approved. |
+| Independent off-server copy of base backups | **[MISSING]** | Base backups must leave the server and be verified at the destination. |
+| Recovery point objective (RPO) | **[MISSING]** | Determines archive cadence, `archive_timeout` and tolerated WAL loss; not measurable before a drill. |
+| Recovery time objective (RTO) | **[MISSING]** | Must be measured in a drill. No availability SLA is claimed anywhere in this repository. |
+| Retention policy (base, WAL, off-site, accounting/legal) | **[MISSING]** | Accounting-record retention for this target is not established. |
+| Encryption tooling and key custody/escrow/rotation | **[MISSING]** | Tool, key holder, escrow, rotation and break-glass are undecided. Key loss means total loss of the backup. |
+| Archive/restore wrapper implementation | **[BLOCKING GAP]** | §4 and §6 define interfaces only. No script, service or provider code exists under this contract. |
+| Backup/restore/monitoring automation (scheduler, exporter, alert route) | **[BLOCKING GAP]** | Only native SQLite units exist today **[OBSERVED]**. |
+| Capacity and growth assumptions | **[MISSING]** | Needs measured base size, daily WAL volume and tenant growth; a preflight condition, not an incident discovery. |
+| Named test application unit(s) that may be stopped | **[MISSING]** | Only the named test application may be stopped. `app.economicsystems.cc` native production must never be stopped for a PostgreSQL drill. |
+| Named recurring jobs/workers to quiesce (outbox, AI, scanners, schedulers) | **[MISSING]** | Fencing must cover every writer, not just HTTP request handlers. |
+| Administrative principal for control functions (`pg_switch_wal`, `pg_control_*`) | **[MISSING]** | Separately provisioned; not the reconciliation role and not granted to runtime principals. |
+| Dedicated replication/backup LOGIN principal | **[MISSING]** | Must be an actual provisioned login with `REPLICATION`; not a shared administrator and not a role membership shortcut. |
+| Restore host, storage root, port, operator identity | **[PROPOSED — NOT APPROVED]** | Placeholders below; loopback-only, disposable, entirely new storage. |
 | Maintenance window and notification | **[MISSING]** | Any drill that stops the test app needs an owner-approved window. |
-| Owner drill date, elapsed time, signature | **[MISSING]** | Blank by design. See §12. |
+| Owner drill date, elapsed time, signature | **[MISSING]** | Blank by design (§12). |
 
 ## 3. Target cluster facts and naming proposals
 
 | Item | Value |
 | --- | --- |
-| Engine | PostgreSQL 18 is the schema target version used by the accepted contracts and CI service. **[OBSERVED]** |
+| Engine | PostgreSQL 18 is the schema target version used by the accepted contracts and CI service. Verify every command against the pinned server version before use. **[OBSERVED]** |
 | Schemas | `operator` (Purpose A), `auth` (shared identity, AUTH-001), `tenant_data` (Purpose B/C, PIVOT-003). |
-| Connection surface | Loopback only: `127.0.0.1` and/or a local Unix socket, on a port recorded in the drill record. No public listener. **[OBSERVED policy]** |
-| Roles | `saven_migrator` owns DDL; runtime roles are `saven_customer_app`, `saven_auth_service`, `saven_operator_read`, `saven_operator_admin`; non-login definer owners `saven_operator_definer`, `saven_auth_definer`. All `NOLOGIN`/no superuser/no `BYPASSRLS`. **[OBSERVED in 00-roles.sql]** |
+| Additive corrections | `migrations/006-auth-schema-corrections.sql`, `migrations/021-tenant-schema-corrections.sql` — accepted on their branches, not integrated or deployed. `021` adds `CHECK (quantity > 0 OR value = 0)` on `tenant_data.stock_balances`, sets `tax_profile.tax_type` default to the seeded `SALES_TAX` and annotates the posting-constraint severity domain. **[OBSERVED]** |
+| Connection surface | Loopback `127.0.0.1` and/or local Unix socket only, on a port recorded in the drill record. No public listener. |
+| Roles | `saven_migrator` owns DDL; runtime roles `saven_customer_app`, `saven_auth_service`, `saven_operator_read`, `saven_operator_admin`; non-login definer owners `saven_operator_definer`, `saven_auth_definer`; all `NOLOGIN`, no superuser, no `BYPASSRLS`. **[OBSERVED in 00-roles.sql]** |
 | Migration ledgers | `operator.pg_schema_migrations` (PostgreSQL migrations) and `operator.source_store_migrations` / `tenant_data.source_store_migrations` (imported native provenance). **[OBSERVED]** |
+| Data checksums | `initdb --data-checksums` decision; observed with `SHOW data_checksums;`. Not a `postgresql.conf` parameter (§4.3). **[OBSERVED]** |
 | Proposed cluster name | `saven-pg` **[PROPOSED — NOT APPROVED]** |
-| Proposed data directory | `/var/lib/postgresql/18/saven-pg` **[PROPOSED — NOT APPROVED]** |
+| Proposed source data directory | `/var/lib/postgresql/18/saven-pg` **[PROPOSED — NOT APPROVED]** |
 | Proposed local archive staging | `/var/backups/saven-pg/wal-staging` **[PROPOSED — NOT APPROVED]** — staging only, never the retention location |
-| Proposed base backup staging | `/var/backups/saven-pg/base` **[PROPOSED — NOT APPROVED]** — staging only |
-| Proposed restore root | `/var/lib/postgresql/18/saven-pg-restore-<YYYYMMDDTHHMMSSZ>` **[PROPOSED — NOT APPROVED]** |
-| Proposed restore port | A dedicated loopback port distinct from the source cluster **[PROPOSED — NOT APPROVED]** |
-| Backup role | A dedicated, non-login-hosted replication principal limited to `REPLICATION`, created by the owner out of band; membership in `saven_migrator` and the definer roles is withheld. **[PROPOSED — NOT APPROVED]** |
+| Proposed base staging | `/var/backups/saven-pg/base` **[PROPOSED — NOT APPROVED]** — staging only |
+| Proposed restore root | `/var/lib/postgresql/18/restore/<UTC-timestamp>` **[PROPOSED — NOT APPROVED]** |
+| Restore root contents | `pgdata/` (with `pg_wal` inside it by default), `tablespaces/<oid>/` when the source has tablespaces, `scratch-verify/`, `logs/` — all newly created and all under the restore root. A separate WAL location is allowed only as an explicit mapping that resolves inside the restore root. **[PROPOSED — NOT APPROVED]** |
+| Proposed restore port | Dedicated loopback port, distinct from the source cluster **[PROPOSED — NOT APPROVED]** |
+| System identity | Recorded per drill from the source cluster (`pg_control_system()`); used to namespace archive objects so a different cluster can never publish into another cluster's archive. |
 
-The backup path must never be inside the data directory, and the restore path must never equal the source data directory. The procedure below refuses on those conditions rather than "fixing" them silently.
+The backup path must never be inside the data directory. The restore root must never equal the source data directory, its WAL directory or any source tablespace directory; the procedure refuses rather than "fixes" those conditions.
 
 ## 4. Required server configuration
 
-Templates only. Values marked proposed are drafts. Configuration is applied by the owner's server administration process, not by this repository.
+Templates only. Values marked proposed are drafts. Applied by the owner's server administration, not by this repository.
+
+### 4.1 Archive and durability block
 
 ```conf
 # postgresql.conf — backup/archive block (template; no secrets, no real DSNs)
 wal_level = replica                  # required for WAL archiving and PITR
-archive_mode = on                    # required [OBSERVED invariant PIVOT-011]
-archive_command = '<SAVEN_WAL_ARCHIVER> %p %f'   # wrapper below; placeholders only
-archive_timeout = 300                # [PROPOSED] bound WAL switch latency; review for RPO
+archive_mode = on                    # required [OBSERVED invariant]
+archive_command = '<SAVEN_WAL_ARCHIVER> %p %f'   # interface §4.2; placeholders only
+archive_timeout = 300                # [PROPOSED] bounds WAL switch latency; review against RPO
 wal_compression = on                 # [PROPOSED] reduces archive bytes
 full_page_writes = on                # default; do not disable
-max_wal_senders = 3                  # [PROPOSED] base backups + headroom
-wal_keep_size = 0                    # archiving, not replication slots, is the recovery source
-data_checksums = on                  # [PROPOSED] set at initdb time, cannot be changed later
+max_wal_senders = 3                  # [PROPOSED] streaming base backups + headroom
+wal_keep_size = 0                    # archiving is the recovery source, not retained WAL
 ```
 
-Rules for `archive_command`:
+### 4.2 Archive command: required interface (no implementation here)
 
-- It must write to a temporary name and rename into place, so a partially transferred file can never look like a valid archived WAL.
-- It must exit non-zero on any transfer, encryption or checksum failure, so PostgreSQL keeps the segment in `pg_wal` and retries.
-- It must be idempotent: re-archiving the same `%f` must not corrupt an existing archived copy.
-- It must never read a credential from the repository, the environment of a web process, or an argument visible in process listings. Keys live in a root-owned file readable only by the archive principal.
-- Failure is visible: `archive_command` failure is a page-out condition (§9), because `pg_wal` grows until archiving recovers.
+The wrapper is **not** part of this contract and must not be added as an executable under PIVOT-011 or PIVOT-011-R1. `[BLOCKING GAP]` A later explicit executable contract owns it, its failure tests and its deployment. What this runbook fixes is the contract the wrapper must satisfy.
 
-Wrapper template (`<SAVEN_WAL_ARCHIVER>`; the wrapper itself is **not** part of PIVOT-011 and must not be added under this contract):
+Invocation: `<SAVEN_WAL_ARCHIVER> %p %f`, where `%p` is the absolute path of the WAL segment in `pg_wal` and `%f` the segment file name.
 
-```sh
-#!/bin/sh
-# Template only. Placeholders must be replaced by the owner's server administration.
-# $1 = path to the WAL segment, $2 = segment file name
-set -eu
-umask 077
-staging="${SAVEN_WAL_STAGING:?}"          # local staging, not the retention location
-keyfile="${SAVEN_WAL_KEY_FILE:?}"         # root-owned, mode 0600, outside the repository
-test -f "$keyfile"
-mkdir -p "$staging"
-tmp="$staging/.$2.part"
-# Encrypt while streaming; never leave plaintext WAL on shared or off-host storage.
-"${SAVEN_ENCRYPT_TOOL:?}" --encrypt --recipient-file "$keyfile" \
-  < "$1" > "$tmp"
-test -s "$tmp"
-# Ship the encrypted object off-server, verify the remote digest, then publish.
-"${SAVEN_OFFSITE_PUT:?}" "$tmp" "<OFFHOST-WAL-PREFIX>/$2.enc"
-"${SAVEN_OFFSITE_VERIFY:?}" "<OFFHOST-WAL-PREFIX>/$2.enc" "$(sha256sum "$tmp" | cut -d' ' -f1)"
-mv "$tmp" "$staging/$2.enc"
-exit 0
-```
+| Requirement | Specification |
+| --- | --- |
+| Namespace | `<OFFHOST-WAL-PREFIX>/<system_identifier>/<timeline_hex>/<segment>.enc` **[PROPOSED — NOT APPROVED]** |
+| System/timeline qualification | Read the system identifier from the cluster (or a pinned provisioned value), never guess it; timeline must be the segment's timeline taken from `%f`. Prevents cross-cluster and cross-timeline collision. |
+| Encryption | Encrypt before the object leaves local protected storage. Randomized encryption is expected, so **ciphertext digests cannot be used for equality**. |
+| Local staging | Local temp-then-rename is required for local atomicity, but local rename is **not** remote publication and is never the only guarantee. |
+| Remote staging | Upload to a unique, non-final remote object name (for example an `.incoming/<segment>.<nonce>` object) so a partial or failed transfer can never occupy the final name. |
+| Durable verification | Read the staged remote object back (or an authoritative destination digest/etag) and verify it matches the uploaded bytes **before** publishing. |
+| Atomic no-replace publication | Publish to the final name with a conditional create/rename that fails if the object already exists. Never overwrite an archived object. |
+| Retry (idempotency) | If the final object already exists: fetch and decrypt it, compare **decrypted content** (or a documented content digest over plaintext bytes) with the current `%p` segment. Identical source content → exit 0 (durable success). Different content → refuse, exit non-zero, alert; do not replace and do not delete. |
+| Exit status | 0 only after verified publication or verified-identical retry. Any other outcome exits non-zero with the segment left in `pg_wal` so PostgreSQL retries. |
+| Secrets | Key and destination credentials come from root-owned files readable only by the archive principal. Never from the repository, argv, logs or a web process environment. |
+| Observability | Emit one structured record per invocation: segment, system id, timeline, destination object, digest(s), stage, outcome. Never log key material or full paths that reveal credentials. |
+| Test hooks (later contract) | Simulate: existing identical object, existing different object, failed upload, partial upload, verify mismatch, destination unavailable. Each must produce the specified exit status and no overwrite. **[NOT PERFORMED]** |
 
-`<OFFHOST-WAL-PREFIX>`, `SAVEN_ENCRYPT_TOOL`, `SAVEN_OFFSITE_PUT` and `SAVEN_OFFSITE_VERIFY` are **[MISSING]** decisions (§2). Until they exist, `archive_mode` must not be enabled on any cluster that holds more than disposable test data, because an enabled-but-failing archive silently retains WAL in `pg_wal`.
+Failure of any requirement is a page-out condition (§9), because `archive_mode = on` with a failing archive silently retains WAL in `pg_wal`.
 
-Connection surface: keep `listen_addresses = 'localhost'`, keep `pg_hba.conf` restricted to local socket peer authentication for administrative principals and loopback for the dedicated backup/restore principal, and document each line. Never add a `0.0.0.0` entry, a trust rule for a remote subnet, or a superuser login for backup tooling.
+### 4.3 Data checksums policy
+
+`data_checksums` is fixed at cluster creation and is **not** a settable `postgresql.conf` parameter. The earlier draft listing it as a configuration line was wrong.
+
+- Create the cluster with `initdb --data-checksums` (or `-k`) as part of the owner's provisioning decision. **[PROPOSED — NOT APPROVED]**
+- Observe the actual value: `SHOW data_checksums;` — record it in the drill record.
+- Changing checksums on an existing cluster is an offline operation (`pg_checksums --enable|--disable`) on a cleanly stopped cluster, with a verified backup taken immediately before, and is a separate authorized maintenance procedure. It is never part of a drill and is not authorized here.
+
+### 4.4 Connection surface
+
+Keep `listen_addresses = 'localhost'`, keep `pg_hba.conf` restricted to local socket peer authentication for administrative principals and loopback for the dedicated backup/restore principal, and document each line. Never add `0.0.0.0`, a trust rule for a remote subnet, or a superuser login for backup tooling. The restore cluster gets its own `pg_hba.conf` (§6.7); a restored copy inherits the source's rules and must be replaced before startup.
 
 ## 5. Base backup procedure
 
-Base backups are taken with `pg_basebackup` plus streamed WAL, so each base backup is self-consistent and its WAL does not depend on the archive being current.
+One format is used everywhere in this runbook: **plain-format base backup with streamed WAL, SHA256 manifests, full `pg_verifybackup` verification, then encrypt and package for off-host retention.** Tar format appears only in §5.4 as a limited alternative.
+
+### 5.1 Take the backup
 
 ```sh
-# Template. Run as the dedicated backup principal, on the database server, loopback only.
-# Replace <...> placeholders from the drill/operation record; never inline a password.
+# Template. Run as the dedicated backup/replication login, on the database server, loopback only.
+# Placeholders come from the operation record; never inline a password.
 export PGHOST=127.0.0.1
 export PGPORT=<LOOPBACK-PORT>
-export PGUSER=<BACKUP-PRINCIPAL>
+export PGUSER=<BACKUP-REPLICATION-LOGIN>
 export PGPASSFILE=<ROOT-OWNED-PASSFILE>     # mode 0600; never committed, never in argv
 label="base-$(date -u +%Y%m%dT%H%M%SZ)"
 target="${SAVEN_BASE_STAGING:?}/$label"
 
 pg_basebackup \
   --pgdata="$target" \
-  --format=tar --gzip \
+  --format=plain \
   --wal-method=stream \
+  --manifest-checksums=SHA256 \
   --checkpoint=fast \
   --label="$label" \
   --progress --verbose
-
-# Verify the backup with the engine's own verifier before encryption or shipping.
-pg_verifybackup "$target"
 ```
 
-Then, in the same operation:
+Notes that must be honoured:
 
-1. Hash every produced file and record the manifest next to the backup:
-   `find "$target" -type f -print0 | sort -z | xargs -0 sha256sum > "$target.sha256"`.
-2. Encrypt the archive set with the approved tool and key (§2). Never ship plaintext.
-3. Ship off-server, verify the remote digest, then record the off-site manifest digest in the backup register.
-4. Confirm the local staging copy is not the only copy, then apply retention **after** the off-site copy is verified. Deleting the last good off-site copy is a page-out condition.
-5. Re-verify restore of the new base backup at least once per retention window (§8 verification test). A backup that has never been restored is an unverified assumption.
+- The principal must be an actual provisioned **LOGIN** with `REPLICATION`; streaming replication cannot authenticate as a `NOLOGIN` role. **[MISSING]** until the owner provisions it.
+- Plain format writes `backup_manifest`, the data files and `pg_wal`. Fields recorded from the backup: label, start/stop WAL locations, timeline, and the manifest's WAL range.
+- Tablespaces: with plain format, tablespaces are restored to the paths recorded in `tablespace_map`. If the source has tablespaces, either use `--tablespace-mapping=OLD=NEW` at backup time or record the mapping for restore. A backup whose tablespace paths point at production storage is not restorable into an isolated target without mapping. Record the mapping in the drill record.
+- `--checkpoint=fast` only forces a checkpoint; it does not freeze the application. A base backup is internally consistent, but the state it captures keeps moving while writers run. The reconciled baseline therefore comes from the fenced capture in §6.2, never from an unfenced observation taken during the backup.
 
-Scheduling proposal: one daily base backup plus continuous WAL archiving; keep at least one verified restore point per retention window. Times, retention counts and the off-site schedule are **[PROPOSED — NOT APPROVED]** and must not be described as a service level.
+### 5.2 Verify before encrypting or shipping
 
-Volume and capacity preflight: record base backup size, WAL generated per day, archive throughput and projected retention footprint; require free space above the retention total plus one full restore of the largest expected database. **[NOT PERFORMED]**
+```sh
+pg_verifybackup "$target"        # plain format: verifies files, manifest and WAL
+```
+
+Verification must pass **before** the backup is encrypted, packaged or shipped, and the verification output is recorded with the manifest digest.
+
+Then hash the verified set:
+
+```sh
+find "$target" -type f -print0 | sort -z | xargs -0 sha256sum > "$target.sha256"
+sha256sum "$target.sha256"
+```
+
+### 5.3 Encrypt, ship, verify, retain
+
+1. Package and encrypt the verified set with the approved tool and key (§2). Never ship plaintext.
+2. Ship to the off-server location and verify the destination digest independently of the transfer tool.
+3. Record: label, manifest digest, packaged digest, destination object(s), verification result, byte size, elapsed transfer time.
+4. Apply retention **only after** the off-site copy is verified. Deleting the last verified off-site restore point is a page-out condition.
+5. Re-verify by restoring at least once per retention window (§8). A base backup that has never been restored is an unverified assumption, not a backup.
+
+Scheduling proposal: one daily base backup plus continuous WAL archiving, with at least one verified restore point per retention window. Times, counts and destinations are **[PROPOSED — NOT APPROVED]** and are not a service level.
+
+Capacity preflight: record base size, WAL per day, archive throughput, projected retention footprint, and require free space above the retention total plus one full restore of the largest expected database. **[NOT PERFORMED]**
+
+### 5.4 Tar format (limited alternative — not the default)
+
+If tar format is ever chosen: `pg_verifybackup` on a tar archive requires `--no-parse-wal`, because WAL parsing is supported only for plain-format backups. Tar verification therefore does **not** verify the streamed WAL. Any WAL delivered inside a tar backup must be extracted to plain format and verified separately before use. Choosing tar means adding a second, weaker verification path; the default remains plain format for that reason.
 
 ## 6. Restore and point-in-time recovery procedure
 
-Objective: prove that a chosen recovery point can be restored into an **isolated** target and reconciled against an independently captured pre-drill snapshot, without touching live accepted transactions.
+Objective: prove that a chosen, transaction-aligned recovery point can be restored into **wholly new, fenced, isolated storage** and reconciled against an authoritative pre-drill snapshot, without touching accepted live transactions, the source archive, or any source path.
 
-Rules enforced throughout:
+### 6.1 Preconditions and authority
 
-- Restore to a **new** data directory that does not exist yet. The procedure refuses if the target exists or equals the source data directory.
-- The restore cluster listens on loopback only, on a port distinct from the source.
-- The restore cluster is fenced for verification: no application is pointed at it, no write traffic is allowed, no publication of its port beyond loopback.
-- If verification fails, the restore is quarantined and kept for evidence. It is never "repaired" into a writable live copy.
+1. Owner-approved window and named test application/jobs recorded. No drill without them.
+2. Principals: replication/backup login (read), administrative control principal for `pg_switch_wal`/`pg_control_*`, read-only reconciliation principal, and the drill operator. These are separate. The reconciliation role does not automatically hold control or checkpoint function privileges; confirm the privileges actually required by the pinned server version and stop if any is unavailable rather than escalating the role.
+3. Confirm this is a drill: no client data, no production restore, no cutover.
 
-### Step 0 — Capture the pre-drill snapshot (source cluster, read-only)
+### 6.2 Fence writers, then and only then capture the authoritative snapshot
 
-Run as a read-only principal and store the output with the drill record. The queries in §10 are the reconciliation baseline. Record, at minimum: per-tenant trial balance, document-number high-water marks, command/approval/outbox state counts, audit counts and row-hash, subledger control totals, migration-ledger rows and checksums, and the current WAL LSN and timeline.
+Order matters. Earlier, unfenced observations are advisory and must not be used as the comparison baseline.
 
-```sql
--- Template; read-only.
-SELECT pg_current_wal_lsn() AS source_lsn, timeline_id FROM pg_control_checkpoint();
-SELECT * FROM pg_stat_archiver;
-```
-
-### Step 1 — Declare maintenance and fence writers
-
-1. Confirm the drill window and the named test application from the operation record. Stop **only** that named unit. Never stop native production (`app.economicsystems.cc`).
-2. Verify no remaining application sessions or writers:
+1. Stop **only** the named test application unit and the named recurring jobs/workers (outbox dispatch, schedulers, scanners, AI jobs). Never stop native production.
+2. Drain and verify: no remaining application sessions, no prepared transactions, no active logical subscribers.
 
 ```sql
-SELECT pid, usename, application_name, state, backend_xmin
-FROM pg_stat_activity
+SELECT pid, usename, application_name, state, backend_xmin FROM pg_stat_activity
 WHERE datname IS NOT NULL AND pid <> pg_backend_pid();
+SELECT * FROM pg_prepared_xacts;              -- must be empty
+SELECT slot_name, active FROM pg_replication_slots;
 ```
 
-3. Record why any session is still connected. Do not terminate sessions blindly; an owned session may be mid-transaction.
-4. Force a WAL switch so the drill has a deterministic recovery point, then record it:
+3. Resolve or abort on anything still connected. Do not terminate sessions blindly; an owned session may be mid-transaction.
+4. Under that fence, capture one consistent snapshot in a single transaction, and keep the fence until both the snapshot and the recovery target are recorded:
 
 ```sql
-SELECT pg_switch_wal();
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+-- reconciliation baseline queries from §10, captured in this one snapshot
+COMMIT;
+```
+
+5. Record source identity and state in the same fenced window:
+
+```sql
+SELECT system_identifier FROM pg_control_system();
+SELECT timeline_id, checkpoint_lsn FROM pg_control_checkpoint();   -- administrative principal
 SELECT pg_current_wal_lsn();
 ```
 
-5. Note the archived segment for that LSN (`pg_stat_archiver.last_archived_wal`) and confirm it is present off-server. A restore must never depend on a segment that only exists in `pg_wal`.
+If a query requires privileges the reconciliation role lacks, run it as the administrative control principal and record who ran what. Never grant a narrow reconciler permanent superuser to avoid that separation.
 
-### Step 2 — Prepare the isolated target
+### 6.3 Choose the transaction-aligned recovery target and prove the segment exists
 
-```sh
-export SAVEN_SOURCE_PGDATA=<SOURCE-DATA-DIR>          # never the restore target
-export SAVEN_RESTORE_ROOT=<RESTORE-ROOT>
-ts="$(date -u +%Y%m%dT%H%M%SZ)"
-target="$SAVEN_RESTORE_ROOT/$ts"
-test ! -e "$target"                                   # must not exist
-test "$(readlink -f "$target")" != "$(readlink -f "$SAVEN_SOURCE_PGDATA")"
-mkdir -p "$target" && chmod 0700 "$target"
+1. With writers fenced and the snapshot captured, force a WAL boundary and take the target:
+
+```sql
+SELECT pg_switch_wal();          -- administrative principal
+SELECT pg_current_wal_lsn();     -- the recovery target for this drill
 ```
 
-### Step 3 — Fetch, decrypt and verify the chosen base backup
+2. Identify **the exact segment file** that contains that LSN (compute from the LSN, not from "latest archived"), and verify that this specific segment is present off-site:
 
-1. Retrieve the base archive from the **off-site** copy, not from the source server's staging area.
-2. Verify its recorded digest against the manifest before decrypting.
-3. Decrypt into the isolated target with the approved key (§2). Key handling is the highest-risk step: a lost or escrowed-wrong key stops the drill with no workaround.
-4. Verify again after extraction with `pg_verifybackup` or an equivalent manifest check.
+```sql
+SELECT pg_walfile_name('<RECORDED-LSN>');
+```
 
-### Step 4 — Configure recovery to the recorded point
+3. Confirm the archived copy of that segment exists in the destination namespace for this system identifier and timeline, and that the base backup's WAL range covers it. Do not substitute `pg_stat_archiver.last_archived_wal`, which only names the most recent successful archive and may belong to a later segment or timeline.
+4. Record: system identifier, timeline, target LSN, exact segment name, base backup label and manifest digest, and the snapshot's identifier. These five items are the drill's identity. A restore without all five is not verifiable.
+
+### 6.4 Provision isolated storage for every path
+
+A different port is not an isolation fence, and "PGDATA differs from the source" is not enough: tablespace-creation records and inherited symlinks can still target source paths.
+
+1. Create a new restore root and, under it, new storage for **all** of: `pgdata/` (including `pg_wal` unless a separate WAL location is explicitly mapped), and every tablespace OID that appears in the backup's `tablespace_map` (or the default `pg_default`/`pg_global` directories). No restored path, symlink or binding may resolve into the source data directory, source `pg_wal` or any source tablespace. The only permitted symlinks are explicit `pg_wal`/tablespace mappings that resolve **inside** the restore root; everything else is refused.
+2. Refuse if the restore root exists, or if any resolved restore path equals or is nested under a source path:
+
+```sh
+test ! -e "$RESTORE_ROOT"
+overlap=0
+for src in "$SOURCE_PGDATA" "$SOURCE_PGWAL" $SOURCE_TABLESPACES; do
+  for dst in "$RESTORE_ROOT/pgdata" "$RESTORE_ROOT/tablespaces"; do
+    case "$(readlink -f "$dst")/" in
+      "$(readlink -f "$src")/"*) overlap=1 ;;
+    esac
+  done
+done
+test "$overlap" = 0 || { echo "REFUSED: restore path overlaps a source path"; exit 1; }
+```
+
+3. After materializing the backup, re-inspect rather than trust the copy:
+
+```sh
+find "$RESTORE_ROOT" -type l -print                    # every symlink must resolve inside the root
+readlink -f "$RESTORE_ROOT"/pgdata/pg_wal             # must be inside the restore root
+cat "$RESTORE_ROOT/pgdata/tablespace_map" 2>/dev/null || true   # only mapped, isolated paths
+grep -n "tablespace\|archive\|restore_command" "$RESTORE_ROOT/pgdata/postgresql.auto.conf" || true
+```
+
+Record the resolved paths. Any symlink or tablespace entry resolving outside the restore root is a **failed drill** and the target is quarantined, not repaired.
+
+### 6.5 Fetch, verify and decrypt — before configuration or startup modifies anything
+
+1. Retrieve the base backup from the **off-site** copy, never from the source server's staging directory.
+2. Verify the recorded digest of the packaged object, then decrypt.
+3. Extract into `scratch-verify/` inside the restore root and run full verification there:
+
+```sh
+pg_verifybackup "$RESTORE_ROOT/scratch-verify/base"
+```
+
+4. Only after verification succeeds, materialize into `pgdata/` (and tablespaces) with the recorded tablespace mapping, then re-verify the materialized copy before writing recovery settings. Verification must never happen after startup or after recovery files have modified the tree.
+
+### 6.6 Create the recovery signal and configure recovery
+
+`recovery_target_*` settings alone do not start archive recovery. A signal file is required.
+
+```sh
+touch "$RESTORE_ROOT/pgdata/recovery.signal"
+```
 
 ```conf
-# postgresql.auto.conf / recovery settings in the restored data directory (template)
-restore_command = '<SAVEN_WAL_RESTORER> %f %p'      # decrypt from the off-site archive to stdout
-recovery_target_lsn = '<RECORDED-LSN>'             # or recovery_target_time / recovery_target_xid
+# postgresql.auto.conf / additional configuration in the restore cluster (template)
+restore_command = '<SAVEN_WAL_RESTORER> %f %p'
+recovery_target_lsn = '<RECORDED-TARGET-LSN>'
 recovery_target_action = 'promote'
 ```
 
-Rules: use exactly one recovery-target kind; record which one and why. The restorer must fail loudly when a requested segment is absent — never substitute a different segment, and never treat "closest available" as success.
+`restore_command` contract (interface only; implementation is a **[BLOCKING GAP]**):
 
-### Step 5 — Start the isolated cluster and confirm recovery completed
+- Receives `%f` (segment name) and `%p` (the destination path inside the restore cluster's WAL directory).
+- Must write the **verified, decrypted segment to exactly `%p`**, atomically (temp file then rename inside the same directory), with restrictive permissions.
+- Must exit non-zero if the segment is absent, undecryptable, digest-mismatched or the namespace has no such object. Never write to stdout, never pick a different segment, never treat "closest available" as success.
+- Must not read from, or write to, the source archive or the source cluster.
+
+Exactly one recovery target kind is used (`lsn` in this draft). Record which and why. Recovery stops at that target and promotes.
+
+Why this target is transaction-aligned: writers were fenced in §6.2, `pg_stat_activity` showed no other session and `pg_prepared_xacts` was empty, so the LSN recorded in §6.3 is a commit boundary rather than a torn intermediate state. If any in-flight or prepared transaction existed, the target must be re-derived after it completes and the baseline recaptured; using the earlier LSN would describe a state that never committed.
+
+### 6.7 Fence the restored cluster before starting it
+
+A restored data directory inherits the source's configuration, identities and connection rules. Replace and verify all of these **before** startup:
+
+| Setting | Required restore value | Why |
+| --- | --- | --- |
+| `listen_addresses` | `'127.0.0.1'` | No non-loopback listener. |
+| `port` | Dedicated drill port | Avoid accidental application connection. |
+| `archive_mode` | `off` | Promotion must never publish WAL into the source archive or any namespace. |
+| `archive_command` | unset or a drill-only sink | Inherited source value must not survive. |
+| `max_wal_senders` | `0` | No replication consumers may pull from the restored cluster. |
+| `default_transaction_read_only` | `on` | Business writes are refused even if an application connects. |
+| `pg_hba.conf` | Drill principal only, local/loopback | Inherited source rules must not authorize runtime or remote access. |
+| `postgresql.auto.conf` | Inspect and rewrite | Restored overrides can re-introduce source settings. |
+| Replication slots | Confirm none; drop any unexpected slot before promotion | An inherited slot is an unexpected WAL consumer. Base backups normally do not carry slot state, so treat any slot as a finding. |
+| Runtime credentials | Not reachable from the restore cluster | Restored role definitions alone must not authorize an application. |
+
+Also explicitly fence the source side: the source must not be able to replicate from, publish to, or receive connections from the restore cluster. Stopping source replication consumption, not just the test app, is part of the fence.
+
+Promotion for this drill never enables business writes: `default_transaction_read_only = on` and `archive_mode = off` stay in force for the whole verification window, and no application connection string is repointed.
+
+### 6.8 Start, confirm recovery and promotion
 
 ```sh
-pg_ctl -D "$target" -o "-p <ISOLATED-PORT> -c listen_addresses=127.0.0.1" -l "$target/startup.log" start
+pg_ctl -D "$RESTORE_ROOT/pgdata" -o "-p <DRILL-PORT> -c listen_addresses=127.0.0.1" -l "$RESTORE_ROOT/logs/startup.log" start
 ```
 
 ```sql
-SELECT pg_is_in_recovery();                    -- must be false after promotion
+SELECT pg_is_in_recovery();                       -- must be false after promotion
 SELECT timeline_id FROM pg_control_checkpoint();
 SELECT pg_last_wal_replay_lsn(), pg_last_xact_replay_timestamp();
+SELECT setting FROM pg_settings WHERE name IN ('archive_mode','default_transaction_read_only','max_wal_senders');
 ```
 
-If recovery stops early, or the log shows a missing WAL segment, stop and classify it as a WAL gap (§11). Do not patch around it.
+Confirm: recovery consumed exactly the recorded segments (no gap and no substitute), the target LSN was reached, the timeline is correct, `archive_mode` is `off`, the cluster is read-only, and no WAL object appeared in the source archive namespace after the fence.
 
-### Step 6 — Reconcile against the pre-drill snapshot
+A positive write control proves the read-only fence is real:
 
-Run the §10 checks against the isolated target. Every result must match the baseline captured in Step 0 within the expected recovery boundary. Any unexplained difference is a **failed drill**, even if the database opens cleanly.
+```sql
+-- as the drill verification role; must fail with a read-only error
+INSERT INTO tenant_data.reference_values(tenant_id, domain, value, label)
+VALUES ('00000000-0000-4000-8000-000000000001','drill_probe','drill','drill');
+```
 
-### Step 7 — Record measured elapsed time
+### 6.9 Reconcile, measure and retire
 
-Record wall-clock start and end for each step and the total. Elapsed time is measured, never estimated, and never converted into an SLA. **[NOT PERFORMED]**
-
-### Step 8 — Fence and retire the restore target
-
-1. Stop the isolated cluster.
-2. Keep the restored directory and logs as evidence until the owner accepts or rejects the drill.
-3. Do not point any application at it, do not promote it into the source path, and do not leave its port reachable after the drill.
-4. Delete only after the drill record and evidence are archived and the owner's decision is recorded.
+1. Run §10 against the restored cluster. Every check must match the fenced baseline; any unexplained difference is a failed drill even if the database opened cleanly.
+2. Record measured wall-clock time per step and in total. Measured, never estimated, never converted into an SLA. **[NOT PERFORMED]**
+3. Stop the restored cluster. Keep the restore root, logs, `pg_verifybackup` output, digests and query output as evidence until the owner accepts or rejects.
+4. Never point an application at the restore. Never promote it into the source path. Never leave its port reachable. Delete only after the drill record and evidence are archived and the owner's decision is recorded.
 
 ## 7. What "recovery succeeded" means
 
-All of the following, together, not any one of them:
+All of the following together — not any single one:
 
-- The cluster reached the recorded recovery point and promoted, with no WAL gap and no manual segment substitution.
-- Row counts and content hashes of authoritative tables match the pre-drill snapshot for every tenant.
-- The general ledger is balanced per tenant and per company, and the trial balance matches the snapshot exactly.
-- Document numbers, sequences and their high-water marks match; no number was renumbered, reused or rolled back.
-- Audit rows are intact and append-only in count and hash; no audit row was rewritten, and no historical actor value was invented.
-- Idempotency receipts, accepted commands, approval decisions, pending documents and outbox state match the snapshot; replay of a restored command cannot double-post.
-- Subledger controls reconcile: receivable/payable, stock quantity and valuation, asset schedules, tax/withholding controls.
-- Authority state is intact: exactly one protected ultimate-owner role definition and one ultimate-owner assignment per subscribed business; no role gained protected authority.
-- RLS negative isolation still holds where RLS exists (after PIVOT-004). Before PIVOT-004 the isolation check is **not applicable** and must be declared as such, not reported as a pass.
-- Measured elapsed time, the exact commands used, artifact digests and anomalies are recorded.
+- Recovery consumed exactly the recorded segments to the recorded target, promoted without a WAL gap and without manual segment substitution.
+- Every restored path (data, WAL, tablespaces) resolved inside the new isolated storage; no symlink or tablespace record escaped it.
+- The restored cluster was read-only and published nothing to the source archive for the whole window.
+- Row counts **and complete-row canonical digests** match the fenced baseline for each tenant, for both independent audit streams, for accepted commands, review decisions and drafts/approval payloads.
+- The general ledger is balanced per tenant and per company, and the trial balance matches the baseline exactly.
+- Document numbers and sequences match, including high-water marks; no number was renumbered, reused or rolled back.
+- Subledger controls that exist in the schema reconcile in **both directions** (stock balances vs movements, trade documents vs lines vs allocations, corrections vs journals, no orphan parents or children).
+- Authority state is intact against the expected activated-business set: one protected ultimate-owner role per business, exactly one **active** owner assignment, and admission state consistent with `auth.tenant_membership` where that schema is deployed.
+- RLS isolation is proven with a positive own-tenant control and a denied foreign-tenant control under the actual non-owner runtime role, after PIVOT-004. Before PIVOT-004 it is declared **not applicable**, never "passed".
+- Negative controls actually failed as intended (read-only refusal, foreign-tenant zero rows, archive publish refusal).
+- Measured elapsed time, commands, artifact digests, principals and anomalies are recorded.
+
+Checks that this draft cannot perform are listed as **[BLOCKING GAP]** in §10.5 rather than implied to pass.
 
 ## 8. Required verification tests (all currently NOT PERFORMED)
 
-These are the tests that make the runbook real. None has been executed. Each requires a disposable or test cluster, an approved off-site destination and an approved key.
-
 | # | Test | Method | Pass condition | Status |
 | --- | --- | --- | --- | --- |
-| V1 | Base backup + restore at quiescence | Take a base backup, restore into an isolated target, reconcile | §7 checks pass; elapsed recorded | **[NOT PERFORMED]** |
-| V2 | Point-in-time recovery to a mid-workload LSN | Apply known postings, record LSN, restore to it | Restored state equals the snapshot at that LSN; later transactions absent | **[NOT PERFORMED]** |
-| V3 | WAL gap detection | Remove one archived segment from a copy of the archive and attempt recovery | Restore fails closed with an explicit missing-segment error; no silent fallback | **[NOT PERFORMED]** |
-| V4 | Archive failure behaviour | Make the archive destination unwritable | `archive_command` exits non-zero, `pg_wal` retains segments, alert fires, archiver recovers after restore of the destination | **[NOT PERFORMED]** |
-| V5 | Key-loss behaviour | Attempt restore without the key, then with a wrong key | Fails closed; no plaintext fallback; keys are recoverable only via approved escrow | **[NOT PERFORMED]** |
-| V6 | Capacity and retention | Project and then exercise base + WAL retention; fill the staging volume | Preflight threshold alerts before exhaustion; retention never deletes the last verified restore point | **[NOT PERFORMED]** |
-| V7 | Off-site independence | Back up from the workspace, restore from the off-site copy after removing local artifacts | Restore succeeds from off-site alone | **[NOT PERFORMED]** |
-| V8 | Encryption at rest in transit | Inspect archived objects and staging paths | No plaintext WAL or base files leave the server; staged files are encrypted or removed | **[NOT PERFORMED]** |
-| V9 | Concurrent-writer refusal | Attempt a restore while the source accepts writes | Procedure refuses or the drill is fenced first; no overwrite of accepted transactions | **[NOT PERFORMED]** |
-| V10 | Repeatability | Run V1 twice in the same week | Both restores reconcile; elapsed time is stable and recorded | **[NOT PERFORMED]** |
+| V1 | Fenced base restore | Fence, snapshot, base backup, isolated restore, reconcile | §7 checks pass; elapsed recorded | **[NOT PERFORMED]** |
+| V2 | Point-in-time recovery to a recorded LSN | Post known work, fence, record LSN/segment, restore | State equals the fenced snapshot; later work absent | **[NOT PERFORMED]** |
+| V3 | Recovery signal | Attempt recovery with `recovery_target_lsn` but no `recovery.signal` | Recovery does not perform archive recovery to the target; the drill detects and stops | **[NOT PERFORMED]** |
+| V4 | WAL gap detection | Remove one recorded segment from a copy of the archive | Restore fails with an explicit missing-segment error; no substitution | **[NOT PERFORMED]** |
+| V5 | Archive failure behaviour | Make the destination unwritable or fail publication | `archive_command` exits non-zero, segment stays in `pg_wal`, alert fires, recovery after fix | **[NOT PERFORMED]** |
+| V6 | Archive retry idempotency | Re-archive an already published identical segment | Exit 0 without overwriting; verified identical source content | **[NOT PERFORMED]** |
+| V7 | Archive publish conflict | Publish a different segment under an existing final name | Non-zero exit, no overwrite, alert | **[NOT PERFORMED]** |
+| V8 | Archive partial upload | Interrupt a transfer mid-object | Final name never appears; retry succeeds; no partial object accepted | **[NOT PERFORMED]** |
+| V9 | Key loss and wrong key | Restore without the key, then with a wrong key | Fails closed; no plaintext fallback; only approved escrow recovers | **[NOT PERFORMED]** |
+| V10 | Tablespace/symlink escape | Restore a backup whose tablespace map or symlinks point at source paths | Procedure refuses before startup; target quarantined | **[NOT PERFORMED]** |
+| V11 | Capacity and retention | Exercise base/WAL retention and fill staging | Preflight alerts before exhaustion; last verified restore point never deleted | **[NOT PERFORMED]** |
+| V12 | Off-site independence | Delete local artifacts, restore from off-site only | Restore succeeds from off-site alone | **[NOT PERFORMED]** |
+| V13 | Read-only promotion fence | Attempt business writes after promotion | Refused; no archive object created | **[NOT PERFORMED]** |
+| V14 | Snapshot-order consistency | Compare an unfenced observation to the fenced baseline | Procedure uses only the fenced baseline; drift is detected, not ignored | **[NOT PERFORMED]** |
+| V15 | Repeatability | Run V1 twice in one week | Both restores reconcile; measured time recorded | **[NOT PERFORMED]** |
 
 ## 9. Monitoring and page-out conditions
 
-Archive and backup health must be observable without reading the server's disk by hand. Page the owner (or the named on-call) when:
+Page the owner or named on-call when:
 
 - `pg_stat_archiver.last_failed_wal` advances, or `last_failed_time` is newer than `last_archived_time`.
-- Archived WAL lag exceeds the recovery-point budget derived from the approved RPO **[MISSING]**.
-- `pg_wal` size grows beyond its planned bound, or the filesystem holding `pg_wal`, staging or the restore root crosses its capacity threshold.
-- The most recent base backup is older than the approved retention schedule, or its off-site digest cannot be verified.
-- A scheduled restore verification (§8 V1/V10) fails or is skipped.
+- Archived WAL lag exceeds the budget derived from the approved RPO **[MISSING]**.
+- Archive publication reports a conflict, a verify mismatch or repeated retries for the same segment.
+- `pg_wal` size or the filesystem holding `pg_wal`, staging, base backups or the restore root crosses its capacity threshold.
+- The newest base backup is older than the approved schedule, or its off-site digest cannot be verified.
+- A scheduled restore verification (§8) fails, is skipped, or produces a reconciliation mismatch.
+- Any restored cluster path resolves outside its isolated root, or a restore cluster publishes WAL.
 
-The monitoring itself is **[MISSING]**: no source file, timer, exporter or alert route exists in this repository for the PostgreSQL target. Only the native SQLite backup units exist today **[OBSERVED]**.
+The monitoring instrumentation itself is **[BLOCKING GAP]**: no exporter, timer or alert route exists in this repository for the PostgreSQL target. Only the native SQLite backup units exist **[OBSERVED]**.
 
 ## 10. Reconciliation queries
 
-All queries are read-only and schema-qualified. Expected results are stated; any deviation is a failed reconciliation. `$1` is a tenant UUID.
+All queries are read-only. Expected results are stated; any deviation is a failed reconciliation. Run them inside the fenced snapshot transaction (§6.2) on the source and against the restored cluster, and compare.
+
+Canonical digests always hash **complete rows** with length-prefixed fields so that separators and `NULL` values cannot collide, and so that actor/detail/command bytes are covered. JSONB is cast through `to_jsonb(...)::text`, which is deterministic for a given value.
 
 ```sql
--- 10.1 Every posted journal is balanced. Expect zero rows.
+-- Reusable canonical row text: length-prefixed, NULL sentinel, no ambiguity.
+-- (Inlined per query below; adapt the column list, never drop columns silently.)
+--   concat_ws('|',
+--     length(coalesce(col::text,'')) || ':' || coalesce(col::text,'∅'), ...)
+```
+
+### 10.1 Expected activated-business set (anchors every ownership check)
+
+Zero-row queries are not sufficient: a tenant with no role rows disappears instead of failing.
+
+```sql
+-- Anchor set. Cloud profile: vendor operator directory. Private profile: local equivalent.
+SELECT tenant_id, status FROM operator.tenant ORDER BY tenant_id;
+
+-- Tenants that should be activated but are missing a protected owner role or an active owner.
+WITH expected AS (
+  SELECT tenant_id FROM operator.tenant WHERE status = 'ACTIVE'
+), protected AS (
+  SELECT tenant_id, count(*) AS n FROM tenant_data.roles WHERE protected GROUP BY tenant_id
+), active_owner AS (
+  SELECT a.tenant_id, count(*) AS n
+  FROM tenant_data.assignments a
+  JOIN tenant_data.members m ON m.tenant_id = a.tenant_id AND m.user_id = a.user_id
+  WHERE a.role_id = 'ultimate_business_admin' AND m.active
+  GROUP BY a.tenant_id
+)
+SELECT e.tenant_id,
+       coalesce(p.n, 0) AS protected_roles,
+       coalesce(o.n, 0) AS active_owner_assignments
+FROM expected e
+LEFT JOIN protected p ON p.tenant_id = e.tenant_id
+LEFT JOIN active_owner o ON o.tenant_id = e.tenant_id
+WHERE coalesce(p.n, 0) <> 1 OR coalesce(o.n, 0) <> 1
+ORDER BY e.tenant_id;          -- expect zero rows
+
+-- Owners that exist for tenants outside the expected set (opposite direction).
+SELECT r.tenant_id FROM tenant_data.roles r
+LEFT JOIN operator.tenant t ON t.tenant_id = r.tenant_id
+WHERE r.protected AND (t.tenant_id IS NULL OR t.status <> 'ACTIVE')
+ORDER BY r.tenant_id;          -- expect zero rows
+```
+
+Admission cross-check. It is valid **only** after PIVOT-004 adds the stored `tenant_data.members.user_uuid` projection and grants, and after AUTH-006 supplies verified context; before that it must not be run (it would fail on a missing column) and must be recorded as not applicable rather than passed. The exact admission predicate belongs to PIVOT-004/AUTH-006 — record it, do not improvise it:
+
+```sql
+SELECT m.tenant_id, m.user_id
+FROM tenant_data.members m
+LEFT JOIN auth.tenant_membership tm
+  ON tm.tenant_id = m.tenant_id AND tm.user_uuid = m.user_uuid   -- projection added by PIVOT-004
+WHERE m.active AND (tm.id IS NULL OR tm.status <> 'active' OR tm.revoked_at IS NOT NULL)
+ORDER BY m.tenant_id, m.user_id;   -- expect zero rows after PIVOT-004; NOT APPLICABLE before it
+```
+
+### 10.2 Ledger integrity
+
+```sql
+-- Every posted journal is balanced. Expect zero rows.
 SELECT tenant_id, journal_id, sum(debit) AS debit, sum(credit) AS credit
 FROM tenant_data.journal_lines
 GROUP BY tenant_id, journal_id
 HAVING sum(debit) <> sum(credit);
 
--- 10.2 Trial balance per tenant/company/account. Compare with the baseline snapshot.
+-- Trial balance (compare exact values with the fenced baseline).
 SELECT l.tenant_id, j.company, l.account, sum(l.debit) AS debit, sum(l.credit) AS credit
 FROM tenant_data.journal_lines l
 JOIN tenant_data.journals j ON j.tenant_id = l.tenant_id AND j.id = l.journal_id
 GROUP BY l.tenant_id, j.company, l.account
 ORDER BY l.tenant_id, j.company, l.account;
 
--- 10.3 Document-number high-water must agree with the allocation table.
+-- Parent/child both directions: journals without lines, lines without a journal.
+SELECT j.tenant_id, j.id FROM tenant_data.journals j
+WHERE NOT EXISTS (SELECT 1 FROM tenant_data.journal_lines l WHERE l.tenant_id = j.tenant_id AND l.journal_id = j.id)
+ORDER BY 1, 2;                    -- expect zero rows
+SELECT l.tenant_id, l.journal_id FROM tenant_data.journal_lines l
+WHERE NOT EXISTS (SELECT 1 FROM tenant_data.journals j WHERE j.tenant_id = l.tenant_id AND j.id = l.journal_id)
+ORDER BY 1, 2;                    -- expect zero rows
+
+-- Corrections: one per original, all linked. Expect zero rows in both queries.
+SELECT tenant_id, original_id, count(*) FROM tenant_data.journal_corrections
+GROUP BY tenant_id, original_id HAVING count(*) > 1;
+SELECT c.tenant_id, c.original_id FROM tenant_data.journal_corrections c
+WHERE NOT EXISTS (SELECT 1 FROM tenant_data.journals j WHERE j.tenant_id = c.tenant_id AND j.id = c.original_id);
+```
+
+### 10.3 Numbering and allocation
+
+```sql
 SELECT n.tenant_id, n.company, n.kind, max(n.sequence) AS highest_allocated
-FROM tenant_data.document_numbers n
-GROUP BY n.tenant_id, n.company, n.kind
-ORDER BY n.tenant_id, n.company, n.kind;
+FROM tenant_data.document_numbers n GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
 
 SELECT s.tenant_id, s.company, s.kind, s.next_number - 1 AS highest_allocated
+FROM tenant_data.document_sequences s ORDER BY 1, 2, 3;
+
+-- Duplicate or missing numbers. Expect zero rows.
+SELECT tenant_id, company, number, count(*) FROM tenant_data.document_numbers
+GROUP BY 1, 2, 3 HAVING count(*) > 1;
+
+SELECT s.tenant_id, s.company, s.kind
 FROM tenant_data.document_sequences s
-ORDER BY s.tenant_id, s.company, s.kind;
+LEFT JOIN tenant_data.document_numbers n
+  ON n.tenant_id = s.tenant_id AND n.company = s.company AND n.kind = s.kind
+ AND n.sequence = s.next_number - 1
+WHERE s.next_number > 1 AND n.id IS NULL
+ORDER BY 1, 2, 3;                 -- expect zero rows
+```
 
--- 10.4 Duplicate document numbers must not exist. Expect zero rows.
-SELECT tenant_id, company, number, count(*)
-FROM tenant_data.document_numbers
-GROUP BY tenant_id, company, number
-HAVING count(*) > 1;
+### 10.4 Audit, commands, review and idempotency (complete-row digests, both streams)
 
--- 10.5 Command, approval, pending-document and outbox state census.
-SELECT tenant_id, state, count(*) FROM tenant_data.command_inbox GROUP BY tenant_id, state ORDER BY 1, 2;
-SELECT tenant_id, state, count(*) FROM tenant_data.approval_requests GROUP BY tenant_id, state ORDER BY 1, 2;
-SELECT tenant_id, document_status, origin_type, count(*)
-FROM tenant_data.document_registry GROUP BY tenant_id, document_status, origin_type ORDER BY 1, 2, 3;
-SELECT tenant_id, state, count(*) FROM tenant_data.outbox GROUP BY tenant_id, state ORDER BY 1, 2;
+```sql
+-- Native command-linked audit: counts and complete-row digest (actor/detail/command bytes included).
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(id::text,''))           || ':' || coalesce(id::text,'∅'),
+         length(coalesce(command_id,''))         || ':' || coalesce(command_id,'∅'),
+         length(coalesce(actor,''))              || ':' || coalesce(actor,'∅'),
+         length(coalesce(event,''))              || ':' || coalesce(event,'∅'),
+         length(coalesce(detail,''))             || ':' || coalesce(detail,'∅'),
+         length(coalesce(happened_at::text,''))  || ':' || coalesce(happened_at::text,'∅'),
+         length(coalesce(created_at::text,''))   || ':' || coalesce(created_at::text,'∅'),
+         length(coalesce(updated_at::text,''))   || ':' || coalesce(updated_at::text,'∅')
+       ), '~' ORDER BY id)) AS row_digest
+FROM tenant_data.audit GROUP BY tenant_id ORDER BY tenant_id;
 
--- 10.6 Audit append-only census. Counts and a stable row hash must equal the snapshot.
-SELECT tenant_id, count(*) AS rows FROM tenant_data.audit GROUP BY tenant_id ORDER BY 1;
-SELECT tenant_id, count(*) AS rows FROM tenant_data.audit_event GROUP BY tenant_id ORDER BY 1;
-SELECT tenant_id, md5(string_agg(id::text || ':' || event || ':' || happened_at::text, '|' ORDER BY id)) AS digest
-FROM tenant_data.audit GROUP BY tenant_id ORDER BY 1;
+-- Change-event audit sidecar: counts and complete-row digest of every column.
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(id::text,''))                   || ':' || coalesce(id::text,'∅'),
+         length(coalesce(actor_id,''))                   || ':' || coalesce(actor_id,'∅'),
+         length(coalesce(event,''))                      || ':' || coalesce(event,'∅'),
+         length(coalesce(entity_type,''))                || ':' || coalesce(entity_type,'∅'),
+         length(coalesce(entity_id,''))                  || ':' || coalesce(entity_id,'∅'),
+         length(coalesce(to_jsonb(detail_jsonb)::text,''))|| ':' || coalesce(to_jsonb(detail_jsonb)::text,'∅'),
+         length(coalesce(origin_type,''))                || ':' || coalesce(origin_type,'∅'),
+         length(coalesce(origin_user_id,''))             || ':' || coalesce(origin_user_id,'∅'),
+         length(coalesce(origin_model,''))               || ':' || coalesce(origin_model,'∅'),
+         length(coalesce(origin_model_version,''))       || ':' || coalesce(origin_model_version,'∅'),
+         length(coalesce(request_id,''))                 || ':' || coalesce(request_id,'∅'),
+         length(coalesce(happened_at::text,''))          || ':' || coalesce(happened_at::text,'∅'),
+         length(coalesce(created_at::text,''))           || ':' || coalesce(created_at::text,'∅'),
+         length(coalesce(updated_at::text,''))           || ':' || coalesce(updated_at::text,'∅')
+       ), '~' ORDER BY id)) AS row_digest
+FROM tenant_data.audit_event GROUP BY tenant_id ORDER BY tenant_id;
+```
 
--- 10.7 Corrections are one-per-original and never duplicated. Expect zero rows.
-SELECT tenant_id, original_id, count(*)
-FROM tenant_data.journal_corrections GROUP BY tenant_id, original_id HAVING count(*) > 1;
+The two streams are independent retained evidence. They are hashed and compared separately; one is never deduplicated, back-filled or used to excuse a difference in the other.
 
--- 10.8 Trade document totals reconcile with their lines and allocations.
-SELECT d.tenant_id, d.command_id, d.total, coalesce(sum(l.amount), 0) AS lines_total
-FROM tenant_data.trade_documents d
-LEFT JOIN tenant_data.trade_lines l ON l.tenant_id = d.tenant_id AND l.command_id = d.command_id
-GROUP BY d.tenant_id, d.command_id, d.total
-HAVING d.total <> coalesce(sum(l.amount), 0);
+```sql
+-- Accepted command bytes and receipt identity. Deliberately excluded because they
+-- are mutable lifecycle/lease fields, not accepted bytes: lease_token, lease_until,
+-- error, updated_at, updated_by. Everything else is hashed.
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(id,''))          || ':' || coalesce(id,'∅'),
+         length(coalesce(actor,''))       || ':' || coalesce(actor,'∅'),
+         length(coalesce(digest,''))      || ':' || coalesce(digest,'∅'),
+         length(coalesce(payload,''))     || ':' || coalesce(payload,'∅'),
+         length(coalesce(state,''))       || ':' || coalesce(state,'∅'),
+         length(coalesce(approved_by,'')) || ':' || coalesce(approved_by,'∅'),
+         length(coalesce(created_at::text,'')) || ':' || coalesce(created_at::text,'∅')
+       ), '~' ORDER BY id)) AS row_digest
+FROM tenant_data.command_inbox GROUP BY tenant_id ORDER BY tenant_id;
 
--- 10.9 Stock balances reconcile with movement history.
+-- Review decisions.
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(command_id,''))   || ':' || coalesce(command_id,'∅'),
+         length(coalesce(decision,''))     || ':' || coalesce(decision,'∅'),
+         length(coalesce(actor,''))        || ':' || coalesce(actor,'∅'),
+         length(coalesce(reason,''))       || ':' || coalesce(reason,'∅'),
+         length(coalesce(replacement_id,''))|| ':' || coalesce(replacement_id,'∅'),
+         length(coalesce(happened_at::text,'')) || ':' || coalesce(happened_at::text,'∅')
+       ), '~' ORDER BY command_id)) AS row_digest
+FROM tenant_data.command_decisions GROUP BY tenant_id ORDER BY tenant_id;
+
+-- Approval requests bind a digest to the exact policy snapshot that decided it.
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(command_id,''))     || ':' || coalesce(command_id,'∅'),
+         length(coalesce(payload_digest,'')) || ':' || coalesce(payload_digest,'∅'),
+         length(coalesce(policy_snapshot,''))|| ':' || coalesce(policy_snapshot,'∅'),
+         length(coalesce(state,''))          || ':' || coalesce(state,'∅'),
+         length(coalesce(decided_by,''))     || ':' || coalesce(decided_by,'∅')
+       ), '~' ORDER BY command_id)) AS row_digest
+FROM tenant_data.approval_requests GROUP BY tenant_id ORDER BY tenant_id;
+
+-- Document registry projection (identity, status, current revision, origin metadata).
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(document_id,''))        || ':' || coalesce(document_id,'∅'),
+         length(coalesce(document_type,''))      || ':' || coalesce(document_type,'∅'),
+         length(coalesce(document_status,''))    || ':' || coalesce(document_status,'∅'),
+         length(coalesce(current_revision::text,'')) || ':' || coalesce(current_revision::text,'∅'),
+         length(coalesce(company,''))            || ':' || coalesce(company,'∅'),
+         length(coalesce(branch,''))             || ':' || coalesce(branch,'∅'),
+         length(coalesce(source_command_id,''))  || ':' || coalesce(source_command_id,'∅'),
+         length(coalesce(origin_type,''))        || ':' || coalesce(origin_type,'∅'),
+         length(coalesce(origin_user_id,''))     || ':' || coalesce(origin_user_id,'∅'),
+         length(coalesce(origin_model,''))       || ':' || coalesce(origin_model,'∅'),
+         length(coalesce(origin_model_version,'')) || ':' || coalesce(origin_model_version,'∅')
+       ), '~' ORDER BY document_id)) AS row_digest
+FROM tenant_data.document_registry GROUP BY tenant_id ORDER BY tenant_id;
+
+-- Drafts and pending-document submissions (payload bytes and policy binding).
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(id,''))        || ':' || coalesce(id,'∅'),
+         length(coalesce(actor,''))     || ':' || coalesce(actor,'∅'),
+         length(coalesce(company,''))   || ':' || coalesce(company,'∅'),
+         length(coalesce(branch,''))    || ':' || coalesce(branch,'∅'),
+         length(coalesce(payload,''))   || ':' || coalesce(payload,'∅'),
+         length(coalesce(revision::text,'')) || ':' || coalesce(revision::text,'∅'),
+         length(coalesce(state,''))     || ':' || coalesce(state,'∅'),
+         length(coalesce(source_id,'')) || ':' || coalesce(source_id,'∅'),
+         length(coalesce(created_at::text,'')) || ':' || coalesce(created_at::text,'∅'),
+         length(coalesce(updated_at::text,'')) || ':' || coalesce(updated_at::text,'∅')
+       ), '~' ORDER BY id)) AS row_digest
+FROM tenant_data.journal_drafts GROUP BY tenant_id ORDER BY tenant_id;
+
+SELECT tenant_id, count(*) AS rows,
+       md5(string_agg(concat_ws('|',
+         length(coalesce(document_id,''))          || ':' || coalesce(document_id,'∅'),
+         coalesce(revision::text,'∅'),
+         length(coalesce(document_type,''))        || ':' || coalesce(document_type,'∅'),
+         length(coalesce(document_status,''))      || ':' || coalesce(document_status,'∅'),
+         length(coalesce(payload,''))              || ':' || coalesce(payload,'∅'),
+         length(coalesce(payload_digest,''))       || ':' || coalesce(payload_digest,'∅'),
+         length(coalesce(to_jsonb(policy_snapshot)::text,'')) || ':' || coalesce(to_jsonb(policy_snapshot)::text,'∅'),
+         length(coalesce(policy_version::text,'')) || ':' || coalesce(policy_version::text,'∅'),
+         length(coalesce(origin_type,''))          || ':' || coalesce(origin_type,'∅'),
+         length(coalesce(origin_user_id,''))       || ':' || coalesce(origin_user_id,'∅'),
+         length(coalesce(origin_model,''))         || ':' || coalesce(origin_model,'∅'),
+         length(coalesce(origin_model_version,'')) || ':' || coalesce(origin_model_version,'∅'),
+         length(coalesce(submitted_at::text,''))   || ':' || coalesce(submitted_at::text,'∅'),
+         length(coalesce(created_at::text,''))     || ':' || coalesce(created_at::text,'∅'),
+         length(coalesce(created_by,''))           || ':' || coalesce(created_by,'∅')
+       ), '~' ORDER BY document_id, revision)) AS row_digest
+FROM tenant_data.document_revisions GROUP BY tenant_id ORDER BY tenant_id;
+
+-- State census, compared value-by-value, not just totals. Outbox rows are
+-- intentionally compared by state/attempt census because delivery state and
+-- attempts are mutable; their command identity is covered by the command digest.
+SELECT tenant_id, state, count(*) FROM tenant_data.command_inbox GROUP BY 1, 2 ORDER BY 1, 2;
+SELECT tenant_id, state, count(*) FROM tenant_data.approval_requests GROUP BY 1, 2 ORDER BY 1, 2;
+SELECT tenant_id, document_status, origin_type, count(*) FROM tenant_data.document_registry GROUP BY 1, 2, 3 ORDER BY 1, 2, 3;
+SELECT tenant_id, state, count(*) FROM tenant_data.outbox GROUP BY 1, 2 ORDER BY 1, 2;
+```
+
+### 10.5 Subledgers, evidence and blocking gaps
+
+```sql
+-- Stock balances reconcile with movement history in both directions.
 SELECT b.tenant_id, b.company, b.warehouse, b.item, b.quantity, b.value,
        coalesce(sum(m.quantity_delta), 0) AS moved_quantity,
        coalesce(sum(m.value_delta), 0) AS moved_value
@@ -377,22 +699,71 @@ GROUP BY b.tenant_id, b.company, b.warehouse, b.item, b.quantity, b.value
 HAVING b.quantity <> coalesce(sum(m.quantity_delta), 0)
     OR b.value <> coalesce(sum(m.value_delta), 0);
 
--- 10.10 Authority state: one protected owner role and one owner assignment per tenant.
-SELECT tenant_id, count(*) FROM tenant_data.roles WHERE protected GROUP BY tenant_id HAVING count(*) <> 1;
-SELECT tenant_id, count(*) FROM tenant_data.assignments
-WHERE role_id = 'ultimate_business_admin' GROUP BY tenant_id HAVING count(*) <> 1;
+-- Movements whose balance row is missing (opposite direction).
+SELECT m.tenant_id, m.company, m.warehouse, m.item
+FROM tenant_data.stock_movements m
+LEFT JOIN tenant_data.stock_balances b
+  ON b.tenant_id = m.tenant_id AND b.company = m.company
+ AND b.warehouse = m.warehouse AND b.item = m.item
+WHERE b.item IS NULL;              -- expect zero rows
 
--- 10.11 Migration provenance is unchanged.
-SELECT * FROM operator.pg_schema_migrations ORDER BY version;
-SELECT tenant_id, source_store, version, checksum FROM tenant_data.source_store_migrations ORDER BY 1, 2, 3;
+-- Owned-stock invariant restored by 021: an empty balance never holds value.
+SELECT tenant_id, company, warehouse, item, quantity, value FROM tenant_data.stock_balances
+WHERE NOT (quantity > 0 OR value = 0);   -- expect zero rows
+
+-- Trade documents reconcile with lines and allocations in both directions.
+SELECT d.tenant_id, d.command_id, d.total, coalesce(sum(l.amount), 0) AS lines_total
+FROM tenant_data.trade_documents d
+LEFT JOIN tenant_data.trade_lines l ON l.tenant_id = d.tenant_id AND l.command_id = d.command_id
+GROUP BY d.tenant_id, d.command_id, d.total
+HAVING d.total <> coalesce(sum(l.amount), 0);
+
+SELECT d.tenant_id, d.command_id, d.total, coalesce(sum(a.amount), 0) AS allocated
+FROM tenant_data.trade_documents d
+LEFT JOIN tenant_data.trade_allocations a ON a.tenant_id = d.tenant_id AND a.document_id = d.command_id
+GROUP BY d.tenant_id, d.command_id, d.total
+HAVING coalesce(sum(a.amount), 0) > d.total;
+
+SELECT a.tenant_id, a.document_id FROM tenant_data.trade_allocations a
+WHERE NOT EXISTS (SELECT 1 FROM tenant_data.trade_documents d WHERE d.tenant_id = a.tenant_id AND d.command_id = a.document_id)
+ORDER BY 1, 2;                     -- expect zero rows
+
+-- Credit lines never exceed their original line; credits reference posted originals.
+SELECT c.tenant_id, c.command_id FROM tenant_data.trade_credits c
+WHERE NOT EXISTS (SELECT 1 FROM tenant_data.trade_documents d WHERE d.tenant_id = c.tenant_id AND d.command_id = c.original_id)
+ORDER BY 1, 2;                     -- expect zero rows
 ```
 
-RLS negative isolation (only meaningful after PIVOT-004; declare "not applicable" before it):
+Controls that this draft cannot supply are **blocking gaps**, not implied coverage:
+
+| Control | Why it is not covered here | Required owner |
+| --- | --- | --- |
+| Evidence/object-byte verification (attachment digests, object-store manifests) | `tenant_data.command_files` stores metadata only; the object store and its manifest are outside PostgreSQL and outside this TOUCH list. | A later file/evidence contract plus the drill record's object manifest |
+| Asset, tax/withholding and payroll subledger controls | Those tables are not in the accepted PIVOT-003 skeleton; postings do not exist in PostgreSQL yet. | PIVOT-013 kernel, then their own contracts |
+| GL-vs-subledger control-account reconciliation (AR/AP/stock control balances) | Requires the posting kernel and registered control accounts; the schema alone cannot compute it. | PIVOT-013 and parity PIVOT-009/010 |
+| Append-only enforcement proof (posted sources, audit streams) | Enforced by PIVOT-005/006 triggers, which are not delivered. | PIVOT-005/006 |
+| Static/dynamic allocation reconciliation across the whole document graph | Depends on the kernel's allocation semantics. | PIVOT-013 |
+| Cross-tenant isolation under the real runtime role | Needs PIVOT-004 policies and grants plus AUTH-006 verified context. | PIVOT-004 and AUTH-006 |
+
+RLS isolation check shape (run only after PIVOT-004; until then declare **not applicable**, never "passed"). It requires a known own-tenant row, the actual non-owner runtime role, and a positive control so zero rows cannot pass for the wrong reason:
 
 ```sql
+-- Executed as saven_customer_app (the actual runtime role), using the verified
+-- context mechanism. Direct set_config is acceptable only in a disposable drill
+-- cluster; it is never evidence that application context is server-verified.
 BEGIN;
-SELECT set_config('app.current_tenant_id', '00000000-0000-4000-8000-000000000001', true);
-SELECT count(*) FROM tenant_data.accounts;   -- must be 0 for a foreign tenant / missing context
+SELECT set_config('app.current_tenant_id', '<KNOWN-OWN-TENANT-UUID>', true);
+SELECT set_config('app.current_user_id', '<KNOWN-VERIFIED-USER-UUID>', true);
+SELECT count(*) AS own_rows FROM tenant_data.accounts;            -- EXPECT > 0 (positive control)
+
+SELECT set_config('app.current_tenant_id', '<KNOWN-FOREIGN-TENANT-UUID>', true);
+SELECT count(*) AS foreign_rows FROM tenant_data.accounts;        -- EXPECT 0
+SELECT count(*) AS foreign_lines FROM tenant_data.journal_lines;  -- EXPECT 0
+ROLLBACK;
+
+-- Missing context must deny, not error-leak:
+BEGIN;
+SELECT count(*) AS no_context_rows FROM tenant_data.accounts;     -- EXPECT 0
 ROLLBACK;
 ```
 
@@ -400,25 +771,33 @@ ROLLBACK;
 
 | Situation | Required action | Decision owner |
 | --- | --- | --- |
-| Archive destination unavailable or `archive_command` failing | Page out, keep WAL on disk, restore archive capability, re-verify archived segments; do not disable `archive_mode` to silence growth | Owner/on-call |
-| Missing WAL segment during recovery | Stop. Classify gap vs intentional timeline switch vs deleted archive. Do not substitute segments. Record the exact segment name | Engineer + owner |
+| Archive destination unavailable or `archive_command` failing | Page out; keep WAL on disk; restore archive capability; re-verify archived segments. Never disable `archive_mode` to silence growth | Owner/on-call |
+| Archive publication conflict (final object exists with different content) | Refuse and alert; do not overwrite or delete; investigate the source segment and timeline | Engineer + owner |
+| Archive verify mismatch or repeated retries for one segment | Stop archiving claims for that segment; keep it in `pg_wal`; investigate transfer/encryption; re-archive only after verification passes | Engineer |
+| Recovery without `recovery.signal` | Stop: targeted archive recovery did not start. Create the signal and restart from a clean copy; never improvise with `pg_wal` replay guesses | Engineer |
+| Missing WAL segment during recovery | Stop. Classify gap vs intentional timeline switch vs deleted archive. Never substitute segments. Record the exact segment | Engineer + owner |
+| Restored path or tablespace escapes the isolated root | Quarantine the target. Do not start it. Treat as an isolation failure and investigate the backup's `tablespace_map`/symlinks | Engineer + owner |
+| Restored cluster publishes to the source archive | Stop immediately, fence, and treat as an incident; verify `archive_mode`/`archive_command` replacement before any further start | Owner |
 | Encryption key unavailable | Stop. No plaintext fallback. Use approved escrow/break-glass; record as an incident | Owner |
-| Restore verification mismatch (any §10 check) | Do not promote or use the restore. Keep evidence, quarantine the target, investigate the earliest divergent transaction | Engineer + owner |
-| Recovery time exceeds the window | Stop the drill at the pre-agreed point, fence, record measured elapsed time and the cause. Do not extend a window silently | Owner |
-| Source cluster accepting writes during a drill attempt | Abort the drill. Never overwrite accepted live transactions | Engineer |
-| Restore target accidentally pointed at by an application | Stop the application immediately, fence the target, treat it as an incident, record the exposure | Owner |
-| Retention would delete the last verified restore point | Refuse. Add a new verified point first | Engineer |
+| Reconciliation mismatch | Do not promote into use. Keep evidence, quarantine, investigate the earliest divergent transaction | Engineer + owner |
+| Snapshot captured before the fence, or writers found running | Discard the baseline, re-fence, re-capture. Never compare a fenced restore to an unfenced observation | Engineer |
+| Recovery time exceeds the window | Stop at the pre-agreed point, fence, record measured elapsed time and cause. Do not extend silently | Owner |
+| Retention would delete the last verified restore point | Refuse; add a new verified point first | Engineer |
+| Application accidentally pointed at the restore | Stop it immediately, fence the target, record the exposure as an incident | Owner |
 
 ## 12. Owner acceptance (blank by design)
 
-This block must not be filled in by anyone except the owner, and only after an actual drill with recorded evidence.
+Engineering acceptance of this draft revision is not owner acceptance, and neither implies a drill occurred. Only the owner may complete this block, only after an actual drill with recorded evidence.
 
 ```text
 Drill performed:        [ ] NOT PERFORMED
-Recovery point used:    ______________________________________________
-Target host/dir/port:   ______________________________________________
-Artifact digests:       ______________________________________________
-Measured elapsed time:  ______________________________________________
+Source system id:       ______________________________________________
+Recovery target LSN:    ______________________________________________
+Required segment(s):    ______________________________________________
+Base label/manifest:    ______________________________________________
+Restore root/paths:     ______________________________________________
+Elapsed (per step):     ______________________________________________
+Artifacts/digests:      ______________________________________________
 Anomalies recorded:     ______________________________________________
 Owner name:             ______________________________________________
 Owner date (UTC):       ______________________________________________
@@ -426,30 +805,38 @@ Owner signature:        ______________________________________________
 Decision:               [ ] ACCEPT   [ ] REJECT   [ ] REPEAT
 ```
 
-Until this block is completed, every downstream document must describe off-host recovery as **unverified** — including `contracts/runtime-hosting-v1.json` (`offHostRecoveryVerified: false`) and the retirement gate in ADR01 **[OBSERVED]**.
+Until this block is completed, every downstream document must describe off-host recovery as **unverified**, including `contracts/runtime-hosting-v1.json` (`offHostRecoveryVerified: false`) and the ADR01 retirement gate **[OBSERVED]**.
 
 ## 13. Explicit non-claims
 
-- No backup has been taken, no WAL has been archived, no restore has been performed and no drill has been signed. **[NOT PERFORMED]**
-- No off-host destination, RPO, RTO, retention period, capacity bound or key-custody arrangement is approved.
+- No backup has been taken, no WAL has been archived, no restore has been performed, no drill has been signed. **[NOT PERFORMED]**
+- No off-host destination, RPO, RTO, retention period, capacity bound or key-custody arrangement is approved. The plain-format/SHA256 choice in §5 is a draft engineering preference, not infrastructure or retention approval.
+- Every wrapper, restorer, scheduler, exporter and alert route described here is an interface, not a working implementation.
 - No availability, durability or recovery-time guarantee is made. Elapsed time becomes a measurement only after §8 runs.
-- PostgreSQL remains a target, not the production store. Partial parity, RLS coverage (PIVOT-004), posted-source immutability (PIVOT-005), audit triggers (PIVOT-006) and the posting kernel port (PIVOT-013) are separate gates, and this runbook does not substitute for any of them.
-- The schema is not safe to serve before RLS and tenant context exist; a backup of an unservable skeleton proves the mechanism, not production readiness.
+- PostgreSQL remains a target, not the production store. RLS coverage (PIVOT-004), posted-source immutability (PIVOT-005), audit triggers (PIVOT-006), the posting kernel port (PIVOT-013), parity (PIVOT-009/010) and verification evidence (PIVOT-012) are separate gates; this runbook substitutes for none of them.
+- A backup of an unservable skeleton proves the mechanism, not production readiness.
+- Example commands and SQL in this document are illustrative and unexecuted. They are not evidence and must be reviewed against the pinned server version before use.
 
 ## 14. Change control
 
 - Owner: the engineer. Contractors may execute an approved revision but do not redefine retention, keys, RPO/RTO or the signature block.
-- Every executed drill appends its record here or in a linked evidence file, with commands, digests, timings and anomalies. Do not rewrite prior drill records.
-- Any change to the archive destination, encryption tooling, key custody, retention or recovery procedure requires a new dated revision and an owner re-drill before it is relied upon.
-- This runbook must not be described as accepted until the owner signs §12.
+- Every executed drill appends its record with commands, digests, timings, principals and anomalies. Prior drill records are never rewritten.
+- Any change to destination, encryption tooling, key custody, retention, archive naming/publish semantics or the recovery procedure requires a new dated revision and an owner re-drill before it is relied upon.
+- Unresolved policy/destination/key inputs stay `[MISSING]`; they are extension points, not defaults.
 
-## References
+## 15. References
 
-- `docs/pivot-notes/01-adr-postgresql-pivot.md` — retirement gate, restore-isolation and no-dual-write invariants.
+- `docs/pivot-notes/01-adr-postgresql-pivot.md` — retirement gate, restore isolation, no dual-write authority.
 - `docs/pivot-notes/00-pivot-spec.md` Phase 6 — backup/restore requirements and the owner-only drill signature.
-- `docs/49-compatible-tenant-upgrades.md` — backup capacity, independent restore verification, fenced generations.
+- `docs/49-compatible-tenant-upgrades.md` — backup capacity, independent restore verification, fenced generations, no second writable copy.
 - `docs/pivot-notes/02-three-purposes.md` — schema/table inventory used by §10.
-- `docs/44-server-hosted-runtime.md`, `contracts/runtime-hosting-v1.json` — loopback-only, tunnel-only Cloudflare and `offHostRecoveryVerified: false`.
-- `db/postgres/00-roles.sql`, `10-operator-schema.sql`, `20-tenant-schema.sql` — role, operator and tenant schema definitions referenced above.
+- `docs/44-server-hosted-runtime.md`, `contracts/runtime-hosting-v1.json` — loopback-only, tunnel-only Cloudflare, `offHostRecoveryVerified: false`.
+- `db/postgres/00-roles.sql`, `05-auth-schema.sql`, `10-operator-schema.sql`, `20-tenant-schema.sql`, `migrations/006-auth-schema-corrections.sql`, `migrations/021-tenant-schema-corrections.sql` — roles and schema referenced above (corrections accepted on their branches, not integrated here).
 - `scripts/native-backup.mjs`, `scripts/native-restore.mjs`, `deployment/saven-native-backup.service`, `deployment/saven-testing-backup.service` — existing SQLite backup/restore pattern this document does not replace.
-- PostgreSQL 18 documentation for `pg_basebackup`, continuous archiving, `pg_verifybackup`, point-in-time recovery and `pg_stat_archiver`. Verify against the pinned server version before executing; documentation drift is a reason to stop, not to improvise.
+- PostgreSQL 18 documentation, verified against the pinned server version before execution:
+  - recovery configuration and the `recovery.signal` requirement: <https://www.postgresql.org/docs/18/runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVE-RECOVERY>
+  - continuous archiving, `restore_command` and PITR caveats (source-path and tablespace risk): <https://www.postgresql.org/docs/18/continuous-archiving.html>
+  - continuous archiving and WAL retention guidance (content comparison and retry success): <https://www.postgresql.org/docs/18/continuous-archiving.html#BACKUP-ARCHIVING-WAL>
+  - `pg_basebackup` manifest and format options: <https://www.postgresql.org/docs/18/app-pgbasebackup.html#APP-PGBASEBACKUP-OPTIONS>
+  - `pg_verifybackup` (`--no-parse-wal` limitation for tar format): <https://www.postgresql.org/docs/18/app-pgverifybackup.html>
+  - `pg_checksums` (offline checksum changes): <https://www.postgresql.org/docs/18/app-pgchecksums.html>
