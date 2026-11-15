@@ -76,6 +76,35 @@ export function resolveSessionConfig(config = {}) {
   return {idleMs, absoluteMs, tokenBytes};
 }
 
+// Shared session authority checks. Both the first-party store and the Better Auth
+// adapter use these predicates so the library cannot become a weaker parallel
+// authority: a revoked, disabled, credential-stale, idle-expired or absolutely expired
+// row never resolves or refreshes.
+export function sessionAuthorityHolds(row, at) {
+  if (!row) return false;
+  if (row.revoked_at !== null && row.revoked_at !== undefined) return false;
+  if (row.user_status !== undefined && row.user_status !== 'active') return false;
+  if (
+    row.current_credential_version !== undefined &&
+    row.credential_version !== row.current_credential_version
+  ) {
+    return false;
+  }
+  const moment = at instanceof Date ? at.getTime() : new Date(at).getTime();
+  if (!(row.absolute_expires_at instanceof Date) || row.absolute_expires_at.getTime() <= moment) return false;
+  if (!(row.idle_expires_at instanceof Date) || row.idle_expires_at.getTime() <= moment) return false;
+  return true;
+}
+
+// A requested expiry may shorten, never lengthen: it is capped by the configured idle
+// policy and by the immutable absolute ceiling.
+export function capIdleExpiry({at, requested, absolute, idleMs}) {
+  const moment = at instanceof Date ? at : new Date(at);
+  const ceiling = absolute instanceof Date ? absolute : new Date(absolute);
+  const requestedAt = requested instanceof Date ? requested : new Date(requested);
+  return new Date(Math.min(requestedAt.getTime(), moment.getTime() + idleMs, ceiling.getTime()));
+}
+
 export function createSessionStore({connect, clock = () => new Date(), config = {}}) {
   if (typeof connect !== 'function') {
     throw new Error('createSessionStore requires a connect() function that returns a checked-out client.');
@@ -92,22 +121,59 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     }
   }
 
+  // Transaction outcome handling distinguishes a known failed statement from an
+  // unknown commit outcome. A commit whose acknowledgement is lost cannot be reported
+  // as either success or rollback, so the credential is never published and the
+  // connection is destroyed instead of being returned to the pool. A rollback that
+  // itself fails also destroys the connection: an uncertain client must not be reused.
   async function withTransaction(action) {
     const client = await connect();
+    let released = false;
+    const close = async destroy => {
+      if (released) return;
+      released = true;
+      try {
+        await client.release?.(destroy ? true : undefined);
+      } catch {
+        // A release failure cannot be repaired here; the connection is not reused.
+      }
+    };
+    let begun = false;
     try {
       await client.query('BEGIN');
+      begun = true;
       const result = await action(client);
-      await client.query('COMMIT');
+      try {
+        await client.query('COMMIT');
+      } catch {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          // Unknown state: destroy below.
+        }
+        await close(true);
+        throw new AuthError(
+          503,
+          'SESSION_TRANSACTION_UNCERTAIN',
+          'The session transaction outcome is unknown; no credential was issued.',
+        );
+      }
+      await close(false);
       return result;
     } catch (error) {
-      try {
-        await client.query('ROLLBACK');
-      } catch {
-        // The original failure is the meaningful one.
+      if (!released) {
+        if (begun) {
+          try {
+            await client.query('ROLLBACK');
+            await close(false);
+          } catch {
+            await close(true);
+          }
+        } else {
+          await close(true);
+        }
       }
       throw error;
-    } finally {
-      await client.release?.();
     }
   }
 
@@ -186,7 +252,12 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     const csrfToken = mintToken(settings.tokenBytes);
     const created = now();
     const absolute = new Date(created.getTime() + settings.absoluteMs);
-    const idle = new Date(Math.min(created.getTime() + settings.idleMs, absolute.getTime()));
+    const idle = capIdleExpiry({
+      at: created,
+      requested: new Date(created.getTime() + settings.idleMs),
+      absolute,
+      idleMs: settings.idleMs,
+    });
     const inserted = await run(tx, async executor => {
       await assertRealm(executor, realm);
       await assertRole(executor, roleId);

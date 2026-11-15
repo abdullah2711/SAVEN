@@ -1,6 +1,12 @@
 import {verifyPassword as verifyRetainedScrypt} from '../passwords.mjs';
 import {createHash, randomUUID} from 'node:crypto';
-import {createSessionStore, resolveSessionConfig, AuthError} from './session-store.mjs';
+import {
+  createSessionStore,
+  resolveSessionConfig,
+  sessionAuthorityHolds,
+  capIdleExpiry,
+  AuthError,
+} from './session-store.mjs';
 import {createAuthRoutes} from './routes.mjs';
 
 // AUTH-002 composition root (AUTH-002-R1). It is intentionally not imported by any
@@ -118,25 +124,75 @@ export function createAuthServer({
 // ---------------------------------------------------------------------------
 
 const digest = value => createHash('sha256').update(String(value), 'utf8').digest('hex');
+const isDigest = value => typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+
 const SESSION_FIELD = {
-  id: 'id',
-  token: 'token_hash',
-  userId: 'user_id',
-  expiresAt: 'idle_expires_at',
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
-  ipAddress: 'ip_address',
-  userAgent: 'user_agent',
+  id: 's.id',
+  token: 's.token_hash',
+  userId: 's.user_id',
+  expiresAt: 's.idle_expires_at',
+  createdAt: 's.created_at',
+  updatedAt: 's.updated_at',
+  ipAddress: 's.ip_address',
+  userAgent: 's.user_agent',
 };
 const USER_FIELD = {
-  id: 'id',
-  email: 'email',
-  emailVerified: 'email_verified',
-  name: 'name',
-  image: 'image',
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
+  id: 'u.id',
+  email: 'u.email',
+  emailVerified: 'u.email_verified',
+  name: 'u.name',
+  image: 'u.image',
+  createdAt: 'u.created_at',
+  updatedAt: 'u.updated_at',
 };
+
+function requireRawToken(value) {
+  if (typeof value !== 'string' || value.length < 16 || value.length > 200) {
+    throw new Error('The library adapter refused an invalid session token value.');
+  }
+  return value;
+}
+
+// Token values are hashed exactly once, per element, and only after the operator is
+// known. An unsupported filter shape or an empty list fails closed instead of
+// broadening to an empty WHERE clause and silently affecting every row.
+function buildWhere(model, where = [], offset = 0, {requireFilter = true} = {}) {
+  if (!Array.isArray(where)) throw new Error('Adapter filters must be an array.');
+  if (requireFilter && where.length === 0) throw new Error('The library adapter requires an explicit filter.');
+  const map = model === 'user' ? USER_FIELD : SESSION_FIELD;
+  const clauses = [];
+  const values = [];
+  for (const entry of where) {
+    const column = map[entry.field];
+    if (!column) throw new Error(`Unsupported ${model} field in adapter filter: ${entry.field}`);
+    if (entry.connector && entry.connector !== 'AND') throw new Error('Only AND connectors are supported.');
+    const operator = entry.operator ?? 'eq';
+    const isToken = entry.field === 'token';
+    if (isToken && !['eq', 'in'].includes(operator)) {
+      throw new Error(`Unsupported token filter operator: ${operator}`);
+    }
+    if (operator === 'eq') {
+      values.push(isToken ? digest(requireRawToken(entry.value)) : entry.value);
+      clauses.push(`${column} = $${values.length + offset}`);
+    } else if (operator === 'ne') {
+      values.push(isToken ? digest(requireRawToken(entry.value)) : entry.value);
+      clauses.push(`${column} <> $${values.length + offset}`);
+    } else if (operator === 'in') {
+      const list = Array.isArray(entry.value) ? entry.value : [entry.value];
+      if (list.length === 0) throw new Error('The library adapter refused an empty IN filter.');
+      values.push(list.map(item => (isToken ? digest(requireRawToken(item)) : item)));
+      clauses.push(`${column} = ANY($${values.length + offset})`);
+    } else if (['gt', 'gte', 'lt', 'lte'].includes(operator)) {
+      if (isToken) throw new Error(`Unsupported token filter operator: ${operator}`);
+      values.push(entry.value);
+      const symbol = {gt: '>', gte: '>=', lt: '<', lte: '<='}[operator];
+      clauses.push(`${column} ${symbol} $${values.length + offset}`);
+    } else {
+      throw new Error(`Unsupported adapter operator: ${operator}`);
+    }
+  }
+  return {sql: clauses.join(' AND '), values};
+}
 
 function librarySession(row, rawToken) {
   return {
@@ -160,44 +216,9 @@ function libraryUser(row) {
     image: row.image,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    status: row.status,
+    credentialVersion: Number(row.credential_version),
   };
-}
-
-// Builds a bound WHERE clause for the library's cleaned where array. Only the
-// operators the session lifecycle uses are accepted; anything else fails closed.
-function buildWhere(model, where = [], offset = 0) {
-  const map = model === 'user' ? USER_FIELD : SESSION_FIELD;
-  const clauses = [];
-  const values = [];
-  for (const entry of where) {
-    const column = map[entry.field];
-    if (!column) throw new Error(`Unsupported ${model} field in adapter filter: ${entry.field}`);
-    const operator = entry.operator ?? 'eq';
-    if (entry.connector && entry.connector !== 'AND') throw new Error('Only AND connectors are supported.');
-    const value = entry.field === 'token' ? digest(entry.value) : entry.value;
-    if (operator === 'eq') {
-      values.push(value);
-      clauses.push(`${column} = $${values.length + offset}`);
-    } else if (operator === 'ne') {
-      values.push(value);
-      clauses.push(`${column} <> $${values.length + offset}`);
-    } else if (operator === 'in') {
-      const list = Array.isArray(value) ? value : [value];
-      if (!list.length) {
-        clauses.push('FALSE');
-        continue;
-      }
-      values.push(list.map(item => entry.field === 'token' ? digest(item) : item));
-      clauses.push(`${column} = ANY($${values.length + offset})`);
-    } else if (['gt', 'gte', 'lt', 'lte'].includes(operator)) {
-      values.push(value);
-      const symbol = {gt: '>', gte: '>=', lt: '<', lte: '<='}[operator];
-      clauses.push(`${column} ${symbol} $${values.length + offset}`);
-    } else {
-      throw new Error(`Unsupported adapter operator: ${operator}`);
-    }
-  }
-  return {sql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', values};
 }
 
 export async function createBetterAuthSessions({
@@ -206,6 +227,7 @@ export async function createBetterAuthSessions({
   secret,
   clock = () => new Date(),
   config = {},
+  realm = 'customer',
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new Error('createBetterAuthSessions requires a PostgreSQL pool with connect() and query().');
@@ -216,9 +238,36 @@ export async function createBetterAuthSessions({
   }
   const settings = resolveSessionConfig(config);
   const now = () => new Date(clock());
+  const nowIso = () => now().toISOString();
   const query = (text, params) => pool.query(text, params);
   const {createAdapterFactory} = await import('better-auth/adapters');
   const {betterAuth} = await import('better-auth');
+
+  // Guarded session selection shared by every library read/update path. The library
+  // must not become a weaker authority: identity status, credential epoch, realm,
+  // revocation, idle expiry and the absolute ceiling are all enforced here.
+  function sessionSelect(where, offset, {limit} = {}) {
+    const filter = buildWhere('session', where, offset);
+    const params = [...filter.values, nowIso(), realm];
+    const at = params.length - 1;
+    const realmIndex = params.length;
+    let sql = `SELECT s.*, u.status AS user_status,
+                      u.credential_version AS current_credential_version
+               FROM auth.sessions s
+               JOIN auth.users u ON u.id = s.user_id
+               WHERE ${filter.sql}
+                 AND s.revoked_at IS NULL
+                 AND s.realm = $${realmIndex}
+                 AND s.absolute_expires_at > $${at}::timestamptz
+                 AND s.idle_expires_at > $${at}::timestamptz
+                 AND u.status = 'active'
+                 AND u.credential_version = s.credential_version`;
+    if (limit !== undefined) {
+      params.push(limit);
+      sql += ` ORDER BY s.created_at DESC LIMIT $${params.length}`;
+    }
+    return {sql, params};
+  }
 
   const adapterFactory = createAdapterFactory({
     config: {
@@ -228,62 +277,61 @@ export async function createBetterAuthSessions({
       supportsDates: true,
       supportsJSON: true,
       supportsBooleans: true,
-      // Each adapter mutation is a single atomic statement; the session lifecycle
-      // does not require a multi-statement library transaction here.
       transaction: false,
       debugLogs: false,
     },
     adapter: () => ({
       async create({model, data}) {
-        if (model === 'session') {
-          const createdAt = data.createdAt instanceof Date ? data.createdAt : now();
-          const requested = data.expiresAt instanceof Date ? data.expiresAt : new Date(createdAt.getTime() + settings.idleMs);
-          const absolute = new Date(createdAt.getTime() + settings.absoluteMs);
-          const idle = new Date(Math.min(requested.getTime(), absolute.getTime()));
-          const credential = await query(
-            'SELECT credential_version FROM auth.users WHERE id = $1',
-            [data.userId],
-          );
-          if (credential.rowCount !== 1) throw new AuthError(400, 'SESSION_USER_INVALID', 'Unknown user for library session.');
-          const inserted = await query(
-            `INSERT INTO auth.sessions(
-               user_id, token_hash, realm, assurance_level,
-               ip_address, user_agent, credential_version,
-               created_at, last_seen_at, idle_expires_at, absolute_expires_at)
-             VALUES ($1, $2, 'customer', 'single_factor', $3, $4, $5, $6, $6, $7, $8)
-             RETURNING *`,
-            [
-              data.userId,
-              digest(data.token),
-              data.ipAddress || null,
-              data.userAgent || null,
-              Number(credential.rows[0].credential_version),
-              createdAt.toISOString(),
-              idle.toISOString(),
-              absolute.toISOString(),
-            ],
-          );
-          return librarySession(inserted.rows[0], data.token);
+        if (model !== 'session') throw new Error(`The SAVEN library adapter does not create ${model} rows.`);
+        // The injected application clock is authoritative; a library-supplied
+        // timestamp cannot reorder the row relative to the trusted now.
+        const createdAt = now();
+        const absolute = new Date(createdAt.getTime() + settings.absoluteMs);
+        const requested = data.expiresAt instanceof Date
+          ? data.expiresAt
+          : new Date(createdAt.getTime() + settings.idleMs);
+        const idle = capIdleExpiry({at: createdAt, requested, absolute, idleMs: settings.idleMs});
+        const user = await query(
+          'SELECT status, credential_version FROM auth.users WHERE id = $1',
+          [data.userId],
+        );
+        if (user.rowCount !== 1 || user.rows[0].status !== 'active') {
+          throw new AuthError(400, 'SESSION_USER_INVALID', 'The library adapter refused an inactive or unknown user.');
         }
-        throw new Error(`The SAVEN library adapter does not create ${model} rows.`);
+        const inserted = await query(
+          `INSERT INTO auth.sessions(
+             user_id, token_hash, realm, assurance_level,
+             ip_address, user_agent, credential_version,
+             created_at, last_seen_at, idle_expires_at, absolute_expires_at)
+           VALUES ($1, $2, $3, 'single_factor', $4, $5, $6, $7, $7, $8, $9)
+           RETURNING *`,
+          [
+            data.userId,
+            digest(requireRawToken(data.token)),
+            realm,
+            data.ipAddress || null,
+            data.userAgent || null,
+            Number(user.rows[0].credential_version),
+            createdAt.toISOString(),
+            idle.toISOString(),
+            absolute.toISOString(),
+          ],
+        );
+        return librarySession(inserted.rows[0], data.token);
       },
 
       async findOne({model, where, join}) {
         if (model === 'user') {
           const filter = buildWhere('user', where);
-          const result = await query(`SELECT * FROM auth.users ${filter.sql} LIMIT 1`, filter.values);
+          const result = await query(`SELECT * FROM auth.users u WHERE ${filter.sql} LIMIT 1`, filter.values);
           return result.rowCount === 1 ? libraryUser(result.rows[0]) : null;
         }
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where);
-        const result = await query(
-          `SELECT * FROM auth.sessions ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL LIMIT 1`,
-          filter.values,
-        );
+        const {sql, params} = sessionSelect(where, 0, {limit: 1});
+        const result = await query(sql, params);
         if (result.rowCount !== 1) return null;
         const row = result.rows[0];
-        const at = now().getTime();
-        if (row.absolute_expires_at.getTime() <= at || row.idle_expires_at.getTime() <= at) return null;
+        if (!sessionAuthorityHolds(row, now())) return null;
         const rawToken = where?.find(entry => entry.field === 'token')?.value;
         const session = librarySession(row, typeof rawToken === 'string' ? rawToken : undefined);
         if (join?.user) {
@@ -294,40 +342,80 @@ export async function createBetterAuthSessions({
         return session;
       },
 
-      async findMany({model, where, limit = 100, sortBy, offset = 0}) {
+      async findMany({model, where = [], limit = 100, sortBy, offset = 0, join}) {
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where);
-        const order = sortBy ? `ORDER BY ${SESSION_FIELD[sortBy.field] ?? 'created_at'} ${sortBy.direction === 'asc' ? 'ASC' : 'DESC'}` : '';
+        const filter = buildWhere('session', where, 0, {requireFilter: false});
+        const params = [...filter.values, nowIso(), realm];
+        const at = params.length - 1;
+        const realmIndex = params.length;
+        const order = sortBy
+          ? `ORDER BY ${SESSION_FIELD[sortBy.field] ?? 's.created_at'} ${sortBy.direction === 'asc' ? 'ASC' : 'DESC'}`
+          : 'ORDER BY s.created_at DESC';
+        params.push(Math.min(limit, 100), offset);
         const result = await query(
-          `SELECT * FROM auth.sessions ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL ${order} LIMIT $${filter.values.length + 1} OFFSET $${filter.values.length + 2}`,
-          [...filter.values, Math.min(limit, 100), offset],
+          `SELECT s.*, u.status AS user_status, u.credential_version AS current_credential_version
+           FROM auth.sessions s
+           JOIN auth.users u ON u.id = s.user_id
+           ${filter.sql ? `WHERE ${filter.sql} AND` : 'WHERE'}
+             s.revoked_at IS NULL
+             AND s.realm = $${realmIndex}
+             AND s.absolute_expires_at > $${at}::timestamptz
+             AND s.idle_expires_at > $${at}::timestamptz
+             AND u.status = 'active'
+             AND u.credential_version = s.credential_version
+           ${order}
+           LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          params,
         );
-        return result.rows.map(row => librarySession(row));
+        const live = result.rows.filter(row => sessionAuthorityHolds(row, now()));
+        if (!live.length) return [];
+        // Bulk token filters know the raw tokens; map each digest back so the library
+        // can key its result set by the token it asked for. Hashes are never reversed.
+        const rawByDigest = new Map();
+        for (const entry of where) {
+          if (entry.field !== 'token') continue;
+          for (const value of Array.isArray(entry.value) ? entry.value : [entry.value]) {
+            if (typeof value === 'string') rawByDigest.set(digest(value), value);
+          }
+        }
+        let users = new Map();
+        if (join?.user) {
+          const ids = [...new Set(live.map(row => row.user_id))];
+          const userRows = await query('SELECT * FROM auth.users WHERE id = ANY($1::uuid[])', [ids]);
+          users = new Map(userRows.rows.map(row => [row.id, libraryUser(row)]));
+        }
+        return live.map(row => {
+          const session = librarySession(row, rawByDigest.get(row.token_hash));
+          return join?.user ? {...session, user: users.get(row.user_id)} : session;
+        });
       },
 
       async update({model, where, update}) {
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where);
-        const sets = [];
-        const values = [...filter.values];
-        if (update.expiresAt instanceof Date) {
-          values.push(update.expiresAt.toISOString());
-          sets.push(`idle_expires_at = LEAST($${values.length}::timestamptz, absolute_expires_at)`);
-        }
-        if (update.ipAddress !== undefined) {
-          values.push(update.ipAddress);
-          sets.push(`ip_address = $${values.length}`);
-        }
-        if (update.userAgent !== undefined) {
-          values.push(update.userAgent);
-          sets.push(`user_agent = $${values.length}`);
-        }
-        if (sets.length === 0) return null;
-        values.push(now().toISOString());
-        sets.push(`updated_at = $${values.length}`);
+        const filter = buildWhere('session', where, 3);
+        const at = now();
+        const requested = update.expiresAt instanceof Date ? update.expiresAt : at;
+        const params = [at.toISOString(), requested.toISOString(), settings.idleMs / 1000, ...filter.values, realm];
+        const realmIndex = params.length;
         const result = await query(
-          `UPDATE auth.sessions SET ${sets.join(', ')} ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL RETURNING *`,
-          values,
+          `UPDATE auth.sessions s
+           SET last_seen_at = GREATEST($1::timestamptz, s.created_at),
+               idle_expires_at = LEAST(
+                 GREATEST($1::timestamptz, s.created_at) + make_interval(secs => $3::double precision),
+                 $2::timestamptz,
+                 s.absolute_expires_at),
+               updated_at = $1::timestamptz
+           FROM auth.users u
+           WHERE u.id = s.user_id
+             AND ${filter.sql}
+             AND s.revoked_at IS NULL
+             AND s.realm = $${realmIndex}
+             AND s.absolute_expires_at > $1::timestamptz
+             AND s.idle_expires_at > $1::timestamptz
+             AND u.status = 'active'
+             AND u.credential_version = s.credential_version
+           RETURNING s.*`,
+          params,
         );
         if (result.rowCount !== 1) return null;
         const rawToken = where?.find(entry => entry.field === 'token')?.value;
@@ -336,12 +424,35 @@ export async function createBetterAuthSessions({
 
       async updateMany({model, where, update}) {
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where, 2);
         if (!(update.expiresAt instanceof Date)) throw new Error('Only expiry updates are supported.');
+        const filter = buildWhere('session', where, 3);
+        const at = now();
+        const params = [
+          at.toISOString(),
+          update.expiresAt.toISOString(),
+          settings.idleMs / 1000,
+          ...filter.values,
+          realm,
+        ];
+        const realmIndex = params.length;
         const result = await query(
-          `UPDATE auth.sessions SET idle_expires_at = LEAST($1::timestamptz, absolute_expires_at), updated_at = $2::timestamptz
-           ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL`,
-          [update.expiresAt.toISOString(), now().toISOString(), ...filter.values],
+          `UPDATE auth.sessions s
+           SET last_seen_at = GREATEST($1::timestamptz, s.created_at),
+               idle_expires_at = LEAST(
+                 GREATEST($1::timestamptz, s.created_at) + make_interval(secs => $3::double precision),
+                 $2::timestamptz,
+                 s.absolute_expires_at),
+               updated_at = $1::timestamptz
+           FROM auth.users u
+           WHERE u.id = s.user_id
+             AND ${filter.sql}
+             AND s.revoked_at IS NULL
+             AND s.realm = $${realmIndex}
+             AND s.absolute_expires_at > $1::timestamptz
+             AND s.idle_expires_at > $1::timestamptz
+             AND u.status = 'active'
+             AND u.credential_version = s.credential_version`,
+          params,
         );
         return result.rowCount;
       },
@@ -349,31 +460,49 @@ export async function createBetterAuthSessions({
       // The library deletes on revoke; canonical history is preserved as a revocation.
       async delete({model, where}) {
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where, 1);
-        await query(
-          `UPDATE auth.sessions SET revoked_at = $1::timestamptz, revoked_reason = 'logout'
-           ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL`,
-          [now().toISOString(), ...filter.values],
+        const filter = buildWhere('session', where, 2);
+        const result = await query(
+          `UPDATE auth.sessions s
+           SET revoked_at = $1::timestamptz, revoked_reason = 'logout'
+           WHERE ${filter.sql} AND s.revoked_at IS NULL AND s.realm = $2`,
+          [nowIso(), realm, ...filter.values],
         );
+        if (result.rowCount === 0) {
+          throw new Error('The library adapter matched no session to revoke.');
+        }
+        return undefined;
       },
 
       async deleteMany({model, where}) {
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where, 1);
+        const filter = buildWhere('session', where, 2);
         const result = await query(
-          `UPDATE auth.sessions SET revoked_at = $1::timestamptz, revoked_reason = 'sessions_revoked_all'
-           ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL`,
-          [now().toISOString(), ...filter.values],
+          `UPDATE auth.sessions s
+           SET revoked_at = $1::timestamptz, revoked_reason = 'sessions_revoked_all'
+           WHERE ${filter.sql} AND s.revoked_at IS NULL AND s.realm = $2`,
+          [nowIso(), realm, ...filter.values],
         );
         return result.rowCount;
       },
 
-      async count({model, where}) {
+      async count({model, where = []}) {
         if (model !== 'session') throw new Error(`Unsupported adapter model: ${model}`);
-        const filter = buildWhere('session', where);
+        const filter = buildWhere('session', where, 0, {requireFilter: false});
+        const params = [...filter.values, nowIso(), realm];
+        const at = params.length - 1;
+        const realmIndex = params.length;
         const result = await query(
-          `SELECT count(*)::int AS n FROM auth.sessions ${filter.sql ? `${filter.sql} AND` : 'WHERE'} revoked_at IS NULL`,
-          filter.values,
+          `SELECT count(*)::int AS n
+           FROM auth.sessions s
+           JOIN auth.users u ON u.id = s.user_id
+           ${filter.sql ? `WHERE ${filter.sql} AND` : 'WHERE'}
+             s.revoked_at IS NULL
+             AND s.realm = $${realmIndex}
+             AND s.absolute_expires_at > $${at}::timestamptz
+             AND s.idle_expires_at > $${at}::timestamptz
+             AND u.status = 'active'
+             AND u.credential_version = s.credential_version`,
+          params,
         );
         return result.rows[0].n;
       },
@@ -387,7 +516,6 @@ export async function createBetterAuthSessions({
     session: {
       expiresIn: Math.floor(settings.idleMs / 1000),
       updateAge: 60,
-      // Cookie-only cached authority is prohibited: every read goes to PostgreSQL.
       cookieCache: {enabled: false},
       storeSessionInDatabase: true,
     },

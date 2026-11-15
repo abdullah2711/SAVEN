@@ -44,16 +44,27 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 - No cookie-only authority: the cookie carries an opaque token only, and every
   request re-reads the server-side session. Session data is never cached in a cookie.
 - Atomic success: the session insert and its `login_success` audit row commit on one
-  checked-out transaction client, and the cookie is only set after commit. A failed
-  audit or commit leaves no live session. Logout revokes and audits in one
-  transaction; a failed logout audit rolls the revocation back. Failed-login audit is
-  a separate autocommit statement so a refused attempt is still recorded.
+  checked-out transaction client, and the cookie is only set after commit. Logout
+  revokes and audits in one transaction; a failed logout audit rolls the revocation
+  back. Failed-login audit is a separate autocommit statement so a refused attempt is
+  still recorded.
+- Transaction outcomes are reported honestly. A known failed statement is rolled back
+  and reported as a failure. A lost COMMIT acknowledgement is an indeterminate
+  outcome: the response is `503 SESSION_TRANSACTION_UNCERTAIN`, no credential is
+  published, and the connection is destroyed instead of being returned to the pool.
+  The row may exist after such a commit, but its token was never disclosed and it
+  remains unusable to the caller. A failed ROLLBACK also destroys the client, because
+  an uncertain connection must not be reused.
 - Race safety: rotation locks the source row (`SELECT … FOR UPDATE`), re-validates
   revoked/idle/absolute/status/credential epoch at the mutation boundary, creates
   exactly one successor and consumes the source, all in one transaction. Concurrent
-  rotations leave one live session; a rotation racing logout leaves none. `refresh`
-  is a guarded UPDATE that cannot revive an idle-expired, revoked, disabled or
-  credential-stale row, and `/v1/auth/me` fails closed if that update matches nothing.
+  rotations leave one live session; a rotation racing logout leaves at most one. The
+  permitted linearization is explicit: if rotation wins, the concurrent revoke targets
+  the already-consumed token, reports no live row and does not reach the successor; if
+  revoke wins, rotation returns no successor. History is retained either way.
+  `refresh` is a guarded UPDATE that cannot revive an idle-expired, revoked, disabled
+  or credential-stale row, and `/v1/auth/me` fails closed if that update matches
+  nothing.
 - Bounded configuration: durations must be integral, positive, shorter than or equal
   to the ADR03 30-day idle / 90-day absolute ceilings, and token generation stays at
   32–64 random bytes. Weaker or malformed overrides are refused at construction.
@@ -105,13 +116,25 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 - Cloud operator access: AUTH-007 validates the asserted identity provider and decides
   the operator realm; the operator branch here fails closed on purpose.
 - Better Auth adaptation: `createBetterAuthSessions` instantiates the pinned library
-  with a custom adapter over the canonical schema. It hashes the raw token before
-  every SQL lookup, maps revoke/delete to a revocation `UPDATE`, caps the library's
-  `expiresAt` at the immutable absolute ceiling, disables cookie cache and disables
-  library schema validation. The gate drives the library's own
-  `createSession`/`findSession`/`updateSession`/`deleteSession` lifecycle. Remaining
-  work is activation: model/field parity for accounts, verification and plugins
-  (2FA/passkey), route wiring and entry-point cutover are not part of this module.
+  with a custom adapter over the canonical schema. It enforces the same authority as
+  the first-party store, not a weaker parallel lifecycle:
+  - lookup, list and count paths reject revoked rows, disabled users, stale credential
+    epochs, non-matching realms, idle expiry and absolute expiry;
+  - create caps a library-supplied expiry at the configured idle policy and the
+    immutable absolute ceiling, and refuses an inactive or unknown user;
+  - update/updateMany cannot revive an expired row and cannot exceed the configured
+    idle policy or the ceiling;
+  - revoke/delete is a revocation `UPDATE` that preserves history;
+  - raw tokens are hashed exactly once per value, including bulk `token IN (...)`
+    lookups and revocations; unsupported operators, empty lists and empty filters fail
+    closed instead of broadening to a full-table statement.
+  Cookie cache and library schema validation stay disabled. The gate drives the
+  library's own `createSession`/`findSession`/`updateSession`/`deleteSession` plus its
+  bulk `findSessions`/`deleteSessions` paths. Limitation: a list without an explicit
+  token filter cannot recover raw tokens, so such results expose digest identifiers
+  and are not usable for client display. Remaining work is activation: model/field
+  parity for accounts, verification and plugins (2FA/passkey), route wiring and
+  entry-point cutover are not part of this module.
 
 ## Non-claims
 

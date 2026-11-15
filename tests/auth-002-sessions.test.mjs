@@ -720,3 +720,274 @@ test('AUTH-002 cookie policy distinguishes realms and local fixtures', () => {
   const cleared = sessionCookie({realm: 'customer', token: '', secure: true, maxAgeSeconds: 0});
   assert.match(cleared, /Max-Age=0/);
 });
+
+test('AUTH-002-R2 library adapter enforces identity, epoch, realm and expiry authority', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    const userId = await insertUser(db, 'library-authority@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const {context} = await createBetterAuthSessions({
+        pool,
+        origins,
+        secret: 'test-only-library-secret-that-is-long-enough',
+        clock: clock.clock,
+      });
+      const created = await context.internalAdapter.createSession(userId, false);
+      assert.ok(await context.internalAdapter.findSession(created.token));
+      assert.equal((await context.internalAdapter.listSessions(userId)).length, 1);
+
+      await db.adminQuery(`UPDATE auth.users SET status = 'disabled' WHERE id = $1`, [userId]);
+      assert.equal(await context.internalAdapter.findSession(created.token), null, 'a disabled identity must not resolve through the library');
+      assert.deepEqual(await context.internalAdapter.listSessions(userId), [], 'list paths must exclude a disabled identity');
+
+      await db.adminQuery(
+        `UPDATE auth.users SET status = 'active', credential_version = credential_version + 1 WHERE id = $1`,
+        [userId],
+      );
+      assert.equal(await context.internalAdapter.findSession(created.token), null, 'a stale credential epoch must not resolve through the library');
+      await db.adminQuery(`UPDATE auth.users SET credential_version = 1 WHERE id = $1`, [userId]);
+      assert.ok(await context.internalAdapter.findSession(created.token));
+
+      const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+      const operatorSession = await store.createSession({userId, realm: 'operator', credentialVersion: 1});
+      assert.equal(await context.internalAdapter.findSession(operatorSession.token), null, 'the library adapter must be realm-bound');
+
+      clock.advance(SESSION_DEFAULTS.idleMs + 60 * 1000);
+      assert.equal(await context.internalAdapter.findSession(created.token), null, 'an idle-expired library session must not resolve');
+      const revived = await context.internalAdapter.updateSession(created.token, {
+        expiresAt: new Date(clock.now().getTime() + 2 * DAY),
+      });
+      assert.ok(!revived, 'a library update must not revive an idle-expired session');
+      const stored = await sessionState(db, created.token);
+      assert.equal(stored.revoked_at, null);
+      assert.ok(stored.idle_expires_at.getTime() <= clock.now().getTime(), 'the expired idle window must not be replaced');
+    });
+  });
+});
+
+test('AUTH-002-R2 library adapter hashes bulk tokens once and revokes exactly those rows', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    const userId = await insertUser(db, 'library-bulk@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const calls = [];
+      const spyPool = {
+        async connect() {
+          const client = await pool.connect();
+          const original = client.query.bind(client);
+          client.query = (text, params) => {
+            calls.push({text, params});
+            return original(text, params);
+          };
+          return client;
+        },
+        query(text, params) {
+          calls.push({text, params});
+          return pool.query(text, params);
+        },
+      };
+      const {context} = await createBetterAuthSessions({
+        pool: spyPool,
+        origins,
+        secret: 'test-only-library-secret-that-is-long-enough',
+        clock: clock.clock,
+      });
+      const tokens = [];
+      for (let index = 0; index < 3; index += 1) {
+        tokens.push((await context.internalAdapter.createSession(userId, false)).token);
+      }
+
+      const listed = await context.internalAdapter.findSessions(tokens);
+      assert.equal(listed.length, 3, 'bulk token lookup must match every live session');
+      assert.deepEqual(new Set(listed.map(entry => entry.session.userId)), new Set([userId]));
+
+      await context.internalAdapter.deleteSessions(tokens.slice(0, 2));
+      const states = await Promise.all(tokens.map(token => sessionState(db, token)));
+      assert.ok(states[0].revoked_at instanceof Date, 'bulk revoke must revoke the first row');
+      assert.ok(states[1].revoked_at instanceof Date, 'bulk revoke must revoke the second row');
+      assert.equal(states[2].revoked_at, null, 'bulk revoke must not touch unrelated sessions');
+      assert.equal((await context.internalAdapter.findSessions(tokens)).length, 1);
+
+      const ids = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.sessions WHERE user_id = $1::uuid AND revoked_at IS NULL`,
+        [userId],
+      );
+      assert.equal(ids.rows[0].n, 1, 'exactly one live session must remain');
+
+      // Bulk token filters must carry per-token digests, never a digest of a list.
+      const bulkCalls = calls.filter(call => Array.isArray(call.params?.[0]) && call.params[0].length >= 2);
+      assert.ok(bulkCalls.length > 0, 'a bulk token call must have been observed');
+      for (const call of bulkCalls) {
+        for (const value of call.params[0]) {
+          assert.match(value, /^[0-9a-f]{64}$/, 'each bulk token must be hashed exactly once');
+          for (const token of tokens) assert.notEqual(value, token);
+        }
+      }
+    });
+  });
+});
+
+test('AUTH-002-R2 library adapter applies the configured idle policy and preserves the ceiling', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    const userId = await insertUser(db, 'library-policy@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const shortConfig = {idleMs: 60 * 60 * 1000, absoluteMs: 2 * 60 * 60 * 1000};
+      const {context} = await createBetterAuthSessions({
+        pool,
+        origins,
+        secret: 'test-only-library-secret-that-is-long-enough',
+        clock: clock.clock,
+        config: shortConfig,
+      });
+
+      // An over-limit requested expiry (forced through overrideAll) may not exceed the
+      // configured idle policy or the absolute ceiling.
+      const created = await context.internalAdapter.createSession(userId, false, {
+        expiresAt: new Date(clock.now().getTime() + 30 * DAY),
+      }, true);
+      const row = await sessionState(db, created.token);
+      assert.equal(row.absolute_expires_at - row.created_at, shortConfig.absoluteMs);
+      assert.equal(row.idle_expires_at - row.created_at, shortConfig.idleMs);
+
+      clock.advance(30 * 60 * 1000);
+      const refreshed = await context.internalAdapter.updateSession(created.token, {
+        expiresAt: new Date(clock.now().getTime() + 30 * DAY),
+      });
+      assert.ok(refreshed, 'a live library session may refresh');
+      const after = await sessionState(db, created.token);
+      assert.equal(after.absolute_expires_at.getTime(), row.absolute_expires_at.getTime(), 'refresh must preserve the absolute ceiling');
+      assert.ok(
+        after.idle_expires_at.getTime() <= clock.now().getTime() + shortConfig.idleMs,
+        'refresh must not exceed the configured idle policy',
+      );
+      assert.ok(after.idle_expires_at.getTime() <= after.absolute_expires_at.getTime());
+    });
+  });
+});
+
+test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connection', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'commit@example.com', 'correct-horse-battery');
+
+      const makePool = mode => {
+        const releases = [];
+        return {
+          releases,
+          pool: {
+            query: (text, params) => pool.query(text, params),
+            async connect() {
+              const client = await pool.connect();
+              const originalQuery = client.query.bind(client);
+              const originalRelease = client.release.bind(client);
+              client.query = async (text, params) => {
+                const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+                if (statement === 'COMMIT' && mode === 'commit') throw new Error('commit acknowledgement lost');
+                if (statement === 'ROLLBACK' && mode === 'rollback') throw new Error('rollback failed');
+                return originalQuery(text, params);
+              };
+              client.release = destroy => {
+                releases.push(destroy === true);
+                return originalRelease(destroy);
+              };
+              return client;
+            },
+          },
+        };
+      };
+
+      const commitFailure = makePool('commit');
+      const commitServer = createAuthServer({pool: commitFailure.pool, clock: clock.clock, origins, secureCookies: true});
+      const commitResponse = await commitServer.handler(loginRequest({
+        email: 'commit@example.com',
+        password: 'correct-horse-battery',
+      }));
+      assert.equal(commitResponse.status, 503, 'a lost commit acknowledgement must not be reported as success');
+      const commitBody = await commitResponse.json();
+      assert.equal(commitBody.error.code, 'SESSION_TRANSACTION_UNCERTAIN');
+      assert.equal(commitResponse.headers.get('set-cookie'), null, 'no credential may be published before a confirmed commit');
+      assert.ok(commitFailure.releases.includes(true), 'a client with an unknown transaction state must be destroyed, not pooled');
+
+      const rollbackFailure = makePool('rollback');
+      const failingAudit = async () => {
+        throw new Error('audit unavailable');
+      };
+      const rollbackServer = createAuthServer({
+        pool: rollbackFailure.pool,
+        clock: clock.clock,
+        origins,
+        secureCookies: true,
+        audit: failingAudit,
+      });
+      const rollbackResponse = await rollbackServer.handler(loginRequest({
+        email: 'commit@example.com',
+        password: 'correct-horse-battery',
+      }));
+      assert.equal(rollbackResponse.status, 503);
+      assert.equal(rollbackResponse.headers.get('set-cookie'), null);
+      assert.ok(rollbackFailure.releases.includes(true), 'a failed ROLLBACK must destroy the uncertain client');
+
+      // A successful control run still works after the injected failures.
+      const healthy = createAuthServer({pool, clock: clock.clock, origins, secureCookies: true});
+      const ok = await login(healthy.handler, 'commit@example.com', 'correct-horse-battery');
+      assert.equal(ok.response.status, 200);
+      assert.ok(ok.token);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-002-R2 concurrent revoke and rotation linearize to at most one live session', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler, store} = createAuthServer({pool, clock: clock.clock, origins, secureCookies: true});
+      await insertUser(db, 'interleave@example.com', 'correct-horse-battery');
+
+      const first = await login(handler, 'interleave@example.com', 'correct-horse-battery');
+      const firstRow = await sessionState(db, first.token);
+      const userId = await db.adminQuery(`SELECT user_id::text AS id FROM auth.sessions WHERE id = $1::uuid`, [firstRow.id])
+        .then(result => result.rows[0].id);
+      const [rotated, revoked] = await Promise.all([
+        store.rotateSession(firstRow.id),
+        store.revokeSession(first.token, {reason: 'logout'}),
+      ]);
+      const live = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.sessions WHERE user_id = $1::uuid AND revoked_at IS NULL`,
+        [userId],
+      ).then(result => result.rows[0].n);
+      assert.ok(live <= 1, 'a revoke/rotation interleaving must never leave two live sessions');
+      if (rotated) {
+        assert.equal(live, 1, 'when rotation wins, its successor is the single live session');
+        assert.equal(revoked, null, 'the concurrent revoke targeted the already-consumed token');
+        assert.equal((await handler(meRequest(rotated.token))).status, 200);
+        assert.equal((await handler(meRequest(first.token))).status, 401);
+        const history = await sessionState(db, first.token);
+        assert.ok(history.revoked_at instanceof Date, 'the consumed source keeps its revocation history');
+      } else {
+        assert.equal(live, 0, 'when revoke wins, no successor may survive');
+        assert.ok(revoked, 'the revoke that won must be recorded');
+        assert.equal((await handler(meRequest(first.token))).status, 401);
+      }
+
+      // Sequential: rotate first, then revoke the old token. The permitted linearization
+      // is that an old-token revoke does not reach an already-issued successor.
+      const second = await login(handler, 'interleave@example.com', 'correct-horse-battery');
+      const secondRow = await sessionState(db, second.token);
+      const successor = await store.rotateSession(secondRow.id);
+      const staleRevoke = await store.revokeSession(second.token, {reason: 'logout'});
+      assert.equal(staleRevoke, null, 'revoking an already-consumed token reports no live row');
+      assert.equal((await handler(meRequest(successor.token))).status, 200, 'the successor stays valid until it is revoked explicitly');
+      const successorRevoke = await store.revokeSession(successor.token, {reason: 'logout'});
+      assert.ok(successorRevoke);
+      assert.equal((await handler(meRequest(successor.token))).status, 401);
+    } finally {
+      await pool.end();
+    }
+  });
+});
