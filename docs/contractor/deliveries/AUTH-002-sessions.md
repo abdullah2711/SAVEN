@@ -218,3 +218,128 @@ the cluster was stopped and its data directory deleted.
 ## GIT (R1)
 
 branch=opencode/auth-002-sessions commits=`a788861`,report commit pushed=yes
+
+# AUTH-002-R2 revision — 16 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-002-R1-sessions.md` delivered at
+`577423c` on `codex/pivot-003-rulings`. Contract executed: its `IF REVISE` block, on
+branch `opencode/auth-002-sessions` (base `d0a50cd`, on top of R1 `4a60b42`).
+Implementation commit `529ca9e`, plus this report commit. TOUCH stayed exact; no
+package, schema, migration, native route, connector or throttle change.
+
+## Finding 1 — library path enforces the same session authority
+
+`findOne`, `findMany` and `count` now join `auth.users` and reject revoked rows,
+`status <> 'active'`, `credential_version <> current_credential_version`, sessions in a
+different realm, idle expiry and absolute expiry. `libraryUser` projects `status` and
+`credentialVersion` so the security fields are visible to the adapter rather than
+dropped. `sessionAuthorityHolds` is exported from the store and reused by the adapter,
+so the two paths cannot diverge into a weaker parallel authority.
+
+Real-library evidence (`AUTH-002-R2 library adapter enforces identity, epoch, realm and
+expiry authority`): disabling the identity makes `findSession` null and
+`listSessions` empty; incrementing the credential epoch makes it null; restoring both
+makes it resolve again; a customer-realm library lookup does not resolve an
+operator-realm session; advancing past idle expiry makes `findSession` null.
+
+## Finding 2 — no resurrection and no over-limit library expiry
+
+- `create` now uses the injected application clock for `created_at`, refuses inactive or
+  unknown users, and caps any library-supplied expiry at `now + idleMs` and the absolute
+  ceiling (`capIdleExpiry`, shared with the store).
+- `update`/`updateMany` are guarded `UPDATE … FROM auth.users` statements that match only
+  a live, unexpired, active, current-epoch, same-realm row. The new idle expiry is
+  `LEAST(GREATEST(now, created_at) + configured idle, requested expiry, absolute)`, so a
+  day-31 expired session cannot be revived inside its day-90 window.
+- Tests: direct library refresh after idle expiry returns null and leaves the row
+  untouched; a shorter 1h/2h policy caps both a forced over-limit create (via
+  `overrideAll`) and an over-limit update; the absolute ceiling is unchanged by refresh.
+
+## Finding 3 — correct bulk-token hashing and fail-closed filters
+
+`buildWhere` now branches on the operator first. `token IN (...)` hashes each raw token
+exactly once into an array parameter (never a digest of the list, never double hashing),
+`token` only supports `eq`/`in`, empty lists and empty filters throw, and unsupported
+operators/connectors fail closed. Bulk lookups map each digest back to the raw token the
+library supplied, and `findMany` attaches the `user` join.
+
+Evidence (`… hashes bulk tokens once and revokes exactly those rows`): three live
+sessions, `findSessions(tokens)` returns all three, `deleteSessions(first two)` revokes
+exactly those two rows and leaves the third live and listed; every observed bulk
+parameter is a 64-hex digest and no raw token appears in SQL text or parameters.
+
+## Finding 4 — honest failure/race evidence
+
+- `withTransaction` distinguishes outcomes. A failed statement is rolled back and
+  reported. A lost `COMMIT` acknowledgement throws
+  `503 SESSION_TRANSACTION_UNCERTAIN`, publishes no cookie, and destroys the client
+  (`release(true)`) instead of returning it to the pool; a failed `ROLLBACK` also
+  destroys the client. The README no longer claims a commit failure leaves no row: the
+  row may exist after an unknown commit, but its token is never disclosed and remains
+  unusable.
+- Deterministic injection (`… unknown commit outcomes publish nothing and evict the
+  connection`) fails `COMMIT` and separately fails `ROLLBACK`, asserting response code,
+  absence of `Set-Cookie`, and destroy-release in both cases, followed by a healthy
+  control login.
+- Concurrency (`… concurrent revoke and rotation linearize to at most one live
+  session`): a real `Promise.all` rotate/revoke yields at most one live session; if
+  rotation wins the concurrent revoke reports no live row and does not reach the
+  successor (history preserved); if revoke wins no successor exists. A sequential
+  rotate-then-old-token-revoke is asserted to leave the successor live until it is
+  explicitly revoked — the documented permitted linearization.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-002-sessions.test.mjs
+PASS: 153 JavaScript files parsed; package manifest valid.
+✔ AUTH-002 login persists only a digest and issues a host-only secure cookie (511.091134ms)
+✔ AUTH-002 sessions fail closed on expiry, revocation, disablement and credential epochs (982.476614ms)
+✔ AUTH-002 activity extends idle expiry but never the absolute ceiling (481.124985ms)
+✔ AUTH-002 rotation is serialized, preserves the ceiling and cannot be replayed (483.179233ms)
+✔ AUTH-002 rotation and refresh cannot revive an idle-expired session (465.929287ms)
+✔ AUTH-002 success and audit commit atomically while failure audit stays durable (628.40632ms)
+✔ AUTH-002 CSRF, origin, content-type and field boundaries refuse client authority (477.031656ms)
+✔ AUTH-002 failures are non-enumerating and audited without secrets (652.598554ms)
+✔ AUTH-002 plaintext tokens never cross the database boundary on the real role (452.599675ms)
+✔ AUTH-002 configuration enforces ADR ceilings and effective dates (376.641393ms)
+✔ AUTH-002 lifecycle and failure paths run under the real auth-service role (494.454112ms)
+✔ AUTH-002 pinned Better Auth drives the digest-only session lifecycle (710.542213ms)
+✔ AUTH-002 cookie policy distinguishes realms and local fixtures (0.504908ms)
+✔ AUTH-002-R2 library adapter enforces identity, epoch, realm and expiry authority (373.545602ms)
+✔ AUTH-002-R2 library adapter hashes bulk tokens once and revokes exactly those rows (375.677997ms)
+✔ AUTH-002-R2 library adapter applies the configured idle policy and preserves the ceiling (357.195505ms)
+✔ AUTH-002-R2 unknown commit outcomes publish nothing and evict the connection (638.9471ms)
+✔ AUTH-002-R2 concurrent revoke and rotation linearize to at most one live session (563.205526ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0`. Full suite on the same runtime/cluster: `187` tests, `187` pass, `0` fail,
+`0` skipped. Without the dedicated-cluster opt-in: exit `1`, one database-independent
+pass and seventeen refusals before mutation.
+
+Environment: Node `v24.19.0`; dedicated disposable PostgreSQL 18.6 cluster on loopback
+`127.0.0.1:55442`; fixture objects and per-test auth-service logins removed; post-gate
+queries returned no `saven_auth_%` roles or databases; cluster stopped and data
+directory deleted; `node_modules` symlink removed.
+
+## R2 questions, deviations and cleanup
+
+- Questions: none blocking. The one adapter limitation is documented: results from a
+  list without an explicit token filter cannot expose raw tokens (only digests), because
+  the schema deliberately stores digests only. If a future UI needs to list raw session
+  tokens, that requires an explicit product/security decision, not a heap of hashes.
+- Deviations: none from the contract. `delete` now throws when a revoke matches no
+  session (a zero-row revoke is not reported as success); `deleteMany` returns the real
+  affected-row count and the tests assert stored state rather than trusting it.
+- Cleanup: cluster stopped, data directory and logs removed, no cluster objects left,
+  nothing merged.
+
+## GIT (R2)
+
+branch=opencode/auth-002-sessions commits=`529ca9e`,report commit pushed=yes
