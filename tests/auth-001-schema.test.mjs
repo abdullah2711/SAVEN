@@ -58,6 +58,20 @@ test('AUTH-001 schema text keeps canonical authority and extensibility boundarie
   assert.match(schemaSql, /legacy_id/);
   assert.doesNotMatch(schemaSql, /^\s*CREATE\s+TABLE\s+[^;]*\bpassword\s+text/im);
   assert.doesNotMatch(schemaSql, /^\s*CREATE\s+TABLE\s+[^;]*\btoken\s+text/im);
+
+  // AUTH-001-R1 correction: additive, validated, privilege-neutral.
+  const correctionSql = await readFile(
+    new URL('db/postgres/migrations/006-auth-schema-corrections.sql', repoRoot),
+    'utf8',
+  );
+  assert.match(correctionSql, /ADD CONSTRAINT oauth_state_pkce_key_binding_chk/);
+  assert.match(correctionSql, /CHECK \(code_verifier_ciphertext IS NULL OR \(/);
+  assert.match(correctionSql, /code_verifier_key_version IS NOT NULL AND code_verifier_key_version > 0/);
+  assert.match(correctionSql, /NOT VALID/);
+  assert.match(correctionSql, /VALIDATE CONSTRAINT oauth_state_pkce_key_binding_chk/);
+  assert.doesNotMatch(correctionSql, /DROP\s+CONSTRAINT|DROP\s+TABLE|ALTER\s+COLUMN|DROP\s+COLUMN/i);
+  assert.doesNotMatch(correctionSql, /^\s*(?:GRANT|REVOKE|CREATE\s+ROLE)\s/im);
+  assert.doesNotMatch(correctionSql, /\bPASSWORD\s+(?:E)?'|postgres(?:ql)?:\/\//i);
 });
 
 test('AUTH-001 canonical auth schema applies with constrained ownership and no duplicate registries', async () => {
@@ -572,6 +586,118 @@ test('AUTH-001 verification, recovery and OAuth tokens are single-use and hash-o
   });
 });
 
+test('AUTH-001 PKCE ciphertext requires a positive key version', async () => {
+  await withAuthDatabase(async db => {
+    const constraint = (
+      await db.adminQuery(
+        `SELECT convalidated, pg_get_constraintdef(oid) AS definition
+         FROM pg_constraint
+         WHERE conname = 'oauth_state_pkce_key_binding_chk'
+           AND conrelid = 'auth.oauth_state'::regclass`,
+      )
+    ).rows[0];
+    assert.ok(constraint, 'the additive AUTH-001-R1 key-binding constraint must exist');
+    assert.equal(constraint.convalidated, true, 'the key-binding constraint must be validated, not left NOT VALID');
+    assert.match(constraint.definition, /code_verifier_key_version IS NOT NULL/);
+    assert.match(constraint.definition, /code_verifier_key_version > 0/);
+    assert.match(constraint.definition, /code_verifier_ciphertext IS NULL/);
+
+    const insertState = (hashSeed, ciphertext, keyVersion) => db.asRole('authService', client => client.query(
+      `INSERT INTO auth.oauth_state(
+         provider_id, purpose, state_hash, code_verifier_ciphertext, code_verifier_key_version, expires_at)
+       VALUES('generic_oauth', 'login', $1, $2, $3, now() + interval '10 minutes')`,
+      [hex64(hashSeed), ciphertext, keyVersion],
+    ), {commit: true});
+
+    for (const [label, version] of [['null', null], ['zero', 0], ['negative', -1]]) {
+      await assert.rejects(
+        () => insertState('pkce-bad-' + label, 'envelope-ciphertext-value', version),
+        /violates check constraint/,
+        `a ${label} key version must not carry a PKCE ciphertext`,
+      );
+    }
+
+    // Valid optional row (no PKCE verifier at all) and valid encrypted row.
+    await insertState('pkce-none', null, null);
+    await insertState('pkce-good', 'envelope-ciphertext-value', 1);
+
+    const optionalRow = await db.asRole('authService', client => client.query(
+      `SELECT id FROM auth.oauth_state WHERE state_hash = $1`,
+      [hex64('pkce-none')],
+    )).then(result => result.rows[0]);
+    const encryptedRow = await db.asRole('authService', client => client.query(
+      `SELECT id FROM auth.oauth_state WHERE state_hash = $1`,
+      [hex64('pkce-good')],
+    )).then(result => result.rows[0]);
+
+    // UPDATE path: adding ciphertext without a key binding, or clearing the key
+    // binding of an encrypted verifier, is refused.
+    await assert.rejects(
+      () => db.asRole('authService', client => client.query(
+        `UPDATE auth.oauth_state SET code_verifier_ciphertext = 'envelope-ciphertext-value' WHERE id = $1`,
+        [optionalRow.id],
+      )),
+      /violates check constraint/,
+    );
+    await assert.rejects(
+      () => db.asRole('authService', client => client.query(
+        `UPDATE auth.oauth_state SET code_verifier_key_version = NULL WHERE id = $1`,
+        [encryptedRow.id],
+      )),
+      /violates check constraint/,
+    );
+    await assert.rejects(
+      () => db.asRole('authService', client => client.query(
+        `UPDATE auth.oauth_state SET code_verifier_key_version = 0 WHERE id = $1`,
+        [encryptedRow.id],
+      )),
+      /violates check constraint/,
+    );
+
+    const bound = await db.asRole('authService', client => client.query(
+      `UPDATE auth.oauth_state
+       SET code_verifier_ciphertext = 'envelope-ciphertext-value', code_verifier_key_version = 2
+       WHERE id = $1
+       RETURNING code_verifier_key_version`,
+      [optionalRow.id],
+    ), {commit: true});
+    assert.deepEqual(bound.rows, [{code_verifier_key_version: 2}]);
+
+    // VALIDATE refuses invalid pre-existing rows and never repairs them. A
+    // rolled-back probe table proves that behaviour without touching auth state.
+    await assert.rejects(
+      () => db.asRole('migrator', async client => {
+        await client.query(
+          `CREATE TABLE auth.oauth_state_validation_probe (
+             code_verifier_ciphertext text,
+             code_verifier_key_version integer)`,
+        );
+        // Pre-existing invalid row, then a NOT VALID constraint (no scan), then an
+        // explicit VALIDATE that must refuse the row rather than repair it.
+        await client.query(
+          `INSERT INTO auth.oauth_state_validation_probe VALUES ('envelope-ciphertext-value', NULL)` ,
+        );
+        await client.query(
+          `ALTER TABLE auth.oauth_state_validation_probe
+             ADD CONSTRAINT probe_pkce_key_binding
+             CHECK (code_verifier_ciphertext IS NULL OR (code_verifier_key_version IS NOT NULL AND code_verifier_key_version > 0))
+             NOT VALID`,
+        );
+        await client.query(
+          `ALTER TABLE auth.oauth_state_validation_probe VALIDATE CONSTRAINT probe_pkce_key_binding`,
+        );
+      }),
+      /violated by some row/,
+    );
+    const probe = await db.adminQuery(
+      `SELECT count(*)::int AS n
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'auth' AND c.relname = 'oauth_state_validation_probe'`,
+    ).then(result => result.rows[0].n);
+    assert.equal(probe, 0, 'the validation probe transaction must roll back');
+  });
+});
+
 test('AUTH-001 second factors keep encrypted seeds and one factor per type', async () => {
   await withAuthDatabase(async db => {
     const userId = randomUUID();
@@ -617,32 +743,57 @@ test('AUTH-001 second factors keep encrypted seeds and one factor per type', asy
 
 test('AUTH-001 audit supports independent failure durability and atomic success', async () => {
   await withAuthDatabase(async db => {
-    // Success transition + audit are atomic: a rolled-back transaction leaves neither.
-    await db.asRole('authService', async client => {
-      await client.query('BEGIN');
+    // The fixture owns BEGIN/ROLLBACK. The action proves both rows exist inside the
+    // transaction and the fixture then rolls the whole transaction back. Nothing is
+    // suppressed: any unexpected INSERT or assertion failure rethrows and fails the
+    // test instead of yielding a false green.
+    const inTransaction = await db.asRole('authService', async client => {
       await client.query(`INSERT INTO auth.users(email) VALUES('atomic@example.com')`);
       await client.query(
         `INSERT INTO auth.auth_audit(event_type, outcome, request_id) VALUES('login_success', 'success', 'req-atomic')`,
       );
-      await client.query('ROLLBACK');
-      await client.query('ROLLBACK');
-    }).catch(() => {});
+      const inside = await client.query(`SELECT
+        (SELECT count(*)::int FROM auth.users WHERE email = 'atomic@example.com') AS users,
+        (SELECT count(*)::int FROM auth.auth_audit WHERE request_id = 'req-atomic') AS audits`);
+      assert.deepEqual(inside.rows[0], {users: 1, audits: 1}, 'both rows must exist inside the rolled-back transaction');
+      return inside.rows[0];
+    });
+    assert.deepEqual(inTransaction, {users: 1, audits: 1});
 
     const afterRollback = await db.asRole('authService', client => (
       client.query(`SELECT
         (SELECT count(*)::int FROM auth.users WHERE email = 'atomic@example.com') AS users,
         (SELECT count(*)::int FROM auth.auth_audit WHERE request_id = 'req-atomic') AS audits`)
     )).then(result => result.rows[0]);
-    assert.deepEqual(afterRollback, {users: 0, audits: 0});
+    assert.deepEqual(afterRollback, {users: 0, audits: 0}, 'the fixture rollback must leave neither the transition nor its audit row');
+
+    // An explicit, expected mid-transaction failure must surface as that failure and
+    // persist nothing. Only the intended error is accepted by this assertion.
+    await assert.rejects(
+      () => db.asRole('authService', async client => {
+        await client.query(`INSERT INTO auth.users(email) VALUES('expected-failure@example.com')`);
+        await client.query(`INSERT INTO auth.auth_audit(event_type, outcome, request_id)
+          VALUES('login_success', 'success', 'req-expected-failure')`);
+        await client.query('SELECT 1 / 0');
+      }),
+      (error) => {
+        assert.match(error.message, /division by zero/);
+        return true;
+      },
+    );
+    const afterFailure = await db.asRole('authService', client => (
+      client.query(`SELECT
+        (SELECT count(*)::int FROM auth.users WHERE email = 'expected-failure@example.com') AS users,
+        (SELECT count(*)::int FROM auth.auth_audit WHERE request_id = 'req-expected-failure') AS audits`)
+    )).then(result => result.rows[0]);
+    assert.deepEqual(afterFailure, {users: 0, audits: 0}, 'an aborted transition must persist neither row');
 
     // A failed login is recorded on its own durable path even when business work rolls back.
     await db.asRole('authService', async client => {
-      await client.query('BEGIN');
       await client.query(
         `INSERT INTO auth.auth_audit(event_type, outcome, request_id) VALUES('login_failure', 'failure', 'req-fail')`,
       );
-      await client.query('COMMIT');
-    });
+    }, {commit: true});
     const failed = await db.asRole('authService', client => (
       client.query(`SELECT outcome FROM auth.auth_audit WHERE request_id = 'req-fail'`)
     )).then(result => result.rows);
@@ -764,6 +915,7 @@ test('AUTH-001 checked-in role bootstrap refuses incompatible pre-existing roles
   const bootstrapSql = await authRoleBootstrapSql(names);
   const cluster = await connectAuthClusterAdmin();
   let databaseAdmin;
+  let primaryError = null;
   try {
     await cluster.query(`CREATE DATABASE ${quoteRole(names.database)}`);
     databaseAdmin = await connectAuthDatabaseAdmin(names.database);
@@ -808,14 +960,21 @@ test('AUTH-001 checked-in role bootstrap refuses incompatible pre-existing roles
       [targetNames, names.authService],
     );
     assert.equal(otherTargets.rowCount, 0, 'refused bootstrap must not create any other target role');
-  } finally {
-    if (databaseAdmin) await databaseAdmin.end().catch(() => {});
-    await cluster.query(`DROP DATABASE IF EXISTS ${quoteRole(names.database)} WITH (FORCE)`).catch(() => {});
-    for (const role of [tempLogin, unrelated, ...targetNames]) {
-      await cluster.query(`DROP ROLE IF EXISTS ${quoteRole(role)}`).catch(() => {});
-    }
-    await cluster.end();
+  } catch (error) {
+    primaryError = error;
   }
+  const cleanupErrors = [];
+  if (databaseAdmin) await databaseAdmin.end().catch(error => cleanupErrors.push(error));
+  await cluster.query(`DROP DATABASE IF EXISTS ${quoteRole(names.database)} WITH (FORCE)`)
+    .catch(error => cleanupErrors.push(error));
+  for (const role of [tempLogin, unrelated, ...targetNames]) {
+    await cluster.query(`DROP ROLE IF EXISTS ${quoteRole(role)}`).catch(error => cleanupErrors.push(error));
+  }
+  await cluster.end().catch(error => cleanupErrors.push(error));
+  // Cleanup failures are surfaced and aggregated with the primary failure; they
+  // never leave cluster objects behind while reporting success.
+  const combined = combineAuthRunAndCleanupErrors(primaryError, cleanupErrors);
+  if (combined) throw combined;
 });
 
 test('AUTH-001 fixture namespaces isolate concurrent runs', async () => {

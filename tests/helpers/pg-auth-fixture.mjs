@@ -51,6 +51,7 @@ const loginSuffixes = Object.freeze({
 const defaultSqlFiles = Object.freeze([
   'db/postgres/10-operator-schema.sql',
   'db/postgres/05-auth-schema.sql',
+  'db/postgres/migrations/006-auth-schema-corrections.sql',
 ]);
 
 function requireTestCluster() {
