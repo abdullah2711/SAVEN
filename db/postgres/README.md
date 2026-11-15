@@ -16,7 +16,7 @@ No password, connection string, DSN or login principal is stored in these SQL fi
 | `saven_customer_app` | No | Tenant application work; zero `operator.*` privileges and no table ownership. |
 | `saven_auth_service` | No | Narrow shared-auth service boundary; no `operator.*` privileges. |
 | `saven_operator_read` | No | Read-only operator application access to `operator.*`; no DDL or tenant-data access. |
-| `saven_operator_admin` | No | Operator operational writes; no DDL; append-only ledgers remain append-only. |
+| `saven_operator_admin` | No | Operator operational writes; no DDL; issued entitlements are insert-only and append-only ledgers remain append-only. |
 | `saven_migrator` | No | Offline DDL role; owns the operator schema and bootstrap objects; no superuser or BYPASSRLS. |
 | `saven_operator_definer` | No | Non-login owner intended for future audited operator `SECURITY DEFINER` functions. |
 | `saven_auth_definer` | No | Non-login owner intended for future auth `SECURITY DEFINER` functions. |
@@ -28,7 +28,7 @@ All SAVEN target roles are `NOLOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE
 | Table | Source / purpose | Notes |
 | --- | --- | --- |
 | `operator.tenant` | Canonical subscriber directory from native `commerce.subscriber_accounts` | UUID primary key; `legacy_id` preserves the original text tenant id uniquely; status/plan are reference values. |
-| `operator.entitlement` | Versioned entitlement claims from native `commerce.entitlements` | `claims_jsonb` is versioned JSON; `writes_until` preserves the native epoch-millisecond boundary. |
+| `operator.entitlement` | Versioned entitlement claims from native `commerce.entitlements` | Issued rows are immutable; renewals/corrections supersede with a new version. `claims_jsonb` is versioned JSON; `writes_until` preserves the native epoch-millisecond boundary. |
 | `operator.operator_audit` | Operator audit from native `commerce.commercial_audit` | Append-only trigger; `target_tenant_id` is intentionally not a foreign key so failed attempts remain auditable. |
 | `operator.feature_flag` | New operator control | Null `tenant_scope` is global; `enabled` defaults false; unique with `NULLS NOT DISTINCT`. |
 | `operator.tenant_placement` | Native `fleet.placements` | One row per tenant; `generation` is the writable-owner fence. |
@@ -37,7 +37,7 @@ All SAVEN target roles are `NOLOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE
 | `operator.migration_events` | Native `fleet.migration_events` | Append-only per-tenant migration history. |
 | `operator.source_store_migrations` | New provenance ledger | Preserves native store/version/checksum/applied time; append-only. |
 | `operator.pg_schema_migrations` | New PostgreSQL ledger | Separate from native source-store checksums; append-only. |
-| `operator.reference_value` | Extensibility extension | Effective-dated operator reference domains; avoids hardcoded enums and CHECK lists. |
+| `operator.reference_value` | Extensibility extension | Seeded operator reference domains and labels; effective dates are declared data for future policy, not a database-enforced lookup or policy engine. |
 
 `operator.user_identity` and `operator.tenant_membership` are deliberately absent. `auth.users` and `auth.tenant_membership` are the canonical identity/membership owners and will be added by the AUTH contracts.
 
@@ -45,21 +45,36 @@ All SAVEN target roles are `NOLOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE
 
 - The `operator` schema is cross-tenant by design and has no tenant RLS. Customer and auth roles have no schema, table, sequence or function privileges on it.
 - `saven_operator_read` has `SELECT` on the current operator tables. New operator tables require an explicit grant.
-- `saven_operator_admin` can insert/update operational records; it cannot update or delete `operator_audit`, `migration_events`, `source_store_migrations` or `pg_schema_migrations`.
-- Append-only tables reject every `UPDATE` and `DELETE` with `OPERATOR_RECORD_IMMUTABLE`, including for the migration owner.
+- `saven_operator_admin` can insert/update operational records. It has `SELECT, INSERT` only on `operator.entitlement`; it cannot mutate or truncate issued entitlement rows, and it cannot update or delete the append-only audit/provenance ledgers.
+- Append-only tables and issued entitlements reject every `UPDATE`, `DELETE` and `TRUNCATE` with `OPERATOR_RECORD_IMMUTABLE`, including for the migration owner. `TRUNCATE` is refused by statement-level triggers because it does not fire row `DELETE` triggers.
 - Migration and source-provenance ledgers are separate. Native SQLite migration checksums are not asserted to be PostgreSQL SQL checksums.
+- Reference values are seeded/declared, not enforced by foreign keys or triggers. Effective-dated policy, JSON-schema validation and financial entitlement activation are deferred and must not be described as implemented.
+- Object ownership can alter or drop these guards. Ownership is an operational trust boundary, not tamper-proof audit storage.
 - No credentials, DSNs, superuser grants or BYPASSRLS grants are present.
 
 ## Extension points
 
-- Add operator domains as `operator.reference_value` rows with `is_active` and effective dates; do not add a growing CHECK list.
-- Store versioned operator configuration in `value_jsonb`/`claims_jsonb` with a documented schema version.
-- Add future operator tables with explicit grants to the read/admin/definer roles and an explicit append-only decision where mutation is prohibited.
+- Add operator domains as `operator.reference_value` rows with `is_active` and effective dates; do not add a growing CHECK list. The bootstrap seeds and declares these domains but does not enforce FK/reference lookups, effective-dated policy or JSON schemas. Application validation and activation are deferred and explicitly non-authoritative here.
+- Store versioned operator configuration in `value_jsonb`/`claims_jsonb` with a documented schema version. `feature_flag.value_schema_version` and `entitlement.claims_schema_version` bind the intended shape, but JSON-schema validation is deferred.
+- Add future operator tables with explicit grants to the read/admin/definer roles and an explicit append-only/truncate decision where mutation is prohibited.
 - PIVOT-003/004 add tenant business/rule tables and forced RLS; PIVOT-005/006 add posted-source immutability and business audit; PIVOT-007 adds audited `SECURITY DEFINER` operator functions owned by `saven_operator_definer`; PIVOT-008 adds RLS coverage; AUTH-001..010 add the canonical auth schema.
 - Fully Private omits vendor operator tables and the vendor issuer; the same customer/auth/tenant contracts remain.
 
 ## Local gate fixture
 
-`tests/helpers/pg-pivot-fixture.mjs` creates a uniquely named `saven_pivot_*` database on a loopback PostgreSQL instance using credentials supplied at runtime. It rejects non-loopback hosts and non-administrative target-role credentials, applies the two SQL files, creates an ephemeral login role for role-switch tests, and removes the disposable database/roles afterwards. It never connects to a production database, opens an inbound port or stores a credential in the repository.
+`tests/helpers/pg-pivot-fixture.mjs` creates only `saven_pivot_<suffix>_*` cluster roles and a `saven_pivot_<suffix>` disposable database on a loopback PostgreSQL cluster. It requires `SAVEN_PIVOT_TEST_CLUSTER=1` as an explicit dedicated-cluster opt-in, rejects non-loopback hosts and SAVEN target-role credentials, and never falls back to an owner/shared cluster. A pre-flight check refuses before any mutation if any generated role or database already exists, so pre-existing cluster roles, memberships and grants remain untouched. It creates ephemeral migration and test login roles, applies the namespaced `10-operator-schema.sql`, and drops only the objects it created. Cleanup failures are reported alongside the original run/test failure; they are never suppressed.
+
+The fixture does not execute the production `00-roles.sql`; it creates namespaced roles with the same constrained attributes. The production role/bootstrap SQL remains for deployment and is statically checked by the test.
+
+The `scripts/check.mjs` gate requires the same explicit PostgreSQL configuration and runs the focused PIVOT-002 test. It fails loudly when `SAVEN_PIVOT_TEST_CLUSTER`, `PGHOST` or `PGUSER` is missing; it never silently skips or borrows a shared/owner database. The `Verify SAVEN` workflow supplies the disposable PostgreSQL service environment to `node scripts/check.mjs` and `node --test tests/*.test.mjs`.
+
+```text
+SAVEN_PIVOT_TEST_CLUSTER=1
+PGHOST=127.0.0.1
+PGPORT=5432
+PGUSER=<administrative test role>
+PGPASSWORD=<private test-only credential>
+PGADMIN_DATABASE=postgres
+```
 
 The contract test is `tests/pivot-002-operator.test.mjs`.

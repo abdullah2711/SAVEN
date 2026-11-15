@@ -8,27 +8,42 @@ const {Client} = pg;
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 const loopbackHosts = new Set(['127.0.0.1', 'localhost', '::1']);
 
-export const targetRoles = Object.freeze([
-  'saven_customer_app',
-  'saven_auth_service',
-  'saven_operator_read',
-  'saven_operator_admin',
-  'saven_migrator',
-  'saven_operator_definer',
-  'saven_auth_definer',
+export const targetRoleKeys = Object.freeze([
+  'customerApp',
+  'authService',
+  'operatorRead',
+  'operatorAdmin',
+  'migrator',
+  'operatorDefiner',
+  'authDefiner',
 ]);
 
-export const switchableRoles = Object.freeze([
-  'saven_customer_app',
-  'saven_operator_read',
-  'saven_operator_admin',
-  'saven_migrator',
+export const switchableRoleKeys = Object.freeze([
+  'customerApp',
+  'operatorRead',
+  'operatorAdmin',
+  'migrator',
 ]);
 
-const defaultSqlFiles = Object.freeze([
-  'db/postgres/00-roles.sql',
-  'db/postgres/10-operator-schema.sql',
-]);
+const roleSuffixes = Object.freeze({
+  customerApp: 'customer_app',
+  authService: 'auth_service',
+  operatorRead: 'operator_read',
+  operatorAdmin: 'operator_admin',
+  migrator: 'migrator',
+  operatorDefiner: 'operator_definer',
+  authDefiner: 'auth_definer',
+});
+
+const defaultSqlFiles = Object.freeze(['db/postgres/10-operator-schema.sql']);
+
+function requireTestCluster() {
+  if (process.env.SAVEN_PIVOT_TEST_CLUSTER !== '1') {
+    throw new Error(
+      'PIVOT-002 fixture refuses to run: set SAVEN_PIVOT_TEST_CLUSTER=1 for a dedicated disposable PostgreSQL cluster.',
+    );
+  }
+}
 
 function quoteIdent(value) {
   if (typeof value !== 'string' || !/^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/.test(value)) {
@@ -55,6 +70,10 @@ function connectionConfig(database, overrides = {}) {
   if (/^saven_/i.test(user)) {
     throw new Error('PIVOT-002 fixture requires a separate administrative PGUSER, not a SAVEN target role.');
   }
+  const sslMode = process.env.PGSSLMODE;
+  if (sslMode && sslMode !== 'disable' && sslMode !== 'require') {
+    throw new Error('PIVOT-002 fixture supports only PGSSLMODE=disable or require.');
+  }
   return {
     host,
     port,
@@ -64,7 +83,9 @@ function connectionConfig(database, overrides = {}) {
     application_name: 'saven-pivot-002',
     connectionTimeoutMillis: 10000,
     statement_timeout: 30000,
-    ssl: process.env.PGSSLMODE === 'require' ? {rejectUnauthorized: false} : false,
+    // Never disable certificate verification. A dedicated local test cluster
+    // should run with TLS disabled unless a trusted CA is configured.
+    ssl: sslMode === 'require' ? {rejectUnauthorized: true} : false,
     ...overrides,
   };
 }
@@ -75,71 +96,143 @@ async function connect(config) {
   return client;
 }
 
+export async function connectClusterAdmin() {
+  requireTestCluster();
+  return connect(connectionConfig());
+}
+
+export function roleNamesForSuffix(suffix) {
+  if (typeof suffix !== 'string' || !/^[a-z0-9]{8,32}$/.test(suffix)) {
+    throw new Error('PIVOT-002 fixture requires an [a-z0-9]{8,32} namespace suffix.');
+  }
+  const prefix = 'saven_pivot_' + suffix;
+  const names = {database: prefix, login: prefix + '_login', migration: prefix + '_migration'};
+  for (const [key, roleSuffix] of Object.entries(roleSuffixes)) {
+    names[key] = prefix + '_' + roleSuffix;
+  }
+  return names;
+}
+
+export function combineRunAndCleanupErrors(runError, cleanupErrors) {
+  const errors = (cleanupErrors ?? []).filter(Boolean);
+  if (!errors.length) return runError ?? null;
+  const cleanupError = new Error(
+    'PIVOT-002 fixture cleanup failed: ' + errors.map(error => error.message).join('; '),
+  );
+  if (!runError) return cleanupError;
+  return new AggregateError([runError, cleanupError], 'PIVOT-002 fixture run and cleanup both failed');
+}
+
+function rewriteSql(sql, names) {
+  let rewritten = sql;
+  for (const key of targetRoleKeys) {
+    const fixed = 'saven_' + roleSuffixes[key];
+    rewritten = rewritten.replaceAll(fixed, names[key]);
+  }
+  return rewritten;
+}
+
 export async function withPivotDatabase(options, run) {
   if (typeof options === 'function') {
     run = options;
     options = {};
   }
   if (typeof run !== 'function') throw new Error('withPivotDatabase requires a callback.');
+  requireTestCluster();
+
+  const suffix = options?.namespaceSuffix ?? randomUUID().replaceAll('-', '').slice(0, 12);
+  const names = roleNamesForSuffix(suffix);
   const sqlFiles = options?.sqlFiles ?? defaultSqlFiles;
-  const suffix = randomUUID().replaceAll('-', '').slice(0, 12);
-  const database = 'saven_pivot_' + suffix;
-  const loginRole = 'pivot_login_' + suffix;
-  const loginPassword = randomBytes(32).toString('base64url');
+  const allRoleNames = [...targetRoleKeys.map(key => names[key]), names.login, names.migration];
   const clusterConfig = connectionConfig();
   const adminUser = clusterConfig.user;
-
-  let clusterAdmin;
-  let databaseAdmin;
-  let existingRoles = new Set();
+  const migrationPassword = randomBytes(32).toString('base64url');
+  const loginPassword = randomBytes(32).toString('base64url');
+  const createdRoles = [];
+  const cleanupErrors = [];
+  let createdDatabase = false;
+  let lockHeld = false;
   let runError = null;
-  let result;
+  let result = null;
+
+  let clusterAdmin = null;
+  let databaseAdmin = null;
+  let migrationClient = null;
 
   try {
-    // The cluster connection only creates/drops the disposable database and
-    // roles. All schema assertions run on databaseAdmin below.
     clusterAdmin = await connect(clusterConfig);
-    existingRoles = new Set(
-      (await clusterAdmin.query('SELECT rolname FROM pg_roles WHERE rolname = ANY($1)', [targetRoles])).rows.map(row => row.rolname),
-    );
-    await clusterAdmin.query(`CREATE DATABASE ${quoteIdent(database)}`);
-    databaseAdmin = await connect(connectionConfig(database));
+    await clusterAdmin.query('SELECT pg_advisory_lock(hashtext($1))', ['saven_pivot:' + suffix]);
+    lockHeld = true;
 
-    const rolesFile = sqlFiles.find(file => file.endsWith('00-roles.sql'));
-    const schemaFiles = sqlFiles.filter(file => !file.endsWith('00-roles.sql'));
-    if (rolesFile) {
-      await databaseAdmin.query(await readFile(join(repoRoot, rolesFile), 'utf8'));
-      // The bootstrap schema is owned by saven_migrator. A real migration
-      // connection is a member of that role; the fixture grants membership only
-      // inside its disposable test database and never changes a production login.
-      await databaseAdmin.query(`GRANT saven_migrator TO ${quoteIdent(adminUser)}`);
+    // Pre-flight: refuse before any mutation if any object this fixture would
+    // touch already exists. Existing roles, memberships and grants are untouched.
+    const existingRoles = (
+      await clusterAdmin.query('SELECT rolname FROM pg_roles WHERE rolname = ANY($1) ORDER BY rolname', [allRoleNames])
+    ).rows.map(row => row.rolname);
+    const existingDatabase = (
+      await clusterAdmin.query('SELECT datname FROM pg_database WHERE datname = $1', [names.database])
+    ).rows.map(row => row.datname);
+    if (existingRoles.length || existingDatabase.length) {
+      const objects = [...existingRoles, ...existingDatabase].join(', ');
+      throw new Error(
+        `PIVOT-002 fixture pre-flight refused: objects already exist (${objects}); refusing to alter or reuse pre-existing cluster objects.`,
+      );
     }
-    for (const file of schemaFiles) {
-      await databaseAdmin.query(await readFile(join(repoRoot, file), 'utf8'));
-    }
-    // The fixture's private admin inspects object privileges; it needs schema
-    // USAGE to resolve operator.* names. This is a disposable test grant, not a
-    // SAVEN target-role privilege and not part of the production bootstrap.
-    await databaseAdmin.query('SET ROLE saven_migrator');
-    await databaseAdmin.query(`GRANT USAGE ON SCHEMA operator TO ${quoteIdent(adminUser)}`);
-    await databaseAdmin.query('RESET ROLE');
 
-    await databaseAdmin.query(
-      `CREATE ROLE ${quoteIdent(loginRole)} LOGIN PASSWORD ${quoteLiteral(loginPassword)} ` +
+    await clusterAdmin.query(`CREATE DATABASE ${quoteIdent(names.database)}`);
+    createdDatabase = true;
+    databaseAdmin = await connect(connectionConfig(names.database));
+
+    for (const key of targetRoleKeys) {
+      const role = names[key];
+      await clusterAdmin.query(
+        `CREATE ROLE ${quoteIdent(role)} NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+      );
+      createdRoles.push(role);
+    }
+
+    await clusterAdmin.query(
+      `CREATE ROLE ${quoteIdent(names.migration)} LOGIN PASSWORD ${quoteLiteral(migrationPassword)} ` +
       'NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
     );
-    for (const role of switchableRoles) {
-      await databaseAdmin.query(`GRANT ${quoteIdent(role)} TO ${quoteIdent(loginRole)}`);
+    createdRoles.push(names.migration);
+    await clusterAdmin.query(`GRANT ${quoteIdent(names.migrator)} TO ${quoteIdent(names.migration)}`);
+    await clusterAdmin.query(`GRANT CREATE ON DATABASE ${quoteIdent(names.database)} TO ${quoteIdent(names.migration)}`);
+
+    migrationClient = await connect(
+      connectionConfig(names.database, {user: names.migration, password: migrationPassword}),
+    );
+    for (const file of sqlFiles) {
+      const sql = rewriteSql(await readFile(join(repoRoot, file), 'utf8'), names);
+      await migrationClient.query(sql);
+    }
+    // The fixture's private admin needs schema USAGE to resolve operator.*
+    // names in has_table_privilege checks. This is database-local and temporary.
+    await migrationClient.query(`SET ROLE ${quoteIdent(names.migrator)}`);
+    await migrationClient.query(`GRANT USAGE ON SCHEMA operator TO ${quoteIdent(adminUser)}`);
+    await migrationClient.query('RESET ROLE');
+    await migrationClient.end();
+    migrationClient = null;
+
+    await clusterAdmin.query(
+      `CREATE ROLE ${quoteIdent(names.login)} LOGIN PASSWORD ${quoteLiteral(loginPassword)} ` +
+      'NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION',
+    );
+    createdRoles.push(names.login);
+    for (const key of switchableRoleKeys) {
+      await clusterAdmin.query(`GRANT ${quoteIdent(names[key])} TO ${quoteIdent(names.login)}`);
     }
 
-    const loginConfig = connectionConfig(database, {user: loginRole, password: loginPassword});
+    const loginConfig = connectionConfig(names.database, {user: names.login, password: loginPassword});
 
-    async function asRole(role, action, {commit = false} = {}) {
-      if (!switchableRoles.includes(role)) throw new Error('PIVOT-002 fixture refused an unknown switchable role.');
+    async function asRole(roleKey, action, {commit = false} = {}) {
+      if (!switchableRoleKeys.includes(roleKey)) {
+        throw new Error('PIVOT-002 fixture refused an unknown switchable role.');
+      }
       const client = await connect(loginConfig);
       try {
         await client.query('BEGIN');
-        await client.query(`SET LOCAL ROLE ${quoteIdent(role)}`);
+        await client.query(`SET LOCAL ROLE ${quoteIdent(names[roleKey])}`);
         const value = await action(client);
         await client.query(commit ? 'COMMIT' : 'ROLLBACK');
         return value;
@@ -152,47 +245,52 @@ export async function withPivotDatabase(options, run) {
     }
 
     result = await run({
-      database,
+      suffix,
+      database: names.database,
+      roles: names,
+      targetRoles: targetRoleKeys.map(key => names[key]),
+      loginRole: names.login,
+      loginPassword,
       admin: databaseAdmin,
       adminQuery: (sql, params = []) => databaseAdmin.query(sql, params),
-      loginRole,
-      loginPassword,
-      loginConfig,
       asRole,
     });
   } catch (error) {
     runError = error;
-    throw error;
   } finally {
-    const cleanupErrors = [];
+    if (migrationClient) {
+      await migrationClient.end().catch(error => cleanupErrors.push(error));
+    }
     if (databaseAdmin) {
       await databaseAdmin.end().catch(error => cleanupErrors.push(error));
     }
     if (clusterAdmin) {
-      try {
-        await clusterAdmin.query(`DROP DATABASE IF EXISTS ${quoteIdent(database)} WITH (FORCE)`);
-      } catch (error) {
-        cleanupErrors.push(error);
+      if (createdDatabase) {
+        try {
+          await clusterAdmin.query(`DROP DATABASE IF EXISTS ${quoteIdent(names.database)} WITH (FORCE)`);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
       }
-      try {
-        await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(loginRole)}`);
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
-      for (const role of targetRoles) {
-        if (existingRoles.has(role)) continue;
+      for (const role of [...createdRoles].reverse()) {
         try {
           await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
         } catch (error) {
           cleanupErrors.push(error);
         }
       }
+      if (lockHeld) {
+        try {
+          await clusterAdmin.query('SELECT pg_advisory_unlock(hashtext($1))', ['saven_pivot:' + suffix]);
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+      }
       await clusterAdmin.end().catch(error => cleanupErrors.push(error));
-    }
-    if (cleanupErrors.length && !runError) {
-      throw new Error('PIVOT-002 fixture cleanup failed: ' + cleanupErrors.map(error => error.message).join('; '));
     }
   }
 
+  const combined = combineRunAndCleanupErrors(runError, cleanupErrors);
+  if (combined) throw combined;
   return result;
 }

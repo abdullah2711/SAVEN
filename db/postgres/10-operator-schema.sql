@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS operator.reference_value (
   CHECK (effective_to IS NULL OR effective_to > effective_from)
 );
 COMMENT ON TABLE operator.reference_value IS
-  'Configurable operator reference domains; effective-dated and additive, not a hardcoded enum.';
+  'Seeded operator reference domains and labels. Effective dates are declared data for future policy; this bootstrap does not enforce foreign-key lookups or an effective-dated policy engine.';
 
 INSERT INTO operator.reference_value (domain, value, label) VALUES
   ('tenant_status', 'PROVISIONING', 'Provisioning'),
@@ -102,6 +102,10 @@ CREATE TABLE IF NOT EXISTS operator.tenant (
 );
 COMMENT ON TABLE operator.tenant IS
   'Canonical subscriber directory; entitlement and placement reference tenant_id.';
+COMMENT ON COLUMN operator.tenant.status IS
+  'Declared operator.reference_value domain (tenant_status). Application validation is deferred and not database-enforced in this bootstrap.';
+COMMENT ON COLUMN operator.tenant.plan IS
+  'Declared operator.reference_value domain (tenant_plan). Application validation is deferred and not database-enforced in this bootstrap.';
 COMMENT ON COLUMN operator.tenant.legacy_id IS
   'Original native tenant id; unique UUID mapping source. Never cast existing text ids to UUID.';
 COMMENT ON COLUMN operator.tenant.owner_legacy_id IS
@@ -129,11 +133,13 @@ CREATE TABLE IF NOT EXISTS operator.entitlement (
   CHECK (length(btrim(source)) BETWEEN 1 AND 200)
 );
 COMMENT ON TABLE operator.entitlement IS
-  'Versioned Cloud/Private entitlement claims; supersede rather than delete source history.';
+  'Versioned Cloud/Private entitlement claims; issued rows are immutable and superseded by a new version.';
+COMMENT ON COLUMN operator.entitlement.tier IS
+  'Declared operator.reference_value domain (entitlement_tier). Application validation is deferred.';
 COMMENT ON COLUMN operator.entitlement.writes_until IS
   'Preserved native epoch-millisecond write entitlement boundary; null for non-native claims.';
 COMMENT ON COLUMN operator.entitlement.claims_jsonb IS
-  'Versioned claim payload (modules, seats, limits); validates against claims_schema_version.';
+  'Versioned claim payload bound to claims_schema_version; JSON-schema validation and entitlement activation are deferred and not database-enforced in this bootstrap.';
 
 CREATE TABLE IF NOT EXISTS operator.operator_audit (
   id bigserial PRIMARY KEY,
@@ -160,6 +166,7 @@ CREATE TABLE IF NOT EXISTS operator.feature_flag (
   tenant_scope uuid REFERENCES operator.tenant(tenant_id) ON DELETE RESTRICT,
   enabled boolean NOT NULL DEFAULT false,
   value_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  value_schema_version integer NOT NULL DEFAULT 1 CHECK (value_schema_version > 0),
   description text NOT NULL DEFAULT '',
   is_active boolean NOT NULL DEFAULT true,
   effective_from timestamptz NOT NULL DEFAULT now(),
@@ -174,6 +181,8 @@ CREATE TABLE IF NOT EXISTS operator.feature_flag (
 );
 COMMENT ON TABLE operator.feature_flag IS
   'Operator-controlled feature flags; null tenant_scope means global, enabled defaults false.';
+COMMENT ON COLUMN operator.feature_flag.value_jsonb IS
+  'Versioned JSON object bound to value_schema_version; application validation is deferred and not database-enforced in this bootstrap.';
 
 CREATE TABLE IF NOT EXISTS operator.tenant_placement (
   tenant_id uuid PRIMARY KEY REFERENCES operator.tenant(tenant_id) ON DELETE RESTRICT,
@@ -189,6 +198,8 @@ CREATE TABLE IF NOT EXISTS operator.tenant_placement (
 );
 COMMENT ON TABLE operator.tenant_placement IS
   'Control-plane placement; generation is the writable-owner fence, not a tenant business record.';
+COMMENT ON COLUMN operator.tenant_placement.state IS
+  'Declared operator.reference_value domain (placement_state). Application validation is deferred.';
 
 CREATE TABLE IF NOT EXISTS operator.jobs (
   tenant_id uuid NOT NULL REFERENCES operator.tenant(tenant_id) ON DELETE RESTRICT,
@@ -206,6 +217,8 @@ CREATE TABLE IF NOT EXISTS operator.jobs (
 );
 COMMENT ON TABLE operator.jobs IS
   'Operational control-plane jobs; never financial authority or a substitute tenant inbox.';
+COMMENT ON COLUMN operator.jobs.state IS
+  'Declared operator.reference_value domain (job_state). Application validation is deferred.';
 
 CREATE TABLE IF NOT EXISTS operator.ai_requests (
   id text PRIMARY KEY,
@@ -228,6 +241,8 @@ CREATE TABLE IF NOT EXISTS operator.ai_requests (
 );
 COMMENT ON TABLE operator.ai_requests IS
   'Redacted AI usage/reservation metadata only; no prompt, document body or proposal table.';
+COMMENT ON COLUMN operator.ai_requests.state IS
+  'Declared operator.reference_value domain (ai_request_state). Application validation is deferred.';
 
 CREATE TABLE IF NOT EXISTS operator.migration_events (
   id bigserial PRIMARY KEY,
@@ -351,6 +366,30 @@ DROP TRIGGER IF EXISTS migration_events_no_mutation ON operator.migration_events
 CREATE TRIGGER migration_events_no_mutation BEFORE UPDATE OR DELETE ON operator.migration_events
   FOR EACH ROW EXECUTE FUNCTION operator.reject_mutation();
 
+DROP TRIGGER IF EXISTS entitlement_no_mutation ON operator.entitlement;
+CREATE TRIGGER entitlement_no_mutation BEFORE UPDATE OR DELETE ON operator.entitlement
+  FOR EACH ROW EXECUTE FUNCTION operator.reject_mutation();
+
+DROP TRIGGER IF EXISTS operator_audit_no_truncate ON operator.operator_audit;
+CREATE TRIGGER operator_audit_no_truncate BEFORE TRUNCATE ON operator.operator_audit
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.reject_mutation();
+
+DROP TRIGGER IF EXISTS pg_schema_migrations_no_truncate ON operator.pg_schema_migrations;
+CREATE TRIGGER pg_schema_migrations_no_truncate BEFORE TRUNCATE ON operator.pg_schema_migrations
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.reject_mutation();
+
+DROP TRIGGER IF EXISTS source_store_migrations_no_truncate ON operator.source_store_migrations;
+CREATE TRIGGER source_store_migrations_no_truncate BEFORE TRUNCATE ON operator.source_store_migrations
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.reject_mutation();
+
+DROP TRIGGER IF EXISTS migration_events_no_truncate ON operator.migration_events;
+CREATE TRIGGER migration_events_no_truncate BEFORE TRUNCATE ON operator.migration_events
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.reject_mutation();
+
+DROP TRIGGER IF EXISTS entitlement_no_truncate ON operator.entitlement;
+CREATE TRIGGER entitlement_no_truncate BEFORE TRUNCATE ON operator.entitlement
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.reject_mutation();
+
 REVOKE ALL ON SCHEMA operator FROM PUBLIC;
 REVOKE ALL ON ALL TABLES IN SCHEMA operator FROM PUBLIC;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA operator FROM PUBLIC;
@@ -378,15 +417,16 @@ GRANT SELECT ON
   operator.source_store_migrations
 TO saven_operator_read;
 
--- Operator write role: operational state only; append-only ledgers stay append-only.
+-- Operator write role: operational state only; issued entitlements and append-only
+-- ledgers are insert-only, and append-only histories are also truncate-protected.
 GRANT SELECT, INSERT, UPDATE ON
   operator.reference_value,
   operator.tenant,
-  operator.entitlement,
   operator.feature_flag,
   operator.tenant_placement,
   operator.jobs
 TO saven_operator_admin;
+GRANT SELECT, INSERT ON operator.entitlement TO saven_operator_admin;
 GRANT SELECT, INSERT ON
   operator.operator_audit,
   operator.migration_events,

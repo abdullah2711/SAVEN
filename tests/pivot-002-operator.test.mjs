@@ -1,7 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {withPivotDatabase, targetRoles} from './helpers/pg-pivot-fixture.mjs';
+import {randomBytes} from 'node:crypto';
+import {
+  withPivotDatabase,
+  connectClusterAdmin,
+  roleNamesForSuffix,
+  combineRunAndCleanupErrors,
+} from './helpers/pg-pivot-fixture.mjs';
 
 const repoRoot = new URL('../', import.meta.url);
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -19,6 +25,8 @@ const operatorTables = [
   'tenant_placement',
 ].sort();
 
+const suffixFor = prefix => prefix + randomBytes(4).toString('hex');
+
 test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', async () => {
   const rolesSql = await readFile(new URL('db/postgres/00-roles.sql', repoRoot), 'utf8');
   const schemaSql = await readFile(new URL('db/postgres/10-operator-schema.sql', repoRoot), 'utf8');
@@ -28,8 +36,13 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
     schemaSql,
     /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?operator\.(?:user_identity|tenant_membership)\b/i,
   );
+  assert.match(schemaSql, /entitlement_no_mutation/);
+  assert.match(schemaSql, /entitlement_no_truncate/);
+  assert.match(schemaSql, /value_schema_version/);
+  assert.match(rolesSql, /saven_customer_app/);
 
   await withPivotDatabase(async (db) => {
+    const targetRoles = db.targetRoles;
     const roleRows = (
       await db.adminQuery(
         `SELECT rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolcanlogin, rolinherit, rolreplication
@@ -86,73 +99,64 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
     ).rows;
     assert.deepEqual(forbiddenTables, []);
 
-    const schemaPrivileges = (
-      await db.adminQuery(`
-        SELECT
-          has_schema_privilege('saven_customer_app', 'operator', 'USAGE') AS customer_usage,
-          has_schema_privilege('saven_customer_app', 'operator', 'CREATE') AS customer_create,
-          has_schema_privilege('saven_auth_service', 'operator', 'USAGE') AS auth_usage,
-          has_schema_privilege('saven_auth_definer', 'operator', 'USAGE') AS auth_definer_usage,
-          has_schema_privilege('saven_operator_read', 'operator', 'USAGE') AS read_usage,
-          has_schema_privilege('saven_operator_read', 'operator', 'CREATE') AS read_create,
-          has_schema_privilege('saven_operator_admin', 'operator', 'USAGE') AS admin_usage,
-          has_schema_privilege('saven_operator_admin', 'operator', 'CREATE') AS admin_create,
-          has_schema_privilege('saven_operator_definer', 'operator', 'USAGE') AS definer_usage,
-          has_schema_privilege('saven_migrator', 'operator', 'USAGE') AS migrator_usage,
-          has_schema_privilege('saven_migrator', 'operator', 'CREATE') AS migrator_create
-      `)
-    ).rows[0];
-    assert.equal(schemaPrivileges.customer_usage, false);
-    assert.equal(schemaPrivileges.customer_create, false);
-    assert.equal(schemaPrivileges.auth_usage, false);
-    assert.equal(schemaPrivileges.auth_definer_usage, false);
-    assert.equal(schemaPrivileges.read_usage, true);
-    assert.equal(schemaPrivileges.read_create, false);
-    assert.equal(schemaPrivileges.admin_usage, true);
-    assert.equal(schemaPrivileges.admin_create, false);
-    assert.equal(schemaPrivileges.definer_usage, true);
-    assert.equal(schemaPrivileges.migrator_usage, true);
-    assert.equal(schemaPrivileges.migrator_create, true);
-
-    for (const table of operatorTables) {
-      const privileges = (
-        await db.adminQuery(
-          `SELECT
-             has_table_privilege('saven_customer_app', $1, 'SELECT') AS customer_select,
-             has_table_privilege('saven_customer_app', $1, 'INSERT') AS customer_insert,
-             has_table_privilege('saven_operator_read', $1, 'SELECT') AS read_select,
-             has_table_privilege('saven_operator_read', $1, 'INSERT') AS read_insert`,
-          [`operator.${table}`],
-        )
-      ).rows[0];
-      assert.equal(privileges.customer_select, false, `customer app must not read operator.${table}`);
-      assert.equal(privileges.customer_insert, false, `customer app must not write operator.${table}`);
-      assert.equal(privileges.read_select, true, `operator read must read operator.${table}`);
-      assert.equal(privileges.read_insert, false, `operator read must not write operator.${table}`);
+    async function schemaPrivilege(role, privilege) {
+      return (
+        await db.adminQuery('SELECT has_schema_privilege($1, $2, $3) AS allowed', [role, 'operator', privilege])
+      ).rows[0].allowed;
+    }
+    async function tablePrivilege(role, table, privilege) {
+      return (
+        await db.adminQuery('SELECT has_table_privilege($1, $2, $3) AS allowed', [role, `operator.${table}`, privilege])
+      ).rows[0].allowed;
     }
 
-    const definerPrivileges = (
-      await db.adminQuery(`SELECT
-        has_table_privilege('saven_operator_definer', 'operator.operator_audit', 'INSERT') AS audit_insert,
-        has_table_privilege('saven_operator_definer', 'operator.tenant', 'INSERT') AS tenant_insert,
-        has_function_privilege('saven_customer_app', 'operator.reject_mutation()', 'EXECUTE') AS customer_function`)
-    ).rows[0];
-    assert.equal(definerPrivileges.audit_insert, true);
-    assert.equal(definerPrivileges.tenant_insert, false);
-    assert.equal(definerPrivileges.customer_function, false);
+    assert.equal(await schemaPrivilege(db.roles.customerApp, 'USAGE'), false);
+    assert.equal(await schemaPrivilege(db.roles.customerApp, 'CREATE'), false);
+    assert.equal(await schemaPrivilege(db.roles.authService, 'USAGE'), false);
+    assert.equal(await schemaPrivilege(db.roles.authDefiner, 'USAGE'), false);
+    assert.equal(await schemaPrivilege(db.roles.operatorRead, 'USAGE'), true);
+    assert.equal(await schemaPrivilege(db.roles.operatorRead, 'CREATE'), false);
+    assert.equal(await schemaPrivilege(db.roles.operatorAdmin, 'USAGE'), true);
+    assert.equal(await schemaPrivilege(db.roles.operatorAdmin, 'CREATE'), false);
+    assert.equal(await schemaPrivilege(db.roles.operatorDefiner, 'USAGE'), true);
+    assert.equal(await schemaPrivilege(db.roles.migrator, 'USAGE'), true);
+    assert.equal(await schemaPrivilege(db.roles.migrator, 'CREATE'), true);
+
+    for (const table of operatorTables) {
+      assert.equal(await tablePrivilege(db.roles.customerApp, table, 'SELECT'), false, `customer app must not read operator.${table}`);
+      assert.equal(await tablePrivilege(db.roles.customerApp, table, 'INSERT'), false, `customer app must not write operator.${table}`);
+      assert.equal(await tablePrivilege(db.roles.operatorRead, table, 'SELECT'), true, `operator read must read operator.${table}`);
+      assert.equal(await tablePrivilege(db.roles.operatorRead, table, 'INSERT'), false, `operator read must not write operator.${table}`);
+    }
+
+    assert.equal(
+      (await db.adminQuery('SELECT has_function_privilege($1, $2, $3) AS allowed', [
+        db.roles.customerApp,
+        'operator.reject_mutation()',
+        'EXECUTE',
+      ])).rows[0].allowed,
+      false,
+    );
+    assert.equal(await tablePrivilege(db.roles.operatorDefiner, 'operator_audit', 'INSERT'), true);
+    assert.equal(await tablePrivilege(db.roles.operatorDefiner, 'tenant', 'INSERT'), false);
+    assert.equal(await tablePrivilege(db.roles.operatorAdmin, 'entitlement', 'SELECT'), true);
+    assert.equal(await tablePrivilege(db.roles.operatorAdmin, 'entitlement', 'INSERT'), true);
+    assert.equal(await tablePrivilege(db.roles.operatorAdmin, 'entitlement', 'UPDATE'), false);
+    assert.equal(await tablePrivilege(db.roles.operatorAdmin, 'entitlement', 'DELETE'), false);
+    assert.equal(await tablePrivilege(db.roles.operatorAdmin, 'entitlement', 'TRUNCATE'), false);
 
     await assert.rejects(
-      () => db.asRole('saven_customer_app', client => client.query('SELECT count(*) FROM operator.tenant')),
+      () => db.asRole('customerApp', client => client.query('SELECT count(*) FROM operator.tenant')),
       /permission denied for schema operator/,
     );
     await assert.rejects(
-      () => db.asRole('saven_customer_app', client => client.query(
+      () => db.asRole('customerApp', client => client.query(
         `INSERT INTO operator.tenant(tenant_id, legacy_id, legal_name) VALUES('${tenantId}', 'customer-denied', 'Denied')`,
       )),
       /permission denied for schema operator/,
     );
 
-    await db.asRole('saven_operator_read', async client => {
+    await db.asRole('operatorRead', async client => {
       assert.equal((await client.query('SELECT count(*)::int AS n FROM operator.tenant')).rows[0].n, 0);
       assert.equal(
         (await client.query(`SELECT count(*)::int AS n FROM operator.reference_value WHERE domain = 'tenant_status' AND value = 'ACTIVE' AND is_active`)).rows[0].n,
@@ -164,7 +168,7 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
       );
     });
 
-    await db.asRole('saven_operator_admin', async client => {
+    await db.asRole('operatorAdmin', async client => {
       await client.query(
         `INSERT INTO operator.tenant(tenant_id, legacy_id, legal_name, status, plan, created_by)
          VALUES($1, 'alpha-pivot', 'Alpha Pivot', 'ACTIVE', 'STANDARD', 'test-operator')`,
@@ -176,8 +180,8 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
         [tenantId],
       );
       await client.query(
-        `INSERT INTO operator.feature_flag(key, tenant_scope, enabled, created_by)
-         VALUES('pivot.test', $1, true, 'test-operator')`,
+        `INSERT INTO operator.feature_flag(key, tenant_scope, enabled, value_jsonb, created_by)
+         VALUES('pivot.test', $1, true, '{"mode":"on"}'::jsonb, 'test-operator')`,
         [tenantId],
       );
       await client.query(
@@ -219,7 +223,7 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
       );
     }, {commit: true});
 
-    const counts = await db.asRole('saven_operator_read', async client => (
+    const counts = await db.asRole('operatorRead', async client => (
       await client.query(`SELECT
         (SELECT count(*)::int FROM operator.tenant) AS tenants,
         (SELECT count(*)::int FROM operator.entitlement) AS entitlements,
@@ -243,7 +247,7 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
       source_migrations: 2,
     });
 
-    const tenant = await db.asRole('saven_operator_read', async client => (
+    const tenant = await db.asRole('operatorRead', async client => (
       await client.query(
         `SELECT tenant_id::text AS tenant_id, legacy_id, status, plan
          FROM operator.tenant WHERE tenant_id = $1`,
@@ -252,7 +256,7 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
     ).rows[0]);
     assert.deepEqual(tenant, {tenant_id: tenantId, legacy_id: 'alpha-pivot', status: 'ACTIVE', plan: 'STANDARD'});
 
-    const tenantTypes = await db.asRole('saven_operator_read', async client => (
+    const tenantTypes = await db.asRole('operatorRead', async client => (
       await client.query(`SELECT column_name, data_type FROM information_schema.columns
         WHERE table_schema = 'operator' AND table_name = 'tenant' AND column_name IN ('tenant_id', 'legacy_id', 'status', 'plan')`)
     ).rows);
@@ -260,46 +264,62 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
       Object.fromEntries(tenantTypes.map(row => [row.column_name, row.data_type])),
       {tenant_id: 'uuid', legacy_id: 'text', status: 'text', plan: 'text'},
     );
+    const featureFlagVersion = await db.asRole('operatorRead', async client => (
+      await client.query(`SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'operator' AND table_name = 'feature_flag' AND column_name = 'value_schema_version'`)
+    ).rows);
+    assert.deepEqual(featureFlagVersion, [{column_name: 'value_schema_version'}]);
 
     await assert.rejects(
-      () => db.asRole('saven_operator_admin', client => client.query(
+      () => db.asRole('operatorAdmin', client => client.query(
         `INSERT INTO operator.tenant(tenant_id, legacy_id, legal_name)
          VALUES('22222222-2222-4222-8222-222222222222', 'alpha-pivot', 'Duplicate tenant')`,
       )),
       /duplicate key value violates unique constraint/,
     );
     await assert.rejects(
-      () => db.asRole('saven_operator_admin', client => client.query(
+      () => db.asRole('operatorAdmin', client => client.query(
         `INSERT INTO operator.entitlement(tenant_id, version, tier) VALUES($1, 1, 'PRIVATE')`,
         [tenantId],
       )),
       /duplicate key value violates unique constraint/,
     );
     await assert.rejects(
-      () => db.asRole('saven_operator_admin', client => client.query(
+      () => db.asRole('operatorAdmin', client => client.query(
         `INSERT INTO operator.feature_flag(key, tenant_scope, enabled) VALUES('pivot.global', NULL, true)`,
       )),
       /duplicate key value violates unique constraint/,
     );
 
     await assert.rejects(
-      () => db.asRole('saven_operator_admin', client => client.query('CREATE TABLE operator.admin_probe(id integer)')),
+      () => db.asRole('operatorAdmin', client => client.query('CREATE TABLE operator.admin_probe(id integer)')),
       /permission denied for schema operator/,
     );
     await assert.rejects(
-      () => db.asRole('saven_operator_admin', client => client.query(
+      () => db.asRole('operatorAdmin', client => client.query(
         `INSERT INTO operator.pg_schema_migrations(version, description, checksum) VALUES(1, 'probe', 'probe')`,
       )),
       /permission denied/,
     );
+    await assert.rejects(
+      () => db.asRole('operatorAdmin', client => client.query(
+        `UPDATE operator.entitlement SET claims_jsonb = '{}'::jsonb WHERE tenant_id = $1`,
+        [tenantId],
+      )),
+      /permission denied/,
+    );
+    await assert.rejects(
+      () => db.asRole('operatorAdmin', client => client.query('TRUNCATE operator.entitlement')),
+      /permission denied/,
+    );
 
-    await db.asRole('saven_migrator', async client => {
+    await db.asRole('migrator', async client => {
       await client.query('CREATE TABLE operator.migrator_probe(id integer)');
       await client.query('DROP TABLE operator.migrator_probe');
     });
-    await db.asRole('saven_migrator', client => client.query(
+    await db.asRole('migrator', client => client.query(
       `INSERT INTO operator.pg_schema_migrations(version, description, checksum)
-       VALUES(1, 'pivot-002', 'checksum-pivot-002')`,
+       VALUES(1, 'pivot-002b', 'checksum-pivot-002b')`,
     ), {commit: true});
 
     const immutableStatements = [
@@ -311,17 +331,100 @@ test('PIVOT-002 operator bootstrap enforces Purpose A authority boundaries', asy
       ['DELETE FROM operator.source_store_migrations', []],
       ['UPDATE operator.migration_events SET detail = $1', ['changed']],
       ['DELETE FROM operator.migration_events', []],
+      ['UPDATE operator.entitlement SET claims_jsonb = $1::jsonb WHERE tenant_id = $2', ['{}', tenantId]],
+      ['DELETE FROM operator.entitlement WHERE tenant_id = $1', [tenantId]],
+      ['TRUNCATE operator.operator_audit', []],
+      ['TRUNCATE operator.pg_schema_migrations', []],
+      ['TRUNCATE operator.source_store_migrations', []],
+      ['TRUNCATE operator.migration_events', []],
+      ['TRUNCATE operator.entitlement', []],
     ];
     for (const [sql, params] of immutableStatements) {
-      await db.asRole('saven_migrator', async client => {
+      await db.asRole('migrator', async client => {
         await assert.rejects(() => client.query(sql, params), /OPERATOR_RECORD_IMMUTABLE/);
       });
     }
 
-    const floatingColumns = await db.asRole('saven_operator_read', async client => (
+    const floatingColumns = await db.asRole('operatorRead', async client => (
       await client.query(`SELECT table_name, column_name, data_type FROM information_schema.columns
         WHERE table_schema = 'operator' AND data_type IN ('real', 'double precision')`)
     ).rows);
     assert.deepEqual(floatingColumns, [], 'Operator schema must not use floating-point money columns');
   });
+});
+
+test('PIVOT-002 fixture refuses pre-existing cluster roles before mutation', async () => {
+  const suffix = suffixFor('refuse');
+  const names = roleNamesForSuffix(suffix);
+  const allRoles = [...Object.values(names).filter(value => value !== names.database)];
+  const cluster = await connectClusterAdmin();
+  let created = false;
+  try {
+    await cluster.query(
+      `CREATE ROLE "${names.customerApp}" NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOBYPASSRLS NOREPLICATION`,
+    );
+    created = true;
+    const before = (
+      await cluster.query(
+        'SELECT rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolcanlogin, rolinherit, rolreplication FROM pg_roles WHERE rolname = $1',
+        [names.customerApp],
+      )
+    ).rows[0];
+    await assert.rejects(
+      () => withPivotDatabase({namespaceSuffix: suffix}, async () => {
+        throw new Error('fixture callback must not run after a pre-flight refusal');
+      }),
+      /pre-flight refused/i,
+    );
+    const after = (
+      await cluster.query(
+        'SELECT rolname, rolsuper, rolbypassrls, rolcreatedb, rolcreaterole, rolcanlogin, rolinherit, rolreplication FROM pg_roles WHERE rolname = $1',
+        [names.customerApp],
+      )
+    ).rows[0];
+    assert.deepEqual(after, before, 'pre-existing role attributes must remain unchanged');
+    const database = await cluster.query('SELECT datname FROM pg_database WHERE datname = $1', [names.database]);
+    assert.equal(database.rowCount, 0, 'pre-flight refusal must not create the disposable database');
+    const otherRoles = await cluster.query(
+      'SELECT rolname FROM pg_roles WHERE rolname = ANY($1) AND rolname <> $2',
+      [allRoles, names.customerApp],
+    );
+    assert.equal(otherRoles.rowCount, 0, 'pre-flight refusal must not create any other fixture role');
+  } finally {
+    if (created) await cluster.query(`DROP ROLE IF EXISTS "${names.customerApp}"`);
+    await cluster.end();
+  }
+});
+
+test('PIVOT-002 fixture namespaces isolate concurrent runs', async () => {
+  const suffixA = suffixFor('isoa');
+  const suffixB = suffixFor('isob');
+  const [a, b] = await Promise.all([
+    withPivotDatabase({namespaceSuffix: suffixA}, async db => ({
+      database: db.database,
+      customerApp: db.roles.customerApp,
+      current: (await db.asRole('operatorRead', client => client.query('SELECT current_database() AS db'))).rows[0].db,
+    })),
+    withPivotDatabase({namespaceSuffix: suffixB}, async db => ({
+      database: db.database,
+      customerApp: db.roles.customerApp,
+      current: (await db.asRole('operatorRead', client => client.query('SELECT current_database() AS db'))).rows[0].db,
+    })),
+  ]);
+  assert.equal(a.database, 'saven_pivot_' + suffixA);
+  assert.equal(b.database, 'saven_pivot_' + suffixB);
+  assert.equal(a.current, a.database);
+  assert.equal(b.current, b.database);
+  assert.notEqual(a.customerApp, b.customerApp);
+});
+
+test('PIVOT-002 fixture reports run and cleanup failures together', () => {
+  const runError = new Error('run failed');
+  const combined = combineRunAndCleanupErrors(runError, [new Error('cleanup failed')]);
+  assert.ok(combined instanceof AggregateError);
+  assert.equal(combined.errors[0], runError);
+  assert.match(combined.errors[1].message, /cleanup failed/);
+  assert.equal(combineRunAndCleanupErrors(runError, []), runError);
+  const cleanupOnly = combineRunAndCleanupErrors(null, [new Error('cleanup failed')]);
+  assert.match(cleanupOnly.message, /cleanup failed/);
 });

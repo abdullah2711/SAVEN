@@ -13,3 +13,11 @@ async function checkDirectory(dir){
 for(const dir of ['src','scripts','tests','public','reference'])await checkDirectory(resolve(root,dir));
 JSON.parse(await readFile(resolve(root,'package.json'),'utf8'));
 console.log(`PASS: ${count} JavaScript files parsed; package manifest valid.`);
+
+// PIVOT-002 PostgreSQL gate. The focused test creates and removes a disposable
+// database and namespaced roles, so it requires an explicit opt-in to a dedicated
+// disposable cluster. Never skip this gate or borrow an owner/shared database.
+if(process.env.SAVEN_PIVOT_TEST_CLUSTER!=='1'){console.error('PIVOT-002 PostgreSQL gate requires SAVEN_PIVOT_TEST_CLUSTER=1 for a dedicated disposable cluster. Refusing to skip.');process.exit(1);}
+if(!process.env.PGHOST||!process.env.PGUSER){console.error('PIVOT-002 PostgreSQL gate requires PGHOST and PGUSER (and PGPASSWORD where required). Refusing to skip.');process.exit(1);}
+const pivot=spawnSync(process.execPath,['--test','tests/pivot-002-operator.test.mjs'],{stdio:'inherit',env:process.env});
+if(pivot.status!==0)process.exit(pivot.status??1);
