@@ -1,0 +1,257 @@
+{
+  "contract": "saven.postgres-business-rules",
+  "version": 1,
+  "status": "design-and-schema-input",
+  "date": "2026-11-15",
+  "owner_contract": "PIVOT-003",
+  "applies_to": [
+    "db/postgres/20-tenant-schema.sql reference domain annotations",
+    "tenant_data.reference_values seed rows per tenant",
+    "tenant_data.business_rule / approval_policy / posting_constraint / tax_profile versioned JSON"
+  ],
+  "extension_rule": "A new value in any domain below is an active/effective-dated tenant_data.reference_values row, not a migration and not a code constant. A new executable behaviour requires a registered typed handler plus tests; storing a JSON row never installs logic. Used policy rows are superseded with a new version, never mutated. Application and posting-kernel validation is authoritative; this file is the canonical seed list and JSON-schema registry, and it is not itself a live policy engine.",
+  "authority_notes": [
+    "AI-origin ledger documents are ordinary documents with document_status PENDING_APPROVAL and origin_type AI. There is no ai_proposal table.",
+    "ai_origin_direct_post_allowed defaults to false and must remain false in Phase 1.",
+    "Monetary values in tenant ledgers are exact integer minor units (bigint). Approval thresholds are exact numeric decimals. No floats are used anywhere.",
+    "A reference value can change the configured set of labels/domains; it can never grant protected owner authority or install posting logic."
+  ],
+  "reference_domains": {
+    "action_type": {
+      "table": "tenant_data.denials, tenant_data.approval_policy",
+      "values": [
+        {"value": "journal.read", "label": "Read journal entries"},
+        {"value": "journal.prepare", "label": "Prepare journal entry"},
+        {"value": "journal.post", "label": "Post journal entry"},
+        {"value": "journal.approve", "label": "Approve journal entry"},
+        {"value": "ledger.read", "label": "Read ledger"},
+        {"value": "ledger.export", "label": "Export ledger"},
+        {"value": "roles.manage", "label": "Manage roles"},
+        {"value": "inventory.read", "label": "Read inventory"},
+        {"value": "inventory.manage", "label": "Manage inventory"},
+        {"value": "inventory.prepare", "label": "Prepare stock operation"},
+        {"value": "inventory.post", "label": "Post stock operation"},
+        {"value": "inventory.approve", "label": "Approve stock operation"},
+        {"value": "accounts.manage", "label": "Manage chart of accounts"},
+        {"value": "periods.manage", "label": "Manage posting periods"},
+        {"value": "workspace.manage", "label": "Manage accounting workspace"},
+        {"value": "assistant.use", "label": "Use assistant"}
+      ]
+    },
+    "account_kind": {
+      "table": "tenant_data.account_profiles",
+      "values": [
+        {"value": "asset", "label": "Asset"},
+        {"value": "liability", "label": "Liability"},
+        {"value": "equity", "label": "Equity"},
+        {"value": "income", "label": "Income"},
+        {"value": "expense", "label": "Expense"}
+      ]
+    },
+    "approval_state": {
+      "table": "tenant_data.approval_requests",
+      "values": [
+        {"value": "PENDING", "label": "Pending"},
+        {"value": "APPROVED", "label": "Approved"}
+      ]
+    },
+    "business_state": {
+      "table": "tenant_data.business",
+      "values": [
+        {"value": "PROVISIONING", "label": "Provisioning"},
+        {"value": "ACTIVE", "label": "Active"}
+      ]
+    },
+    "command_state": {
+      "table": "tenant_data.command_inbox",
+      "values": [
+        {"value": "ACCEPTED_PENDING", "label": "Accepted, awaiting execution"},
+        {"value": "AWAITING_APPROVAL", "label": "Awaiting approval"},
+        {"value": "POSTED", "label": "Posted"},
+        {"value": "FAILED", "label": "Failed"}
+      ]
+    },
+    "decision_type": {
+      "table": "tenant_data.command_decisions",
+      "values": [
+        {"value": "REJECTED", "label": "Rejected"},
+        {"value": "RETURNED", "label": "Returned for correction"}
+      ]
+    },
+    "document_kind": {
+      "table": "tenant_data.document_numbers",
+      "values": [
+        {"value": "JRN", "label": "Journal"},
+        {"value": "STK", "label": "Stock operation"},
+        {"value": "INV", "label": "Invoice"},
+        {"value": "BILL", "label": "Bill"},
+        {"value": "PAY", "label": "Payment"}
+      ]
+    },
+    "document_status": {
+      "table": "tenant_data.document_registry, tenant_data.document_revisions",
+      "values": [
+        {"value": "DRAFT", "label": "Draft"},
+        {"value": "SUBMITTED", "label": "Submitted"},
+        {"value": "PENDING_APPROVAL", "label": "Pending approval"},
+        {"value": "APPROVED", "label": "Approved"},
+        {"value": "POSTED", "label": "Posted"},
+        {"value": "REJECTED", "label": "Rejected"},
+        {"value": "RETURNED", "label": "Returned for correction"},
+        {"value": "CANCELLED", "label": "Cancelled"},
+        {"value": "FAILED", "label": "Failed"}
+      ]
+    },
+    "document_type": {
+      "table": "tenant_data.document_registry, tenant_data.document_revisions",
+      "values": [
+        {"value": "JOURNAL", "label": "Journal entry"},
+        {"value": "INVOICE", "label": "Sales invoice"},
+        {"value": "BILL", "label": "Purchase bill"},
+        {"value": "PAYMENT", "label": "Payment"},
+        {"value": "RECEIPT", "label": "Receipt"},
+        {"value": "CREDIT_NOTE", "label": "Credit note"},
+        {"value": "STOCK_OPERATION", "label": "Stock operation"},
+        {"value": "CORRECTION", "label": "Correction"}
+      ]
+    },
+    "draft_state": {
+      "table": "tenant_data.journal_drafts",
+      "values": [
+        {"value": "DRAFT", "label": "Draft"},
+        {"value": "SUBMITTED", "label": "Submitted"},
+        {"value": "CANCELLED", "label": "Cancelled"}
+      ]
+    },
+    "origin_type": {
+      "table": "tenant_data.audit_event, tenant_data.document_registry, tenant_data.document_revisions",
+      "values": [
+        {"value": "human", "label": "Human user"},
+        {"value": "ai", "label": "AI proposal"},
+        {"value": "integration", "label": "Integration"},
+        {"value": "system", "label": "System process"}
+      ]
+    },
+    "outbox_state": {
+      "table": "tenant_data.outbox",
+      "values": [
+        {"value": "READY", "label": "Ready"},
+        {"value": "DELIVERED", "label": "Delivered"},
+        {"value": "FAILED", "label": "Failed"}
+      ]
+    },
+    "party_kind": {
+      "table": "tenant_data.trade_parties",
+      "values": [
+        {"value": "customer", "label": "Customer"},
+        {"value": "supplier", "label": "Supplier"}
+      ]
+    },
+    "scan_state": {
+      "table": "tenant_data.command_files",
+      "values": [
+        {"value": "clean", "label": "Scan clean"}
+      ]
+    },
+    "stock_operation_kind": {
+      "table": "tenant_data.stock_operations",
+      "values": [
+        {"value": "receipt", "label": "Receipt"},
+        {"value": "issue", "label": "Issue"},
+        {"value": "transfer", "label": "Transfer"}
+      ]
+    },
+    "tax_type": {
+      "table": "tenant_data.tax_profile",
+      "values": [
+        {"value": "SALES_TAX", "label": "Sales tax"},
+        {"value": "WITHHOLDING", "label": "Withholding"},
+        {"value": "INCOME_TAX", "label": "Income tax"},
+        {"value": "EXCISE", "label": "Excise"}
+      ]
+    },
+    "trade_document_kind": {
+      "table": "tenant_data.trade_documents",
+      "values": [
+        {"value": "invoice", "label": "Invoice"},
+        {"value": "bill", "label": "Bill"}
+      ]
+    }
+  },
+  "approval_defaults": {
+    "ai_origin_direct_post_allowed": false,
+    "editable_in_pending": true,
+    "requires_different_approver": false,
+    "max_self_approval_amount": "0",
+    "approval_threshold_amount": "0",
+    "currency_required": true,
+    "notes": "Defaults mirror the owner AI and approval constraints. Pending documents of any origin are editable by an authorized editor; the edit is audited, keeps original proposed values, and invalidates any prior approval. Approval of AI-origin documents uses the same approval_policy as human entries."
+  },
+  "posting_constraint_handlers": {
+    "registered_in_this_contract": [],
+    "note": "PIVOT-003 stores constraint data only. handler_key must resolve to a deterministic validator registered by PIVOT-013 and later posting contracts. No handler executes SQL or arbitrary JSON logic, and an unknown handler_key must fail closed at posting time.",
+    "planned_examples": [
+      "balanced_debits_credits",
+      "period_not_locked",
+      "account_requires_party",
+      "withholding_reconciles_tax_schedule"
+    ]
+  },
+  "json_schemas": {
+    "business_rule.config_jsonb": {
+      "schema_version": 1,
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://economicsystems.cc/schemas/tenant/business-rule-config-v1.json",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "values": {"type": "object"},
+        "notes": {"type": "string"}
+      }
+    },
+    "posting_constraint.rule_jsonb": {
+      "schema_version": 1,
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://economicsystems.cc/schemas/tenant/posting-constraint-rule-v1.json",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "severity": {"type": "string", "enum": ["block", "warn"]},
+        "parameters": {"type": "object"}
+      }
+    },
+    "reference_values.value_jsonb": {
+      "schema_version": 1,
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://economicsystems.cc/schemas/tenant/reference-value-v1.json",
+      "type": "object",
+      "additionalProperties": true
+    },
+    "support_grants.scope_jsonb": {
+      "schema_version": 1,
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://economicsystems.cc/schemas/tenant/support-grant-scope-v1.json",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "companies": {"type": "array", "items": {"type": "string"}},
+        "branches": {"type": "array", "items": {"type": "string"}},
+        "modules": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "document_revisions.policy_snapshot": {
+      "schema_version": 1,
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://economicsystems.cc/schemas/tenant/approval-policy-snapshot-v1.json",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "action_type": {"type": "string"},
+        "policy_key": {"type": "string"},
+        "policy_version": {"type": "integer", "minimum": 1},
+        "review_required": {"type": "boolean"},
+        "reason": {"type": "string"}
+      }
+    }
+  }
+}
