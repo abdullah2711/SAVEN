@@ -36,7 +36,21 @@ jobs:
           python-version: '3.14'
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: node scripts/check.mjs
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: contract-test-only
+          PGADMIN_DATABASE: postgres
+          SAVEN_PIVOT_TEST_CLUSTER: "1"
       - run: node --test tests/*.test.mjs
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: 5432
+          PGUSER: postgres
+          PGPASSWORD: contract-test-only
+          PGADMIN_DATABASE: postgres
+          SAVEN_PIVOT_TEST_CLUSTER: "1"
       - name: Native PostgreSQL authority and posting contracts
         run: node scripts/verify-postgres.mjs --initialize
         env:
