@@ -7,6 +7,8 @@
     "node": ">=24.13 <25"
   },
   "dependencies": {
+    "@better-auth/passkey": "1.7.25",
+    "better-auth": "1.7.25",
     "pg": "8.23.1"
   },
   "scripts": {
