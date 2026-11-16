@@ -81,6 +81,20 @@ $fn$;
 COMMENT ON FUNCTION tenant_data.immutability_040_command_state(uuid, text) IS
   'PIVOT-005 payload 040: current command state for a tenant-scoped command id. Invoker, RLS-scoped, no dynamic SQL.';
 
+-- Shared serialization key for every writer of one command/entry: posting, child and
+-- evidence inserts, corrections and terminal voids must all take it so that a guard
+-- check cannot be invalidated by a concurrent commit.
+CREATE FUNCTION tenant_data.immutability_040_lock_key(p_tenant uuid, p_command text)
+RETURNS bigint
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog
+AS $fn$
+  SELECT hashtextextended(p_tenant::text || ':' || p_command, 0)
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) IS
+  'PIVOT-005 payload 040: deterministic advisory-lock key for one tenant-scoped command/entry. Shared by posting, children, corrections and voids.';
+
 -- Verify that a command entering POSTED has the accepted effects. Mirrors the native
 -- kernel contract: balanced journal with at least two lines, an audit row for the
 -- posting event, an outbox row, and reconciled trade/stock effects when present.
@@ -216,7 +230,9 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- UPDATE
+  -- UPDATE/DELETE: serialize against posting, children, corrections and voids.
+  PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.id));
+
   IF NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.id IS DISTINCT FROM OLD.id THEN
     RAISE EXCEPTION 'COMMAND_IDENTITY_IMMUTABLE: command tenant and id are immutable';
   END IF;
@@ -263,6 +279,7 @@ DECLARE
   v_state text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.id));
     SELECT ci.state INTO v_state
     FROM tenant_data.command_inbox ci
     WHERE ci.tenant_id = NEW.tenant_id AND ci.id = NEW.id;
@@ -284,6 +301,7 @@ DECLARE
   v_state text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.journal_id));
     SELECT ci.state INTO v_state
     FROM tenant_data.journals j
     JOIN tenant_data.command_inbox ci
@@ -311,6 +329,7 @@ DECLARE
   v_state text;
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.command_id));
     SELECT ci.state INTO v_state
     FROM tenant_data.command_inbox ci
     WHERE ci.tenant_id = NEW.tenant_id AND ci.id = NEW.command_id;
@@ -322,6 +341,74 @@ BEGIN
   RAISE EXCEPTION 'POSTED_SOURCE_IMMUTABLE: % rows of an accepted command are retained and immutable', TG_TABLE_NAME;
 END;
 $fn$;
+
+-- =====================================================================
+-- journal_corrections: linked reversal source, both ends reconciled
+-- =====================================================================
+
+CREATE FUNCTION tenant_data.immutability_040_correction_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, tenant_data
+AS $fn$
+DECLARE
+  v_original_state text;
+  v_voided boolean := false;
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    RAISE EXCEPTION 'CORRECTION_IMMUTABLE: correction links are immutable and retained';
+  END IF;
+
+  -- Serialize against posting and voiding of the original entry.
+  PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.original_id));
+
+  SELECT c.state INTO v_original_state
+  FROM tenant_data.command_inbox c
+  WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.original_id;
+  IF v_original_state IS DISTINCT FROM 'POSTED' THEN
+    RAISE EXCEPTION 'CORRECTION_REQUIRES_POSTED_ORIGINAL: a correction needs a posted original';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM tenant_data.entry_voids v
+    WHERE v.tenant_id = NEW.tenant_id AND v.entry_id = NEW.original_id
+  ) THEN
+    RAISE EXCEPTION 'CORRECTION_ORIGINAL_VOIDED: a voided entry cannot be corrected';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+
+-- Commit-time re-check: both ends of the reference must still be valid when the
+-- transaction actually commits, so a concurrent void cannot slip between check and
+-- commit. Deferred constraint trigger, created by the activation step.
+CREATE FUNCTION tenant_data.immutability_040_correction_committed()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, tenant_data
+AS $fn$
+DECLARE
+  v_original_state text;
+BEGIN
+  SELECT c.state INTO v_original_state
+  FROM tenant_data.command_inbox c
+  WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.original_id;
+  IF v_original_state IS DISTINCT FROM 'POSTED' THEN
+    RAISE EXCEPTION 'CORRECTION_REQUIRES_POSTED_ORIGINAL: a correction needs a posted original';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM tenant_data.entry_voids v
+    WHERE v.tenant_id = NEW.tenant_id AND v.entry_id = NEW.original_id
+  ) THEN
+    RAISE EXCEPTION 'CORRECTION_ORIGINAL_VOIDED: a voided entry cannot be corrected';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_040_correction_guard() IS
+  'PIVOT-005 payload 040: correction links take the shared command lock, need a posted original, reject a voided original and are immutable.';
+COMMENT ON FUNCTION tenant_data.immutability_040_correction_committed() IS
+  'PIVOT-005 payload 040: deferred commit-time re-check of both ends of a correction reference.';
 
 -- =====================================================================
 -- approval_requests: decided digest and policy snapshot are immutable
@@ -473,6 +560,7 @@ COMMENT ON FUNCTION tenant_data.immutability_040_revision_guard() IS
 -- no PUBLIC path exists to the function entry points.
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_command_state(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_command_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_journal_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_journal_line_guard() FROM PUBLIC;
@@ -483,6 +571,10 @@ REVOKE ALL ON FUNCTION tenant_data.immutability_040_number_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_sequence_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_revision_guard() FROM PUBLIC;
 
+-- The runtime trigger bodies call these two helpers directly, so the invoker needs
+-- EXECUTE on them; the guard functions themselves are invoked as triggers.
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) TO saven_customer_app;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_command_guard() TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_journal_guard() TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_journal_line_guard() TO saven_customer_app;

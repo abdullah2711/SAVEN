@@ -42,31 +42,34 @@ BEGIN
   FOR req IN
     SELECT * FROM (VALUES
       -- original protection (payload 040)
-      ('saven_p005_command_inbox',            'command_inbox',           'command_guard',       'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_journals',                 'journals',                'journal_guard',       'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_journal_lines',            'journal_lines',           'journal_line_guard',  'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_approval_requests',        'approval_requests',       'approval_guard',      'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_journal_drafts',           'journal_drafts',          'draft_guard',         'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_document_sequences',       'document_sequences',      'sequence_guard',      'UPDATE OR DELETE'),
-      ('saven_p005_document_numbers',         'document_numbers',        'number_guard',        'UPDATE OR DELETE'),
-      ('saven_p005_document_revisions',       'document_revisions',      'revision_guard',      'UPDATE OR DELETE'),
-      ('saven_p005_trade_operations',         'trade_operations',        'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_trade_documents',          'trade_documents',         'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_trade_lines',              'trade_lines',             'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_trade_allocations',        'trade_allocations',       'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_trade_credits',            'trade_credits',           'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_trade_credit_lines',       'trade_credit_lines',      'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_stock_operations',         'stock_operations',        'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_stock_movements',          'stock_movements',         'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_command_files',            'command_files',           'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_command_decisions',        'command_decisions',       'command_child_guard', 'INSERT OR UPDATE OR DELETE'),
+      ('saven_p005_command_inbox',            'command_inbox',           'command_guard',       'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_journals',                 'journals',                'journal_guard',       'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_journal_lines',            'journal_lines',           'journal_line_guard',  'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_approval_requests',        'approval_requests',       'approval_guard',      'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_journal_drafts',           'journal_drafts',          'draft_guard',         'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_document_sequences',       'document_sequences',      'sequence_guard',      'UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_document_numbers',         'document_numbers',        'number_guard',        'UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_document_revisions',       'document_revisions',      'revision_guard',      'UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_trade_operations',         'trade_operations',        'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_trade_documents',          'trade_documents',         'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_trade_lines',              'trade_lines',             'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_trade_allocations',        'trade_allocations',       'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_trade_credits',            'trade_credits',           'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_trade_credit_lines',       'trade_credit_lines',      'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_stock_operations',         'stock_operations',        'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_stock_movements',          'stock_movements',         'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_command_files',            'command_files',           'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_command_decisions',        'command_decisions',       'command_child_guard', 'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_journal_corrections',      'journal_corrections',     'correction_guard',    'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
       -- terminal void protection (payload 042)
-      ('saven_p005_entry_voids',              'entry_voids',             'void_guard',          'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_void_denials',             'void_denials',            'denial_guard',        'INSERT OR UPDATE OR DELETE'),
-      ('saven_p005_command_inbox_void',       'command_inbox',           'receipt_guard',       'UPDATE OR DELETE'),
-      ('saven_p005_audit_void',               'audit',                   'void_audit_guard',    'UPDATE OR DELETE'),
-      ('saven_p005_audit_event_void',         'audit_event',             'void_audit_guard',    'UPDATE OR DELETE')
-    ) AS m(trigger_name, table_name, guard_suffix, events)
+      ('saven_p005_entry_voids',              'entry_voids',             'void_guard',          'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_void_denials',             'void_denials',            'denial_guard',        'INSERT OR UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_command_inbox_void',       'command_inbox',           'receipt_guard',       'UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_audit_void',               'audit',                   'void_audit_guard',    'UPDATE OR DELETE', 'BEFORE', false),
+      ('saven_p005_audit_event_void',         'audit_event',             'void_audit_guard',    'UPDATE OR DELETE', 'BEFORE', false),
+      -- commit-time invariants (deferred constraint triggers)
+      ('saven_p005_correction_commit',        'journal_corrections',     'correction_committed', 'INSERT', 'AFTER', true)
+    ) AS m(trigger_name, table_name, guard_suffix, events, timing, deferred)
   LOOP
     -- Highest installed payload version that defines this guard.
     SELECT t.token INTO v_version
@@ -91,9 +94,17 @@ BEGIN
     END IF;
 
     EXECUTE format('DROP TRIGGER IF EXISTS %I ON tenant_data.%I', req.trigger_name, req.table_name);
-    EXECUTE format(
-      'CREATE TRIGGER %I BEFORE %s ON tenant_data.%I FOR EACH ROW EXECUTE FUNCTION %s',
-      req.trigger_name, req.events, req.table_name, v_function);
+    IF req.deferred THEN
+      -- Constraint triggers must be AFTER ... FOR EACH ROW and are checked at commit.
+      EXECUTE format(
+        'CREATE CONSTRAINT TRIGGER %I AFTER %s ON tenant_data.%I DEFERRABLE INITIALLY DEFERRED '
+        'FOR EACH ROW EXECUTE FUNCTION %s',
+        req.trigger_name, req.events, req.table_name, v_function);
+    ELSE
+      EXECUTE format(
+        'CREATE TRIGGER %I %s %s ON tenant_data.%I FOR EACH ROW EXECUTE FUNCTION %s',
+        req.trigger_name, req.timing, req.events, req.table_name, v_function);
+    END IF;
     EXECUTE format(
       'COMMENT ON TRIGGER %I ON tenant_data.%I IS %L',
       req.trigger_name, req.table_name,
@@ -154,6 +165,55 @@ BEGIN
   END IF;
 END $$;
 
-SET LOCAL ROLE saven_migrator;
+-- =====================================================================
+-- Activation: expose the runtime interface only after every guard above is attached
+-- and validated. A partial install (payloads applied, dispatcher not run) therefore
+-- leaves the void primitive and the void projections unreachable.
+-- =====================================================================
+
+DO $$
+BEGIN
+  IF to_regprocedure('tenant_data.void_posted_entry(uuid, text, text, text, text, text, text)') IS NULL THEN
+    RAISE EXCEPTION 'PIVOT-005: activation requires migrations/042-entry-voiding.sql';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p005_entry_voids' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p005_journal_corrections' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p005_correction_commit' AND NOT tg.tgisinternal) THEN
+    RAISE EXCEPTION 'PIVOT-005: activation refused because required guard bindings are missing';
+  END IF;
+END $$;
+
+-- Runtime interface, granted only here.
+GRANT SELECT ON tenant_data.entry_voids, tenant_data.void_denials TO saven_customer_app;
+GRANT INSERT (tenant_id, id, entry_id, attempt_key, reason_code, detail, attempted_at)
+  ON tenant_data.void_denials TO saven_customer_app;
+GRANT SELECT ON tenant_data.active_general_ledger, tenant_data.voided_entries TO saven_customer_app;
+REVOKE ALL ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, text)
+  TO saven_customer_app;
+
+DO $$
+BEGIN
+  IF NOT has_function_privilege('saven_customer_app',
+       'tenant_data.void_posted_entry(uuid, text, text, text, text, text, text)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'PIVOT-005: activation did not grant the void primitive to the runtime';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM aclexplode((SELECT proacl FROM pg_proc
+      WHERE oid = 'tenant_data.void_posted_entry(uuid, text, text, text, text, text, text)'::regprocedure)) a
+    WHERE a.grantee = 0
+  ) THEN
+    RAISE EXCEPTION 'PIVOT-005: the void primitive must not be executable by PUBLIC';
+  END IF;
+  IF has_table_privilege('saven_customer_app', 'tenant_data.entry_voids', 'INSERT')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.entry_voids', 'UPDATE')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.entry_voids', 'DELETE') THEN
+    RAISE EXCEPTION 'PIVOT-005: the runtime must not write void records directly';
+  END IF;
+  IF NOT has_table_privilege('saven_customer_app', 'tenant_data.active_general_ledger', 'SELECT')
+     OR NOT has_table_privilege('saven_customer_app', 'tenant_data.voided_entries', 'SELECT') THEN
+    RAISE EXCEPTION 'PIVOT-005: activation did not grant the canonical projections';
+  END IF;
+END $$;
 
 COMMIT;

@@ -1,5 +1,5 @@
 CONTRACT: docs/contractor/contracts/PIVOT-005-posted-immutability.md
-STATUS: DONE (database contract and mechanism evidence; application route/page/RBAC limits recorded below)
+STATUS: DONE (R2 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
 
 ## What was delivered
 
@@ -108,3 +108,43 @@ compliant: no growing hardcoded state/domain list in 042 (only the structural `P
 ## GIT
 
 branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b commits=recorded in the delivery message pushed=yes merged=no
+
+
+---
+
+## Revision 2 — PIVOT-005 R1 corrections (verdict 950b22c)
+
+Finding-by-finding closure, all inside the existing TOUCH paths plus the review-authorized fixture and reference-seed additions.
+
+| Finding | Correction | Evidence |
+| --- | --- | --- |
+| 1. Active GL included unposted sources | `active_general_ledger` now joins `command_inbox` and requires `state = 'POSTED'` **and** no void record; voided journals keep their historical POSTED receipt but are excluded as a whole | `active GL follows the source lifecycle...`: accepted (999) and failed (777) sources excluded, posted 250 included, voided excluded and retained in `voided_entries`/raw lines |
+| 2. Invented permission shape, no denials/scope/policy/approval, locked periods allowed, unbound denial actor | New reviewed decision helper evaluates the **canonical** contract: `actions` + `companies`/`branches`/`accounts` + `maxMinor` + `review`, plus explicit `denials` (including `*`) and the effective `approval_policy`; the primitive stores the decision digest. Review-required voids need an APPROVED `approval_requests` row bound to the exact request digest with a different approver and a matching decision digest (stale binding refused). Locked periods are refused (`VOID_PERIOD_LOCKED`). The denial-log trigger overwrites actor/UUID from verified context | `void authority uses canonical permissions...`, `review-required voids need an independent, digest-bound approval` |
+| 3. Races and concurrent replay unprotected; no correction guard | Shared advisory lock (`immutability_040_lock_key`) taken by command posting, journal/line/child inserts, correction links and voids; idempotency re-checked **after** the lock (same key replays the same receipt, including concurrently); a deferred constraint trigger re-checks both ends of correction references at commit; `journal_corrections` now has a dispatcher guard and is immutable | `concurrent replay and duplicate void...` (two real connections, `pg_sleep`), `corrections and voids serialize with commit-time invariants` (correction commits first → void refused) |
+| 4. Runtime posting not proven; helper not granted | 040 grants EXECUTE on `assert_posted_effects` and the lock helper to the runtime; a test posts accepted → journal/lines/audit/outbox → POSTED **as `saven_customer_app`** and asserts missing-audit refusal | `runtime role posts through effects and rejects incomplete postings` |
+| 5. Reused definer authority incomplete; grants too broad; silent repair | 042 grants an enumerated column-level minimum only (no blanket INSERT, `trade_documents` removed), validates the **complete** authority surface (flags, direct/transitive memberships, ownership of relations/schemas/functions/databases/tablespaces, schema ACL exactly `USAGE` on `tenant_data`, no `CREATE`, empty table/sequence ACLs, exact column ACLs, exact function ACLs, no default privileges) after transfer and rolls back on any mismatch; no schema-wide REVOKE sweeps. A polluted pre-existing role is refused and left untouched (its unrelated grant preserved) | `refuses a polluted pre-existing void owner without repairing it`, plus catalog assertions in the activation test |
+| 6. Runtime exposure preceded protection | 042 grants the runtime **nothing**; `40-triggers.sql` is now the activation step: it attaches all guards (including the deferred correction constraint), validates them, then grants the primitive/projections/denial log and re-validates. Applying 040+042 without 40 leaves the primitive non-executable and the projections unreadable | `activation is fail-closed until the dispatcher installs guards` |
+| Reference registration | `VOIDED`, `accounting.entry.void` and `accounting.voided_entries.read` added to `contracts/postgres-business-rules-v1.json`; guards use only structural terminal states | static contract test |
+
+JSON addition is bounded to the reference domains and the authority note. No role-name or eligibility rule was reintroduced; D-014 remains binding.
+
+### Gate evidence (R2)
+
+Environment unchanged: disposable loopback PostgreSQL 18.6, `SAVEN_PIVOT_TEST_CLUSTER=1`, Node 24.19.0.
+
+```text
+$ node scripts/check.mjs
+PASS: 156 JavaScript files parsed; package manifest valid.
+
+$ node --test tests/pivot-005-immutability.test.mjs
+✔ 10 focused cases (lifecycle, canonical authority, approval binding, runtime posting,
+  terminal/replay, correction serialization, activation, polluted owner, static contract,
+  concurrent replay) — tests 10, pass 10, fail 0
+
+$ node --test tests/*.test.mjs
+ℹ tests 215
+ℹ pass 215
+ℹ fail 0
+```
+
+Remaining limits: no application route/page/RBAC (AUTH-006, PIVOT-013, UI contract); denial durability is the kernel's separate `void_denials` write (PostgreSQL has no autonomous transaction); supported dependency graph is the plain journal; Private packaging and representative-volume measurements remain out of scope. PIVOT-006 must register payload 041 alongside 040/042.

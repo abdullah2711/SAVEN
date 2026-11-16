@@ -2,30 +2,24 @@
 --
 -- Applied by the SEPARATE OFFLINE ADMINISTRATOR (superuser) because it provisions one
 -- narrow NOLOGIN owner for the void primitive and transfers that single function to it.
--- Everything else is created as saven_migrator.
 --
--- Role-agnostic by owner direction (D-014): this file contains NO business role names,
--- NO eligibility classes and NO void-specific read restriction. Voided entries are
--- readable at the database level by anyone with normal module access, within the
--- existing tenant/company/branch scope. Fine-grained visibility is future application
--- RBAC / User Access Settings work, not a database rule.
+-- ROLE-AGNOSTIC READ VISIBILITY (D-014): no business role names, eligibility classes or
+-- void-specific read restriction. Fine-grained visibility is future application RBAC.
 --
--- Model:
---   * A posted entry is retained byte-for-byte. Nothing is moved, copied or deleted.
---   * tenant_data.entry_voids is the append-only, tenant-scoped void record; its unique
---     (tenant_id, entry_id) makes exactly one terminal void possible per entry.
---   * A void has its own durable command receipt (command_inbox state VOIDED), audit
---     row, audit_event row and outbox row, all committed in one transaction.
---   * tenant_data.active_general_ledger and tenant_data.voided_entries are the canonical
---     effective projections. Consumers use the same inclusion rule; a voided journal is
---     excluded as a whole, never line by line.
---   * Read and delete authority are separate mechanisms: read is normal module access;
---     execution of tenant_data.void_posted_entry() requires the action permission
---     `accounting.entry.void` on a business role (reference action key, never a role
---     name in this file) or protected owner authority.
+-- ACTIVATION: this file grants the runtime NOTHING. Runtime read grants and the void
+-- primitive's EXECUTE are applied by 40-triggers.sql only after every guard trigger is
+-- attached and validated, so a partial install never exposes the void command.
 --
--- Installed 040 bytes are untouched. Its payload keeps the retained-source protection
--- and remains attached through the dispatcher; 042 adds its own payload version.
+-- AUTHORITY (finding 2): the primitive evaluates the canonical role-permission contract
+-- (actions + companies/branches/accounts + maxMinor + review), explicit denials and the
+-- effective approval policy through reviewed helper functions; denied, unknown, stale or
+-- out-of-scope decisions fail closed. Locked posting periods are refused (no blanket
+-- locked-period voiding). Approval, when required, must be an APPROVED approval_requests
+-- row bound to this exact request digest and decided by a different actor.
+--
+-- CONCURRENCY (finding 3): every source/dependency writer uses the shared command lock
+-- from payload 040; a deferred constraint trigger re-checks both ends of correction
+-- references at commit; idempotency is re-checked after the lock is held.
 
 BEGIN;
 
@@ -75,7 +69,7 @@ BEGIN
 END $$;
 
 COMMENT ON ROLE saven_void_definer IS
-  'PIVOT-005: NOLOGIN owner of tenant_data.void_posted_entry() only. Fixed search_path, restricted EXECUTE, no DDL, no ownership beyond that one function, no superuser/BYPASSRLS.';
+  'PIVOT-005: NOLOGIN owner of tenant_data.void_posted_entry() only. Fixed search_path, restricted EXECUTE, enumerated column grants, no DDL, no ownership beyond that one function, no superuser/BYPASSRLS.';
 
 SET LOCAL ROLE saven_migrator;
 
@@ -95,8 +89,12 @@ CREATE TABLE tenant_data.entry_voids (
   source_digest text NOT NULL,
   source_version bigint NOT NULL,
   source_line_count integer NOT NULL,
+  source_debit bigint NOT NULL,
   request_digest text NOT NULL,
   idempotency_key text NOT NULL,
+  policy_decision jsonb NOT NULL DEFAULT '{}'::jsonb,
+  policy_digest text NOT NULL DEFAULT '',
+  approval_command_id text,
   correlation_id text,
   policy_version bigint,
   approval_version bigint,
@@ -111,6 +109,8 @@ CREATE TABLE tenant_data.entry_voids (
     REFERENCES tenant_data.journals (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT entry_voids_command_fkey FOREIGN KEY (tenant_id, void_command_id)
     REFERENCES tenant_data.command_inbox (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT entry_voids_approval_fkey FOREIGN KEY (tenant_id, approval_command_id)
+    REFERENCES tenant_data.command_inbox (tenant_id, id) ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT entry_voids_actor_fkey FOREIGN KEY (actor_uuid, actor)
     REFERENCES auth.users (id, legacy_id) ON UPDATE RESTRICT ON DELETE RESTRICT,
   CONSTRAINT entry_voids_transition CHECK (original_state = 'POSTED' AND effective_state = 'VOIDED'),
@@ -120,19 +120,16 @@ CREATE TABLE tenant_data.entry_voids (
   CONSTRAINT entry_voids_digest_not_blank CHECK (length(btrim(source_digest)) BETWEEN 1 AND 200),
   CONSTRAINT entry_voids_request_not_blank CHECK (length(btrim(request_digest)) BETWEEN 1 AND 200),
   CONSTRAINT entry_voids_version_positive CHECK (source_version > 0),
-  CONSTRAINT entry_voids_lines_balanced CHECK (source_line_count >= 2)
+  CONSTRAINT entry_voids_lines_balanced CHECK (source_line_count >= 2),
+  CONSTRAINT entry_voids_debit_positive CHECK (source_debit > 0)
 );
 
 COMMENT ON TABLE tenant_data.entry_voids IS
   'PIVOT-005: append-only terminal void record. One row per voided entry; the source journal, lines, command receipt, evidence and numbers remain physically retained and immutable.';
-COMMENT ON COLUMN tenant_data.entry_voids.effective_state IS
-  'Structural effective lifecycle of the retained source: VOIDED. The source itself stays historically POSTED.';
-COMMENT ON COLUMN tenant_data.entry_voids.source_version IS
-  'Accepted command receipt version (command_inbox.updated_at in epoch milliseconds) captured at void time.';
-COMMENT ON COLUMN tenant_data.entry_voids.request_digest IS
-  'Deterministic digest of the void request (entry, actor, reason, idempotency key) used to replay the same request without a second mutation.';
-COMMENT ON COLUMN tenant_data.entry_voids.period_locked IS
-  'Snapshot of the posting-period lock evaluated by the application policy at void time; voiding does not rewrite historical data.';
+COMMENT ON COLUMN tenant_data.entry_voids.policy_decision IS
+  'Canonical decision payload from the reviewed permission/policy helpers captured at void time (denials, matching roles, scope, review requirement and policy version).';
+COMMENT ON COLUMN tenant_data.entry_voids.approval_command_id IS
+  'Pre-registered void command receipt whose APPROVED approval_requests row authorised a review-required void; null when no review was required.';
 
 CREATE TABLE tenant_data.void_denials (
   tenant_id uuid NOT NULL,
@@ -152,7 +149,7 @@ CREATE TABLE tenant_data.void_denials (
 );
 
 COMMENT ON TABLE tenant_data.void_denials IS
-  'PIVOT-005: append-only durable denial log. A denied void raises and therefore cannot write its own audit row; the application/kernel records the refusal here in a separate transaction so failed attempts remain independently auditable.';
+  'PIVOT-005: append-only durable denial log. A denied void raises and cannot write its own audit row; the kernel records the refusal here in a separate transaction. actor/actor_uuid are overwritten from verified context by a trigger.';
 
 CREATE INDEX entry_voids_entry_idx ON tenant_data.entry_voids (tenant_id, entry_id);
 CREATE INDEX void_denials_attempt_idx ON tenant_data.void_denials (tenant_id, attempted_at DESC);
@@ -176,13 +173,15 @@ SELECT l.tenant_id,
        j.created_at AS posted_at
 FROM tenant_data.journal_lines l
 JOIN tenant_data.journals j ON j.tenant_id = l.tenant_id AND j.id = l.journal_id
-WHERE NOT EXISTS (
-  SELECT 1 FROM tenant_data.entry_voids v
-  WHERE v.tenant_id = l.tenant_id AND v.entry_id = l.journal_id
-);
+JOIN tenant_data.command_inbox c ON c.tenant_id = j.tenant_id AND c.id = j.id
+WHERE c.state = 'POSTED'
+  AND NOT EXISTS (
+    SELECT 1 FROM tenant_data.entry_voids v
+    WHERE v.tenant_id = l.tenant_id AND v.entry_id = l.journal_id
+  );
 
 COMMENT ON VIEW tenant_data.active_general_ledger IS
-  'PIVOT-005: canonical active General Ledger projection. Excludes every line of a voided journal as a whole; the single inclusion rule for balances, trial balance, reports, exports, search and downstream consumers.';
+  'PIVOT-005: canonical active General Ledger. Includes only journals whose accepted command is effectively POSTED and not voided; unposted, accepted, pending, failed or rejected sources never affect balances. A voided journal keeps its historical POSTED receipt and is excluded as a whole.';
 
 CREATE VIEW tenant_data.voided_entries
 WITH (security_invoker = true) AS
@@ -197,6 +196,7 @@ SELECT v.tenant_id,
        v.source_digest,
        v.source_version,
        v.source_line_count,
+       v.source_debit,
        v.period_locked,
        v.policy_version,
        v.approval_version,
@@ -215,11 +215,10 @@ JOIN tenant_data.journals j ON j.tenant_id = v.tenant_id AND j.id = v.entry_id
 LEFT JOIN tenant_data.journal_lines l ON l.tenant_id = j.tenant_id AND l.journal_id = j.id;
 
 COMMENT ON VIEW tenant_data.voided_entries IS
-  'PIVOT-005: canonical Deleted/Voided Entries projection. Retains the original posting data plus the void record and void time. Visibility is normal module access; fine-grained business visibility is deferred to future application RBAC (D-014).';
+  'PIVOT-005: canonical Deleted/Voided Entries projection. Retains the original posting data plus the void record and void time. Visibility is normal module access; fine-grained visibility is deferred to future application RBAC (D-014).';
 
 -- =====================================================================
 -- 4. Forced RLS and atomic policies for the new tenant tables
---    (the established tenant-data policy shape; no void-specific policy)
 -- =====================================================================
 
 DO $$
@@ -250,7 +249,122 @@ BEGIN
 END $$;
 
 -- =====================================================================
--- 5. The atomic void primitive
+-- 5. Reviewed permission and policy decision helper
+-- =====================================================================
+
+CREATE FUNCTION tenant_data.immutability_042_policy_decision(
+  p_tenant uuid,
+  p_actor text,
+  p_amount bigint,
+  p_company text,
+  p_branch text,
+  p_accounts text[]
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE
+SET search_path = pg_catalog, tenant_data
+AS $fn$
+DECLARE
+  v_denied boolean;
+  v_roles jsonb;
+  v_allowed boolean;
+  v_review boolean := true;
+  v_policy_version bigint;
+  v_threshold numeric;
+  v_requires_approver boolean := false;
+  v_decision jsonb;
+BEGIN
+  -- Explicit denial wins, including the wildcard denial.
+  SELECT EXISTS (
+    SELECT 1 FROM tenant_data.denials d
+    WHERE d.tenant_id = p_tenant AND d.user_id = p_actor
+      AND d.action IN ('accounting.entry.void', '*')
+  ) INTO v_denied;
+
+  -- Canonical role grants: actions array, company/branch/account scopes, maxMinor and
+  -- the review flag. The protected ultimate owner role keeps full authority.
+  SELECT coalesce(jsonb_agg(rule), '[]'::jsonb), coalesce(bool_and(coalesce((rule->>'review')::boolean, true)), true)
+    INTO v_roles, v_review
+  FROM (
+    SELECT r.id AS role_id, r.protected, r.permissions::jsonb AS rule
+    FROM tenant_data.members m
+    JOIN tenant_data.assignments a ON a.tenant_id = m.tenant_id AND a.user_id = m.user_id
+    JOIN tenant_data.roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id
+    WHERE m.tenant_id = p_tenant AND m.user_id = p_actor AND m.active
+      AND (
+        r.protected
+        OR (
+          r.permissions IS JSON
+          AND jsonb_typeof(r.permissions::jsonb -> 'actions') = 'array'
+          AND (r.permissions::jsonb -> 'actions') ? 'accounting.entry.void'
+          AND coalesce(jsonb_typeof(r.permissions::jsonb -> 'companies') = 'array', false)
+          AND (r.permissions::jsonb -> 'companies') ?| array['*', p_company]
+          AND coalesce(jsonb_typeof(r.permissions::jsonb -> 'branches') = 'array', false)
+          AND (r.permissions::jsonb -> 'branches') ?| array['*', p_branch]
+          AND coalesce(jsonb_typeof(r.permissions::jsonb -> 'accounts') = 'array', false)
+          AND NOT EXISTS (
+            SELECT 1 FROM unnest(p_accounts) AS acc(code)
+            WHERE NOT (
+              (r.permissions::jsonb -> 'accounts') ? '*'
+              OR (r.permissions::jsonb -> 'accounts') ? acc.code
+            )
+          )
+          AND (
+            jsonb_typeof(r.permissions::jsonb -> 'maxMinor') IS DISTINCT FROM 'number'
+            OR p_amount <= (r.permissions::jsonb ->> 'maxMinor')::bigint
+          )
+        )
+      )
+  ) grants;
+
+  v_allowed := NOT v_denied AND jsonb_array_length(v_roles) > 0;
+
+  -- Effective approval policy for this action, when configured.
+  SELECT ap.version,
+         (ap.approval_threshold_amount)::numeric,
+         ap.requires_different_approver
+    INTO v_policy_version, v_threshold, v_requires_approver
+  FROM tenant_data.approval_policy ap
+  WHERE ap.tenant_id = p_tenant
+    AND ap.action_type = 'accounting.entry.void'
+    AND ap.is_active
+    AND ap.effective_from <= now()
+    AND (ap.effective_to IS NULL OR ap.effective_to > now())
+  ORDER BY ap.version DESC
+  LIMIT 1;
+
+  IF v_policy_version IS NOT NULL THEN
+    IF v_threshold IS NOT NULL AND p_amount > v_threshold THEN
+      v_review := true;
+    END IF;
+  END IF;
+
+  v_decision := jsonb_build_object(
+    'allowed', v_allowed,
+    'denied', v_denied,
+    'review', CASE WHEN v_allowed THEN v_review ELSE true END,
+    'requiresDifferentApprover', v_requires_approver,
+    'policyVersion', v_policy_version,
+    'amount', p_amount,
+    'company', p_company,
+    'branch', p_branch,
+    'roles', v_roles
+  );
+  RETURN v_decision;
+END;
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[]) IS
+  'PIVOT-005: reviewed decision over the canonical role permission contract (actions, company/branch/account scope, maxMinor, review), explicit denials and the effective approval policy. Returns a canonical JSON decision; callers must fail closed on denied/unknown/stale.';
+
+CREATE FUNCTION tenant_data.immutability_042_decision_digest(p_decision jsonb) RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog
+AS $fn$
+  SELECT encode(sha256(convert_to(p_decision::text, 'UTF8')), 'hex')
+$fn$;
+
+-- =====================================================================
+-- 6. The atomic void primitive
 -- =====================================================================
 
 CREATE FUNCTION tenant_data.void_posted_entry(
@@ -259,9 +373,8 @@ CREATE FUNCTION tenant_data.void_posted_entry(
   p_actor text,
   p_reason text,
   p_idempotency_key text,
-  p_correlation_id text DEFAULT NULL,
-  p_policy_version bigint DEFAULT NULL,
-  p_approval_version bigint DEFAULT NULL
+  p_void_command_id text DEFAULT NULL,
+  p_correlation_id text DEFAULT NULL
 ) RETURNS text
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = pg_catalog, tenant_data
@@ -271,19 +384,30 @@ DECLARE
   v_request_digest text;
   v_existing_entry text;
   v_existing_digest text;
+  v_existing_source text;
   v_command_state text;
   v_source_digest text;
   v_source_version bigint;
   v_line_count integer;
   v_debit numeric;
   v_credit numeric;
+  v_accounts text[];
+  v_company text;
+  v_branch text;
+  v_posting_date text;
   v_period_locked boolean;
   v_actor text;
-  v_allowed boolean;
+  v_decision jsonb;
+  v_decision_digest text;
+  v_review boolean;
+  v_approval_command text;
+  v_approval_state text;
+  v_approval_digest text;
+  v_approval_actor text;
   v_void_command text;
   v_payload jsonb;
+  v_policy_version bigint;
 BEGIN
-  -- Context and identity: verified transaction-local tenant/user only.
   IF p_tenant IS NULL OR p_entry IS NULL OR p_actor IS NULL OR p_reason IS NULL
      OR p_idempotency_key IS NULL THEN
     RAISE EXCEPTION 'VOID_ARGUMENTS_REQUIRED';
@@ -308,21 +432,21 @@ BEGIN
   v_request_digest := encode(sha256(convert_to(
     concat_ws('|', p_entry, p_actor, p_reason, p_idempotency_key), 'UTF8')), 'hex');
 
-  -- Idempotent replay: the same key returns the original result, never a second event.
-  SELECT v.void_command_id, v.request_digest INTO v_existing_entry, v_existing_digest
+  -- Serialize every writer on this entry (posting, children, corrections and voids all
+  -- use the same payload-040 advisory key), then re-check idempotency under the lock.
+  PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(p_tenant, p_entry));
+
+  SELECT v.void_command_id, v.request_digest, v.entry_id
+    INTO v_existing_entry, v_existing_digest, v_existing_source
   FROM tenant_data.entry_voids v
   WHERE v.tenant_id = p_tenant AND v.idempotency_key = p_idempotency_key;
   IF v_existing_entry IS NOT NULL THEN
-    IF v_existing_digest = v_request_digest THEN
+    IF v_existing_digest = v_request_digest AND v_existing_source = p_entry THEN
       RETURN v_existing_entry;
     END IF;
     RAISE EXCEPTION 'VOID_IDEMPOTENCY_CONFLICT';
   END IF;
 
-  -- Serialize concurrent voids on the same entry without taking an UPDATE lock on
-  -- the retained source: the journal row stays physically immutable, and the unique
-  -- (tenant_id, entry_id) key is the final exactly-once guard.
-  PERFORM pg_advisory_xact_lock(hashtextextended(p_tenant::text || ':' || p_entry, 0));
   PERFORM 1 FROM tenant_data.journals j WHERE j.tenant_id = p_tenant AND j.id = p_entry;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'VOID_ENTRY_NOT_FOUND';
@@ -335,7 +459,8 @@ BEGIN
     RAISE EXCEPTION 'ENTRY_ALREADY_VOIDED';
   END IF;
 
-  SELECT c.state, c.digest, c.updated_at INTO v_command_state, v_source_digest, v_source_version
+  SELECT c.state, c.digest, c.updated_at
+    INTO v_command_state, v_source_digest, v_source_version
   FROM tenant_data.command_inbox c
   WHERE c.tenant_id = p_tenant AND c.id = p_entry;
   IF v_command_state IS NULL THEN
@@ -345,27 +470,82 @@ BEGIN
     RAISE EXCEPTION 'VOID_ENTRY_NOT_POSTED';
   END IF;
 
-  -- Independently verified action authority. The action key is reference data owned by
-  -- the tenant role configuration; no business role name is hardcoded here.
-  SELECT EXISTS (
-    SELECT 1
-    FROM tenant_data.members m
-    JOIN tenant_data.assignments a ON a.tenant_id = m.tenant_id AND a.user_id = m.user_id
-    JOIN tenant_data.roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id
-    WHERE m.tenant_id = p_tenant AND m.user_uuid = tenant_data.current_user_id() AND m.active
-      AND (
-        r.protected
-        OR (r.permissions IS JSON
-            AND jsonb_typeof(r.permissions::jsonb -> 'accounting.entry.void') = 'boolean'
-            AND (r.permissions::jsonb ->> 'accounting.entry.void')::boolean)
-      )
-  ) INTO v_allowed;
-  IF NOT v_allowed THEN
-    RAISE EXCEPTION 'VOID_ACTION_REQUIRED';
+  SELECT j.company, j.branch, j.posting_date INTO v_company, v_branch, v_posting_date
+  FROM tenant_data.journals j WHERE j.tenant_id = p_tenant AND j.id = p_entry;
+
+  SELECT count(*), coalesce(sum(l.debit), 0), coalesce(sum(l.credit), 0), array_agg(l.account ORDER BY l.line_no)
+    INTO v_line_count, v_debit, v_credit, v_accounts
+  FROM tenant_data.journal_lines l
+  WHERE l.tenant_id = p_tenant AND l.journal_id = p_entry;
+  IF v_line_count < 2 THEN
+    RAISE EXCEPTION 'VOID_SOURCE_INCOMPLETE';
+  END IF;
+  IF v_debit <> v_credit OR v_debit <= 0 THEN
+    RAISE EXCEPTION 'VOID_SOURCE_UNBALANCED';
   END IF;
 
-  -- Supported dependency graph: a plain journal. Linked operational or correction
-  -- dependencies are refused explicitly and never partially voided.
+  -- Locked posting periods stay enforced; voiding is not a locked-period override.
+  SELECT EXISTS (
+    SELECT 1 FROM tenant_data.periods p
+    WHERE p.tenant_id = p_tenant AND p.company = v_company
+      AND p.start_date <= v_posting_date AND p.end_date >= v_posting_date AND p.locked
+  ) INTO v_period_locked;
+  IF v_period_locked THEN
+    RAISE EXCEPTION 'VOID_PERIOD_LOCKED';
+  END IF;
+
+  -- Canonical permission/policy decision, verified and bound into the void record.
+  v_decision := tenant_data.immutability_042_policy_decision(
+    p_tenant, v_actor, v_debit::bigint, v_company, v_branch, v_accounts);
+  v_decision_digest := tenant_data.immutability_042_decision_digest(v_decision);
+  IF NOT coalesce((v_decision ->> 'allowed')::boolean, false) THEN
+    IF coalesce((v_decision ->> 'denied')::boolean, false) THEN
+      RAISE EXCEPTION 'VOID_ACTION_DENIED';
+    END IF;
+    RAISE EXCEPTION 'VOID_ACTION_REQUIRED';
+  END IF;
+  v_review := coalesce((v_decision ->> 'review')::boolean, true);
+  v_policy_version := (v_decision ->> 'policyVersion')::bigint;
+
+  -- Review-required voids need a pre-registered receipt with an APPROVED request bound
+  -- to this exact request digest and an independent approver.
+  IF v_review THEN
+    IF p_void_command_id IS NULL THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_REQUIRED';
+    END IF;
+    SELECT c.state INTO v_command_state
+    FROM tenant_data.command_inbox c
+    WHERE c.tenant_id = p_tenant AND c.id = p_void_command_id;
+    IF v_command_state IS DISTINCT FROM 'ACCEPTED_PENDING' AND v_command_state IS DISTINCT FROM 'AWAITING_APPROVAL' THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_RECEIPT_INVALID';
+    END IF;
+    SELECT ar.state, ar.payload_digest, ar.decided_by
+      INTO v_approval_state, v_approval_digest, v_approval_actor
+    FROM tenant_data.approval_requests ar
+    WHERE ar.tenant_id = p_tenant AND ar.command_id = p_void_command_id;
+    IF v_approval_state IS DISTINCT FROM 'APPROVED'
+       OR v_approval_digest IS DISTINCT FROM v_request_digest
+       OR v_approval_actor IS NULL
+       OR v_approval_actor = p_actor THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_REQUIRED';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM tenant_data.approval_requests ar
+      WHERE ar.tenant_id = p_tenant AND ar.command_id = p_void_command_id
+        AND ar.policy_snapshot::jsonb ->> 'decisionDigest' = v_decision_digest
+    ) THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_STALE';
+    END IF;
+    v_approval_command := p_void_command_id;
+    v_void_command := p_void_command_id;
+  ELSE
+    IF p_void_command_id IS NOT NULL THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_UNEXPECTED';
+    END IF;
+    v_void_command := gen_random_uuid()::text;
+  END IF;
+
+  -- Supported dependency graph: a plain journal with no linked correction on either end.
   IF EXISTS (SELECT 1 FROM tenant_data.trade_operations WHERE tenant_id = p_tenant AND command_id = p_entry)
      OR EXISTS (SELECT 1 FROM tenant_data.stock_operations WHERE tenant_id = p_tenant AND command_id = p_entry) THEN
     RAISE EXCEPTION 'VOID_DEPENDENCY_UNSUPPORTED';
@@ -379,42 +559,26 @@ BEGIN
     RAISE EXCEPTION 'VOID_LINKED_CORRECTION';
   END IF;
 
-  -- Balanced retained source; a void never removes a partial journal.
-  SELECT count(*), coalesce(sum(l.debit), 0), coalesce(sum(l.credit), 0)
-    INTO v_line_count, v_debit, v_credit
-  FROM tenant_data.journal_lines l
-  WHERE l.tenant_id = p_tenant AND l.journal_id = p_entry;
-  IF v_line_count < 2 THEN
-    RAISE EXCEPTION 'VOID_SOURCE_INCOMPLETE';
-  END IF;
-  IF v_debit <> v_credit OR v_debit <= 0 THEN
-    RAISE EXCEPTION 'VOID_SOURCE_UNBALANCED';
-  END IF;
-
-  SELECT EXISTS (
-    SELECT 1 FROM tenant_data.periods p
-    JOIN tenant_data.journals j ON j.tenant_id = p.tenant_id AND j.company = p.company
-    WHERE j.tenant_id = p_tenant AND j.id = p_entry
-      AND p.start_date <= j.posting_date AND p.end_date >= j.posting_date AND p.locked
-  ) INTO v_period_locked;
-
   v_now_ms := (extract(epoch FROM now()) * 1000)::bigint;
-  v_void_command := gen_random_uuid()::text;
+  v_payload := jsonb_build_object(
+    'kind', 'ENTRY_VOID',
+    'entry', p_entry,
+    'reason', p_reason,
+    'requestDigest', v_request_digest,
+    'decisionDigest', v_decision_digest,
+    'correlationId', p_correlation_id
+  );
 
-  -- Atomic effect bundle: receipt, native audit, change audit, outbox, void record.
-  INSERT INTO tenant_data.command_inbox
-    (tenant_id, id, actor, digest, payload, state, created_at, updated_at)
-  VALUES (p_tenant, v_void_command, p_actor, v_request_digest,
-          jsonb_build_object(
-            'kind', 'ENTRY_VOID',
-            'entry', p_entry,
-            'reason', p_reason,
-            'requestDigest', v_request_digest,
-            'correlationId', p_correlation_id,
-            'policyVersion', p_policy_version,
-            'approvalVersion', p_approval_version
-          )::text,
-          'VOIDED', v_now_ms, v_now_ms);
+  IF v_approval_command IS NOT NULL THEN
+    UPDATE tenant_data.command_inbox
+       SET state = 'VOIDED', approved_by = v_approval_actor, updated_at = v_now_ms
+     WHERE tenant_id = p_tenant AND id = v_void_command;
+  ELSE
+    INSERT INTO tenant_data.command_inbox
+      (tenant_id, id, actor, digest, payload, state, created_at, updated_at)
+    VALUES (p_tenant, v_void_command, p_actor, v_request_digest, v_payload::text,
+            'VOIDED', v_now_ms, v_now_ms);
+  END IF;
 
   INSERT INTO tenant_data.audit
     (tenant_id, command_id, actor, event, detail, happened_at)
@@ -424,11 +588,11 @@ BEGIN
             'before', jsonb_build_object('included', true, 'state', 'POSTED'),
             'after', jsonb_build_object('included', false, 'state', 'VOIDED'),
             'effect', 'remove_all_lines_from_active_ledger',
-            'lines', v_line_count,
-            'debit', v_debit,
-            'credit', v_credit,
+            'lines', v_line_count, 'debit', v_debit, 'credit', v_credit,
             'reason', p_reason,
-            'requestDigest', v_request_digest
+            'requestDigest', v_request_digest,
+            'decisionDigest', v_decision_digest,
+            'policyVersion', v_policy_version
           )::text,
           v_now_ms);
 
@@ -438,12 +602,9 @@ BEGIN
           jsonb_build_object(
             'before', jsonb_build_object('included', true, 'state', 'POSTED'),
             'after', jsonb_build_object('included', false, 'state', 'VOIDED'),
-            'reason', p_reason,
-            'lines', v_line_count,
-            'debit', v_debit,
-            'credit', v_credit,
-            'periodLocked', v_period_locked,
-            'requestDigest', v_request_digest
+            'reason', p_reason, 'lines', v_line_count, 'debit', v_debit, 'credit', v_credit,
+            'periodLocked', v_period_locked, 'requestDigest', v_request_digest,
+            'decisionDigest', v_decision_digest, 'policyVersion', v_policy_version
           ),
           'human', p_actor, p_correlation_id);
 
@@ -453,21 +614,23 @@ BEGIN
   INSERT INTO tenant_data.entry_voids
     (tenant_id, void_command_id, entry_id, reason, actor, actor_uuid,
      original_state, effective_state, source_digest, source_version, source_line_count,
-     request_digest, idempotency_key, correlation_id, policy_version, approval_version, period_locked)
+     source_debit, request_digest, idempotency_key, policy_decision, policy_digest,
+     approval_command_id, correlation_id, policy_version, approval_version, period_locked)
   VALUES (p_tenant, v_void_command, p_entry, p_reason, p_actor, tenant_data.current_user_id(),
           'POSTED', 'VOIDED', v_source_digest, v_source_version, v_line_count,
-          v_request_digest, p_idempotency_key, p_correlation_id, p_policy_version,
-          p_approval_version, v_period_locked);
+          v_debit::bigint, v_request_digest, p_idempotency_key, v_decision, v_decision_digest,
+          v_approval_command, p_correlation_id, v_policy_version,
+          (CASE WHEN v_approval_command IS NULL THEN NULL ELSE 1 END), v_period_locked);
 
   RETURN v_void_command;
 END;
 $fn$;
 
-COMMENT ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, bigint, bigint) IS
-  'PIVOT-005: single audited atomic terminal-void primitive. Verifies verified context, actor mapping, action authority, posted state and the supported dependency graph; writes receipt, native audit, change audit, outbox and the append-only void record in one transaction. Role-agnostic visibility per D-014.';
+COMMENT ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, text) IS
+  'PIVOT-005: single audited atomic terminal-void primitive. Rechecks verified context, actor mapping, canonical permission/policy decision, posted state, locked periods and the supported dependency graph under the shared command lock; writes receipt, native audit, change audit, outbox and the append-only void record in one transaction.';
 
 -- =====================================================================
--- 6. Payload 042: immutable void record, receipt and denial log
+-- 7. Payload 042 guards (attached by the activation step in 40-triggers.sql)
 -- =====================================================================
 
 CREATE FUNCTION tenant_data.immutability_042_void_guard()
@@ -478,6 +641,7 @@ DECLARE
   v_receipt_state text;
   v_receipt_digest text;
   v_posted text;
+  v_voids integer;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'VOID_RETAINED: void records are append-only and cannot be removed';
@@ -485,6 +649,9 @@ BEGIN
   IF TG_OP = 'UPDATE' THEN
     RAISE EXCEPTION 'VOIDED_IMMUTABLE: a void record cannot be edited, unvoided or repeated';
   END IF;
+
+  -- Serialize against the source command writers while the bundle is validated.
+  PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.entry_id));
 
   SELECT c.state, (c.payload::jsonb) #>> '{requestDigest}' INTO v_receipt_state, v_receipt_digest
   FROM tenant_data.command_inbox c
@@ -498,6 +665,12 @@ BEGIN
   WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.entry_id;
   IF v_posted IS DISTINCT FROM 'POSTED' THEN
     RAISE EXCEPTION 'VOID_ENTRY_NOT_POSTED: only a posted entry can be voided';
+  END IF;
+
+  SELECT count(*) INTO v_voids FROM tenant_data.entry_voids v
+  WHERE v.tenant_id = NEW.tenant_id AND v.entry_id = NEW.entry_id;
+  IF v_voids > 0 THEN
+    RAISE EXCEPTION 'ENTRY_ALREADY_VOIDED';
   END IF;
 
   IF NOT EXISTS (
@@ -536,11 +709,30 @@ CREATE FUNCTION tenant_data.immutability_042_denial_guard()
 RETURNS trigger LANGUAGE plpgsql
 SET search_path = pg_catalog, tenant_data
 AS $fn$
+DECLARE
+  v_actor text;
 BEGIN
-  IF TG_OP = 'INSERT' THEN
-    RETURN NEW;
+  IF TG_OP <> 'INSERT' THEN
+    RAISE EXCEPTION 'VOID_DENIAL_RETAINED: denial records are append-only';
   END IF;
-  RAISE EXCEPTION 'VOID_DENIAL_RETAINED: denial records are append-only';
+  -- Bind the recorded actor to verified transaction context; caller-supplied actor
+  -- values are never trusted as security evidence.
+  IF tenant_data.current_tenant_id() IS NULL OR tenant_data.current_user_id() IS NULL THEN
+    RAISE EXCEPTION 'VOID_DENIAL_CONTEXT_REQUIRED';
+  END IF;
+  SELECT m.user_id INTO v_actor
+  FROM tenant_data.members m
+  WHERE m.tenant_id = NEW.tenant_id
+    AND m.user_uuid = tenant_data.current_user_id() AND m.active;
+  IF v_actor IS NULL THEN
+    RAISE EXCEPTION 'VOID_DENIAL_CONTEXT_REQUIRED';
+  END IF;
+  NEW.actor := v_actor;
+  NEW.actor_uuid := tenant_data.current_user_id();
+  IF NEW.attempted_at IS NULL THEN
+    NEW.attempted_at := now();
+  END IF;
+  RETURN NEW;
 END;
 $fn$;
 
@@ -559,121 +751,264 @@ BEGIN
 END;
 $fn$;
 
-REVOKE ALL ON FUNCTION tenant_data.immutability_042_void_guard() FROM PUBLIC;
-REVOKE ALL ON FUNCTION tenant_data.immutability_042_receipt_guard() FROM PUBLIC;
-REVOKE ALL ON FUNCTION tenant_data.immutability_042_denial_guard() FROM PUBLIC;
-REVOKE ALL ON FUNCTION tenant_data.immutability_042_void_audit_guard() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_void_guard() TO saven_customer_app;
-GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_receipt_guard() TO saven_customer_app;
-GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_denial_guard() TO saven_customer_app;
-GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_void_audit_guard() TO saven_customer_app;
+COMMENT ON FUNCTION tenant_data.immutability_042_void_guard() IS
+  'PIVOT-005 payload 042: append-only void record; validates receipt, request digest, posted source, unique void and the atomic audit/outbox bundle under the shared command lock.';
+COMMENT ON FUNCTION tenant_data.immutability_042_denial_guard() IS
+  'PIVOT-005 payload 042: append-only denial log that overwrites actor fields from verified transaction context.';
 
 -- =====================================================================
--- 7. Exactly the privileges the primitive needs, and the runtime interface
+-- 8. Enumerated minimum privileges for the void owner (no runtime grants here)
 -- =====================================================================
 
--- Runtime: read projections and the void record, log denials, execute the primitive.
--- No INSERT/UPDATE/DELETE on entry_voids, so a void cannot bypass the primitive.
-GRANT USAGE ON SCHEMA tenant_data TO saven_customer_app;
-GRANT SELECT ON tenant_data.entry_voids, tenant_data.void_denials TO saven_customer_app;
-GRANT INSERT ON tenant_data.void_denials TO saven_customer_app;
-GRANT SELECT ON tenant_data.active_general_ledger, tenant_data.voided_entries TO saven_customer_app;
-REVOKE ALL ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, bigint, bigint)
-  FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, bigint, bigint)
-  TO saven_customer_app;
-
--- Definer: exactly what the primitive body reads and writes.
 GRANT USAGE ON SCHEMA tenant_data TO saven_void_definer;
-GRANT SELECT ON
-  tenant_data.journals,
-  tenant_data.journal_lines,
-  tenant_data.command_inbox,
-  tenant_data.entry_voids,
-  tenant_data.members,
-  tenant_data.roles,
-  tenant_data.assignments,
-  tenant_data.periods,
-  tenant_data.trade_operations,
-  tenant_data.trade_documents,
-  tenant_data.trade_credits,
-  tenant_data.stock_operations,
-  tenant_data.journal_corrections,
-  tenant_data.audit,
-  tenant_data.outbox
-TO saven_void_definer;
-GRANT INSERT ON
-  tenant_data.command_inbox,
-  tenant_data.entry_voids,
-  tenant_data.audit,
-  tenant_data.audit_event,
-  tenant_data.outbox
-TO saven_void_definer;
+
+GRANT SELECT (tenant_id, id, company, branch, posting_date) ON tenant_data.journals TO saven_void_definer;
+GRANT SELECT (tenant_id, journal_id, line_no, debit, credit, account) ON tenant_data.journal_lines TO saven_void_definer;
+GRANT SELECT (tenant_id, id, actor, state, digest, payload, updated_at, approved_by) ON tenant_data.command_inbox TO saven_void_definer;
+GRANT SELECT (tenant_id, void_command_id, entry_id, idempotency_key, request_digest) ON tenant_data.entry_voids TO saven_void_definer;
+GRANT SELECT (tenant_id, user_id, user_uuid, active) ON tenant_data.members TO saven_void_definer;
+GRANT SELECT (tenant_id, id, protected, permissions) ON tenant_data.roles TO saven_void_definer;
+GRANT SELECT (tenant_id, user_id, role_id) ON tenant_data.assignments TO saven_void_definer;
+GRANT SELECT (tenant_id, user_id, action) ON tenant_data.denials TO saven_void_definer;
+GRANT SELECT (tenant_id, company, start_date, end_date, locked) ON tenant_data.periods TO saven_void_definer;
+GRANT SELECT (tenant_id, command_id, payload_digest, policy_snapshot, state, decided_by) ON tenant_data.approval_requests TO saven_void_definer;
+GRANT SELECT (tenant_id, action_type, policy_key, version, approval_threshold_amount, requires_different_approver, is_active, effective_from, effective_to) ON tenant_data.approval_policy TO saven_void_definer;
+GRANT SELECT (tenant_id, command_id) ON tenant_data.trade_operations TO saven_void_definer;
+GRANT SELECT (tenant_id, command_id) ON tenant_data.command_decisions TO saven_void_definer;
+GRANT SELECT (tenant_id, command_id) ON tenant_data.stock_operations TO saven_void_definer;
+GRANT SELECT (tenant_id, command_id, original_id) ON tenant_data.journal_corrections TO saven_void_definer;
+GRANT SELECT (tenant_id, original_id) ON tenant_data.trade_credits TO saven_void_definer;
+GRANT SELECT (tenant_id, command_id, event) ON tenant_data.audit TO saven_void_definer;
+GRANT SELECT (tenant_id, id) ON tenant_data.outbox TO saven_void_definer;
+
+GRANT INSERT (tenant_id, id, actor, digest, payload, state, created_at, updated_at, approved_by)
+  ON tenant_data.command_inbox TO saven_void_definer;
+GRANT UPDATE (state, approved_by, updated_at) ON tenant_data.command_inbox TO saven_void_definer;
+GRANT INSERT (tenant_id, void_command_id, entry_id, reason, actor, actor_uuid, original_state,
+              effective_state, source_digest, source_version, source_line_count, source_debit,
+              request_digest, idempotency_key, policy_decision, policy_digest, approval_command_id,
+              correlation_id, policy_version, approval_version, period_locked, voided_at, created_at, updated_at)
+  ON tenant_data.entry_voids TO saven_void_definer;
+GRANT INSERT (tenant_id, command_id, actor, event, detail, happened_at)
+  ON tenant_data.audit TO saven_void_definer;
+GRANT INSERT (tenant_id, actor_id, event, entity_type, entity_id, detail_jsonb, origin_type, origin_user_id, request_id)
+  ON tenant_data.audit_event TO saven_void_definer;
+GRANT INSERT (tenant_id, id, event, state, attempts)
+  ON tenant_data.outbox TO saven_void_definer;
+
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) TO saven_void_definer;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[]) TO saven_void_definer;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_decision_digest(jsonb) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.current_tenant_id() TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.current_user_id() TO saven_void_definer;
 
--- No auth or operator role may reach tenant data, and PUBLIC gets nothing new.
-REVOKE ALL ON SCHEMA tenant_data FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA tenant_data FROM PUBLIC;
-REVOKE ALL ON SCHEMA tenant_data FROM saven_auth_service, saven_auth_definer;
-REVOKE ALL ON ALL TABLES IN SCHEMA tenant_data FROM saven_auth_service, saven_auth_definer;
-REVOKE ALL ON SCHEMA tenant_data FROM saven_operator_read, saven_operator_admin, saven_operator_definer;
-REVOKE ALL ON ALL TABLES IN SCHEMA tenant_data FROM saven_operator_read, saven_operator_admin, saven_operator_definer;
+COMMENT ON FUNCTION tenant_data.immutability_042_receipt_guard() IS
+  'PIVOT-005 payload 042: a VOIDED command receipt is final and retained.';
 
 -- =====================================================================
--- 8. Validate the authority boundary of this correction, then hand the
---    primitive to its narrow owner
+-- 9. Validate the void owner's complete authority, then transfer the primitive
+--    (no silent repair: unexpected authority refuses and rolls back)
 -- =====================================================================
 
-DO $$
+CREATE FUNCTION pg_temp.saven_assert_void_owner() RETURNS void
+LANGUAGE plpgsql AS $fn$
 DECLARE
-  bad text;
+  v_owner oid := (SELECT oid FROM pg_roles WHERE rolname = 'saven_void_definer');
+  v_fn oid;
+  v_flags text;
+  v_bad text;
+  allowed_schemas text[] := ARRAY['tenant_data:USAGE'];
+  allowed_columns text[] := ARRAY[
+    'tenant_data.journals.tenant_id:SELECT','tenant_data.journals.id:SELECT','tenant_data.journals.company:SELECT',
+    'tenant_data.journals.branch:SELECT','tenant_data.journals.posting_date:SELECT',
+    'tenant_data.journal_lines.tenant_id:SELECT','tenant_data.journal_lines.journal_id:SELECT',
+    'tenant_data.journal_lines.line_no:SELECT','tenant_data.journal_lines.debit:SELECT',
+    'tenant_data.journal_lines.credit:SELECT','tenant_data.journal_lines.account:SELECT',
+    'tenant_data.command_inbox.tenant_id:SELECT','tenant_data.command_inbox.id:SELECT',
+    'tenant_data.command_inbox.actor:SELECT','tenant_data.command_inbox.state:SELECT',
+    'tenant_data.command_inbox.digest:SELECT','tenant_data.command_inbox.payload:SELECT',
+    'tenant_data.command_inbox.updated_at:SELECT','tenant_data.command_inbox.approved_by:SELECT',
+    'tenant_data.command_inbox.id:INSERT','tenant_data.command_inbox.tenant_id:INSERT',
+    'tenant_data.command_inbox.actor:INSERT','tenant_data.command_inbox.digest:INSERT',
+    'tenant_data.command_inbox.payload:INSERT','tenant_data.command_inbox.state:INSERT',
+    'tenant_data.command_inbox.created_at:INSERT','tenant_data.command_inbox.updated_at:INSERT',
+    'tenant_data.command_inbox.approved_by:INSERT',
+    'tenant_data.command_inbox.state:UPDATE','tenant_data.command_inbox.approved_by:UPDATE',
+    'tenant_data.command_inbox.updated_at:UPDATE',
+    'tenant_data.entry_voids.tenant_id:SELECT','tenant_data.entry_voids.void_command_id:SELECT',
+    'tenant_data.entry_voids.entry_id:SELECT','tenant_data.entry_voids.idempotency_key:SELECT',
+    'tenant_data.entry_voids.request_digest:SELECT',
+    'tenant_data.entry_voids.tenant_id:INSERT','tenant_data.entry_voids.void_command_id:INSERT',
+    'tenant_data.entry_voids.entry_id:INSERT','tenant_data.entry_voids.reason:INSERT',
+    'tenant_data.entry_voids.actor:INSERT','tenant_data.entry_voids.actor_uuid:INSERT',
+    'tenant_data.entry_voids.original_state:INSERT','tenant_data.entry_voids.effective_state:INSERT',
+    'tenant_data.entry_voids.source_digest:INSERT','tenant_data.entry_voids.source_version:INSERT',
+    'tenant_data.entry_voids.source_line_count:INSERT','tenant_data.entry_voids.source_debit:INSERT',
+    'tenant_data.entry_voids.request_digest:INSERT','tenant_data.entry_voids.idempotency_key:INSERT',
+    'tenant_data.entry_voids.policy_decision:INSERT','tenant_data.entry_voids.policy_digest:INSERT',
+    'tenant_data.entry_voids.approval_command_id:INSERT','tenant_data.entry_voids.correlation_id:INSERT',
+    'tenant_data.entry_voids.policy_version:INSERT','tenant_data.entry_voids.approval_version:INSERT',
+    'tenant_data.entry_voids.period_locked:INSERT','tenant_data.entry_voids.voided_at:INSERT',
+    'tenant_data.entry_voids.created_at:INSERT','tenant_data.entry_voids.updated_at:INSERT',
+    'tenant_data.members.tenant_id:SELECT','tenant_data.members.user_id:SELECT',
+    'tenant_data.members.user_uuid:SELECT','tenant_data.members.active:SELECT',
+    'tenant_data.roles.tenant_id:SELECT','tenant_data.roles.id:SELECT',
+    'tenant_data.roles.protected:SELECT','tenant_data.roles.permissions:SELECT',
+    'tenant_data.assignments.tenant_id:SELECT','tenant_data.assignments.user_id:SELECT',
+    'tenant_data.assignments.role_id:SELECT',
+    'tenant_data.denials.tenant_id:SELECT','tenant_data.denials.user_id:SELECT','tenant_data.denials.action:SELECT',
+    'tenant_data.periods.tenant_id:SELECT','tenant_data.periods.company:SELECT',
+    'tenant_data.periods.start_date:SELECT','tenant_data.periods.end_date:SELECT','tenant_data.periods.locked:SELECT',
+    'tenant_data.approval_requests.tenant_id:SELECT','tenant_data.approval_requests.command_id:SELECT',
+    'tenant_data.approval_requests.payload_digest:SELECT','tenant_data.approval_requests.policy_snapshot:SELECT',
+    'tenant_data.approval_requests.state:SELECT','tenant_data.approval_requests.decided_by:SELECT',
+    'tenant_data.approval_policy.tenant_id:SELECT','tenant_data.approval_policy.action_type:SELECT',
+    'tenant_data.approval_policy.policy_key:SELECT','tenant_data.approval_policy.version:SELECT',
+    'tenant_data.approval_policy.approval_threshold_amount:SELECT',
+    'tenant_data.approval_policy.requires_different_approver:SELECT',
+    'tenant_data.approval_policy.is_active:SELECT','tenant_data.approval_policy.effective_from:SELECT',
+    'tenant_data.approval_policy.effective_to:SELECT',
+    'tenant_data.trade_operations.tenant_id:SELECT','tenant_data.trade_operations.command_id:SELECT',
+    'tenant_data.command_decisions.tenant_id:SELECT','tenant_data.command_decisions.command_id:SELECT',
+    'tenant_data.stock_operations.tenant_id:SELECT','tenant_data.stock_operations.command_id:SELECT',
+    'tenant_data.journal_corrections.tenant_id:SELECT','tenant_data.journal_corrections.command_id:SELECT',
+    'tenant_data.journal_corrections.original_id:SELECT',
+    'tenant_data.trade_credits.tenant_id:SELECT','tenant_data.trade_credits.original_id:SELECT',
+    'tenant_data.audit.tenant_id:SELECT','tenant_data.audit.command_id:SELECT','tenant_data.audit.event:SELECT',
+    'tenant_data.audit.tenant_id:INSERT','tenant_data.audit.command_id:INSERT','tenant_data.audit.actor:INSERT',
+    'tenant_data.audit.event:INSERT','tenant_data.audit.detail:INSERT','tenant_data.audit.happened_at:INSERT',
+    'tenant_data.audit_event.tenant_id:INSERT','tenant_data.audit_event.actor_id:INSERT',
+    'tenant_data.audit_event.event:INSERT','tenant_data.audit_event.entity_type:INSERT',
+    'tenant_data.audit_event.entity_id:INSERT','tenant_data.audit_event.detail_jsonb:INSERT',
+    'tenant_data.audit_event.origin_type:INSERT','tenant_data.audit_event.origin_user_id:INSERT',
+    'tenant_data.audit_event.request_id:INSERT',
+    'tenant_data.outbox.tenant_id:SELECT','tenant_data.outbox.id:SELECT',
+    'tenant_data.outbox.tenant_id:INSERT','tenant_data.outbox.id:INSERT','tenant_data.outbox.event:INSERT',
+    'tenant_data.outbox.state:INSERT','tenant_data.outbox.attempts:INSERT'
+  ];
+  allowed_functions text[] := ARRAY[
+    'tenant_data.current_tenant_id:EXECUTE','tenant_data.current_user_id:EXECUTE',
+    'tenant_data.session_admitted:EXECUTE','tenant_data.immutability_040_lock_key:EXECUTE',
+    'tenant_data.immutability_042_policy_decision:EXECUTE','tenant_data.immutability_042_decision_digest:EXECUTE'
+  ];
+  actual text[];
 BEGIN
-  SELECT string_agg(c.relname, ', ' ORDER BY c.relname) INTO bad
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-  WHERE n.nspname = 'tenant_data' AND c.relname IN ('entry_voids', 'void_denials')
-    AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity);
-  IF bad IS NOT NULL THEN
-    RAISE EXCEPTION 'PIVOT-005: new tables must be forced and isolated: %', bad;
+  IF v_owner IS NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner role is missing'; END IF;
+  SELECT p.oid INTO v_fn FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'tenant_data' AND p.proname = 'void_posted_entry' AND p.proowner = v_owner;
+  IF v_fn IS NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void primitive is missing or not owned by the dedicated owner'; END IF;
+
+  SELECT string_agg(flag, ', ') INTO v_flags FROM pg_roles r, LATERAL (VALUES
+    ('LOGIN', r.rolcanlogin), ('SUPERUSER', r.rolsuper), ('CREATEDB', r.rolcreatedb),
+    ('CREATEROLE', r.rolcreaterole), ('INHERIT', r.rolinherit),
+    ('BYPASSRLS', r.rolbypassrls), ('REPLICATION', r.rolreplication)) v(flag, present)
+  WHERE r.oid = v_owner AND v.present;
+  IF v_flags IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner has forbidden attributes: %', v_flags; END IF;
+
+  SELECT string_agg(format('%s -> %s', m.rolname, g.rolname), ', ') INTO v_bad
+  FROM pg_auth_members am JOIN pg_roles m ON m.oid = am.member JOIN pg_roles g ON g.oid = am.roleid
+  WHERE m.oid = v_owner OR g.oid = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner has role memberships: %', v_bad; END IF;
+
+  SELECT string_agg(r.rolname, ', ') INTO v_bad FROM pg_roles r
+  WHERE r.oid <> v_owner AND r.rolname NOT LIKE 'pg\_%' AND pg_has_role(v_owner, r.oid, 'MEMBER');
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner holds privileges of: %', v_bad; END IF;
+
+  SELECT string_agg(r.rolname, ', ') INTO v_bad FROM pg_roles r
+  WHERE r.oid <> v_owner AND r.rolname LIKE 'saven\_%' AND NOT r.rolsuper
+    AND pg_has_role(r.oid, v_owner, 'MEMBER');
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: a SAVEN principal can assume the void owner: %', v_bad; END IF;
+
+  SELECT string_agg(n.nspname || '.' || c.relname, ', ') INTO v_bad
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE c.relowner = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner owns relations: %', v_bad; END IF;
+
+  SELECT string_agg(n.nspname, ', ') INTO v_bad FROM pg_namespace n WHERE n.nspowner = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner owns schemas: %', v_bad; END IF;
+
+  SELECT string_agg(n.nspname || '.' || p.proname, ', ') INTO v_bad
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE p.proowner = v_owner AND p.oid <> v_fn;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner owns other functions: %', v_bad; END IF;
+
+  SELECT string_agg(datname, ', ') INTO v_bad FROM pg_database WHERE datdba = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner owns databases: %', v_bad; END IF;
+
+  SELECT string_agg(spcname, ', ') INTO v_bad FROM pg_tablespace WHERE spcowner = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner owns tablespaces: %', v_bad; END IF;
+
+  SELECT coalesce(array_agg(n.nspname || ':' || x.privilege_type ORDER BY 1), ARRAY[]::text[]) INTO actual
+  FROM pg_namespace n CROSS JOIN aclexplode(n.nspacl) x
+  WHERE x.grantee = v_owner AND n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema';
+  IF (SELECT array_agg(v ORDER BY v) FROM unnest(actual) v)
+     IS DISTINCT FROM (SELECT array_agg(v ORDER BY v) FROM unnest(allowed_schemas) v) THEN
+    RAISE EXCEPTION 'R5-AUTHORITY: void owner schema privileges differ from the allow-list; found %', actual;
   END IF;
 
-  -- No business-role name or eligibility artifact is introduced by 042.
+  SELECT string_agg(n.nspname, ', ') INTO v_bad FROM pg_namespace n
+  WHERE n.nspname NOT LIKE 'pg\_%' AND n.nspname <> 'information_schema'
+    AND has_schema_privilege(v_owner, n.oid, 'CREATE');
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner may CREATE in: %', v_bad; END IF;
+
+  IF has_schema_privilege(v_owner, 'operator', 'USAGE') THEN
+    RAISE EXCEPTION 'R5-AUTHORITY: void owner may USAGE the operator schema';
+  END IF;
+
+  SELECT string_agg(n.nspname || '.' || c.relname || ':' || x.privilege_type, ', ') INTO v_bad
+  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+  CROSS JOIN aclexplode(c.relacl) x WHERE x.grantee = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner holds table/sequence-level privileges: %', v_bad; END IF;
+
+  SELECT coalesce(array_agg(n.nspname || '.' || c.relname || '.' || a.attname || ':' || x.privilege_type ORDER BY 1), ARRAY[]::text[])
+    INTO actual
+  FROM pg_attribute a JOIN pg_class c ON c.oid = a.attrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+  CROSS JOIN aclexplode(a.attacl) x
+  WHERE x.grantee = v_owner AND a.attnum > 0;
+  IF (SELECT array_agg(v ORDER BY v) FROM unnest(actual) v)
+     IS DISTINCT FROM (SELECT array_agg(v ORDER BY v) FROM unnest(allowed_columns) v) THEN
+    RAISE EXCEPTION 'R5-AUTHORITY: void owner column privileges differ from the allow-list; found %', actual;
+  END IF;
+
+  SELECT coalesce(array_agg(n.nspname || '.' || p.proname || ':' || x.privilege_type ORDER BY 1), ARRAY[]::text[])
+    INTO actual
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace CROSS JOIN aclexplode(p.proacl) x
+  WHERE x.grantee = v_owner;
+  IF (SELECT array_agg(v ORDER BY v) FROM unnest(actual) v)
+     IS DISTINCT FROM (
+       SELECT array_agg(v ORDER BY v) FROM unnest(
+         allowed_functions || ARRAY['tenant_data.void_posted_entry:EXECUTE']) v) THEN
+    RAISE EXCEPTION 'R5-AUTHORITY: void owner function privileges differ from the allow-list; found %', actual;
+  END IF;
+
+  SELECT string_agg(format('%s:%s', d.defaclobjtype, x.privilege_type), ', ') INTO v_bad
+  FROM pg_default_acl d CROSS JOIN aclexplode(d.defaclacl) x WHERE x.grantee = v_owner;
+  IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'R5-AUTHORITY: void owner is named in default privileges: %', v_bad; END IF;
+END;
+$fn$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_roles r
+    WHERE r.rolname = 'saven_void_definer'
+      AND r.rolcanlogin = false AND r.rolsuper = false AND r.rolcreatedb = false
+      AND r.rolcreaterole = false AND r.rolinherit = false AND r.rolbypassrls = false
+      AND r.rolreplication = false
+  ) THEN
+    RAISE EXCEPTION 'PIVOT-005: void owner must remain a constrained NOLOGIN role';
+  END IF;
   IF EXISTS (
     SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname = 'tenant_data' AND c.relname LIKE '%eligib%'
   ) THEN
     RAISE EXCEPTION 'PIVOT-005: role-agnostic correction forbids eligibility objects';
   END IF;
-
-  -- The definer owns only the primitive.
-  SELECT string_agg(p.proname, ', ') INTO bad
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-  JOIN pg_roles r ON r.oid = p.proowner
-  WHERE r.rolname = 'saven_void_definer' AND p.proname <> 'void_posted_entry';
-  IF bad IS NOT NULL THEN
-    RAISE EXCEPTION 'PIVOT-005: saven_void_definer owns unexpected function(s): %', bad;
-  END IF;
-
-  SELECT string_agg(c.relname, ', ') INTO bad
-  FROM pg_class c JOIN pg_roles r ON r.oid = c.relowner
-  WHERE r.rolname = 'saven_void_definer';
-  IF bad IS NOT NULL THEN
-    RAISE EXCEPTION 'PIVOT-005: saven_void_definer must not own relations: %', bad;
-  END IF;
-
-  SELECT string_agg(n.nspname, ', ') INTO bad
-  FROM pg_namespace n WHERE n.nspowner = (SELECT oid FROM pg_roles WHERE rolname = 'saven_void_definer');
-  IF bad IS NOT NULL THEN
-    RAISE EXCEPTION 'PIVOT-005: saven_void_definer must not own schemas: %', bad;
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM pg_auth_members am
-    JOIN pg_roles m ON m.oid = am.member
-    JOIN pg_roles g ON g.oid = am.roleid
-    WHERE m.rolname = 'saven_void_definer' OR g.rolname = 'saven_void_definer'
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'tenant_data' AND c.relname IN ('entry_voids', 'void_denials')
+      AND c.relrowsecurity AND c.relforcerowsecurity
   ) THEN
-    RAISE EXCEPTION 'PIVOT-005: saven_void_definer must hold no role membership';
+    RAISE EXCEPTION 'PIVOT-005: new tables must be forced and isolated';
   END IF;
 END $$;
 
@@ -683,26 +1018,13 @@ RESET ROLE;
 -- grant EXECUTE on it to another principal.
 GRANT EXECUTE ON FUNCTION tenant_data.session_admitted(uuid, uuid) TO saven_void_definer;
 
-ALTER FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, bigint, bigint)
+ALTER FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, text)
   OWNER TO saven_void_definer;
 
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner
-    WHERE p.oid = 'tenant_data.void_posted_entry(uuid, text, text, text, text, text, bigint, bigint)'::regprocedure
-      AND r.rolname = 'saven_void_definer'
-  ) THEN
-    RAISE EXCEPTION 'PIVOT-005: void primitive ownership transfer failed';
-  END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_proc p
-    WHERE p.oid = 'tenant_data.void_posted_entry(uuid, text, text, text, text, text, bigint, bigint)'::regprocedure
-      AND p.prosecdef
-      AND p.proconfig = ARRAY['search_path=pg_catalog, tenant_data']
-  ) THEN
-    RAISE EXCEPTION 'PIVOT-005: void primitive must remain SECURITY DEFINER with a fixed search_path';
-  END IF;
-END $$;
+REVOKE ALL ON FUNCTION tenant_data.void_posted_entry(uuid, text, text, text, text, text, text) FROM PUBLIC;
+
+SELECT pg_temp.saven_assert_void_owner();
+
+DROP FUNCTION pg_temp.saven_assert_void_owner();
 
 COMMIT;
