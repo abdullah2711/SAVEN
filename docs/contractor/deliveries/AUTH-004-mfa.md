@@ -80,3 +80,101 @@ compliant — factor types, digits/period/window and policy bounds are validated
 ## GIT
 
 branch=opencode/auth-004-mfa commit=`511b1cd` pushed=yes
+
+# AUTH-004-R1 revision — 16 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-004-mfa.md` at `c0540f0`.
+Implementation commit `4db4f0a`, plus this report commit. TOUCH unchanged; no
+`server.mjs`, schema, migration, dependency or PIVOT-004 change.
+
+## Findings closed
+
+1. **Password-only factor replacement (critical).** Enrollment start no longer replaces
+   a verified factor unconditionally. With a verified factor, `POST /mfa/enroll` must
+   carry `password` plus a current `code` or `recoveryCode`, verified in the same
+   transaction; session assurance is never treated as reauthentication. Proven by a
+   fresh password-only pending session that gets `403 MFA_REAUTH_REQUIRED` with the
+   stored ciphertext, `verified_at` and unused recovery-code count unchanged. Authorized
+   replacement rotates the seed, invalidates old codes, downgrades every live session,
+   and is auditable (`mfa_enrolled` `stage: replaced`); restarting a still-pending
+   factor needs no proof and preserves lock state.
+
+2. **RLS-safe authority (critical).** `authority()` requires an owned transaction,
+   binds the verified server-side user to transaction-local `app.current_user_id`, then
+   reads the RLS-protected memberships; it returns `resolved:true|false` and callers fail
+   closed (`503 MFA_AUTHORITY_UNAVAILABLE`) on unresolved authority instead of assuming
+   non-required. Tested against the accepted PIVOT-004/031/032 stack installed in a
+   disposable database with rewritten role names and a real non-owner auth-service login:
+   without bound context the service sees zero membership rows; an admin resolves to
+   required; an ordinary member resolves to non-required; promotion and revocation change
+   the result; root login paths fail closed on malformed/unavailable authority; the whole
+   flow runs on a size-one pool so pooled reuse cannot drop the context. PIVOT-004 was not
+   weakened and no policy/grant was added.
+
+3. **Assurance bound to factor lifecycle.** Lifecycle operations lock `auth.users` then
+   `auth.two_factor` (and session updates last) in one transaction. Replacement and
+   disable downgrade all live sessions to `single_factor`; pending status also requires a
+   currently verified factor, so a stale assurance label cannot outlive it. Tests cover
+   two-session disable (one winner, loser fails closed, both sessions pending), stale TOTP
+   and recovery proof after disable, stale seed after replacement, and a concurrent
+   disable race without verified assurance surviving.
+
+4. **Durable bounded failure policy everywhere.** Enrollment completion, pending restart,
+   TOTP verification, recovery codes and disable-password reauthentication all check the
+   factor lock and increment `failed_attempts` atomically
+   (`failed_attempts = failed_attempts + 1`), committing counters even when the request is
+   refused. A locked factor rejects restart (`429`) without resetting counters; cooldown
+   recovery works. Tests cover cross-session concurrent bursts (exactly the limit is
+   evaluated; bounded verification starts via an instrumented hook; exact durable count),
+   recovery failures, disable-password failures, and restart-preserved locks.
+
+5. **No nested checkout on disable.** MFA mutation reads take a verified session without a
+   row lock, and password/factor reauthentication plus lifecycle writes run on the owned
+   transaction with a fixed lock order. A restricted auth-service login on a `max:1` pool
+   completes disable within a 15 s bound; concurrent disables are serialized.
+
+6. **Cryptographic configuration.** `secretBytes` (20–64) and `recoveryCodeBytes` (10–32)
+   are bounded before generation; duplicate encryption/recovery key versions are rejected;
+   an active recovery version must exist. Recovery rows record the truthful
+   `hash_key_version`, and codes issued under a retained version remain verifiable until
+   that key is retired. TOTP output matches all RFC 6238 appendix B SHA-1 vectors.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-004-mfa.test.mjs
+PASS: 160 JavaScript files parsed; package manifest valid.
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0`. Regression suites on the same runtime/cluster: AUTH-002 `18/18`, AUTH-003
+`27/27`. Combined branch suite: `250` tests, `249` pass, `1` fail — only the pre-existing
+PIVOT-004 fixture prerequisite. One earlier combined run showed a transient
+"asynchronous activity after the test ended" teardown error in an AUTH-003 case; it did
+not reproduce in two later runs and is reported rather than hidden. Without the
+dedicated-cluster opt-in the AUTH-004 file refuses all 18 cases.
+
+Environment: disposable PostgreSQL 18.6 on loopback `127.0.0.1:55445`. Interrupted
+earlier runs had left fixture roles/databases on that throwaway cluster; the whole
+cluster (including that residue) was stopped and deleted, and the `node_modules` symlink
+removed.
+
+## Boundaries
+
+- The accepted PIVOT-004/031/032 files are installed only inside the disposable test
+  database (role names rewritten); no delivered policy/grant/migration was edited.
+- Deployment key composition still needs the narrow `server.mjs` contract; defaults are
+  validated but are not approved production policy. AUTH-009 still owns complete
+  failed-attempt audit history; mutable counters alone are not append-only attempt
+  history, and lifecycle audit rows contain no seeds or codes.
+- The protected pre-MFA cookie remains a restricted challenge; AUTH-006 must enforce the
+  same assurance decision before business access.
+
+## GIT (R1)
+
+branch=opencode/auth-004-mfa commits=`4db4f0a`,report commit pushed=yes
