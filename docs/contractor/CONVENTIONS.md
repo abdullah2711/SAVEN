@@ -106,3 +106,6 @@ Authority: [dated decision D-012](../agents/DECISION_LOG.md). The AUTH-002 contr
 records the required next-revision follow-up; no new runtime implementation is
 authorized or claimed by this documentation record.
 
+## Standing owner accounting override — D-013
+
+16 November 2026: authorized users can delete posted entries through terminal soft deletion. Retain source/evidence/history, mark effective state VOIDED and remove the entry from active GL. VOIDED is absolutely immutable: no unvoid, physical deletion or repeated deletion. Only Senior Accountants, Management and Auditors may see voided contents; juniors cannot. Enforce protected eligibility at server/database read boundaries, not custom role labels or a hidden menu. Delete authority is separate from read authority. Future accounting, reporting, API, AI and UI contracts must preserve this rule and cover linked effects and audit leakage. The separate Deleted/Voided Entries page is required before UI delivery can be claimed. [ADR04](../pivot-notes/04-adr-terminal-entry-voiding.md) reconciles physical posted immutability, native correction/rejection flows, append-only audit and the purpose map. It supersedes conflicting always-active wording, not the verbatim preservation/security prohibitions above.

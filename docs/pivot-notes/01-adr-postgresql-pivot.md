@@ -39,3 +39,7 @@ This is PIVOT-001's deliverable; no duplicate PIVOT-001 contract file is created
 ## Sources
 
 Owner pivot spec Phases1-6 and canonical AUTH/AI constraints; retained docs/sources/SAVEN-mandate-v2.3.md sections3,6.1,7.1-7.8; docs48 and49. PostgreSQL RLS/functions/transaction semantics and auth provider documentation must be checked against the pinned implementation versions before executable contracts are accepted. No gate was executed in this session.
+
+## Owner override — 16 November 2026
+
+[D-013 terminal entry voiding](04-adr-terminal-entry-voiding.md) supersedes any interpretation that retained posted entries must remain active in the GL. Physical posted sources stay immutable; an append-only terminal void removes their effective ledger inclusion. This is an authorized design amendment, not implementation, acceptance or cutover evidence.
