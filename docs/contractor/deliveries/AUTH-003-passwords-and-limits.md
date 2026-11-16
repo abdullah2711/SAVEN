@@ -86,3 +86,148 @@ compliant — KDF schemes, parameters, thresholds and trusted headers are explic
 ## GIT
 
 branch=opencode/auth-003-passwords commit=`42899ec` pushed=yes
+
+# AUTH-003-R1 revision — 16 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-003-passwords-and-limits.md` at
+`56b1955` on `codex/pivot-003-rulings`. Contract executed: its Required corrections 1–5,
+on branch `opencode/auth-003-passwords`. Implementation commit `2f7cc80`, plus this
+report commit. TOUCH stayed exact; `server.mjs` and PIVOT-004 were not edited.
+
+## Finding 1 — admission covers every derivation, with absolute caps
+
+- `createPasswordPolicy` now routes hash, Argon2id verify, retained scrypt verify and
+  dummy verification through one `derive()` admission gate. The gate is `async` and
+  releases the counter only after the awaited derivation, so concurrent work is truly
+  bounded; overload throws `429 PASSWORD_BUSY` before any native job starts.
+- Absolute protocol caps (`ABSOLUTE_KDF_LIMITS`) bound memory (262144 KiB), passes (10),
+  parallelism (8), tag (64) and salt (64). Policy values and verification caps may only
+  lower these; `validatePolicy` rejects attempts to raise them, and the verification path
+  re-checks stored parameters plus decoded salt/tag lengths before native allocation.
+- Oversized, non-string and NUL input is replaced by a fixed bounded dummy input, so raw
+  bytes never reach a KDF buffer.
+- Instrumented evidence records every derivation (`kind`, memory, passes, parallelism,
+  input bytes): absent, malformed, unknown and valid-but-wrong verifiers all produce the
+  same configured workload and bounded input, and a mixed burst under `maxConcurrentKdfs:
+  1` yields exactly one fulfilled and two `PASSWORD_BUSY` rejections, with the counter
+  unwinding and a later verification succeeding.
+
+## Finding 2 — dummy path normalized and comparable
+
+- The dummy derivation uses the normal configured memory/passes/parallelism (not one
+  pass), so unknown, absent, malformed and hostile stored verifiers do comparable work to
+  a real wrong-password verification.
+- Hostile verifier parameters, malformed base64 salt/tag, and native provider throws are
+  normalized to a bounded `valid: false`; they no longer escape as 503s. Provider failure
+  is injected in tests and proven to return a credential failure.
+- Compatibility limit documented honestly: retained scrypt performs different work than
+  the Argon2id dummy, so a legacy scrypt account's failure timing differs until the
+  successful upgrade replaces it; both paths share the same admission gate.
+
+## Finding 3 — exceptional attempts are durably accounted; ingress sanitized
+
+- Verification, rehash, session and success-audit failures roll the attempt transaction
+  back (no session, no cookie) and are then recorded on an independent autocommit path
+  carrying the post-lock order, so they consume the budget. Tests inject verifier,
+  rehash and busy failures and assert `503`, no `Set-Cookie`, zero new sessions, a
+  `login_failure` row with `provider_or_store_error`/`password_busy`/`transaction_uncertain`,
+  and `429` on the next attempt at limit 1.
+- An audit-store failure is distinguished (`AuditWriteError`) and fails closed with
+  `503 AUTH_ACCOUNTING_UNAVAILABLE` without claiming durable accounting — the stated
+  evidence limit. A store-level commit-uncertainty keeps its `SESSION_TRANSACTION_UNCERTAIN`
+  code after accounting.
+- Ingress is sanitized at the trusted boundary: only an explicitly configured header with
+  a syntactically valid IP is used (scope, session row, audit). All socket headers
+  (`cf-connecting-ip`, `x-forwarded-for`, `x-real-ip`, `forwarded`, …) are stripped from
+  the request view passed to the retained audit writer. Tests prove a malformed untrusted
+  `cf-connecting-ip` cannot break the failure audit, an untrusted valid IP is stored
+  nowhere, a trusted valid IP is stored on session and audit, and an invalid trusted value
+  is discarded without error.
+
+## Finding 4 — authoritative post-lock ordering
+
+- Throttle counting no longer uses PostgreSQL `occurred_at` (transaction-start time).
+  Every accounted attempt stores the application-clock time sampled *after* the scope
+  lock (`attempt_at`) and `pg_current_xact_id()` sampled at the same point
+  (`attempt_order`). Counting orders failures against the latest success by
+  `attempt_order` and windows by `attempt_at`; the transaction id resolves equal
+  timestamps unambiguously. No append-only row is updated or rewritten.
+- Tests cover: a lower-order failure with equal time is reset by a later success; two
+  equal-time failures after a success reach the limit; a correctly ordered failure older
+  than the window does not count; and concurrent login/reset attempts each carry a unique
+  post-lock order.
+
+## Finding 5 — restricted role and real composition
+
+- Tests create a real non-owner login granted only the fixture's `auth_service` role and
+  drive the retained `createAuthServer` composition root: a retained scrypt sign-in
+  returns 200, the conditional rehash `UPDATE` upgrades the verifier to Argon2id, the
+  session is inserted, audit reads/inserts succeed, and the composed default policy
+  throttles on the ninth failure.
+- The same connection is proven unable to `ALTER TABLE auth.sessions` (`42501`) and
+  unable to read `operator.tenant` (`42501`), with the role identity asserted as the
+  restricted login.
+
+## Dispositions and remaining limits
+
+- Thresholds remain deployment-controlled and versioned; no numeric value here is
+  claimed as production policy. The retained `createAuthServer` forwards neither rate
+  policy nor trusted-ingress configuration, so its defaults are not reviewed deployment
+  policy: a narrow `server.mjs` composition contract is required before activation. That
+  file is outside this TOUCH and was not edited.
+- Audit-ledger scope scans are Phase-1; indexed storage/performance needs a separate
+  migration contract with measured evidence.
+- `forgot-password` remains a generic, throttled, mail-free route for AUTH-005 to extend.
+- `.nvmrc = 24.19.0` and `node >=24.13 <25` are preserved; Argon2id uses the pinned Node
+  24 `crypto.argon2` API.
+- PIVOT-004 full-suite failure remains pre-existing and untouched (reproduced from the
+  base worktree earlier); it is routed to the engineer and the full suite is not claimed
+  green.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-003-passwords.test.mjs
+PASS: 158 JavaScript files parsed; package manifest valid.
+✔ AUTH-003 password policy prefers Argon2id and retains bounded scrypt (1699.458501ms)
+✔ AUTH-003 KDF concurrency is bounded and overload is refused (205.894151ms)
+✔ AUTH-003 a successful sign-in upgrades a retained scrypt verifier (1135.367398ms)
+✔ AUTH-003 login throttling is deterministic, durable and non-enumerating (1937.594112ms)
+✔ AUTH-003 a successful sign-in resets the failure window (1507.913322ms)
+✔ AUTH-003 concurrent failures cannot slip past the configured limit (1124.458378ms)
+✔ AUTH-003 throttle scopes ignore spoofed forwarding headers unless configured (1920.504827ms)
+✔ AUTH-003 password-reset requests share the throttle policy and send nothing (474.732876ms)
+✔ AUTH-003 audit records throttle digests and never raw secrets (887.540744ms)
+✔ AUTH-003 rate policy rejects unsafe configuration (0.622877ms)
+✔ AUTH-003-R1 every verification path is admitted and uses comparable work (1449.294428ms)
+✔ AUTH-003-R1 admission covers dummy and mixed paths and recovers after overload (612.153358ms)
+✔ AUTH-003-R1 provider failures are normalized, never escaped (0.679009ms)
+✔ AUTH-003-R1 exceptional attempts are durably accounted and publish nothing (1103.088758ms)
+✔ AUTH-003-R1 accounting failure fails closed and reports the evidence limit (625.811692ms)
+✔ AUTH-003-R1 untrusted ingress headers never reach audit or session storage (1359.207937ms)
+✔ AUTH-003-R1 ordering follows serialized post-lock attempts, with ties resolved (520.102524ms)
+✔ AUTH-003-R1 restricted auth-service role and composition path (2338.378202ms)
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0`. Without the dedicated-cluster opt-in: exit `1`, six database-independent
+passes (policy, admission, provider normalization, rate policy validation and the
+bounded-input units) and twelve refusals.
+
+Full branch suite on the same runtime/cluster: `223` tests, `222` pass, `1` fail —
+the pre-existing `PIVOT-004 resists an extra permissive policy and an attacker permissive
+policy on auth` (`role "saven_customer_app" does not exist`) reproduced from the
+untouched base. Not claimed green, not attributed to this patch.
+
+Environment: disposable PostgreSQL 18.6 on loopback `127.0.0.1:55443`, fixture objects
+and per-test auth-service logins removed, cluster stopped and deleted, no `saven_auth_%`
+objects left.
+
+## GIT (R1)
+
+branch=opencode/auth-003-passwords commits=`2f7cc80`,report commit pushed=yes
