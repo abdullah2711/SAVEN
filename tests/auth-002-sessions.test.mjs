@@ -883,11 +883,21 @@ test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connecti
       const clock = testClock();
       await insertUser(db, 'commit@example.com', 'correct-horse-battery');
 
-      const makePool = ({failCommitAt = null, failRollback = false} = {}) => {
+      // Failure injection is targeted by the observed transaction phase, not a brittle
+      // global COMMIT count: each connection tracks which logical phase its statements
+      // belong to (reservation audit, MFA authority resolution, success session
+      // insert/success audit) and only the COMMIT of the requested phase throws.
+      const makePool = ({failOnPhase = null, failRollback = false} = {}) => {
         const releases = [];
-        let commitCount = 0;
+        let injected = false;
+        let sawSessionInsert = false;
+        let sawSuccessAudit = false;
+        let activePhase = null;
         return {
           releases,
+          get injected() { return injected; },
+          get sawSessionInsert() { return sawSessionInsert; },
+          get sawSuccessAudit() { return sawSuccessAudit; },
           pool: {
             query: (text, params) => pool.query(text, params),
             async connect() {
@@ -896,9 +906,25 @@ test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connecti
               const originalRelease = client.release.bind(client);
               client.query = async (text, params) => {
                 const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+                if (statement === 'BEGIN') activePhase = null;
+                if (statement.startsWith('INSERT INTO AUTH.AUTH_AUDIT')) {
+                  if (params?.[0] === 'login_failure') activePhase = 'reservation';
+                  if (params?.[0] === 'login_success') {
+                    sawSuccessAudit = true;
+                    activePhase = 'success';
+                  }
+                }
+                if (statement.includes("SET_CONFIG('APP.CURRENT_USER_ID'")) activePhase = 'authority';
+                if (statement.startsWith('INSERT INTO AUTH.SESSIONS')) {
+                  sawSessionInsert = true;
+                  activePhase = 'success';
+                }
                 if (statement === 'COMMIT') {
-                  commitCount += 1;
-                  if (failCommitAt !== null && commitCount === failCommitAt) throw new Error('commit acknowledgement lost');
+                  const phase = activePhase;
+                  if (!injected && failOnPhase !== null && phase === failOnPhase) {
+                    injected = true;
+                    throw new Error(`commit acknowledgement lost in the ${phase} phase`);
+                  }
                 }
                 if (statement === 'ROLLBACK' && failRollback) throw new Error('rollback failed');
                 return originalQuery(text, params);
@@ -915,7 +941,7 @@ test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connecti
 
       // 1. Reservation COMMIT uncertainty: no session work has started, accounting fails
       // closed and the uncertain client is destroyed.
-      const reservationFailure = makePool({failCommitAt: 1});
+      const reservationFailure = makePool({failOnPhase: 'reservation'});
       const reservationServer = createAuthServer({pool: reservationFailure.pool, clock: clock.clock, origins, secureCookies: true});
       const reservationResponse = await reservationServer.handler(loginRequest({
         email: 'commit@example.com',
@@ -924,14 +950,39 @@ test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connecti
       assert.equal(reservationResponse.status, 503);
       assert.equal((await reservationResponse.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
       assert.equal(reservationResponse.headers.get('set-cookie'), null, 'no credential may be published');
+      assert.ok(reservationFailure.injected, 'the reservation phase was the injected boundary');
       assert.ok(reservationFailure.releases.includes(true), 'an uncertain reservation client is destroyed');
       const reservationSessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
       assert.equal(reservationSessions.rows[0].n, 0, 'no session work had begun');
 
-      // 2. Success COMMIT uncertainty: the reservation committed, so the attempt is
-      // accounted; the credential is withheld and the ambiguity is documented (a row may
-      // exist, but the caller never receives the token).
-      const successFailure = makePool({failCommitAt: 2});
+      // 2. MFA authority COMMIT uncertainty: the reservation committed, but authority
+      // resolution cannot be trusted, so no success transaction starts and no credential
+      // is published. This is a distinct boundary from the success transaction below.
+      const authorityFailure = makePool({failOnPhase: 'authority'});
+      const authorityServer = createAuthServer({pool: authorityFailure.pool, clock: clock.clock, origins, secureCookies: true});
+      const authorityResponse = await authorityServer.handler(loginRequest({
+        email: 'commit@example.com',
+        password: 'correct-horse-battery',
+      }));
+      assert.equal(authorityResponse.status, 503);
+      assert.equal((await authorityResponse.json()).error.code, 'SESSION_TRANSACTION_UNCERTAIN');
+      assert.equal(authorityResponse.headers.get('set-cookie'), null, 'no credential may be published');
+      assert.ok(authorityFailure.injected, 'the authority phase was the injected boundary');
+      assert.equal(authorityFailure.sawSessionInsert, false, 'the success session insert was never reached');
+      assert.ok(authorityFailure.releases.includes(true), 'an uncertain authority client is destroyed');
+      const authoritySessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+      assert.equal(authoritySessions.rows[0].n, 0, 'no session row exists after authority uncertainty');
+      const authorityAttempts = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.auth_audit
+         WHERE event_type = 'login_failure' AND detail_jsonb->>'reason' = 'attempt_reserved'`,
+      );
+      assert.ok(authorityAttempts.rows[0].n >= 1, 'the reservation remains durable despite authority uncertainty');
+
+      // 3. Success COMMIT uncertainty: the reservation and authority committed, the
+      // session INSERT and success audit were observed, and only the success COMMIT was
+      // lost. The credential is withheld and the ambiguous client is destroyed. The
+      // persisted outcome is genuinely unknown: the row may or may not exist.
+      const successFailure = makePool({failOnPhase: 'success'});
       const successServer = createAuthServer({pool: successFailure.pool, clock: clock.clock, origins, secureCookies: true});
       const successResponse = await successServer.handler(loginRequest({
         email: 'commit@example.com',
@@ -940,7 +991,12 @@ test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connecti
       assert.equal(successResponse.status, 503);
       assert.equal((await successResponse.json()).error.code, 'SESSION_TRANSACTION_UNCERTAIN');
       assert.equal(successResponse.headers.get('set-cookie'), null, 'no credential may be published on an uncertain success commit');
+      assert.ok(successFailure.injected, 'the success phase was the injected boundary');
+      assert.equal(successFailure.sawSessionInsert, true, 'the session INSERT was reached before the success-COMMIT injection');
+      assert.equal(successFailure.sawSuccessAudit, true, 'the success audit was reached before the success-COMMIT injection');
       assert.ok(successFailure.releases.includes(true), 'an uncertain success client is destroyed');
+      const successSessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+      assert.ok(successSessions.rows[0].n <= 1, 'the persisted success outcome is ambiguous, never duplicated');
       const accountedAttempt = await db.adminQuery(
         `SELECT count(*)::int AS n FROM auth.auth_audit
          WHERE event_type = 'login_failure' AND detail_jsonb->>'reason' = 'attempt_reserved'`,

@@ -290,7 +290,7 @@ identity as MFA-required.
 | Route | Method | Behaviour |
 | --- | --- | --- |
 | `/v1/auth/mfa` | GET | Factor status: required, enrolled, available, recovery codes remaining, current session assurance, pending flag. |
-| `/v1/auth/mfa/enroll` | POST | Initial enrollment (empty body) only while no verified factor exists. Replacing a verified factor requires `password` plus a current `code`/`recoveryCode` in the same transaction; session assurance is never accepted as reauthentication. Returns the `otpauth://` URI and audits started/replaced. |
+| `/v1/auth/mfa/enroll` | POST | Initial enrollment (empty body) only while no verified factor exists. Replacing a verified factor requires `password` plus a current `code`/`recoveryCode` in the same transaction; session assurance is never accepted as reauthentication. Durable per-user admission (lock check under the lifecycle locks) precedes any password/KDF or factor work, so a locked factor starts no derivation. Returns the `otpauth://` URI and audits started/replaced. |
 | `/v1/auth/mfa/enroll/verify` | POST | Completes enrollment with a TOTP code, upgrades the session to `mfa_verified` and returns the one-time recovery codes. |
 | `/v1/auth/mfa/verify` | POST | Login step-up with `{code}` or `{recoveryCode}`; upgrades the session to `mfa_verified`. |
 | `/v1/auth/mfa/disable` | POST | Reauthentication with password plus a TOTP or recovery code; removes the verified factor and downgrades the session. |
@@ -331,6 +331,19 @@ unverified admin can enrol a factor and nothing else.
   (`users` → `two_factor` → `sessions`) inside one transaction, so concurrent
   verification, replacement and disable cannot resurrect an old seed. Session reads for
   mutations take no row lock; only the lifecycle transaction does.
+- The common lifecycle authorization boundary revalidates the actual session inside the
+  owned transaction **after** those locks are held: session id/user/realm, revocation,
+  both expiries, active principal status and credential epoch. A session that was valid
+  at the earlier non-transactional read but was revoked, expired, disabled or
+  credential-rotated in between is refused before any reauthentication or factor
+  mutation. The session row is read without a row lock (no opposing lock) and no nested
+  pool checkout is taken, so this is safe on a size-one pool and does not reintroduce
+  the session-row lock ordering that R1 removed.
+- Replacement admission is ordered before derivation: the durable factor lock is checked
+  under the lifecycle locks before `password.verify` runs, so a locked factor performs
+  no password KDF and no TOTP/recovery step. Candidate password and factor proofs are
+  both required, but they are evaluated only after admission; wrong-credential failure
+  accounting still commits even though the request is refused.
 - Durable failure policy covers enrollment completion, restart, TOTP verification,
   recovery codes and disable-password reauthentication. Counters increment atomically
   (`failed_attempts = failed_attempts + 1`) and are committed even when the request is

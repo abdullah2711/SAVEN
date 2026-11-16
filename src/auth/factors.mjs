@@ -263,6 +263,52 @@ export function createMfaService({store, clock = () => new Date(), config = {}, 
     }
   }
 
+  // Revalidates the caller's verified session and principal INSIDE the owned
+  // transaction, after the deterministic lifecycle locks (users -> two_factor) are
+  // held. The session row is read WITHOUT a row lock: taking one here would oppose
+  // the session-row locks used by rotation/logout and could deadlock a concurrent
+  // lifecycle request. No nested pool checkout is taken; the caller's client is used.
+  //
+  // This is the common lifecycle authorization boundary: a session that was valid at
+  // the earlier non-transactional read but has since been revoked, idle/absolutely
+  // expired, disabled, or had its credential epoch changed is refused before any
+  // reauthentication (KDF) or factor mutation.
+  async function assertMutationAuthority({session, tx} = {}) {
+    if (!tx) throw new Error('MFA mutation authority requires an owned transaction client.');
+    if (!session || typeof session.id !== 'string' || typeof session.userId !== 'string' || typeof session.realm !== 'string') {
+      throw mfaError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    }
+    const refuse = () => mfaError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    let locked;
+    try {
+      locked = await lockLifecycle(tx, session.userId);
+    } catch (error) {
+      if (error?.code === 'MFA_USER_UNKNOWN') throw refuse();
+      throw error;
+    }
+    if (locked.user.status !== 'active') throw refuse();
+    const result = await tx.query(
+      `SELECT s.id, s.user_id, s.realm, s.revoked_at, s.credential_version,
+              s.idle_expires_at, s.absolute_expires_at,
+              u.status AS user_status, u.credential_version AS current_credential_version
+       FROM auth.sessions s
+       JOIN auth.users u ON u.id = s.user_id
+       WHERE s.id = $1`,
+      [session.id],
+    );
+    if (result.rowCount !== 1) throw refuse();
+    const row = result.rows[0];
+    if (String(row.user_id) !== String(session.userId)) throw refuse();
+    if (row.realm !== session.realm) throw refuse();
+    if (row.revoked_at !== null) throw refuse();
+    if (row.user_status !== 'active') throw refuse();
+    if (Number(row.credential_version) !== Number(row.current_credential_version)) throw refuse();
+    const at = now().getTime();
+    if (new Date(row.absolute_expires_at).getTime() <= at) throw refuse();
+    if (new Date(row.idle_expires_at).getTime() <= at) throw refuse();
+    return {userId: String(row.user_id), credentialVersion: Number(row.current_credential_version)};
+  }
+
   async function status(userId, {tx} = {}) {
     return withExecutor(tx, async executor => {
       const requirement = await authority(userId, {tx: executor});
@@ -511,6 +557,7 @@ export function createMfaService({store, clock = () => new Date(), config = {}, 
   return {
     settings,
     authority,
+    assertMutationAuthority,
     status,
     lockLifecycle,
     assertUnlocked,

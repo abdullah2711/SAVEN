@@ -569,6 +569,11 @@ export function createAuthRoutes({
     }
     const session = await mutationSession(request, realm);
     const result = await store.withTransaction(async tx => {
+      // Common lifecycle authority: revalidate the actual session token/realm,
+      // revocation, both expiries, active principal and credential epoch inside this
+      // owned transaction AFTER the deterministic lifecycle locks, before any
+      // reauthentication or factor mutation.
+      await mfaService.assertMutationAuthority({session, tx});
       const status = await mfaService.status(session.userId, {tx});
       if (!status.resolved) throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
       let authorizedReplacement = false;
@@ -576,6 +581,15 @@ export function createAuthRoutes({
         // Never treat session assurance as reauthentication proof: the current password
         // and an existing TOTP/recovery factor are both required in this transaction.
         if (!replaceProof) throw new AuthError(403, 'MFA_REAUTH_REQUIRED', 'Reauthentication and an existing factor are required to replace the enrolled factor.');
+        // Durable per-user admission precedes any password/KDF work. Locked requests
+        // refuse without starting a derivation or a factor step; the failure accounting
+        // for wrong credentials still commits (returned as {failed}).
+        try {
+          await mfaService.checkLocked(session.userId, {tx});
+        } catch (error) {
+          if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+          throw error;
+        }
         const user = await loadUserById(tx, session.userId);
         const verification = user ? await policy.verify(body.password, user.passwordHash) : {valid: false};
         if (!verification.valid) {
@@ -616,6 +630,7 @@ export function createAuthRoutes({
     if (Object.keys(body).some(key => key !== 'code')) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown verification fields.');
     const session = await mutationSession(request, realm);
     const result = await store.withTransaction(async tx => {
+      await mfaService.assertMutationAuthority({session, tx});
       let completed;
       try {
         completed = await mfaService.completeEnrollment(session.userId, body.code, {tx});
@@ -650,6 +665,7 @@ export function createAuthRoutes({
     if (!usesCode && !usesRecovery) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide exactly one code or recovery code.');
     const session = await mutationSession(request, realm);
     const result = await store.withTransaction(async tx => {
+      await mfaService.assertMutationAuthority({session, tx});
       let verified;
       try {
         verified = usesRecovery
@@ -689,6 +705,7 @@ export function createAuthRoutes({
     if (!usesCode && !usesRecovery) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide exactly one code or recovery code.');
     const session = await mutationSession(request, realm);
     const result = await store.withTransaction(async tx => {
+      await mfaService.assertMutationAuthority({session, tx});
       // Reauthentication reads run on the already-owned transaction: no nested checkout.
       const user = await loadUserById(tx, session.userId);
       if (!user || user.id !== session.userId) throw new AuthError(401, 'SIGN_IN_FAILED', 'Reauthentication failed.');

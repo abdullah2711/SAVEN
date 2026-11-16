@@ -68,8 +68,9 @@ async function addMembership(db, userId, roleId) {
   );
 }
 
-function buildRoutes({pool, clock, config = mfaConfig(), rateLimitPolicy = {}, onVerification = null}) {
-  const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+function buildRoutes({pool, clock, config = mfaConfig(), rateLimitPolicy = {}, onVerification = null, passwordPolicy = null, wrapStore = null}) {
+  const baseStore = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+  const store = wrapStore ? wrapStore(baseStore) : baseStore;
   const findUserByEmail = async email => {
     const result = await pool.query(
       `SELECT id, email, email_verified, password_hash, password_scheme, status, credential_version
@@ -98,6 +99,7 @@ function buildRoutes({pool, clock, config = mfaConfig(), rateLimitPolicy = {}, o
     rateLimitPolicy,
     mfaConfig: config,
     mfaOnVerification: onVerification,
+    passwordPolicy,
   });
   return {store, handler};
 }
@@ -990,5 +992,285 @@ test('AUTH-004-R1 concurrent disables are serialized without leaving verified as
     } finally {
       await pool.end();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AUTH-004-R2 corrections: admission-before-KDF, in-transaction authority, and
+// observed-transaction-phase uncertainty (the last in the AUTH-002 suite).
+// ---------------------------------------------------------------------------
+
+function spyPolicy(counter) {
+  const base = createPasswordPolicy();
+  return {
+    verify: (...args) => {
+      counter.verify += 1;
+      return base.verify(...args);
+    },
+    hash: (...args) => base.hash(...args),
+  };
+}
+
+// Wraps the real store so a test can mutate session/principal state AFTER the
+// non-transactional readSession returns but BEFORE the route opens its owned
+// transaction. This reproduces the read-valid-then-stale window deterministically.
+function interceptingStore(hookRef) {
+  return baseStore => {
+    const wrapped = {...baseStore};
+    wrapped.readSession = async (token, options) => {
+      const session = await baseStore.readSession(token, options);
+      if (session && hookRef.current) {
+        const hook = hookRef.current;
+        hookRef.current = null;
+        await hook(session);
+      }
+      return session;
+    };
+    return wrapped;
+  };
+}
+
+async function factorState(db, userId) {
+  const factor = await db.adminQuery(
+    `SELECT secret_ciphertext, verified_at, failed_attempts, locked_until
+     FROM auth.two_factor WHERE user_id = $1::uuid`,
+    [userId],
+  );
+  const recovery = await db.adminQuery(
+    'SELECT count(*)::int AS n FROM auth.recovery_codes WHERE user_id = $1::uuid AND used_at IS NULL',
+    [userId],
+  );
+  return {row: factor.rows[0] ?? null, unusedRecovery: recovery.rows[0].n};
+}
+
+async function assuranceState(db, userId) {
+  const result = await db.adminQuery(
+    'SELECT id::text AS id, assurance_level FROM auth.sessions WHERE user_id = $1::uuid ORDER BY id',
+    [userId],
+  );
+  return result.rows;
+}
+
+test('AUTH-004-R2 locked replacement refuses before any password or factor derivation', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const counter = {verify: 0};
+      const starts = [];
+      const {handler} = buildRoutes({
+        pool,
+        clock,
+        passwordPolicy: spyPolicy(counter),
+        onVerification: record => starts.push(record),
+      });
+      const enrolled = await adminEnrolled({db, clock, handler});
+
+      // Lock the shared factor with three wrong TOTP steps on a pending session.
+      const pending = await login(handler, 'admin@example.com', 'correct-horse-battery');
+      clock.advance(30 * 1000);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        assert.equal((await mfaPost(handler, '/v1/auth/mfa/verify', pending.token, pending.csrf, {
+          code: '000000',
+        })).status, 401);
+      }
+      const locked = await db.adminQuery(
+        'SELECT failed_attempts, locked_until FROM auth.two_factor WHERE user_id = $1::uuid',
+        [enrolled.userId],
+      );
+      assert.equal(locked.rows[0].failed_attempts, 3, 'the factor is durably locked');
+      assert.ok(locked.rows[0].locked_until instanceof Date);
+
+      const before = await factorState(db, enrolled.userId);
+      const first = await login(handler, 'admin@example.com', 'correct-horse-battery');
+      const second = await login(handler, 'admin@example.com', 'correct-horse-battery');
+
+      // Every replacement shape — correct/wrong password × TOTP/recovery — is an
+      // admission decision before any derivation starts.
+      counter.verify = 0;
+      starts.length = 0;
+      const shapes = [
+        {password: 'correct-horse-battery', code: totpCode(enrolled.secret, {at: clock.now()})},
+        {password: 'correct-horse-battery', recoveryCode: enrolled.recoveryCodes[0]},
+        {password: 'wrong-password-value', code: '123456'},
+        {password: 'wrong-password-value', recoveryCode: 'WRONGCODE234567'},
+      ];
+      for (const body of shapes) {
+        const response = await mfaPost(handler, '/v1/auth/mfa/enroll', first.token, first.csrf, body);
+        assert.equal(response.status, 429, 'a locked factor refuses replacement admission');
+        assert.equal((await response.json()).error.code, 'MFA_LOCKED');
+      }
+      assert.equal(counter.verify, 0, 'locked replacement starts no password KDF');
+      assert.equal(starts.length, 0, 'locked replacement starts no TOTP/recovery derivation');
+
+      // Cross-session bursts stay bounded and never reach a derivation.
+      counter.verify = 0;
+      starts.length = 0;
+      const burst = await Promise.all(Array.from({length: 6}, (_, index) => mfaPost(
+        handler,
+        '/v1/auth/mfa/enroll',
+        index % 2 === 0 ? first.token : second.token,
+        index % 2 === 0 ? first.csrf : second.csrf,
+        index % 2 === 0
+          ? {password: 'correct-horse-battery', code: totpCode(enrolled.secret, {at: clock.now()})}
+          : {password: 'wrong-password-value', recoveryCode: enrolled.recoveryCodes[1]},
+      )));
+      assert.ok(burst.every(response => response.status === 429), 'every concurrent locked replacement is refused');
+      assert.equal(counter.verify, 0, 'concurrent locked replacement starts no KDF work');
+      assert.equal(starts.length, 0, 'concurrent locked replacement starts no factor derivation');
+
+      const afterBurst = await factorState(db, enrolled.userId);
+      assert.equal(afterBurst.row.secret_ciphertext, before.row.secret_ciphertext, 'the seed is unchanged');
+      assert.equal(afterBurst.row.failed_attempts, 3, 'refusals do not erase the durable counter');
+      assert.equal(afterBurst.unusedRecovery, before.unusedRecovery, 'recovery codes are unchanged');
+
+      // Cooldown recovery: admission passes, derivation resumes and counters reset.
+      clock.advance(61 * 1000);
+      counter.verify = 0;
+      starts.length = 0;
+      const recovered = await mfaPost(handler, '/v1/auth/mfa/enroll', first.token, first.csrf, {
+        password: 'correct-horse-battery',
+        code: totpCode(enrolled.secret, {at: clock.now()}),
+      });
+      assert.equal(recovered.status, 200, 'the factor is unlocked after the cooldown');
+      assert.equal((await recovered.json()).replaced, true);
+      assert.ok(counter.verify >= 1, 'an admitted replacement performs the password verification');
+      assert.ok(starts.some(record => record.operation === 'verifyTotp'), 'an admitted replacement derives the TOTP step');
+      const afterRecovery = await factorState(db, enrolled.userId);
+      assert.notEqual(afterRecovery.row.secret_ciphertext, before.row.secret_ciphertext, 'a fresh seed is written');
+      assert.equal(afterRecovery.row.failed_attempts, 0);
+      assert.equal(afterRecovery.row.locked_until, null);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-004-R2 read-valid then stale session/principal is refused before reauthentication', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const modes = {
+        revoked: async session => {
+          await db.adminQuery('UPDATE auth.sessions SET revoked_at = now() WHERE id = $1::uuid', [session.id]);
+        },
+        expired: async session => {
+          await db.adminQuery(
+            'UPDATE auth.sessions SET idle_expires_at = $2::timestamptz WHERE id = $1::uuid',
+            [session.id, new Date(clock.now().getTime() - 1000).toISOString()],
+          );
+        },
+        disabled: async session => {
+          await db.adminQuery("UPDATE auth.users SET status = 'disabled' WHERE id = $1::uuid", [session.userId]);
+        },
+        credential: async session => {
+          const policy = createPasswordPolicy();
+          const changed = await policy.hash('rotated-password-value');
+          await db.adminQuery(
+            `UPDATE auth.users
+             SET password_hash = $2, password_scheme = $3, password_updated_at = now(),
+                 credential_version = credential_version + 1
+             WHERE id = $1::uuid`,
+            [session.userId, changed.hash, changed.scheme],
+          );
+        },
+      };
+
+      let index = 0;
+      async function runCase(mode, flow) {
+        index += 1;
+        const email = `stale-${mode}-${flow}-${index}@example.com`;
+        const counter = {verify: 0};
+        const hookRef = {current: null};
+        const {handler} = buildRoutes({
+          pool,
+          clock,
+          passwordPolicy: spyPolicy(counter),
+          wrapStore: interceptingStore(hookRef),
+        });
+
+        let userId;
+        let token;
+        let csrf;
+        let secret = null;
+        let before;
+        if (flow === 'replacement') {
+          const enrolled = await adminEnrolled({db, clock, handler, email});
+          userId = enrolled.userId;
+          token = enrolled.token;
+          csrf = enrolled.csrf;
+          secret = enrolled.secret;
+          clock.advance(30 * 1000);
+          before = await factorState(db, userId);
+        } else {
+          userId = await insertUser(db, email, 'correct-horse-battery');
+          await addMembership(db, userId, 'tenant_admin');
+          const session = await login(handler, email, 'correct-horse-battery');
+          assert.equal(session.response.status, 200);
+          token = session.token;
+          csrf = session.csrf;
+          before = await factorState(db, userId);
+          assert.equal(before.row, null, 'initial enrollment starts with no factor');
+        }
+        const assuranceBefore = await assuranceState(db, userId);
+        const auditBefore = await db.adminQuery(
+          "SELECT count(*)::int AS n FROM auth.auth_audit WHERE event_type = 'mfa_enrolled'",
+        ).then(result => result.rows[0].n);
+
+        hookRef.current = modes[mode];
+        counter.verify = 0;
+        const body = flow === 'replacement'
+          ? {password: 'correct-horse-battery', code: totpCode(secret, {at: clock.now()})}
+          : {};
+        const response = await mfaPost(handler, '/v1/auth/mfa/enroll', token, csrf, body);
+
+        assert.equal(response.status, 401, `${mode}/${flow} is refused`);
+        assert.equal((await response.json()).error.code, 'SESSION_REQUIRED');
+        assert.equal(counter.verify, 0, `${mode}/${flow}: no password KDF runs before the refusal`);
+
+        const after = await factorState(db, userId);
+        if (flow === 'replacement') {
+          assert.equal(after.row.secret_ciphertext, before.row.secret_ciphertext, `${mode}/${flow}: seed unchanged`);
+          assert.equal(after.row.verified_at.getTime(), before.row.verified_at.getTime(), `${mode}/${flow}: verification unchanged`);
+          assert.equal(after.unusedRecovery, before.unusedRecovery, `${mode}/${flow}: recovery unchanged`);
+        } else {
+          assert.equal(after.row, null, `${mode}/${flow}: no pending factor is created`);
+        }
+        assert.deepEqual(await assuranceState(db, userId), assuranceBefore, `${mode}/${flow}: assurance unchanged`);
+        const auditAfter = await db.adminQuery(
+          "SELECT count(*)::int AS n FROM auth.auth_audit WHERE event_type = 'mfa_enrolled'",
+        ).then(result => result.rows[0].n);
+        assert.equal(auditAfter, auditBefore, `${mode}/${flow}: no mfa_enrolled success is recorded`);
+      }
+
+      for (const flow of ['initial', 'replacement']) {
+        for (const mode of ['revoked', 'expired', 'disabled', 'credential']) {
+          await runCase(mode, flow);
+        }
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-004-R2 authorized replacement uses the owned transaction on a size-one pool', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await withAuthServicePool(db, async pool => {
+      const {handler} = buildRoutes({pool, clock});
+      const enrolled = await adminEnrolled({db, clock, handler});
+      clock.advance(30 * 1000);
+      const replace = await Promise.race([
+        mfaPost(handler, '/v1/auth/mfa/enroll', enrolled.token, enrolled.csrf, {
+          password: 'correct-horse-battery',
+          code: totpCode(enrolled.secret, {at: clock.now()}),
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('replacement timed out on max=1')), 15000)),
+      ]);
+      assert.equal(replace.status, 200, 'replacement reauthentication uses the owned transaction');
+      assert.equal((await replace.json()).replaced, true);
+    }, {max: 1});
   });
 });
