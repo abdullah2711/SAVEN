@@ -276,3 +276,73 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   must never be inferred from request input.
 - Session and token lists remain digest-only: no raw token is ever returned in an API
   payload or rendered in a UI (owner decision D-012).
+
+## Multi-factor authentication (AUTH-004)
+
+Tenant administrators and ultimate owners must complete TOTP assurance before an
+authenticated session may reach anything beyond `/v1/auth/me`, `/v1/auth/logout` and the
+MFA endpoints. The requirement is derived from current authority, not a role name in the
+request: any active membership whose `auth.roles` row has `requires_mfa` marks the
+identity as MFA-required.
+
+### Routes
+
+| Route | Method | Behaviour |
+| --- | --- | --- |
+| `/v1/auth/mfa` | GET | Factor status: required, enrolled, available, recovery codes remaining, current session assurance, pending flag. |
+| `/v1/auth/mfa/enroll` | POST | Starts or restarts enrollment; returns the `otpauth://` URI. CSRF + origin required. Restarting invalidates outstanding recovery codes. |
+| `/v1/auth/mfa/enroll/verify` | POST | Completes enrollment with a TOTP code, upgrades the session to `mfa_verified` and returns the one-time recovery codes. |
+| `/v1/auth/mfa/verify` | POST | Login step-up with `{code}` or `{recoveryCode}`; upgrades the session to `mfa_verified`. |
+| `/v1/auth/mfa/disable` | POST | Reauthentication with password plus a TOTP or recovery code; removes the verified factor and downgrades the session. |
+
+Password login for a required identity always yields a **pending** session
+(`assurance_level = single_factor`, `mfa.pending = true` in the response). The cookie is
+issued so the challenge can be completed, but the pending session is refused elsewhere
+with `403 MFA_REQUIRED`. Enrollment is therefore an "enrollment-only" state: an
+unverified admin can enrol a factor and nothing else.
+
+### Invariants
+
+- TOTP seeds are 20 random bytes stored only as AES-256-GCM envelopes
+  (`secret_ciphertext`, `secret_algorithm`, `secret_key_version`). Keys are injected by
+  deployment composition; none are in the repository. Decryption uses the stored key
+  version.
+- Recovery codes are random base32 values shown once; the database stores only
+  HMAC-SHA-256 digests with a key version. Consumption is one atomic conditional
+  `UPDATE … WHERE used_at IS NULL`, so concurrent attempts yield exactly one success.
+- Verification is RFC 6238 (HMAC-SHA1, 6 digits, 30 s period, ±1 step window) with
+  constant-time comparison. A step is consumed through a conditional
+  `last_used_step < step` update, so replaying a code — including concurrently — fails.
+- Failed codes increment `failed_attempts`; reaching the configured limit sets
+  `locked_until`. Failure counters are committed even though the request is refused.
+- Disable requires password reauthentication **and** a current TOTP or recovery code.
+  Disabling replaces the seed with a fresh unverified one, clears `verified_at`, and
+  marks all outstanding recovery codes used; re-enrollment is required.
+- No MFA bypass exists through alternate factors: the routes accept exactly `code` or
+  `recoveryCode`; passkeys, social defaults and unknown fields are rejected. Cloud
+  operator MFA remains delegated to validated Access/IdP assurance (AUTH-007), and no
+  local operator factor is created here.
+- Audit rows (`mfa_enrolled`, `mfa_verified`, `mfa_disabled`) never contain seeds,
+  recovery codes or passwords.
+
+### Configuration and fail-closed behaviour
+
+`createMfaService` requires `keys: [{version, key: Buffer(32)}]` and a
+`recoveryHashKey` (≥32 bytes), plus bounded digits/period/window/failure/lockout values.
+These are deployment-controlled and versioned; no production numeric policy is approved
+by this module. With no keys configured the service reports `available: false`, and a
+password login for an MFA-required identity fails closed with `503 MFA_UNAVAILABLE`
+instead of issuing a session. Non-required identities are unaffected.
+
+### Extension points
+
+- New factor types are new reference values plus a typed adapter; they must satisfy the
+  same session-assurance rule and must never bypass required assurance.
+- Key rotation: add a new versioned key and re-encrypt lazily; old versions stay
+  readable until retired.
+- AUTH-006 will bind selection to a verified membership; the conservative "any active
+  MFA-required membership" rule then narrows to the selected membership.
+- AUTH-007 owns operator Access assurance; this module intentionally has no operator
+  password/TOTP path.
+- Recovery-code reissue, trusted devices and notification policy are future contracts;
+  no mail is sent here.

@@ -468,6 +468,30 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     });
   }
 
+  // Upgrades or downgrades session assurance after a factor event. Guarded like refresh:
+  // a revoked, expired, disabled or credential-stale session cannot change assurance.
+  async function setSessionAssurance(sessionId, assurance, {tx, at = null} = {}) {
+    const moment = iso(at ?? now());
+    return run(tx, async executor => {
+      const result = await executor.query(
+        `UPDATE auth.sessions s
+         SET assurance_level = $2, mfa_verified_at = $3::timestamptz, updated_at = now()
+         FROM auth.users u
+         WHERE s.id = $1 AND u.id = s.user_id
+           AND s.revoked_at IS NULL
+           AND s.absolute_expires_at > $4::timestamptz
+           AND s.idle_expires_at > $4::timestamptz
+           AND u.status = 'active'
+           AND u.credential_version = s.credential_version
+         RETURNING s.id, s.assurance_level, s.mfa_verified_at`,
+        [sessionId, assurance, assurance === 'mfa_verified' ? moment : null, moment],
+      );
+      return result.rowCount === 1
+        ? {id: result.rows[0].id, assuranceLevel: result.rows[0].assurance_level, mfaVerifiedAt: result.rows[0].mfa_verified_at}
+        : null;
+    });
+  }
+
   // Rotation consumes the source row under a lock and creates exactly one successor.
   // The successor keeps the original absolute ceiling. A concurrent rotation or a
   // racing revoke leaves exactly one live token (or none), never two.
@@ -570,6 +594,7 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     readSession,
     lockSession,
     refreshSession,
+    setSessionAssurance,
     rotateSession,
     revokeSession,
     revokeAllSessions,
