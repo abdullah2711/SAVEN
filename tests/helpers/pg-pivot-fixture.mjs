@@ -27,6 +27,16 @@ export const runtimeRoleKeys = Object.freeze([
 
 export const switchableRoleKeys = Object.freeze([...runtimeRoleKeys, 'migrator']);
 
+// PIVOT-004-R1 provisions one additional non-login owner (the admission helper's
+// definer) through an explicitly opted-in administrator step. It is namespaced,
+// preflighted and cleaned up like the other fixture roles, but it is not a runtime
+// principal and is never added to the default seven-role bootstrap.
+export const extraRoleKeys = Object.freeze(['tenantAdmissionDefiner']);
+
+const extraRoleSuffixes = Object.freeze({
+  tenantAdmissionDefiner: 'tenant_admission_definer',
+});
+
 const roleSuffixes = Object.freeze({
   customerApp: 'customer_app',
   authService: 'auth_service',
@@ -124,6 +134,9 @@ export function roleNamesForSuffix(suffix) {
   for (const [key, roleSuffix] of Object.entries(roleSuffixes)) {
     names[key] = prefix + '_' + roleSuffix;
   }
+  for (const [key, roleSuffix] of Object.entries(extraRoleSuffixes)) {
+    names[key] = prefix + '_' + roleSuffix;
+  }
   for (const [key, loginSuffix] of Object.entries(loginSuffixes)) {
     names.logins[key] = prefix + '_' + loginSuffix;
   }
@@ -133,6 +146,7 @@ export function roleNamesForSuffix(suffix) {
 export function generatedRoleNames(names) {
   return [
     ...targetRoleKeys.map(key => names[key]),
+    ...extraRoleKeys.map(key => names[key]),
     names.migration,
     ...Object.values(names.logins),
   ];
@@ -154,7 +168,18 @@ function rewriteRoleNames(sql, names) {
     const fixed = 'saven_' + roleSuffixes[key];
     rewritten = rewritten.replaceAll(fixed, names[key]);
   }
+  for (const key of extraRoleKeys) {
+    const fixed = 'saven_' + extraRoleSuffixes[key];
+    rewritten = rewritten.replaceAll(fixed, names[key]);
+  }
   return rewritten;
+}
+
+// Rewrite SAVEN role names into one fixture namespace. Exported so a test can apply
+// a checked-in migration or a deliberately failing variant through the same mapping
+// instead of hand-writing role creation.
+export function namespaceSql(sql, names) {
+  return rewriteRoleNames(sql, names);
 }
 
 export async function roleBootstrapSql(names) {
@@ -172,6 +197,15 @@ export async function withPivotDatabase(options, run) {
   const suffix = options?.namespaceSuffix ?? randomUUID().replaceAll('-', '').slice(0, 12);
   const names = roleNamesForSuffix(suffix);
   const sqlFiles = options?.sqlFiles ?? defaultSqlFiles;
+  // Explicit opt-in administrator step. Some additive corrections must provision a
+  // role or transfer function ownership, which the ordinary migration principal
+  // cannot do. They run as the fixture's private superuser, after the migration
+  // files, and every role they create is tracked for cleanup.
+  const adminSqlFiles = options?.adminSqlFiles ?? [];
+  // Inline administrator SQL, role-name rewritten into the namespace, applied after
+  // adminSqlFiles. Used to simulate an administrator-hook failure or a reused
+  // pre-existing role with excessive authority in a disposable database.
+  const adminSql = options?.adminSql ?? [];
   const allRoleNames = generatedRoleNames(names);
   const clusterConfig = connectionConfig();
   const adminUser = clusterConfig.user;
@@ -181,6 +215,10 @@ export async function withPivotDatabase(options, run) {
   );
   const createdRoles = [];
   const cleanupErrors = [];
+  // Cleanup is ownership-tracked: nothing may be dropped until the pre-flight has
+  // proven that no pre-existing object is at risk. A refused pre-flight therefore
+  // performs no object cleanup at all.
+  let preflightPassed = false;
   let createdDatabase = false;
   let lockHeld = false;
   let runError = null;
@@ -209,6 +247,7 @@ export async function withPivotDatabase(options, run) {
         `PIVOT-002 fixture pre-flight refused: objects already exist (${objects}); refusing to alter or reuse pre-existing cluster objects.`,
       );
     }
+    preflightPassed = true;
 
     await clusterAdmin.query(`CREATE DATABASE ${quoteIdent(names.database)}`);
     createdDatabase = true;
@@ -252,6 +291,19 @@ export async function withPivotDatabase(options, run) {
     await migrationClient.end();
     migrationClient = null;
 
+    for (const file of adminSqlFiles) {
+      await databaseAdmin.query(rewriteRoleNames(await readFile(join(repoRoot, file), 'utf8'), names));
+    }
+    for (const statement of adminSql) {
+      await databaseAdmin.query(rewriteRoleNames(statement, names));
+    }
+    for (const key of extraRoleKeys) {
+      const exists = (
+        await databaseAdmin.query('SELECT 1 AS present FROM pg_roles WHERE rolname = $1', [names[key]])
+      ).rowCount > 0;
+      if (exists) createdRoles.push(names[key]);
+    }
+
     const loginConfigs = Object.fromEntries(runtimeRoleKeys.map(key => [
       key,
       connectionConfig(names.database, {user: names.logins[key], password: loginPasswords[key]}),
@@ -294,11 +346,14 @@ export async function withPivotDatabase(options, run) {
       database: names.database,
       roles: names,
       targetRoles: targetRoleKeys.map(key => names[key]),
+      extraRoles: Object.fromEntries(extraRoleKeys.map(key => [key, names[key]])),
       runtimeRoles: runtimeRoleKeys.map(key => names[key]),
       runtimeLogins: runtimeRoleKeys.map(key => names.logins[key]),
       migrationLogin: names.migration,
       admin: databaseAdmin,
-      adminQuery: (sql, params = []) => databaseAdmin.query(sql, params),
+      // No parameters means simple-query protocol, which is required for a
+      // multi-statement migration body containing dollar-quoted blocks.
+      adminQuery: (sql, params) => databaseAdmin.query(sql, params),
       applyRoleBootstrap: () => databaseAdmin.query(bootstrapSql),
       asRole,
       asLogin,
@@ -313,18 +368,31 @@ export async function withPivotDatabase(options, run) {
       await databaseAdmin.end().catch(error => cleanupErrors.push(error));
     }
     if (clusterAdmin) {
-      if (createdDatabase) {
+      if (preflightPassed && createdDatabase) {
         try {
           await clusterAdmin.query(`DROP DATABASE IF EXISTS ${quoteIdent(names.database)} WITH (FORCE)`);
         } catch (error) {
           cleanupErrors.push(error);
         }
       }
-      for (const role of [...createdRoles].reverse()) {
-        try {
-          await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
-        } catch (error) {
-          cleanupErrors.push(error);
+      // Only created objects are dropped, and only after a completed pre-flight.
+      if (preflightPassed) {
+        for (const role of [...createdRoles].reverse()) {
+          try {
+            await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(role)}`);
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
+        }
+        // An administrator hook may provision the extra owner before failing; the
+        // completed pre-flight proved that name was free, so dropping it is safe.
+        for (const key of extraRoleKeys) {
+          if (createdRoles.includes(names[key])) continue;
+          try {
+            await clusterAdmin.query(`DROP ROLE IF EXISTS ${quoteIdent(names[key])}`);
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
         }
       }
       if (lockHeld) {
