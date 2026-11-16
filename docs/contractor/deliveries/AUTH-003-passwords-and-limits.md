@@ -479,3 +479,90 @@ deleted after the gate. `node_modules` symlink removed.
 ## GIT (R3)
 
 branch=opencode/auth-003-passwords commits=`370b671`,report commit pushed=yes
+
+# AUTH-003-R4 revision — 16 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-003-R3-passwords-and-limits.md` at
+`cfbc03d`. Contract executed: both required corrections within the amended TOUCH.
+Implementation commit `b7afe90`, plus this report commit. No `server.mjs`, schema, grant,
+dependency or PIVOT-004 change; pins unchanged.
+
+## Finding 1 — transaction entry is guarded in both paths
+
+- `rate-limit.attempt` now treats reservation `BEGIN` as a guarded step: if the statement
+  throws or its acknowledgement cannot be established, the lease is marked for destruction
+  before any further statement, accounting fails closed with
+  `503 AUTH_ACCOUNTING_UNAVAILABLE`, and the cooldown breaker is set. A later successful
+  advisory unlock is never treated as evidence of transaction cleanliness.
+- `session-store.transactionOn` now guards its `BEGIN` the same way: a lost/refused entry
+  marks the lease uncertain, so `withClientLease` releases the connection with
+  `destroy=true` rather than returning a possibly-open transaction to the pool.
+- Real-role size-one-pool probes (restricted `auth_service` login, `max: 1`, actual
+  statement execution then injected failure):
+  1. reservation `BEGIN` executes then its acknowledgement is lost → 503 accounting,
+     no cookie, reservation delta 0 (no reservation claimed), zero sessions, exactly one
+     destroyed checkout that is never released normally, later borrower 200;
+  2. ordinary `BEGIN` refusal → same boundary and cleanup;
+  3. success-transaction `BEGIN` executes then its acknowledgement is lost → 503
+     `AUTH_UNAVAILABLE`, no cookie, reservation delta exactly 1 (durable), zero sessions,
+     exactly one destroyed checkout, later borrower 200.
+- Existing COMMIT-uncertainty, failed-ROLLBACK and partial-lock tests remain and now use
+  checkout-specific release assertions.
+
+## Finding 2 — AUTH-002 fault now targets the success transaction
+
+- The “failed ROLLBACK after the success audit fails” case no longer fails on the
+  reservation audit. The reservation audit is allowed to commit, only `login_success`
+  throws, and the injected `ROLLBACK` failure occurs in the ensuing success transaction.
+  Assertions: the success path was actually reached (`login_success` observed), credentials
+  withheld, zero committed sessions, the reservation remains durable, and exactly one
+  uncertain checkout is destroyed. The separate reservation-side rollback failure keeps
+  its own coverage in the AUTH-003 cleanup test.
+- The tautological `assert.ok(!events.includes(false) || true)` was removed. The cleanup
+  tests now record `{checkout, destroy}` per release and assert that the affected checkout
+  is destroyed exactly once and never released normally, while a subsequent borrower
+  obtains and releases a different checkout normally.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-003-passwords.test.mjs
+PASS: 158 JavaScript files parsed; package manifest valid.
+ℹ tests 27
+ℹ pass 27
+ℹ fail 0
+ℹ skipped 0
+$ node --test tests/auth-002-sessions.test.mjs
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0` for both. Without the dedicated-cluster opt-in the AUTH-003 file exits `1` with
+6 database-independent passes and 21 refusals.
+
+Combined branch suite on the same runtime/cluster: `232` tests, `231` pass, `1` fail —
+only the pre-existing PIVOT-004 fixture prerequisite (`role "saven_customer_app" does not
+exist`), untouched and out of scope. No new suite failure.
+
+Environment: disposable PostgreSQL 18.6 on loopback `127.0.0.1:55443`; post-gate queries
+returned zero `saven_auth_%` roles and zero databases; the cluster was stopped and
+deleted and the `node_modules` symlink removed.
+
+## Evidence boundaries
+
+- BEGIN/COMMIT/rollback/lock probes execute the real statement before failing where the
+  scenario requires it, on real restricted auth-service checkouts at pool size one.
+- Some release/destroy assertions are observed through the instrumented test pool rather
+  than server logs; the production path only ever calls `client.release(true)` via the
+  managed lease.
+- Thresholds/trusted ingress remain deployment-controlled (`createAuthServer` forwarding
+  still needs the narrow `server.mjs` contract); indexed limiter storage, AUTH-005 mail
+  and PIVOT-004 remain separate work. SQLite remains production.
+
+## GIT (R4)
+
+branch=opencode/auth-003-passwords commits=`b7afe90`,report commit pushed=yes
