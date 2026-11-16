@@ -101,9 +101,16 @@ export function createRateLimiter({
   clock = () => new Date(),
   policy = {},
   accountingCooldownMs = DEFAULT_ACCOUNTING_COOLDOWN_MS,
+  poolingMode = 'session',
 } = {}) {
-  if (!store || typeof store.withClient !== 'function') {
-    throw new Error('createRateLimiter requires a store with a checked-out client helper.');
+  if (!store || typeof store.withClientLease !== 'function') {
+    throw new Error('createRateLimiter requires a store with a managed client lease helper.');
+  }
+  // Session-scoped advisory locks are only correct when every checkout is a pinned
+  // backend for the lease lifetime. Transaction-pooling middleware can reassign the
+  // backend between statements and is refused rather than assumed compatible.
+  if (poolingMode !== 'session' && poolingMode !== 'direct') {
+    throw new RateLimitError('Session-rate locking requires direct or session-pooling connections; transaction pooling is unsupported.');
   }
   const settings = normalizeRatePolicy(policy);
   if (!Number.isInteger(accountingCooldownMs) || accountingCooldownMs < 0 || accountingCooldownMs > 60 * 60 * 1000) {
@@ -118,17 +125,24 @@ export function createRateLimiter({
   }
 
   // Session-scoped locks survive the short reservation commit and are released only when
-  // the whole attempt ends (success, failure, or exception).
+  // the whole attempt ends (success, failure, or exception). Callers must track every
+  // acquisition from the first one and destroy the connection if a balanced release or a
+  // confirmed unlock result cannot be established.
+  const scopeList = keys => (Array.isArray(keys) ? keys : keys.values);
+
   async function lockScopes(client, keys) {
-    for (const key of keys.values) {
+    for (const key of scopeList(keys)) {
       await client.query('SELECT pg_advisory_lock(hashtext($1))', [`saven.auth.rate:${key}`]);
     }
   }
 
   async function unlockScopes(client, keys) {
-    for (const key of keys.values) {
-      await client.query('SELECT pg_advisory_unlock(hashtext($1))', [`saven.auth.rate:${key}`]);
+    const released = [];
+    for (const key of [...scopeList(keys)].reverse()) {
+      const result = await client.query('SELECT pg_advisory_unlock(hashtext($1)) AS released', [`saven.auth.rate:${key}`]);
+      released.push(result.rows?.[0]?.released === true);
     }
+    return released;
   }
 
   async function countScope(executor, kind, column, key, at) {
@@ -199,35 +213,72 @@ export function createRateLimiter({
     accountingBlockedUntil = 0;
   }
 
-  // reserve(client, verdict, meta) must durably write the reservation/denial row inside
-  // the open transaction. Any throw is an accounting failure: fail closed and cool down.
+  // reserve(lease, verdict) must durably write the reservation/denial row inside the open
+  // transaction. Any throw is an accounting failure: fail closed and cool down.
+  //
+  // The whole attempt, including the caller's success transaction, runs on ONE leased
+  // client. No nested pool checkout is taken while the scope locks are held, so a
+  // correct login cannot deadlock a pool of size one and same-scope waiters cannot
+  // occupy every remaining client.
   async function attempt({keys, kind, reserve, action}) {
     if (accountingBlocked()) throw new AccountingUnavailableError('Accounting is cooling down after a store failure.');
-    return store.withClient(async client => {
-      await lockScopes(client, keys);
-      let reservation;
+    return store.withClientLease(async lease => {
+      const acquired = [];
       try {
-        try {
-          await client.query('BEGIN');
-          const verdict = await checkScopes(client, keys, kind);
-          await reserve(client, verdict);
-          await client.query('COMMIT');
-          reservation = verdict;
-          if (!verdict.allowed) return {throttled: verdict};
-        } catch (error) {
+        for (const key of keys.values) {
           try {
-            await client.query('ROLLBACK');
-          } catch {
-            // The reservation is unknown; cool down below.
+            await lease.query('SELECT pg_advisory_lock(hashtext($1))', [`saven.auth.rate:${key}`]);
+            acquired.push(key);
+          } catch (error) {
+            // A partial acquisition leaves earlier session locks on this connection.
+            lease.destroy();
+            throw new AccountingUnavailableError('Scope lock acquisition failed.', {cause: error});
           }
+        }
+
+        let verdict;
+        let commitAttempted = false;
+        await lease.query('BEGIN');
+        try {
+          verdict = await checkScopes(lease, keys, kind);
+          await reserve(lease, verdict);
+          commitAttempted = true;
+          await lease.query('COMMIT');
+        } catch (error) {
+          let rollbackOk = true;
+          try {
+            await lease.query('ROLLBACK');
+          } catch {
+            rollbackOk = false;
+          }
+          // A lost COMMIT acknowledgement is an unknown outcome; a failed ROLLBACK is a
+          // known-contaminated connection. Neither may return to the pool.
+          if (commitAttempted || !rollbackOk) lease.destroy();
           noteAccountingFailure();
           throw new AccountingUnavailableError('The attempt could not be durably reserved.', {cause: error});
         }
-        // The scope lock is still held while the caller runs verification and its own
-        // success transaction, so no waiting attempt can slip in unrecorded.
-        return await action(reservation);
+        if (!verdict.allowed) return {throttled: verdict};
+        // The session lock is still held. The caller uses lease.transaction for its own
+        // success transaction on this same connection.
+        return await action(verdict, lease);
       } finally {
-        await unlockScopes(client, keys).catch(() => {});
+        let balanced = true;
+        for (const key of [...acquired].reverse()) {
+          try {
+            const result = await lease.query('SELECT pg_advisory_unlock(hashtext($1)) AS released', [`saven.auth.rate:${key}`]);
+            if (result.rows?.[0]?.released !== true) {
+              balanced = false;
+              break;
+            }
+          } catch {
+            balanced = false;
+            break;
+          }
+        }
+        if (!balanced || acquired.length !== keys.values.length) {
+          // Never hand a connection back to the pool with a possible session lock held.
+          lease.destroy();
+        }
       }
     });
   }
@@ -243,6 +294,7 @@ export function createRateLimiter({
     noteAccountingFailure,
     clearAccountingFailure,
     accountingCooldownMs,
+    poolingMode,
   };
 }
 

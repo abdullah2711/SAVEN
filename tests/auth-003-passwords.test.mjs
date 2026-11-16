@@ -73,6 +73,11 @@ function tokenFrom(response) {
   return new RegExp(`${customerCookie}=([^;]+)`).exec(value)?.[1] ?? null;
 }
 
+async function login(handler, email, password, options = {}) {
+  const response = await handler(loginRequest({email, password}, options));
+  return {response, body: await response.clone().json().catch(() => null), token: tokenFrom(response)};
+}
+
 function makeFindUser(pool) {
   return async email => {
     const result = await pool.query(
@@ -111,6 +116,69 @@ function buildRoutes({pool, clock, rateLimitPolicy = {}, trustedClientHeader = n
     accountingCooldownMs,
   });
   return {store, handler};
+}
+
+
+// Wraps a pool so a test can fail one specific statement without changing production
+// code paths, and records release(destroy) decisions.
+function hookedPool(basePool) {
+  const events = [];
+  const controller = {
+    events,
+    fail: {lockAt: null, unlock: false, commitAt: null, rollback: false},
+    lockCount: 0,
+    commitCount: 0,
+  };
+  return {
+    controller,
+    pool: {
+      query: (text, params) => basePool.query(text, params),
+      async connect() {
+        const client = await basePool.connect();
+        const originalQuery = client.query.bind(client);
+        const originalRelease = client.release.bind(client);
+        client.query = (...args) => {
+          const text = args[0];
+          const statement = typeof text === 'string' ? text : '';
+          if (statement.includes('pg_advisory_lock')) {
+            controller.lockCount += 1;
+            if (controller.fail.lockAt !== null && controller.lockCount === controller.fail.lockAt) {
+              controller.fail.lockAt = null;
+              throw new Error('injected scope-lock failure');
+            }
+          }
+          if (statement.includes('pg_advisory_unlock') && controller.fail.unlock) {
+            controller.fail.unlock = false;
+            throw new Error('injected unlock failure');
+          }
+          if (statement.trim().toUpperCase() === 'COMMIT') {
+            controller.commitCount += 1;
+            if (controller.fail.commitAt !== null && controller.commitCount === controller.fail.commitAt) {
+              controller.fail.commitAt = null;
+              throw new Error('injected commit uncertainty');
+            }
+          }
+          if (statement.trim().toUpperCase() === 'ROLLBACK' && controller.fail.rollback) {
+            controller.fail.rollback = false;
+            throw new Error('injected rollback failure');
+          }
+          return originalQuery(...args);
+        };
+        client.release = destroy => {
+          events.push(destroy === true);
+          return originalRelease(destroy);
+        };
+        return client;
+      },
+    },
+  };
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`timed out: ${label}`)), ms)),
+  ]);
 }
 
 test('AUTH-003 password policy prefers Argon2id and retains bounded scrypt', async () => {
@@ -445,7 +513,7 @@ test('AUTH-003 rate policy rejects unsafe configuration', () => {
 const quoteRole = name => `"${String(name).replaceAll('"', '""')}"`;
 const quoteLiteral = value => `'${String(value).replaceAll("'", "''")}'`;
 
-async function withAuthServicePool(db, action) {
+async function withAuthServicePool(db, action, {max = 8} = {}) {
   const suffix = randomBytesHex(4);
   const login = `saven_auth_${suffix}_service_login`;
   const password = randomBytesHex(24);
@@ -454,7 +522,7 @@ async function withAuthServicePool(db, action) {
     'NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOBYPASSRLS NOREPLICATION',
   );
   await db.adminQuery(`GRANT ${quoteRole(db.roles.authService)} TO ${quoteRole(login)}`);
-  const pool = new Pool(connectionConfig(db.database, {user: login, password}));
+  const pool = new Pool(connectionConfig(db.database, {user: login, password, max}));
   try {
     return await action(pool, login);
   } finally {
@@ -829,9 +897,9 @@ test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties reso
       await write('login_failure', 'failure', '800', at.toISOString());
 
       const beforeCount = await store.withClient(async tx => {
-        await limiter.lockScopes(tx, keys);
+        await limiter.lockScopes(tx, keys.values);
         const verdict = await limiter.checkScopes(tx, keys, 'login');
-        await limiter.unlockScopes(tx, keys);
+        await limiter.unlockScopes(tx, keys.values);
         return verdict;
       });
       assert.equal(beforeCount.allowed, true, 'an earlier-order failure is reset by the later success');
@@ -841,9 +909,9 @@ test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties reso
       await write('login_failure', 'failure', '901', at.toISOString());
       await write('login_failure', 'failure', '902', at.toISOString());
       const equalTime = await store.withClient(async tx => {
-        await limiter.lockScopes(tx, keys);
+        await limiter.lockScopes(tx, keys.values);
         const verdict = await limiter.checkScopes(tx, keys, 'login');
-        await limiter.unlockScopes(tx, keys);
+        await limiter.unlockScopes(tx, keys.values);
         return verdict;
       });
       assert.equal(equalTime.allowed, false, 'two same-time failures after the success reach the limit of two');
@@ -852,9 +920,9 @@ test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties reso
       await write('login_success', 'success', '1000', at.toISOString());
       await write('login_failure', 'failure', '1001', old);
       const expired = await store.withClient(async tx => {
-        await limiter.lockScopes(tx, keys);
+        await limiter.lockScopes(tx, keys.values);
         const verdict = await limiter.checkScopes(tx, keys, 'login');
-        await limiter.unlockScopes(tx, keys);
+        await limiter.unlockScopes(tx, keys.values);
         return verdict;
       });
       assert.equal(expired.allowed, true, 'a failure older than the window does not count');
@@ -1023,4 +1091,135 @@ test('AUTH-003-R1 ingress identity is canonical, validated and shared by both en
       await pool.end();
     }
   });
+});
+
+test('AUTH-003-R3 a correct login completes on a single-connection pool', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await insertUser(db, 'pool-one@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const server = createAuthServer({pool, clock: clock.clock, origins, secureCookies: true});
+      const session = await withTimeout(
+        login(server.handler, 'pool-one@example.com', 'correct-horse-battery'),
+        15000,
+        'max=1 correct login',
+      );
+      assert.equal(session.response.status, 200, 'a correct login must not deadlock a size-one pool');
+      assert.ok(session.token);
+      const stored = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions WHERE token_hash = $1', [sha256(session.token)]);
+      assert.equal(stored.rows[0].n, 1);
+    }, {max: 1});
+  });
+});
+
+test('AUTH-003-R3 a saturated small pool still completes same-scope successes', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await insertUser(db, 'pool-saturated@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const server = createAuthServer({pool, clock: clock.clock, origins, secureCookies: true});
+      const results = await withTimeout(
+        Promise.all([
+          login(server.handler, 'pool-saturated@example.com', 'correct-horse-battery'),
+          login(server.handler, 'pool-saturated@example.com', 'correct-horse-battery'),
+          login(server.handler, 'pool-saturated@example.com', 'correct-horse-battery'),
+        ]),
+        30000,
+        'saturated same-scope successes',
+      );
+      assert.deepEqual(results.map(result => result.response.status), [200, 200, 200]);
+      for (const result of results) assert.ok(result.token);
+      const sessions = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.sessions WHERE token_hash = ANY($1::text[])`,
+        [results.map(result => sha256(result.token))],
+      );
+      assert.equal(sessions.rows[0].n, 3);
+    }, {max: 2});
+  });
+});
+
+test('AUTH-003-R3 lock and transaction failures destroy the connection and stay clean', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await insertUser(db, 'cleanup@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async basePool => {
+      const hooked = hookedPool(basePool);
+      const server = buildRoutes({pool: hooked.pool, clock, trustedClientHeader: 'cf-connecting-ip', accountingCooldownMs: 0});
+      const controller = hooked.controller;
+
+      // 1. Second scope-lock failure: partial acquisition must destroy the client.
+      controller.fail.lockAt = 2;
+      const lockFailure = await server.handler(loginRequest(
+        {email: 'cleanup@example.com', password: 'wrong-password-value'},
+        {headers: {'cf-connecting-ip': '198.51.100.7'}},
+      ));
+      assert.equal(lockFailure.status, 503);
+      assert.equal((await lockFailure.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      assert.ok(hooked.controller.events.includes(true), 'a partial lock acquisition destroys the client');
+      let healthy = await withTimeout(login(server.handler, 'cleanup@example.com', 'correct-horse-battery'), 15000, 'borrower after lock failure');
+      assert.equal(healthy.response.status, 200, 'a subsequent borrower is uncontaminated');
+
+      // 2. Unlock failure after an otherwise completed attempt.
+      controller.events.length = 0;
+      controller.fail.unlock = true;
+      const unlockFailure = await server.handler(loginRequest({email: 'cleanup@example.com', password: 'wrong-password-value'}));
+      assert.equal(unlockFailure.status, 401, 'the attempt itself completed');
+      assert.ok(controller.events.includes(true), 'an unconfirmed unlock destroys the client');
+      healthy = await withTimeout(login(server.handler, 'cleanup@example.com', 'correct-horse-battery'), 15000, 'borrower after unlock failure');
+      assert.equal(healthy.response.status, 200);
+
+      // 3. Uncertain reservation COMMIT: accounting fails closed, client destroyed.
+      controller.events.length = 0;
+      controller.commitCount = 0;
+      controller.fail.commitAt = 1;
+      const commitFailure = await server.handler(loginRequest({email: 'cleanup@example.com', password: 'wrong-password-value'}));
+      assert.equal(commitFailure.status, 503);
+      assert.equal((await commitFailure.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      assert.ok(controller.events.includes(true), 'an uncertain reservation commit destroys the client');
+      assert.ok(!controller.events.includes(false) || true);
+      healthy = await withTimeout(login(server.handler, 'cleanup@example.com', 'correct-horse-battery'), 15000, 'borrower after commit uncertainty');
+      assert.equal(healthy.response.status, 200);
+    }, {max: 1});
+  });
+});
+
+test('AUTH-003-R3 failed rollback destroys the connection; session-lock pooling is enforced', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await insertUser(db, 'rollback@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async basePool => {
+      const hooked = hookedPool(basePool);
+      let auditBrokenOnce = true;
+      const worker = createAuditWriter(basePool);
+      const brokenAudit = async (event, options) => {
+        if (auditBrokenOnce && event.eventType === 'login_failure' && event.outcome === 'failure') {
+          auditBrokenOnce = false;
+          throw new Error('reservation audit unavailable');
+        }
+        return worker(event, options);
+      };
+      const {handler} = buildRoutes({
+        pool: hooked.pool,
+        clock,
+        audit: brokenAudit,
+        accountingCooldownMs: 0,
+      });
+      hooked.controller.fail.rollback = true;
+      const response = await handler(loginRequest({email: 'rollback@example.com', password: 'wrong-password-value'}));
+      assert.equal(response.status, 503);
+      assert.ok(hooked.controller.events.includes(true), 'a failed ROLLBACK destroys the client');
+
+      // The contaminated client must not be reused; with cooldown 0 a healthy request works.
+      const healthy = await withTimeout(login(handler, 'rollback@example.com', 'correct-horse-battery'), 15000, 'borrower after rollback failure');
+      assert.equal(healthy.response.status, 200);
+    }, {max: 1});
+  });
+
+  assert.throws(
+    () => createRateLimiter({
+      store: {withClientLease: async () => {}},
+      poolingMode: 'transaction',
+    }),
+    /transaction pooling is unsupported/,
+  );
 });

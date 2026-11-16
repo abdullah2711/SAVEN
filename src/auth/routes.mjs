@@ -5,11 +5,11 @@ import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './r
 
 // AUTH-003 versioned auth routes.
 //
-// Sign-in remains atomic (session + success audit on one checked-out transaction) and
-// now shares that transaction with durable throttling: scope locks, the limit check,
-// the KDF verification, any upgrade-on-success rehash, the failure/success audit row
-// and the session insert all commit or roll back together. Password-reset requests use
-// the same policy and audit ledger but send nothing: mail delivery is AUTH-005 work.
+// Sign-in first commits a durable reservation (or denial) under its scope lock, then
+// verifies on the same leased client and commits the upgrade, session and success audit
+// atomically in one transaction on that client. No nested pool checkout is taken while
+// locks are held. Password-reset requests use the same reservation policy and audit
+// ledger but send nothing: mail delivery is AUTH-005 work.
 //
 // Non-enumeration: unknown accounts, wrong passwords and throttled attempts all take a
 // bounded state path and return generic bodies. Raw emails and raw ingress values are
@@ -147,6 +147,7 @@ export function createAuthRoutes({
   rateLimiter = null,
   rateLimitPolicy = {},
   accountingCooldownMs = 30 * 1000,
+  poolingMode = 'session',
   trustedClientHeader = null,
   audit = async () => {},
   origins,
@@ -172,7 +173,7 @@ export function createAuthRoutes({
       ? (password, hash) => verifyPassword(password, {hash, scheme: 'scrypt'})
       : undefined,
   });
-  const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy, accountingCooldownMs});
+  const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy, accountingCooldownMs, poolingMode});
 
   function realmFor(url) {
     if (url.origin === customerOrigin) return 'customer';
@@ -217,18 +218,6 @@ export function createAuthRoutes({
     }
   }
 
-  // Writes an exceptional-attempt record on its own autocommit statement path, after any
-  // failed transaction has rolled back. Returns false when the audit store itself is
-  // unavailable, which the caller must treat as an evidence limit, not as success.
-  async function durableExceptional(event) {
-    try {
-      await audit(event);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   async function login(request, url, realm) {
     if (realm === 'operator') {
       throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator sign-in is not enabled.');
@@ -251,7 +240,7 @@ export function createAuthRoutes({
 
     // The reservation is the durable accounting decision: it commits before verification
     // starts, and the scope lock stays held until the attempt ends.
-    const reserve = async (client, verdict) => {
+    const reserve = async (lease, verdict) => {
       const denied = !verdict.allowed;
       await record({
         eventType: 'login_failure',
@@ -262,7 +251,7 @@ export function createAuthRoutes({
         detail: throttleDetail(keys, verdict, denied
           ? {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}
           : {reason: 'attempt_reserved', phase: 'verify'}),
-      }, {tx: client});
+      }, {tx: lease});
     };
 
     let outcome;
@@ -271,14 +260,14 @@ export function createAuthRoutes({
         keys,
         kind: 'login',
         reserve,
-        action: async reservation => {
+        action: async (reservation, lease) => {
           const verification = await policy.verify(password, user?.passwordHash ?? null);
           if (!user || !verification.valid || user.status !== 'active') {
             // The reservation already counts this attempt; no extra failure row is written.
             return {rejected: true};
           }
           // Successful upgrade, session and success audit stay atomic in one transaction.
-          const created = await store.withTransaction(async tx => {
+          const created = await lease.transaction(async tx => {
             const orderRow = await tx.query('SELECT pg_current_xact_id()::text AS id');
             if (verification.needsRehash) {
               const upgraded = await policy.hash(password);
@@ -371,7 +360,7 @@ export function createAuthRoutes({
     const archive = auditView(request, trustedClientHeader, ingress.ip);
     const keys = limiter.keysFor({email, network: ingress.ip, realm});
 
-    const reserve = async (client, verdict) => {
+    const reserve = async (lease, verdict) => {
       const denied = !verdict.allowed;
       await record({
         eventType: 'password_reset_requested',
@@ -381,7 +370,7 @@ export function createAuthRoutes({
         detail: throttleDetail(keys, verdict, denied
           ? {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}
           : {delivery: 'deferred_to_auth_005', reason: 'request_reserved'}),
-      }, {tx: client});
+      }, {tx: lease});
     };
 
     let outcome;

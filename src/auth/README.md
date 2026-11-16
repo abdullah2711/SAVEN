@@ -47,8 +47,8 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 - Atomic success: the session insert and its `login_success` audit row commit on one
   checked-out transaction client, and the cookie is only set after commit. Logout
   revokes and audits in one transaction; a failed logout audit rolls the revocation
-  back. Failed-login audit is a separate autocommit statement so a refused attempt is
-  still recorded.
+  back. A sign-in attempt is durably reserved in its own committed statement before
+  verification starts, so a refused or failed attempt is already recorded.
 - Transaction outcomes are reported honestly. A known failed statement is rolled back
   and reported as a failure. A lost COMMIT acknowledgement is an indeterminate
   outcome: the response is `503 SESSION_TRANSACTION_UNCERTAIN`, no credential is
@@ -192,10 +192,14 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 - Storage is the append-only `auth.auth_audit` ledger: no schema change, no new grant.
   A scope is blocked when its recent failure rows reach the configured limit; a
   successful sign-in ends that scope's failure window.
-- Each attempt takes a transaction-scoped advisory lock per scope, checks the count and
-  writes the attempt row in the same transaction, so a concurrent burst cannot exceed
-  the configured number of evaluated attempts. Deterministic tests cover eight
-  simultaneous failures against a limit of three.
+- Each attempt takes a **session-scoped** advisory lock per scope on one leased client,
+  writes a reservation (or denial) row in a short committed transaction, and keeps the
+  lock until the whole attempt ends. Verification and the success transaction then run on
+  that same leased client, so a correct login needs no second pool checkout and cannot
+  deadlock a size-one pool or starve a saturated one. Deterministic tests cover eight
+  simultaneous failures against a limit of three, a size-one pool success and saturated
+  same-scope successes. This requires direct or session-pooling connections with a pinned
+  backend; transaction pooling is refused at configuration time.
 - Scopes are pseudonymous SHA-256 digests of the realm plus the normalised account and,
   optionally, a trusted ingress address. Raw emails and forwarded-header values are
   never stored. The ingress header is used only when a deployment explicitly names it
@@ -229,13 +233,14 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   transaction before a success that actually committed first. Ordering is the serialized
   post-lock order; the transaction id resolves equal timestamps unambiguously. No
   append-only row is rewritten.
-- **Exceptional attempts.** Verification, rehash, session creation and success-audit
-  failures roll the attempt transaction back, so no session and no cookie exist. The
-  attempt is then accounted on its own durable autocommit path with its post-lock order,
-  so it consumes the budget. If the audit store itself is unavailable, the request fails
-  closed with `503 AUTH_ACCOUNTING_UNAVAILABLE` and the evidence limit is stated: while
-  the ledger is unwritable, durable accounting cannot be guaranteed, although KDF
-  admission remains bounded per process.
+- **Exceptional attempts.** The reservation is committed before verification, so
+  verification, rehash, session or success-audit failures cannot erase the attempt; only
+  the success transaction rolls back, withholding the credential. There is no separate
+  post-rollback accounting write. A lost reservation COMMIT or failed ROLLBACK destroys
+  the leased client. If the audit store itself is unavailable, the request fails closed
+  with `503 AUTH_ACCOUNTING_UNAVAILABLE` and a cooldown breaker refuses further requests
+  before any KDF admission; the evidence limit is that an unwritable ledger cannot be
+  durable, but work is not admitted without it.
 - **Ingress.** The trusted header is default-off and must be named by deployment
   composition. One validated, canonical IP (IPv4 dotted decimal, IPv6 compressed via the
   URL parser) from that exact header feeds *every* consumer — the limiter scope for both
