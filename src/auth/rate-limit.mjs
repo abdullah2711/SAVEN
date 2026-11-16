@@ -238,7 +238,15 @@ export function createRateLimiter({
 
         let verdict;
         let commitAttempted = false;
-        await lease.query('BEGIN');
+        try {
+          await lease.query('BEGIN');
+        } catch (error) {
+          // Transaction entry itself is uncertain: destroy before any other statement can
+          // run, regardless of whether the advisory unlocks below succeed.
+          lease.destroy();
+          noteAccountingFailure();
+          throw new AccountingUnavailableError('The attempt transaction could not be started.', {cause: error});
+        }
         try {
           verdict = await checkScopes(lease, keys, kind);
           await reserve(lease, verdict);

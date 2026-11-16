@@ -182,7 +182,15 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
   // smallest. A lost COMMIT acknowledgement or failed ROLLBACK marks the lease uncertain;
   // the lease owner destroys that connection instead of returning it to the pool.
   async function transactionOn(client, action, {markUncertain = null} = {}) {
-    await client.query('BEGIN');
+    try {
+      await client.query('BEGIN');
+    } catch (error) {
+      // A BEGIN whose acknowledgement is lost or rejected may have opened a transaction
+      // on the server. The caller's lease must be destroyed; never infer cleanliness from
+      // a later successful unlock or from a following statement.
+      if (markUncertain) markUncertain();
+      throw error;
+    }
     let result;
     try {
       result = await action(client);

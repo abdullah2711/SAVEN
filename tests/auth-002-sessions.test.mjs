@@ -947,25 +947,41 @@ test('AUTH-002-R2 unknown commit outcomes publish nothing and evict the connecti
       );
       assert.ok(accountedAttempt.rows[0].n >= 1, 'the reservation remains durable despite the uncertain success commit');
 
-      // 3. Failed ROLLBACK after the success audit fails: the client is destroyed.
+      // 3. Success-transaction ROLLBACK failure: the reservation commits, the success
+      // audit fails and its rollback is lost. This must reach the success transaction.
       const rollbackFailure = makePool({failRollback: true});
-      const failingAudit = async () => {
-        throw new Error('audit unavailable');
+      const seen = [];
+      const failingSuccessAudit = async (event, {tx} = {}) => {
+        seen.push(event.eventType);
+        if (event.eventType === 'login_success') throw new Error('audit unavailable');
+        const executor = tx ?? pool;
+        await executor.query(
+          `INSERT INTO auth.auth_audit(event_type, outcome, user_id, realm, detail_jsonb)
+           VALUES($1, $2, $3, $4, '{}'::jsonb)`,
+          [event.eventType, event.outcome ?? 'success', event.user?.id ?? null, event.realm ?? null],
+        );
       };
       const rollbackServer = createAuthServer({
         pool: rollbackFailure.pool,
         clock: clock.clock,
         origins,
         secureCookies: true,
-        audit: failingAudit,
+        audit: failingSuccessAudit,
       });
       const rollbackResponse = await rollbackServer.handler(loginRequest({
         email: 'commit@example.com',
         password: 'correct-horse-battery',
       }));
       assert.equal(rollbackResponse.status, 503);
-      assert.equal(rollbackResponse.headers.get('set-cookie'), null);
-      assert.ok(rollbackFailure.releases.includes(true), 'a failed ROLLBACK must destroy the uncertain client');
+      assert.equal(rollbackResponse.headers.get('set-cookie'), null, 'credentials are withheld');
+      assert.ok(seen.includes('login_success'), 'the success transaction (session insert + success audit) was actually reached');
+      assert.equal(rollbackFailure.releases.filter(destroy => destroy === true).length, 1, 'exactly one uncertain checkout is destroyed');
+      const rollbackSessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+      assert.equal(rollbackSessions.rows[0].n, 0, 'the rolled-back session is not committed');
+      const reservationRow = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.auth_audit WHERE event_type = 'login_failure'`,
+      );
+      assert.ok(reservationRow.rows[0].n >= 1, 'the reservation remains durable');
 
       // A successful control run still works after the injected failures.
       const healthy = createAuthServer({pool, clock: clock.clock, origins, secureCookies: true});

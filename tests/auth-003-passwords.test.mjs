@@ -120,14 +120,16 @@ function buildRoutes({pool, clock, rateLimitPolicy = {}, trustedClientHeader = n
 
 
 // Wraps a pool so a test can fail one specific statement without changing production
-// code paths, and records release(destroy) decisions.
+// code paths, and records release(destroy) per checkout.
 function hookedPool(basePool) {
   const events = [];
+  let checkoutSeq = 0;
   const controller = {
     events,
-    fail: {lockAt: null, unlock: false, commitAt: null, rollback: false},
+    fail: {lockAt: null, unlock: false, commitAt: null, rollback: false, beginAt: null, beginRefuseAt: null},
     lockCount: 0,
     commitCount: 0,
+    beginCount: 0,
   };
   return {
     controller,
@@ -135,43 +137,66 @@ function hookedPool(basePool) {
       query: (text, params) => basePool.query(text, params),
       async connect() {
         const client = await basePool.connect();
+        const checkout = ++checkoutSeq;
         const originalQuery = client.query.bind(client);
         const originalRelease = client.release.bind(client);
         client.query = (...args) => {
           const text = args[0];
-          const statement = typeof text === 'string' ? text : '';
-          if (statement.includes('pg_advisory_lock')) {
+          const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+          if (statement === 'BEGIN') {
+            controller.beginCount += 1;
+            if (controller.fail.beginRefuseAt === controller.beginCount) {
+              controller.fail.beginRefuseAt = null;
+              throw new Error('injected BEGIN refusal');
+            }
+            if (controller.fail.beginAt === controller.beginCount) {
+              controller.fail.beginAt = null;
+              const executed = originalQuery(...args);
+              return Promise.resolve(executed).then(() => {
+                throw new Error('injected BEGIN acknowledgement loss');
+              });
+            }
+          }
+          if (typeof text === 'string' && text.includes('pg_advisory_lock')) {
             controller.lockCount += 1;
             if (controller.fail.lockAt !== null && controller.lockCount === controller.fail.lockAt) {
               controller.fail.lockAt = null;
               throw new Error('injected scope-lock failure');
             }
           }
-          if (statement.includes('pg_advisory_unlock') && controller.fail.unlock) {
+          if (typeof text === 'string' && text.includes('pg_advisory_unlock') && controller.fail.unlock) {
             controller.fail.unlock = false;
             throw new Error('injected unlock failure');
           }
-          if (statement.trim().toUpperCase() === 'COMMIT') {
+          if (statement === 'COMMIT') {
             controller.commitCount += 1;
             if (controller.fail.commitAt !== null && controller.commitCount === controller.fail.commitAt) {
               controller.fail.commitAt = null;
               throw new Error('injected commit uncertainty');
             }
           }
-          if (statement.trim().toUpperCase() === 'ROLLBACK' && controller.fail.rollback) {
+          if (statement === 'ROLLBACK' && controller.fail.rollback) {
             controller.fail.rollback = false;
             throw new Error('injected rollback failure');
           }
           return originalQuery(...args);
         };
         client.release = destroy => {
-          events.push(destroy === true);
+          events.push({checkout, destroy: destroy === true});
           return originalRelease(destroy);
         };
         return client;
       },
     },
   };
+}
+
+function destroyedCheckouts(controller) {
+  return controller.events.filter(event => event.destroy);
+}
+
+function normalReleaseFor(controller, checkout) {
+  return controller.events.some(event => event.checkout === checkout && !event.destroy);
 }
 
 function withTimeout(promise, ms, label) {
@@ -1155,7 +1180,9 @@ test('AUTH-003-R3 lock and transaction failures destroy the connection and stay 
       ));
       assert.equal(lockFailure.status, 503);
       assert.equal((await lockFailure.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
-      assert.ok(hooked.controller.events.includes(true), 'a partial lock acquisition destroys the client');
+      let destroyed = destroyedCheckouts(controller);
+      assert.equal(destroyed.length, 1, 'a partial lock acquisition destroys exactly the affected checkout');
+      assert.equal(normalReleaseFor(controller, destroyed[0].checkout), false, 'the affected checkout is never released normally');
       let healthy = await withTimeout(login(server.handler, 'cleanup@example.com', 'correct-horse-battery'), 15000, 'borrower after lock failure');
       assert.equal(healthy.response.status, 200, 'a subsequent borrower is uncontaminated');
 
@@ -1164,7 +1191,9 @@ test('AUTH-003-R3 lock and transaction failures destroy the connection and stay 
       controller.fail.unlock = true;
       const unlockFailure = await server.handler(loginRequest({email: 'cleanup@example.com', password: 'wrong-password-value'}));
       assert.equal(unlockFailure.status, 401, 'the attempt itself completed');
-      assert.ok(controller.events.includes(true), 'an unconfirmed unlock destroys the client');
+      destroyed = destroyedCheckouts(controller);
+      assert.equal(destroyed.length, 1, 'an unconfirmed unlock destroys exactly the affected checkout');
+      assert.equal(normalReleaseFor(controller, destroyed[0].checkout), false);
       healthy = await withTimeout(login(server.handler, 'cleanup@example.com', 'correct-horse-battery'), 15000, 'borrower after unlock failure');
       assert.equal(healthy.response.status, 200);
 
@@ -1175,8 +1204,9 @@ test('AUTH-003-R3 lock and transaction failures destroy the connection and stay 
       const commitFailure = await server.handler(loginRequest({email: 'cleanup@example.com', password: 'wrong-password-value'}));
       assert.equal(commitFailure.status, 503);
       assert.equal((await commitFailure.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
-      assert.ok(controller.events.includes(true), 'an uncertain reservation commit destroys the client');
-      assert.ok(!controller.events.includes(false) || true);
+      destroyed = destroyedCheckouts(controller);
+      assert.equal(destroyed.length, 1, 'the uncertain reservation checkout is destroyed exactly once');
+      assert.equal(normalReleaseFor(controller, destroyed[0].checkout), false, 'no affected checkout is released normally');
       healthy = await withTimeout(login(server.handler, 'cleanup@example.com', 'correct-horse-battery'), 15000, 'borrower after commit uncertainty');
       assert.equal(healthy.response.status, 200);
     }, {max: 1});
@@ -1207,7 +1237,9 @@ test('AUTH-003-R3 failed rollback destroys the connection; session-lock pooling 
       hooked.controller.fail.rollback = true;
       const response = await handler(loginRequest({email: 'rollback@example.com', password: 'wrong-password-value'}));
       assert.equal(response.status, 503);
-      assert.ok(hooked.controller.events.includes(true), 'a failed ROLLBACK destroys the client');
+      const destroyedRollback = destroyedCheckouts(hooked.controller);
+      assert.equal(destroyedRollback.length, 1, 'a failed ROLLBACK destroys exactly the affected checkout');
+      assert.equal(normalReleaseFor(hooked.controller, destroyedRollback[0].checkout), false, 'the contaminated checkout is never released normally');
 
       // The contaminated client must not be reused; with cooldown 0 a healthy request works.
       const healthy = await withTimeout(login(handler, 'rollback@example.com', 'correct-horse-battery'), 15000, 'borrower after rollback failure');
@@ -1222,4 +1254,80 @@ test('AUTH-003-R3 failed rollback destroys the connection; session-lock pooling 
     }),
     /transaction pooling is unsupported/,
   );
+});
+
+test('AUTH-003-R4 uncertain or refused BEGIN destroys the checkout and preserves accounting', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await insertUser(db, 'begin@example.com', 'correct-horse-battery');
+    const reservationCount = () => db.adminQuery(
+      `SELECT count(*)::int AS n FROM auth.auth_audit WHERE event_type = 'login_failure'`,
+    ).then(result => result.rows[0].n);
+    const sessionCount = () => db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions')
+      .then(result => result.rows[0].n);
+
+    async function probe({configure, password, expectedStatus, expectedCode, reservationDelta}) {
+      await withAuthServicePool(db, async basePool => {
+        const hooked = hookedPool(basePool);
+        const server = buildRoutes({pool: hooked.pool, clock, accountingCooldownMs: 0});
+        const before = await reservationCount();
+        const sessionsBefore = await sessionCount();
+        configure(hooked.controller);
+        hooked.controller.events.length = 0;
+        const response = await server.handler(loginRequest({email: 'begin@example.com', password}));
+        assert.equal(response.status, expectedStatus);
+        if (expectedCode) assert.equal((await response.json()).error.code, expectedCode);
+        assert.equal(response.headers.get('set-cookie'), null, 'credentials are withheld');
+        const destroyed = destroyedCheckouts(hooked.controller);
+        assert.equal(destroyed.length, 1, 'exactly one checkout is destroyed');
+        assert.equal(normalReleaseFor(hooked.controller, destroyed[0].checkout), false, 'the uncertain checkout is never released normally');
+        assert.equal(await reservationCount(), before + reservationDelta, 'the durable reservation boundary is exact');
+        assert.equal(await sessionCount(), sessionsBefore, 'no session is committed');
+        const healthy = await withTimeout(
+          login(server.handler, 'begin@example.com', 'correct-horse-battery'),
+          15000,
+          'borrower after BEGIN fault',
+        );
+        assert.equal(healthy.response.status, 200, 'a subsequent borrower is clean');
+      }, {max: 1});
+    }
+
+    // 1. Reservation BEGIN executes on the server, then its acknowledgement is lost.
+    await probe({
+      configure: controller => {
+        controller.beginCount = 0;
+        controller.fail.beginAt = 1;
+      },
+      password: 'wrong-password-value',
+      expectedStatus: 503,
+      expectedCode: 'AUTH_ACCOUNTING_UNAVAILABLE',
+      reservationDelta: 0,
+    });
+
+    // 2. Ordinary BEGIN refusal (nothing executed).
+    await probe({
+      configure: controller => {
+        controller.beginCount = 0;
+        controller.fail.beginRefuseAt = 1;
+      },
+      password: 'wrong-password-value',
+      expectedStatus: 503,
+      expectedCode: 'AUTH_ACCOUNTING_UNAVAILABLE',
+      reservationDelta: 0,
+    });
+
+    // 3. Success transaction BEGIN executes, then its acknowledgement is lost. The
+    // reservation is already durable and no credential may be issued.
+    await probe({
+      configure: controller => {
+        controller.beginCount = 0;
+        controller.fail.beginAt = 2;
+      },
+      password: 'correct-horse-battery',
+      expectedStatus: 503,
+      expectedCode: 'AUTH_UNAVAILABLE',
+      reservationDelta: 1,
+    });
+
+  });
 });
