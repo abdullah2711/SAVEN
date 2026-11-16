@@ -370,3 +370,112 @@ objects remain.
 ## GIT (R2)
 
 branch=opencode/auth-003-passwords commits=`1223f95`,report commit pushed=yes
+
+# AUTH-003-R3 revision — 16 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-003-R2-passwords-and-limits.md` at
+`dcd801a`, with the engineer's narrow extra TOUCH amendment in the AUTH-003 contract
+(`session-store.mjs` client/transaction helpers; affected AUTH-002 atomic-audit and
+transaction-uncertainty cases). Implementation commit `370b671`, plus this report commit.
+No `server.mjs`, schema, grant, dependency or PIVOT-004 change.
+
+## Finding 1 — no nested pool checkout while locks are held
+
+- The throttling lease now owns one client for the whole attempt. After the reservation
+  commits, the caller runs its success transaction **on that same client**
+  (`store.withClientLease` + `lease.transaction`, backed by `transactionOn`), so a
+  correct login never asks the pool for a second connection while holding its locks.
+- `transactionOn` preserves atomic rehash + session + success audit and still maps a
+  lost COMMIT to `SESSION_TRANSACTION_UNCERTAIN` with the credential withheld.
+- Real-role bounded-time tests: a restricted auth-service login on a **max=1** pool
+  completes a correct login (15 s bound, measured ~0.7 s); a **max=2** saturated pool with
+  three same-scope concurrent successes completes all three (30 s bound, measured ~1.1 s).
+  The prior wrong-password-only concurrency tests are no longer the only coverage.
+
+## Finding 2 — locks and uncertain clients are destroyed, not recycled
+
+- `rate-limit.attempt` tracks every acquired scope lock from the first acquisition,
+  unwinds in reverse, and checks each `pg_advisory_unlock` result.
+- The leased client is destroyed when: the second (or later) lock acquisition fails,
+  an unlock errors or returns non-true, the acquired count does not match the expected
+  scope count, the reservation COMMIT outcome is unknown (even when ROLLBACK succeeded),
+  or the reservation ROLLBACK fails. No contaminated connection is returned to the pool.
+- Tests with an instrumented real-role pool assert `release(true)` for each of those
+  cases and then prove a **subsequent borrower is uncontaminated** (401/200 as expected,
+  no hang) on the same size-one pool. Another test covers a failed ROLLBACK after a
+  reservation audit failure, again followed by a healthy borrower.
+- Session advisory locks require a pinned backend: the limiter refuses
+  `poolingMode: 'transaction'` at construction and documents direct/session pooling only.
+  This is lock lifecycle, not tenant session state.
+
+## Finding 3 — AUTH-002 reconciliations (authorized)
+
+- `AUTH-002 success and audit commit atomically…` now distinguishes the durable
+  reservation from the later success transaction: success-audit failure yields
+  `503 AUTH_ACCOUNTING_UNAVAILABLE`, no cookie, zero sessions, zero success rows, one
+  durable reservation; after advancing past the accounting cooldown the following failed
+  login is evaluated and both attempts remain counted. Logout rollback assertions are
+  unchanged.
+- `AUTH-002-R2 unknown commit outcomes…` now injects at distinct boundaries:
+  reservation COMMIT uncertainty → `503 AUTH_ACCOUNTING_UNAVAILABLE`, no session work,
+  destroyed client; success COMMIT uncertainty → `SESSION_TRANSACTION_UNCERTAIN`, no
+  cookie, destroyed client, reservation still durable, with the ambiguity documented;
+  failed ROLLBACK after success-audit failure → destroyed client; a healthy control run
+  still succeeds. Raw-token SQL protections, D-012 outward digest-only data and logout
+  rollback remain untouched.
+
+## Documentation reconciliation
+
+Removed the obsolete `durableExceptional` path/comments and rewrote README/routes text
+that still described a single combined transaction or a post-rollback autocommit write.
+The README now states one design: committed reservation under a session lock, then the
+success transaction on the same leased client, with destroy-on-uncertainty and the
+pooling-mode requirement. Retained honest statement: an uncertain COMMIT withholds
+credentials but may have persisted rows.
+
+## DONE WHEN evidence (AUTH-003 plus the amended AUTH-002 gate)
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-003-passwords.test.mjs
+PASS: 158 JavaScript files parsed; package manifest valid.
+ℹ tests 26
+ℹ pass 26
+ℹ fail 0
+ℹ skipped 0
+$ node --test tests/auth-002-sessions.test.mjs
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0` for both. Without the dedicated-cluster opt-in, the AUTH-003 file exits `1`
+with 6 database-independent passes and 20 refusals.
+
+Combined branch suite on the same runtime/cluster: `231` tests, `230` pass, `1` fail —
+only the pre-existing PIVOT-004 fixture prerequisite (`role "saven_customer_app" does not
+exist`), which remains out of scope and untouched. The earlier AUTH-002 regressions are
+closed; no new suite failure is introduced.
+
+Environment: disposable PostgreSQL 18.6 on loopback `127.0.0.1:55443`, fixture and
+per-test auth-service objects; earlier interrupted runs had left fixture databases/roles
+on the throwaway cluster, and the whole cluster (including those objects) was stopped and
+deleted after the gate. `node_modules` symlink removed.
+
+## Evidence boundaries
+
+- Fault/cleanup injections run on real restricted auth-service logins for the pool
+  starvation and principal tests; some injected-error cases still use the administrative
+  fixture connection purely to force failures (release/destroy assertions are on the
+  actual pool). Stated rather than generalised.
+- Pool/backend requirements are explicit: direct or session pooling only; transaction
+  pooling is refused. No deployment runtime upgrade is claimed.
+- Thresholds and trusted ingress remain deployment-controlled; `createAuthServer` still
+  cannot forward them (needs the narrow `server.mjs` contract). Mail/reset remains
+  AUTH-005; indexed rate-limit storage/load evidence remains a later contract.
+
+## GIT (R3)
+
+branch=opencode/auth-003-passwords commits=`370b671`,report commit pushed=yes
