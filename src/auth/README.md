@@ -1,6 +1,7 @@
 # `src/auth` — versioned PostgreSQL authentication boundary (AUTH-002)
 
-Status: schema-backed auth service modules. Nothing here is imported by an active
+Status: schema-backed auth service modules with versioned password policy and durable
+throttling (AUTH-003). Nothing here is imported by an active
 entry point. The SQLite `/api` handler in `src/local` remains the running
 authentication path, and no existing route, table or session was changed. This module
 is not a claim of a completed PostgreSQL auth cutover. The pinned Better Auth package
@@ -144,3 +145,62 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   clock; it is not production evidence, and SQLite remains the production path. The
   library adapter covers sessions only — accounts, verification, 2FA, passkey and any
   OIDC connector remain future contracts.
+
+## Password policy and throttling (AUTH-003)
+
+### Password policy (`src/auth/password-policy.mjs`)
+
+- Argon2id is the preferred verifier and is produced through Node's native OpenSSL
+  binding, so no new dependency is introduced. Parameters are bounded
+  (64 MiB, 3 passes, parallelism 1, 32-byte tag, 16-byte salt) and every verification
+  re-checks those bounds against the stored verifier, so a tampered or absurd hash fails
+  closed instead of consuming arbitrary memory.
+- Retained bounded scrypt verifiers stay valid. A successful sign-in upgrades them to
+  Argon2id inside the same transaction, conditional on the verifier being unchanged, and
+  the upgrade is recorded in the success audit (`rehashed: true`).
+- Unknown, malformed, bcrypt or plaintext verifiers never authenticate; they still run a
+  bounded dummy derivation so response timing does not disclose account state.
+- New-password input is validated (12–128 characters, ≤512 bytes, no NUL) and KDF work
+  is capped at two concurrent derivations; excess work is refused with
+  `429 PASSWORD_BUSY` rather than queued without bound.
+- The policy version and parameters are documented constants; changing them is a
+  reviewed policy change, not a per-tenant value.
+
+### Throttling (`src/auth/rate-limit.mjs`)
+
+- Storage is the append-only `auth.auth_audit` ledger: no schema change, no new grant.
+  A scope is blocked when its recent failure rows reach the configured limit; a
+  successful sign-in ends that scope's failure window.
+- Each attempt takes a transaction-scoped advisory lock per scope, checks the count and
+  writes the attempt row in the same transaction, so a concurrent burst cannot exceed
+  the configured number of evaluated attempts. Deterministic tests cover eight
+  simultaneous failures against a limit of three.
+- Scopes are pseudonymous SHA-256 digests of the realm plus the normalised account and,
+  optionally, a trusted ingress address. Raw emails and forwarded-header values are
+  never stored. The ingress header is used only when a deployment explicitly names it
+  (`trustedClientHeader`, for example behind the owner's tunnel/proxy); arbitrary
+  `x-forwarded-for` values are ignored by default.
+- Login and password-reset requests share the limiter, policy shape, ledger and audit
+  event family. Responses are generic: a throttled known account, a throttled unknown
+  account and a fresh unknown account are indistinguishable beyond their own attempt
+  history. Throttled attempts are audited with `outcome = 'denied'` and do not extend
+  the window.
+- `RATE_LIMIT_DEFAULTS` (8 login failures / 5 reset requests per 15 minutes) are
+  bootstrap values only. The contract explicitly does not approve the fixture's
+  eight/15-minutes value as production policy; deployments must set reviewed limits.
+- `/v1/auth/forgot-password` exists solely to apply this shared policy: it answers `202`
+  with a generic body, writes a `password_reset_requested` audit row marked
+  `delivery: deferred_to_auth_005`, and creates no token or mail. AUTH-005 owns real
+  recovery.
+
+### Extension points
+
+- A dedicated rate-limit table with an index (and per-tenant policy rows) is the
+  expected optimisation; the audit ledger remains the durable fallback and the audit
+  event family stays the same.
+- New KDF schemes are added through the policy adapter boundary and must be bounded,
+  versioned and covered by fail-closed tests.
+- Thresholds, window lengths and trusted-ingress headers are deployment policy; they
+  must never be inferred from request input.
+- Session and token lists remain digest-only: no raw token is ever returned in an API
+  payload or rendered in a UI (owner decision D-012).

@@ -1,23 +1,23 @@
 import {timingSafeEqual} from 'node:crypto';
 import {AuthError, digestToken, isTokenDigest} from './session-store.mjs';
+import {createPasswordPolicy} from './password-policy.mjs';
+import {createRateLimiter} from './rate-limit.mjs';
 
-// AUTH-002 versioned auth routes (AUTH-002-R1). They remain independent of the
-// active SQLite `/api` handler: nothing here is wired into a native entry point.
+// AUTH-003 versioned auth routes.
 //
-// Success transitions are atomic: the session row and its success audit row are
-// written on one checked-out transaction client, and the cookie is only issued after
-// commit. Failed-login audit is written independently so a rolled-back attempt is
-// still recorded. Rotation and logout validate the session under a row lock at the
-// mutation boundary.
+// Sign-in remains atomic (session + success audit on one checked-out transaction) and
+// now shares that transaction with durable throttling: scope locks, the limit check,
+// the KDF verification, any upgrade-on-success rehash, the failure/success audit row
+// and the session insert all commit or roll back together. Password-reset requests use
+// the same policy and audit ledger but send nothing: mail delivery is AUTH-005 work.
 //
-// Realm separation: exact-origin allowlists only. Customer realm uses a host-only
-// `__Host-` cookie with SameSite=Lax; the operator realm is reserved for AUTH-007 and
-// fails closed instead of accepting a local password.
+// Non-enumeration: unknown accounts, wrong passwords and throttled attempts all take a
+// bounded state path and return generic bodies. Raw emails and raw ingress values are
+// never stored; only scope digests are audited.
 
 const MAX_BODY_BYTES = 32 * 1024;
 const EMAIL_MAX = 320;
-const PASSWORD_MAX = 128;
-const PASSWORD_MIN = 1;
+const PASSWORD_MAX_BYTES = 512;
 
 export const REALMS = Object.freeze({
   customer: {cookieBase: 'saven_session', sameSite: 'Lax'},
@@ -61,8 +61,6 @@ export function sessionCookie({realm, token, secure = true, maxAgeSeconds}) {
   return attributes.join('; ');
 }
 
-// The client sends the plaintext CSRF value; only its digest is stored. Compare in
-// constant time over equal-length digests, and never echo the value back.
 function csrfMatches(provided, storedDigest) {
   if (!isTokenDigest(storedDigest) || typeof provided !== 'string' || provided.length === 0) return false;
   let digest;
@@ -94,10 +92,22 @@ function validEmail(email) {
   return email.length >= 3 && email.length <= EMAIL_MAX && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function throttleDetail(keys, extra = {}) {
+  return {
+    ...extra,
+    throttle_account: keys.scopes.account,
+    throttle_network: keys.scopes.network,
+  };
+}
+
 export function createAuthRoutes({
   store,
   findUserByEmail,
-  verifyPassword,
+  verifyPassword = null,
+  passwordPolicy = null,
+  rateLimiter = null,
+  rateLimitPolicy = {},
+  trustedClientHeader = null,
   audit = async () => {},
   origins,
   secureCookies = true,
@@ -107,12 +117,22 @@ export function createAuthRoutes({
     throw new Error('createAuthRoutes requires a transactional session store.');
   }
   if (typeof findUserByEmail !== 'function') throw new Error('createAuthRoutes requires findUserByEmail.');
-  if (typeof verifyPassword !== 'function') throw new Error('createAuthRoutes requires verifyPassword.');
   if (!origins || typeof origins !== 'object') throw new Error('createAuthRoutes requires exact realm origins.');
   const customerOrigin = new URL(origins.customer).origin;
   const operatorOrigin = new URL(origins.operator).origin;
   if (customerOrigin === operatorOrigin) throw new Error('Separate customer and operator origins required.');
   const cookieMaxAge = Math.floor((store.config?.absoluteMs ?? 90 * 24 * 60 * 60 * 1000) / 1000);
+
+  // Retained scrypt verification stays available through the injected verifier (the
+  // composition root supplies the bounded compatibility path). The policy prefers
+  // Argon2id for new verifiers and upgrades a retained scrypt verifier after a
+  // successful sign-in.
+  const policy = passwordPolicy ?? createPasswordPolicy({
+    scryptVerify: verifyPassword
+      ? (password, hash) => verifyPassword(password, {hash, scheme: 'scrypt'})
+      : undefined,
+  });
+  const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy});
 
   function realmFor(url) {
     if (url.origin === customerOrigin) return 'customer';
@@ -140,9 +160,14 @@ export function createAuthRoutes({
     return parsed;
   }
 
+  function throttledResponse(retryAfterMs, code) {
+    const seconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+    const response = failure(429, code, 'Too many attempts. Try again later.');
+    response.headers.set('Retry-After', String(seconds));
+    return response;
+  }
+
   async function login(request, url, realm) {
-    // Cloud operator authentication is delegated to validated Cloudflare Access/IdP
-    // assertions (AUTH-007). No local operator password path exists in this route.
     if (realm === 'operator') {
       throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator sign-in is not enabled.');
     }
@@ -156,67 +181,141 @@ export function createAuthRoutes({
     }
     const email = normalizeEmail(body.email);
     const password = typeof body.password === 'string' ? body.password : '';
-    if (!validEmail(email) || password.length < PASSWORD_MIN || password.length > PASSWORD_MAX) {
-      await audit({eventType: 'login_failure', outcome: 'failure', realm, request, detail: {reason: 'invalid_request'}});
-      throw new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.');
-    }
-    const user = await findUserByEmail(email);
-    // A missing user still runs a bounded dummy verification so response timing does
-    // not disclose account existence.
-    const credential = user && user.passwordHash
-      ? {hash: user.passwordHash, scheme: user.passwordScheme}
-      : null;
-    const verified = await verifyPassword(password, credential);
-    if (!user || !verified || user.status !== 'active') {
-      // Failure audit is its own durable statement path: no business transaction is
-      // open and nothing was created, so the record survives the refused request.
-      await audit({
-        eventType: 'login_failure',
-        outcome: 'failure',
-        realm,
-        user,
-        request,
-        detail: {reason: user ? 'invalid_credentials' : 'unknown_identity'},
-      });
-      throw new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.');
-    }
 
-    // The session and its success audit commit together on one client. The cookie is
-    // only returned after commit, so an audit or commit failure leaves no live session.
-    const created = await store.withTransaction(async tx => {
-      const session = await store.createSession({
-        userId: user.id,
-        realm,
-        roleId: null,
-        assuranceLevel: 'single_factor',
-        ipAddress: request.headers.get('cf-connecting-ip') ?? null,
-        userAgent: request.headers.get('user-agent') ?? null,
-        credentialVersion: user.credentialVersion,
-      }, {tx});
-      await audit({
-        eventType: 'login_success',
-        outcome: 'success',
-        realm,
-        user,
-        request,
-        sessionId: session.session.id,
-        detail: {assurance: 'single_factor'},
-      }, {tx});
-      return session;
+    const keys = limiter.keysFor({email, request, trustedClientHeader, realm});
+    const user = validEmail(email) ? await findUserByEmail(email) : null;
+
+    const outcome = await limiter.attempt({
+      keys,
+      kind: 'login',
+      action: async (tx, verdict) => {
+        if (!verdict.allowed) {
+          await audit({
+            eventType: 'login_failure',
+            outcome: 'denied',
+            realm,
+            user,
+            request,
+            detail: throttleDetail(keys, {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}),
+          }, {tx});
+          return {throttled: verdict};
+        }
+        // A missing account still performs the same bounded derivation.
+        const verification = await policy.verify(password, user?.passwordHash ?? null);
+        if (!user || !verification.valid || user.status !== 'active') {
+          await audit({
+            eventType: 'login_failure',
+            outcome: 'failure',
+            realm,
+            user,
+            request,
+            detail: throttleDetail(keys, {reason: user ? 'invalid_credentials' : 'unknown_identity'}),
+          }, {tx});
+          return {rejected: true};
+        }
+        if (verification.needsRehash) {
+          const upgraded = await policy.hash(password);
+          // Conditional on the unchanged verifier so a concurrent credential change is
+          // never overwritten by an upgrade.
+          const updated = await tx.query(
+            `UPDATE auth.users
+             SET password_hash = $1, password_scheme = $2, password_updated_at = now(), updated_by = 'auth003-rehash'
+             WHERE id = $3 AND password_hash = $4`,
+            [upgraded.hash, upgraded.scheme, user.id, user.passwordHash],
+          );
+          if (updated.rowCount !== 1) {
+            await audit({
+              eventType: 'login_failure',
+              outcome: 'failure',
+              realm,
+              user,
+              request,
+              detail: throttleDetail(keys, {reason: 'credential_changed'}),
+            }, {tx});
+            return {rejected: true};
+          }
+        }
+        const created = await store.createSession({
+          userId: user.id,
+          realm,
+          roleId: null,
+          assuranceLevel: 'single_factor',
+          ipAddress: trustedClientHeader ? request.headers.get(trustedClientHeader) ?? null : null,
+          userAgent: request.headers.get('user-agent') ?? null,
+          credentialVersion: user.credentialVersion,
+        }, {tx});
+        await audit({
+          eventType: 'login_success',
+          outcome: 'success',
+          realm,
+          user,
+          request,
+          sessionId: created.session.id,
+          detail: throttleDetail(keys, {assurance: 'single_factor', rehashed: verification.needsRehash === true}),
+        }, {tx});
+        return {created, user};
+      },
     });
+
+    if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'SIGN_IN_THROTTLED');
+    if (outcome.rejected) throw new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.');
 
     const response = json({
       realm,
-      csrfToken: created.csrfToken,
-      user: {id: user.id, email: user.email, emailVerified: user.emailVerified === true},
+      csrfToken: outcome.created.csrfToken,
+      user: {id: outcome.user.id, email: outcome.user.email, emailVerified: outcome.user.emailVerified === true},
     });
     response.headers.set('Set-Cookie', sessionCookie({
       realm,
-      token: created.token,
+      token: outcome.created.token,
       secure: secureCookies,
       maxAgeSeconds: cookieMaxAge,
     }));
     return response;
+  }
+
+  // AUTH-005 owns reset tokens and delivery. This endpoint applies the shared throttle
+  // policy and records the request without disclosing account existence or sending mail.
+  async function forgotPassword(request, url, realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator recovery is not enabled.');
+    }
+    if (request.headers.get('origin') !== url.origin) {
+      throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    }
+    const body = await readJson(request);
+    const unknown = Object.keys(body).filter(key => key !== 'email');
+    if (unknown.length > 0) {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown reset fields.');
+    }
+    const email = normalizeEmail(body.email);
+    const keys = limiter.keysFor({email, request, trustedClientHeader, realm});
+    const outcome = await limiter.attempt({
+      keys,
+      kind: 'reset',
+      action: async (tx, verdict) => {
+        if (!verdict.allowed) {
+          await audit({
+            eventType: 'password_reset_requested',
+            outcome: 'denied',
+            realm,
+            request,
+            detail: throttleDetail(keys, {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}),
+          }, {tx});
+          return {throttled: verdict};
+        }
+        await audit({
+          eventType: 'password_reset_requested',
+          outcome: 'success',
+          realm,
+          request,
+          detail: throttleDetail(keys, {delivery: 'deferred_to_auth_005'}),
+        }, {tx});
+        return {accepted: true};
+      },
+    });
+    if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'RESET_THROTTLED');
+    return json({accepted: true}, 202);
   }
 
   async function me(request, url, realm) {
@@ -227,9 +326,6 @@ export function createAuthRoutes({
     if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const session = await store.readSession(token, {realm});
     if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-    // Activity is a guarded UPDATE: if the window closed (idle, absolute, revoked,
-    // disabled, epoch) between the read and the refresh, the request fails closed
-    // instead of returning a stale success.
     const refreshed = await store.refreshSession(session.id);
     if (!refreshed) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     return json({
@@ -290,6 +386,8 @@ export function createAuthRoutes({
       const path = url.pathname;
       if (path === '/v1/auth/login' && request.method === 'POST') {
         response = await login(request, url, realm);
+      } else if (path === '/v1/auth/forgot-password' && request.method === 'POST') {
+        response = await forgotPassword(request, url, realm);
       } else if (path === '/v1/auth/me' && request.method === 'GET') {
         response = await me(request, url, realm);
       } else if (path === '/v1/auth/logout' && request.method === 'POST') {
