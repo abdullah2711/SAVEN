@@ -178,3 +178,106 @@ removed.
 ## GIT (R1)
 
 branch=opencode/auth-004-mfa commits=`4db4f0a`,report commit pushed=yes
+
+# AUTH-004-R2 revision — 17 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-004-R1-mfa.md` at `ef16f72`
+(governing review `AUTH-004-mfa.md` at `c0540f0`). The amended contract at `ef16f72`
+adds `tests/auth-002-sessions.test.mjs` (affected transaction-phase uncertainty case
+only) to TOUCH; no other scope was added. Implementation commit `3c693d9`, plus this
+report and checkpoint commit. Both CRITICAL findings from `c0540f0` remain closed.
+
+## Findings closed
+
+1. **HIGH — replacement admission now precedes password/KDF work.** In
+   `mfaEnrollRoute`, the enrolled-factor branch calls the durable lock check
+   (`checkLocked`, which takes the deterministic `users → two_factor` locks and reads
+   `locked_until`) **before** `policy.verify`, `verifyTotp` or `verifyRecovery`. A
+   locked factor returns `429 MFA_LOCKED` without starting a password derivation or a
+   factorderivation; a wrong password still increments `failed_attempts` and that
+   accounting commits because the route returns `{failed}` instead of rolling back.
+   Instrumented evidence: with the factor locked, correct/wrong password × TOTP/recovery
+   all return `429` with an observed password-verification count of **0** and no
+   `onVerification` (factor derivation) start; a six-request cross-session burst is
+   equally bounded; the seed, recovery count and `failed_attempts = 3` are unchanged.
+   After the cooldown a correct password + fresh TOTP step is admitted, performs the
+   password verification and TOTP derivation, replaces the seed and resets the counters.
+
+2. **HIGH — session/principal authority is revalidated inside the owned transaction.**
+   `assertMutationAuthority` runs inside each lifecycle transaction (enroll,
+   enroll/verify, verify, disable) **after** the lifecycle locks: it re-reads the actual
+   session row and joins `auth.users`, then refuses a session whose id/user/realm does
+   not match, or that is revoked, idle/absolutely expired, owned by a non-active
+   principal, or whose credential epoch no longer matches. The session row is read
+   **without** a row lock (no opposing session lock), no nested pool checkout is taken,
+   and successful paths keep the existing `setSessionAssurance` guards. Controlled
+   interleaving tests wrap `store.readSession` so the session is valid at the
+   non-transactional read and is then revoked/expired/disabled/credential-rotated before
+   lifecycle admission — for both initial enrollment and authorized replacement. Every
+   case is refused with `401` (no password KDF, count 0), with the seed/`verified_at`/
+   unused-recovery count, live-session assurance and `mfa_enrolled` audit count
+   unchanged. The credential mode rotates the password hash **and** increments
+   `credential_version` and then sends an old-password snapshot; it is refused before
+   derivation. Authorized replacement also completes on a restricted `max:1` pooling
+   service, demonstrating the owned-transaction path without a nested checkout.
+
+3. **MEDIUM — AUTH-002 uncertainty evidence targets the real phase.** The failure
+   injection in `AUTH-002-R2 unknown commit outcomes publish nothing and evict the
+   connection` is now keyed to observed statements/events rather than a global COMMIT
+   count: each connection classifies the active transaction as `reservation` (audit
+   `login_failure`), `authority` (`set_config('app.current_user_id')`) or `success`
+   (`INSERT INTO auth.sessions` / audit `login_success`) and fails only the COMMIT of the
+   requested phase. Three independent cases remain: reservation uncertainty
+   (`503 AUTH_ACCOUNTING_UNAVAILABLE`, client destroyed, no session); authority
+   uncertainty (`503 SESSION_TRANSACTION_UNCERTAIN`, session INSERT never reached,
+   client destroyed, reservation durable); and success uncertainty (session INSERT **and**
+   success audit observed before the injected COMMIT, credential withheld, client
+   destroyed, persisted outcome reported as ambiguous and never duplicated). The
+   retained success-audit rollback case and raw-token/logout protections are unchanged.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 160 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-004-mfa.test.mjs
+tests 21  pass 21  fail 0
+$ node --test tests/auth-002-sessions.test.mjs
+tests 18  pass 18  fail 0
+$ node --test tests/auth-003-passwords.test.mjs
+tests 27  pass 27  fail 0
+$ node --test --test-concurrency=1 tests/auth-004-mfa.test.mjs tests/auth-002-sessions.test.mjs tests/auth-003-passwords.test.mjs
+tests 66  pass 66  fail 0
+```
+
+Exit `0` for every command. Environment: disposable PostgreSQL 18.6 on loopback
+`127.0.0.1:55432`, created for this round and deleted afterwards. Honest limit: running
+the three files in parallel (node's default file concurrency) produced one transient
+`terminating connection due to administrator command` failure in an *unchanged* AUTH-002
+case (CSRF/origin boundaries), and the same transient appeared once on the new AUTH-004
+test on the first full-file run; both passed in isolation and in the lengthier serial
+combined run above. This is the fixture's cross-file teardown race, not a behavioural
+failure of these corrections, and is reported rather than hidden.
+
+## Boundaries and open items
+
+- No production numeric MFA policy is approved; `server.mjs` key/config composition,
+  AUTH-005 recovery/mail, AUTH-006 business assurance enforcement and AUTH-009 complete
+  append-only attempt history remain separate contracts. Mutable counters are not
+  complete attempt history.
+- The RLS probe still installs the accepted PIVOT-004/031/032 policy files only inside a
+  disposable database with rewritten role names; no delivered policy, grant or migration
+  was changed.
+- SQLite remains the production path; no profile was activated.
+
+## EXTENSIBILITY
+
+compliant — the new boundary is a lifecycle method on the existing MFA service, uses the
+same deterministic locks and versioned configuration, adds no hardcoded growing domain
+or cross-module concrete coupling, and keeps session tokens digest-only (D-012).
+
+## GIT (R2)
+
+branch=opencode/auth-004-mfa commits=`3c693d9`,report+checkpoint commit pushed=yes
