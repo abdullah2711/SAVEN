@@ -25,3 +25,17 @@ Can a client-supplied header, query param, or body value influence tenant_id or 
 EXTENSIBILITY: no new hardcoded growing business enums; no new coupling across business module boundaries; no new one-way decisions without an ADR. Supported adapter field/operator maps are explicit protocol mappings, and the retained verifier stays injected at the composition root. No dependency/schema rewrite, MFA/OIDC activation, throttle scope change or SQLite replacement occurs.
 
 Carry forward to integration/release: exact combined-source CI, AUTH-003 password/throttling, AUTH-004 assurance, AUTH-005 recovery, AUTH-006 verified context and AUTH-009 complete audit coverage remain separate gates. Do not mount the library's generic HTTP surface or treat session-only adapter acceptance as approval of unsupported models. SQLite remains production. No Business Merge Request was created or merge executed by this review; routing is recorded for the human/worker process.
+
+## Subsequent owner decision — D-012, 16 November 2026
+
+The human explicitly mandates digest-only session lists and forbids raw session-token
+exposure in UI/API payloads. This is now recorded in the AUTH-002 contract, the
+standing frontend conventions and [DECISION_LOG](../../agents/DECISION_LOG.md).
+The acceptance above is unchanged: source inspection found no outward session-list
+endpoint or raw bearer in the delivered login/me JSON payloads. Login's protected
+HttpOnly cookie is the established credential transport, not a token-display API.
+The internal library's token-filtered matching results must never be passed through
+to UI/API serialization. The next AUTH-002 revision must prove that public session
+lists return digests only and that raw tokens are absent from response bodies,
+rendered state and exports. No AUTH-002-R3 implementation is assigned by this record;
+no contract execution, worker merge or production action occurred.

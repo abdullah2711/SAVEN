@@ -85,3 +85,24 @@ HARD PROHIBITIONS
   Cloudflare Tunnel carries only the app's HTTP/S endpoint.
 - Do not commit secrets, connection strings, or keys.
 
+## Standing owner security invariant — session display (D-012)
+
+16 November 2026 (Asia/Karachi), explicitly authorized by the human owner.
+
+Session lists must ONLY ever show token digests. Raw session tokens must NEVER be
+exposed in UI or API payloads, including list responses, previews and exports.
+The established protected HttpOnly session-cookie transport remains the credential
+transport; a cookie value must never be copied into JSON or rendered UI. Transient
+server-side library token matching is not an outward response contract.
+
+Every future UI/frontend contract, customer or operator, must include this invariant
+in INVARIANTS and require appropriate response/serialization checks when it touches
+sessions. Use known synthetic raw tokens to verify that no outward list, API body,
+rendered state or export contains them; permitted session-token display is digest
+only. Do not offer a reveal/copy-raw-token action. This supplements the verbatim
+mandate above and does not change authentication, CSRF or authorization requirements.
+
+Authority: [dated decision D-012](../agents/DECISION_LOG.md). The AUTH-002 contract
+records the required next-revision follow-up; no new runtime implementation is
+authorized or claimed by this documentation record.
+
