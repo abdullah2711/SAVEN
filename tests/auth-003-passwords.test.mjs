@@ -7,8 +7,8 @@ import {encodePassword} from '../src/passwords.mjs';
 import {createAuthServer, createAuditWriter} from '../src/auth/server.mjs';
 import {createSessionStore} from '../src/auth/session-store.mjs';
 import {createAuthRoutes, cookieName} from '../src/auth/routes.mjs';
-import {createPasswordPolicy, DEFAULT_PASSWORD_POLICY, PasswordPolicyError} from '../src/auth/password-policy.mjs';
-import {createRateLimiter, normalizeRatePolicy, throttleScopes} from '../src/auth/rate-limit.mjs';
+import {createPasswordPolicy, DEFAULT_PASSWORD_POLICY, PasswordPolicyError, __internals as passwordInternals} from '../src/auth/password-policy.mjs';
+import {createRateLimiter, normalizeRatePolicy, throttleScopes, canonicalizeIp, AccountingUnavailableError} from '../src/auth/rate-limit.mjs';
 
 const {Pool} = pg;
 const origins = {customer: 'https://app.saven.test', operator: 'https://ops.saven.test'};
@@ -96,7 +96,7 @@ function makeFindUser(pool) {
 
 // Builds the versioned routes with an explicit throttle policy, since the frozen
 // composition root only supplies defaults.
-function buildRoutes({pool, clock, rateLimitPolicy = {}, trustedClientHeader = null, passwordPolicy = null, audit = null}) {
+function buildRoutes({pool, clock, rateLimitPolicy = {}, trustedClientHeader = null, passwordPolicy = null, audit = null, accountingCooldownMs = 30 * 1000}) {
   const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
   const handler = createAuthRoutes({
     store,
@@ -108,6 +108,7 @@ function buildRoutes({pool, clock, rateLimitPolicy = {}, trustedClientHeader = n
     rateLimitPolicy,
     trustedClientHeader,
     passwordPolicy,
+    accountingCooldownMs,
   });
   return {store, handler};
 }
@@ -339,7 +340,7 @@ test('AUTH-003 throttle scopes ignore spoofed forwarding headers unless configur
       ));
       assert.equal(otherNetwork.status, 401, 'a different trusted address is a different scope');
 
-      const scopes = throttleScopes({email: 'spoof-a@example.com', request: null, trustedClientHeader: 'cf-connecting-ip', realm: 'customer'});
+      const scopes = throttleScopes({email: 'spoof-a@example.com', network: null, realm: 'customer'});
       assert.equal(scopes.network, null);
       assert.match(scopes.account, /^[0-9a-f]{64}$/);
     } finally {
@@ -561,20 +562,20 @@ test('AUTH-003-R1 exceptional attempts are durably accounted and publish nothing
           verify: async () => {
             throw new Error('verifier exploded');
           },
-        }, 'AUTH_UNAVAILABLE', 'provider_or_store_error'],
+        }, 'AUTH_UNAVAILABLE', 'attempt_reserved'],
         ['busy', {
           ...base,
           verify: async () => {
             throw new PasswordPolicyError(429, 'PASSWORD_BUSY', 'Sign-in is busy.');
           },
-        }, 'SIGN_IN_BUSY', 'password_busy'],
+        }, 'SIGN_IN_BUSY', 'attempt_reserved'],
         ['rehash error', {
           ...base,
           verify: async () => ({valid: true, scheme: 'scrypt', needsRehash: true}),
           hash: async () => {
             throw new Error('rehash exploded');
           },
-        }, 'AUTH_UNAVAILABLE', 'provider_or_store_error'],
+        }, 'AUTH_UNAVAILABLE', 'attempt_reserved'],
       ];
 
       for (const [label, passwordPolicy, code, expectedReason] of cases) {
@@ -605,32 +606,138 @@ test('AUTH-003-R1 exceptional attempts are durably accounted and publish nothing
   });
 });
 
-test('AUTH-003-R1 accounting failure fails closed and reports the evidence limit', async () => {
+test('AUTH-003-R1 audit-store failure fails closed before KDF admission and recovers', async () => {
   await withAuthDatabase(async db => {
     const pool = new Pool(connectionConfig(db.database));
     try {
       const clock = testClock();
       await insertUser(db, 'audit-down@example.com', 'correct-horse-battery');
-      const brokenAudit = async () => {
-        throw new Error('audit store unavailable');
+      let auditBroken = true;
+      const healthAudit = async (event, {tx} = {}) => {
+        if (auditBroken) throw new Error('audit store unavailable');
+        const executor = tx ?? pool;
+        await executor.query(
+          `INSERT INTO auth.auth_audit(event_type, outcome, detail_jsonb)
+           VALUES($1, $2, $3::jsonb)`,
+          [event.eventType, event.outcome ?? 'success', JSON.stringify(event.detail ?? {})],
+        );
+      };
+      const derivations = [];
+      const policy = createPasswordPolicy({onDerivation: record => derivations.push(record)});
+      const {handler} = buildRoutes({
+        pool,
+        clock,
+        audit: healthAudit,
+        passwordPolicy: policy,
+        accountingCooldownMs: 2000,
+        rateLimitPolicy: {login: {limit: 3, windowMs: 60 * 1000}},
+      });
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const response = await handler(loginRequest({email: 'audit-down@example.com', password: 'wrong-password-value'}));
+        assert.equal(response.status, 503, 'an unaccounted attempt fails closed');
+        assert.equal((await response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+        assert.equal(response.headers.get('set-cookie'), null);
+      }
+      assert.equal(derivations.length, 0, 'repeated audit failures never reach a KDF despite admission slots');
+      const sessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+      assert.equal(sessions.rows[0].n, 0);
+
+      // Recovery after the cooldown: working audit store admits the attempt again.
+      auditBroken = false;
+      clock.advance(3000);
+      const recovered = await handler(loginRequest({email: 'audit-down@example.com', password: 'wrong-password-value'}));
+      assert.equal(recovered.status, 401, 'the request is evaluated again after recovery');
+      assert.ok(derivations.length >= 1, 'a KDF ran after accounting recovered');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 reservations are serialized: paused logging blocks concurrent work', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'paused@example.com', 'correct-horse-battery');
+      const derivations = [];
+      const policy = createPasswordPolicy({onDerivation: record => derivations.push(record)});
+      const realAudit = createAuditWriter(pool);
+      let releaseFirst;
+      const firstReservation = new Promise(resolve => {
+        releaseFirst = resolve;
+      });
+      let paused = false;
+      let firstReservationSeen = false;
+      const gateAudit = async (event, options) => {
+        if (event.eventType === 'login_failure' && !firstReservationSeen) {
+          firstReservationSeen = true;
+          paused = true;
+          await firstReservation;
+        }
+        return realAudit(event, options);
       };
       const {handler} = buildRoutes({
         pool,
         clock,
-        audit: brokenAudit,
-        passwordPolicy: {
-          ...createPasswordPolicy(),
-          verify: async () => {
-            throw new Error('verifier exploded');
-          },
-        },
+        audit: gateAudit,
+        passwordPolicy: policy,
+        rateLimitPolicy: {login: {limit: 1, windowMs: 60 * 1000}},
       });
-      const response = await handler(loginRequest({email: 'audit-down@example.com', password: 'correct-horse-battery'}));
-      assert.equal(response.status, 503);
-      assert.equal((await response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
-      assert.equal(response.headers.get('set-cookie'), null);
+
+      const first = handler(loginRequest({email: 'paused@example.com', password: 'wrong-password-value'}));
+      while (!paused) await new Promise(resolve => setTimeout(resolve, 5));
+      const second = handler(loginRequest({email: 'paused@example.com', password: 'wrong-password-value'}));
+      await new Promise(resolve => setTimeout(resolve, 50));
+      assert.equal(derivations.length, 0, 'no KDF starts while the reservation is uncommitted');
+      releaseFirst();
+      const [a, b] = await Promise.all([first, second]);
+      assert.deepEqual([a.status, b.status].sort(), [401, 429], 'exactly one attempt is evaluated at limit one');
+      assert.equal(derivations.length, 1, 'exactly one admitted KDF runs');
+      const failures = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.auth_audit WHERE event_type = 'login_failure' AND outcome = 'failure'`,
+      );
+      assert.equal(failures.rows[0].n, 1, 'the reservation is the single durable attempt record');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 a post-reservation audit failure keeps the attempt counted and withholds credentials', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'post-reservation@example.com', 'correct-horse-battery');
+      const realAudit = createAuditWriter(pool);
+      const audit = async (event, options) => {
+        if (event.eventType === 'login_success') throw new Error('success audit unavailable');
+        return realAudit(event, options);
+      };
+      const {handler} = buildRoutes({
+        pool,
+        clock,
+        audit,
+        accountingCooldownMs: 1000,
+        rateLimitPolicy: {login: {limit: 1, windowMs: 60 * 1000}},
+      });
+      const response = await handler(loginRequest({email: 'post-reservation@example.com', password: 'correct-horse-battery'}));
+      assert.equal(response.status, 503, 'the unrecorded success is not reported');
+      assert.equal(response.headers.get('set-cookie'), null, 'no credential is published');
       const sessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
-      assert.equal(sessions.rows[0].n, 0);
+      assert.equal(sessions.rows[0].n, 0, 'the session transaction rolled back');
+      const reserved = await db.adminQuery(
+        `SELECT detail_jsonb->>'reason' AS reason FROM auth.auth_audit WHERE event_type='login_failure' ORDER BY id DESC LIMIT 1`,
+      );
+      assert.equal(reserved.rows[0].reason, 'attempt_reserved', 'the durable reservation survives the later failure');
+      const next = await handler(loginRequest({email: 'post-reservation@example.com', password: 'correct-horse-battery'}));
+      assert.equal(next.status, 503, 'the audit failure also cools down admission');
+      assert.equal((await next.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      clock.advance(2000);
+      const afterCooldown = await handler(loginRequest({email: 'post-reservation@example.com', password: 'correct-horse-battery'}));
+      assert.equal(afterCooldown.status, 429, 'the failed attempt still consumes the budget after cooldown');
     } finally {
       await pool.end();
     }
@@ -698,7 +805,7 @@ test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties reso
       const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
       const limiter = createRateLimiter({store, clock: clock.clock, policy: {login: {limit: 2, windowMs: 60 * 1000}}});
       const account = 'order@example.com';
-      const keys = limiter.keysFor({email: account, request: null, realm: 'customer'});
+      const keys = limiter.keysFor({email: account, network: null, realm: 'customer'});
       const column = 'throttle_account';
       const key = keys.scopes.account;
       const at = clock.now();
@@ -721,9 +828,11 @@ test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties reso
       await write('login_success', 'success', '900', at.toISOString());
       await write('login_failure', 'failure', '800', at.toISOString());
 
-      const beforeCount = await store.withTransaction(async tx => {
+      const beforeCount = await store.withClient(async tx => {
         await limiter.lockScopes(tx, keys);
-        return limiter.checkScopes(tx, keys, 'login');
+        const verdict = await limiter.checkScopes(tx, keys, 'login');
+        await limiter.unlockScopes(tx, keys);
+        return verdict;
       });
       assert.equal(beforeCount.allowed, true, 'an earlier-order failure is reset by the later success');
       assert.match(beforeCount.order, /^[0-9]+$/, 'the verdict exposes the post-lock transaction order');
@@ -731,18 +840,22 @@ test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties reso
       // Equal attempt_at but higher order counts, and the tie is unambiguous.
       await write('login_failure', 'failure', '901', at.toISOString());
       await write('login_failure', 'failure', '902', at.toISOString());
-      const equalTime = await store.withTransaction(async tx => {
+      const equalTime = await store.withClient(async tx => {
         await limiter.lockScopes(tx, keys);
-        return limiter.checkScopes(tx, keys, 'login');
+        const verdict = await limiter.checkScopes(tx, keys, 'login');
+        await limiter.unlockScopes(tx, keys);
+        return verdict;
       });
       assert.equal(equalTime.allowed, false, 'two same-time failures after the success reach the limit of two');
 
       // Window expiry excludes even correctly ordered failures.
       await write('login_success', 'success', '1000', at.toISOString());
       await write('login_failure', 'failure', '1001', old);
-      const expired = await store.withTransaction(async tx => {
+      const expired = await store.withClient(async tx => {
         await limiter.lockScopes(tx, keys);
-        return limiter.checkScopes(tx, keys, 'login');
+        const verdict = await limiter.checkScopes(tx, keys, 'login');
+        await limiter.unlockScopes(tx, keys);
+        return verdict;
       });
       assert.equal(expired.allowed, true, 'a failure older than the window does not count');
 
@@ -796,5 +909,118 @@ test('AUTH-003-R1 restricted auth-service role and composition path', async () =
       const tenant = await pool.query('SELECT count(*) FROM operator.tenant').then(() => 'allowed').catch(error => error.code);
       assert.equal(tenant, '42501', 'the runtime role cannot read tenant financial data');
     });
+  });
+});
+
+test('AUTH-003-R1 invalid input never authenticates through the dummy substitution', async () => {
+  const DUMMY = passwordInternals.DUMMY_INPUT;
+  const policy = createPasswordPolicy();
+  const argonHash = (await policy.hash(DUMMY)).hash;
+  const scryptHash = await encodePassword(DUMMY);
+  const invalidInputs = [undefined, null, 12345, '', 'x'.repeat(20000), `dummy\u0000value`];
+  for (const input of invalidInputs) {
+    const argon = await policy.verify(input, argonHash);
+    assert.equal(argon.valid, false, `argon2id must refuse invalid input ${String(input).slice(0, 12)}`);
+    assert.equal(argon.needsRehash, false);
+    assert.equal(argon.inputValid, false);
+    const scrypt = await policy.verify(input, scryptHash);
+    assert.equal(scrypt.valid, false, `retained scrypt must refuse invalid input ${String(input).slice(0, 12)}`);
+    assert.equal(scrypt.needsRehash, false);
+  }
+  // A short string is a well-formed but wrong credential, not an invalid shape.
+  assert.equal((await policy.verify('short', argonHash)).valid, false);
+  assert.equal((await policy.verify(DUMMY, argonHash)).valid, true, 'the real password still works');
+  const scryptReal = await policy.verify(DUMMY, scryptHash);
+  assert.equal(scryptReal.valid, true);
+  assert.equal(scryptReal.needsRehash, true, 'a retained scrypt verifier still upgrades only after a real match');
+
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const userId = await insertUser(db, 'dummy-string@example.com', DUMMY);
+      const {handler} = buildRoutes({pool, clock});
+      const before = await db.adminQuery('SELECT password_hash FROM auth.users WHERE id = $1', [userId]);
+      for (const body of [
+        {email: 'dummy-string@example.com'},
+        {email: 'dummy-string@example.com', password: null},
+        {email: 'dummy-string@example.com', password: 12345},
+        {email: 'dummy-string@example.com', password: ''},
+        {email: 'dummy-string@example.com', password: 'x'.repeat(20000)},
+        {email: 'dummy-string@example.com', password: `dummy\u0000value`},
+      ]) {
+        const response = await handler(loginRequest(body));
+        assert.equal(response.status, 401, `invalid input must not authenticate: ${JSON.stringify(body.password)?.slice(0, 12)}`);
+        assert.equal(response.headers.get('set-cookie'), null);
+      }
+      const sessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+      assert.equal(sessions.rows[0].n, 0, 'no session may be issued for invalid input');
+      const after = await db.adminQuery('SELECT password_hash FROM auth.users WHERE id = $1', [userId]);
+      assert.equal(after.rows[0].password_hash, before.rows[0].password_hash, 'invalid input must not trigger a rehash');
+
+      const valid = await handler(loginRequest({email: 'dummy-string@example.com', password: DUMMY}));
+      assert.equal(valid.status, 200, 'the actual valid password still authenticates');
+      assert.ok(tokenFrom(valid));
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 ingress identity is canonical, validated and shared by both endpoints', async () => {
+  assert.equal(canonicalizeIp('999.1.1.1'), null);
+  assert.equal(canonicalizeIp('not-an-ip'), null);
+  assert.equal(canonicalizeIp(''), null);
+  assert.equal(canonicalizeIp('198.51.100.7'), '198.51.100.7');
+  const v6a = canonicalizeIp('2001:0DB8:0000:0000:0000:0000:0000:0001');
+  const v6b = canonicalizeIp('2001:db8::1');
+  assert.ok(v6a && v6a === v6b, 'equivalent IPv6 spellings must canonicalise identically');
+
+  const base = scopeValues('198.51.100.7');
+  assert.deepEqual(scopeValues('198.51.100.7'), base);
+  assert.deepEqual(scopeValues('2001:0DB8::1'), scopeValues('2001:db8:0:0:0:0:0:1'));
+  assert.equal(scopeValues('999.1.1.1').network, null, 'an invalid configured value creates no network scope');
+  assert.equal(scopeValues(null).network, null);
+
+  function scopeValues(network) {
+    return throttleScopes({email: 'scope@example.com', network, realm: 'customer'});
+  }
+
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'scope-login@example.com', 'correct-horse-battery');
+      // Invalid configured header: no network scope and no audit failure.
+      const invalid = buildRoutes({pool, clock, trustedClientHeader: 'cf-connecting-ip', rateLimitPolicy: {login: {limit: 2, windowMs: 60 * 1000}}});
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        assert.equal((await invalid.handler(loginRequest(
+          {email: 'scope-login@example.com', password: 'wrong-password-value'},
+          {headers: {'cf-connecting-ip': '999.1.1.1'}},
+        ))).status, 401);
+      }
+      assert.equal((await invalid.handler(loginRequest(
+        {email: 'scope-login@example.com', password: 'wrong-password-value'},
+        {headers: {'cf-connecting-ip': '999.1.1.1'}},
+      ))).status, 429, 'the account budget still applies');
+
+      // Two equivalent IPv6 spellings share one network scope for both endpoints.
+      const v6 = buildRoutes({pool, clock, trustedClientHeader: 'cf-connecting-ip', rateLimitPolicy: {
+        login: {limit: 5, windowMs: 60 * 1000},
+        reset: {limit: 1, windowMs: 60 * 1000},
+      }});
+      const firstReset = await v6.handler(resetRequest(
+        {email: 'scope-reset@example.com'},
+        {headers: {'cf-connecting-ip': '2001:0DB8::1'}},
+      ));
+      assert.equal(firstReset.status, 202);
+      const secondReset = await v6.handler(resetRequest(
+        {email: 'scope-reset-2@example.com'},
+        {headers: {'cf-connecting-ip': '2001:db8:0:0:0:0:0:1'}},
+      ));
+      assert.equal(secondReset.status, 429, 'canonical equivalent spellings share the network budget');
+    } finally {
+      await pool.end();
+    }
   });
 });

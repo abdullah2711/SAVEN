@@ -1,8 +1,7 @@
 import {timingSafeEqual} from 'node:crypto';
-import {isIP} from 'node:net';
 import {AuthError, digestToken, isTokenDigest} from './session-store.mjs';
 import {createPasswordPolicy} from './password-policy.mjs';
-import {createRateLimiter} from './rate-limit.mjs';
+import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './rate-limit.mjs';
 
 // AUTH-003 versioned auth routes.
 //
@@ -102,13 +101,11 @@ function validEmail(email) {
 // address, can contribute ingress identity. Everything else is discarded before it can
 // reach the audit writer (which would otherwise read cf-connecting-ip unconditionally)
 // or the session row.
+// One validated, canonical ingress identity feeds the network scope, the session row and
+// audit metadata. Invalid values yield null and therefore create no scope.
 function sanitizeIngress(request, trustedClientHeader) {
   if (!trustedClientHeader) return {ip: null};
-  const value = request.headers.get(trustedClientHeader);
-  if (typeof value !== 'string') return {ip: null};
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.length > 64 || isIP(trimmed) === 0) return {ip: null};
-  return {ip: trimmed};
+  return {ip: canonicalizeIp(request.headers.get(trustedClientHeader))};
 }
 
 const SOCKET_HEADERS = new Set([
@@ -149,6 +146,7 @@ export function createAuthRoutes({
   passwordPolicy = null,
   rateLimiter = null,
   rateLimitPolicy = {},
+  accountingCooldownMs = 30 * 1000,
   trustedClientHeader = null,
   audit = async () => {},
   origins,
@@ -174,7 +172,7 @@ export function createAuthRoutes({
       ? (password, hash) => verifyPassword(password, {hash, scheme: 'scrypt'})
       : undefined,
   });
-  const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy});
+  const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy, accountingCooldownMs});
 
   function realmFor(url) {
     if (url.origin === customerOrigin) return 'customer';
@@ -247,118 +245,93 @@ export function createAuthRoutes({
     const password = typeof body.password === 'string' ? body.password : '';
     const ingress = sanitizeIngress(request, trustedClientHeader);
     const archive = auditView(request, trustedClientHeader, ingress.ip);
-    const keys = limiter.keysFor({email, request, trustedClientHeader, realm});
+    const keys = limiter.keysFor({email, network: ingress.ip, realm});
     const user = validEmail(email) ? await findUserByEmail(email) : null;
+    const atIso = () => new Date(clock()).toISOString();
 
-    let verdict = null;
-    let phase = 'verify';
+    // The reservation is the durable accounting decision: it commits before verification
+    // starts, and the scope lock stays held until the attempt ends.
+    const reserve = async (client, verdict) => {
+      const denied = !verdict.allowed;
+      await record({
+        eventType: 'login_failure',
+        outcome: denied ? 'denied' : 'failure',
+        realm,
+        user,
+        request: archive,
+        detail: throttleDetail(keys, verdict, denied
+          ? {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}
+          : {reason: 'attempt_reserved', phase: 'verify'}),
+      }, {tx: client});
+    };
+
     let outcome;
     try {
       outcome = await limiter.attempt({
         keys,
         kind: 'login',
-        action: async (tx, currentVerdict) => {
-          verdict = currentVerdict;
-          if (!currentVerdict.allowed) {
-            await record({
-              eventType: 'login_failure',
-              outcome: 'denied',
-              realm,
-              user,
-              request: archive,
-              detail: throttleDetail(keys, currentVerdict, {reason: 'throttled', retry_after_ms: currentVerdict.retryAfterMs}),
-            }, {tx});
-            return {throttled: currentVerdict};
-          }
-          // A missing account still performs the same bounded derivation.
-          phase = 'verify';
+        reserve,
+        action: async reservation => {
           const verification = await policy.verify(password, user?.passwordHash ?? null);
           if (!user || !verification.valid || user.status !== 'active') {
+            // The reservation already counts this attempt; no extra failure row is written.
+            return {rejected: true};
+          }
+          // Successful upgrade, session and success audit stay atomic in one transaction.
+          const created = await store.withTransaction(async tx => {
+            const orderRow = await tx.query('SELECT pg_current_xact_id()::text AS id');
+            if (verification.needsRehash) {
+              const upgraded = await policy.hash(password);
+              const updated = await tx.query(
+                `UPDATE auth.users
+                 SET password_hash = $1, password_scheme = $2, password_updated_at = now(), updated_by = 'auth003-rehash'
+                 WHERE id = $3 AND password_hash = $4`,
+                [upgraded.hash, upgraded.scheme, user.id, user.passwordHash],
+              );
+              if (updated.rowCount !== 1) return null;
+            }
+            const session = await store.createSession({
+              userId: user.id,
+              realm,
+              roleId: null,
+              assuranceLevel: 'single_factor',
+              ipAddress: ingress.ip,
+              userAgent: archive.headers.get('user-agent') ?? null,
+              credentialVersion: user.credentialVersion,
+            }, {tx});
             await record({
-              eventType: 'login_failure',
-              outcome: 'failure',
+              eventType: 'login_success',
+              outcome: 'success',
               realm,
               user,
               request: archive,
-              detail: throttleDetail(keys, currentVerdict, {reason: user ? 'invalid_credentials' : 'unknown_identity'}),
+              sessionId: session.session.id,
+              detail: throttleDetail(keys, {
+                at: atIso(),
+                order: orderRow.rows[0].id,
+              }, {
+                assurance: 'single_factor',
+                rehashed: verification.needsRehash === true,
+                reservation_order: reservation.order,
+              }),
             }, {tx});
-            return {rejected: true};
-          }
-          if (verification.needsRehash) {
-            phase = 'rehash';
-            const upgraded = await policy.hash(password);
-            // Conditional on the unchanged verifier so a concurrent credential change is
-            // never overwritten by an upgrade.
-            const updated = await tx.query(
-              `UPDATE auth.users
-               SET password_hash = $1, password_scheme = $2, password_updated_at = now(), updated_by = 'auth003-rehash'
-               WHERE id = $3 AND password_hash = $4`,
-              [upgraded.hash, upgraded.scheme, user.id, user.passwordHash],
-            );
-            if (updated.rowCount !== 1) {
-              await record({
-                eventType: 'login_failure',
-                outcome: 'failure',
-                realm,
-                user,
-                request: archive,
-                detail: throttleDetail(keys, currentVerdict, {reason: 'credential_changed'}),
-              }, {tx});
-              return {rejected: true};
-            }
-          }
-          phase = 'session';
-          const created = await store.createSession({
-            userId: user.id,
-            realm,
-            roleId: null,
-            assuranceLevel: 'single_factor',
-            ipAddress: ingress.ip,
-            userAgent: archive.headers.get('user-agent') ?? null,
-            credentialVersion: user.credentialVersion,
-          }, {tx});
-          await record({
-            eventType: 'login_success',
-            outcome: 'success',
-            realm,
-            user,
-            request: archive,
-            sessionId: created.session.id,
-            detail: throttleDetail(keys, currentVerdict, {
-              assurance: 'single_factor',
-              rehashed: verification.needsRehash === true,
-            }),
-          }, {tx});
+            return session;
+          });
+          if (!created) return {rejected: true};
           return {created, user};
         },
       });
     } catch (error) {
-      // Any escape from verification, rehash, session creation or the success audit has
-      // already rolled the attempt transaction back, so no session or cookie exists.
-      // Account the exceptional attempt on its own durable path; if that store is also
-      // unavailable, fail closed and state the evidence limit instead of pretending.
-      if (error instanceof AuditWriteError) {
-        // The ledger itself is unavailable: fail closed and state the evidence limit
-        // rather than claiming guaranteed durable accounting.
+      if (error instanceof AccountingUnavailableError || error instanceof AuditWriteError) {
+        limiter.noteAccountingFailure();
         return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
       }
       const busy = error?.code === 'PASSWORD_BUSY';
-      const uncertain = error instanceof AuthError;
-      const accounted = await durableExceptional({
-        eventType: 'login_failure',
-        outcome: 'failure',
-        realm,
-        user,
-        request: archive,
-        detail: throttleDetail(keys, verdict, {
-          reason: busy ? 'password_busy' : uncertain ? 'transaction_uncertain' : 'provider_or_store_error',
-          phase,
-        }),
-      });
-      if (!accounted) {
-        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      if (error instanceof AuthError) {
+        // A commit outcome may be unknown: the credential is withheld regardless. The
+        // ambiguity is documented rather than claiming the session certainly does not exist.
+        return failure(error.status, error.code, error.message);
       }
-      if (uncertain) return failure(error.status, error.code, error.message);
       return failure(503, busy ? 'SIGN_IN_BUSY' : 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.');
     }
 
@@ -396,49 +369,32 @@ export function createAuthRoutes({
     const email = normalizeEmail(body.email);
     const ingress = sanitizeIngress(request, trustedClientHeader);
     const archive = auditView(request, trustedClientHeader, ingress.ip);
-    const keys = limiter.keysFor({email, request, trustedClientHeader, realm});
-    let verdict = null;
-    let outcome;
-    try {
-      outcome = await limiter.attempt({
-        keys,
-        kind: 'reset',
-        action: async (tx, currentVerdict) => {
-          verdict = currentVerdict;
-          if (!currentVerdict.allowed) {
-            await record({
-              eventType: 'password_reset_requested',
-              outcome: 'denied',
-              realm,
-              request: archive,
-              detail: throttleDetail(keys, currentVerdict, {reason: 'throttled', retry_after_ms: currentVerdict.retryAfterMs}),
-            }, {tx});
-            return {throttled: currentVerdict};
-          }
-          await record({
-            eventType: 'password_reset_requested',
-            outcome: 'success',
-            realm,
-            request: archive,
-            detail: throttleDetail(keys, currentVerdict, {delivery: 'deferred_to_auth_005'}),
-          }, {tx});
-          return {accepted: true};
-        },
-      });
-    } catch (error) {
-      if (error instanceof AuditWriteError) {
-        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
-      }
-      const uncertain = error instanceof AuthError;
-      const accounted = await durableExceptional({
+    const keys = limiter.keysFor({email, network: ingress.ip, realm});
+
+    const reserve = async (client, verdict) => {
+      const denied = !verdict.allowed;
+      await record({
         eventType: 'password_reset_requested',
-        outcome: 'failure',
+        outcome: denied ? 'denied' : 'success',
         realm,
         request: archive,
-        detail: throttleDetail(keys, verdict, {reason: uncertain ? 'transaction_uncertain' : 'provider_or_store_error'}),
-      });
-      if (!accounted) return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
-      if (uncertain) return failure(error.status, error.code, error.message);
+        detail: throttleDetail(keys, verdict, denied
+          ? {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}
+          : {delivery: 'deferred_to_auth_005', reason: 'request_reserved'}),
+      }, {tx: client});
+    };
+
+    let outcome;
+    try {
+      // The reserved request row is the durable accounting record; no mail or token is
+      // created here.
+      outcome = await limiter.attempt({keys, kind: 'reset', reserve, action: async () => ({accepted: true})});
+    } catch (error) {
+      if (error instanceof AccountingUnavailableError || error instanceof AuditWriteError) {
+        limiter.noteAccountingFailure();
+        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      }
+      if (error instanceof AuthError) return failure(error.status, error.code, error.message);
       return failure(503, 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.');
     }
     if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'RESET_THROTTLED');

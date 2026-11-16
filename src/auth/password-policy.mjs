@@ -95,14 +95,15 @@ export function validatePolicy(policy = {}) {
   return merged;
 }
 
-// Bounded input: anything that is not a string within the configured character/byte
-// bounds is replaced by a fixed dummy value. The original bytes never reach a KDF.
-function boundedInput(password, settings) {
-  if (typeof password !== 'string') return DUMMY_INPUT;
-  if (password.length < 1 || password.length > settings.maxLength) return DUMMY_INPUT;
-  if (password.includes('\u0000')) return DUMMY_INPUT;
-  if (Buffer.byteLength(password, 'utf8') > settings.maxBytes) return DUMMY_INPUT;
-  return password;
+// Input validity is tracked separately from the value used for dummy work. An invalid
+// input NEVER substitutes for a real credential comparison: the bounded dummy value is
+// used only to perform equivalent work, and the result is unconditionally invalid.
+function classifyInput(password, settings) {
+  if (typeof password !== 'string') return {valid: false, input: DUMMY_INPUT};
+  if (password.length < 1 || password.length > settings.maxLength) return {valid: false, input: DUMMY_INPUT};
+  if (password.includes('\u0000')) return {valid: false, input: DUMMY_INPUT};
+  if (Buffer.byteLength(password, 'utf8') > settings.maxBytes) return {valid: false, input: DUMMY_INPUT};
+  return {valid: true, input: password};
 }
 
 export function createPasswordPolicy({
@@ -220,8 +221,22 @@ export function createPasswordPolicy({
   // parameters: every such path is normalized to a bounded failure after comparable
   // work. The only exception is the controlled PASSWORD_BUSY refusal from admission.
   async function verify(password, credential) {
-    const input = boundedInput(password, settings);
+    const classified = classifyInput(password, settings);
+    const input = classified.input;
     const parsed = inspect(credential);
+    // Invalid input shape: perform the same bounded admitted dummy work, then refuse
+    // unconditionally. A derived match against the public dummy string must never
+    // authenticate, rehash or reach a session.
+    if (!classified.valid) {
+      return derive('verify', async () => {
+        try {
+          await dummyWork(input);
+        } catch {
+          // A provider failure is still a bounded credential failure.
+        }
+        return {valid: false, scheme: parsed.scheme, needsRehash: false, busy: false, inputValid: false};
+      }, {scheme: parsed.scheme, memoryKiB: argonSpec.memoryKiB, passes: argonSpec.passes, parallelism: argonSpec.parallelism, inputBytes: Buffer.byteLength(input, 'utf8')});
+    }
     return derive('verify', async () => {
       if (parsed.scheme === 'scrypt') {
         let valid = false;
@@ -230,7 +245,7 @@ export function createPasswordPolicy({
         } catch {
           valid = false;
         }
-        return {valid: valid === true, scheme: 'scrypt', needsRehash: valid === true, busy: false};
+        return {valid: valid === true, scheme: 'scrypt', needsRehash: valid === true, busy: false, inputValid: true};
       }
       if (parsed.scheme === 'argon2id' && argonVerifierUsable(parsed)) {
         let valid = false;
@@ -239,15 +254,15 @@ export function createPasswordPolicy({
         } catch {
           valid = false;
         }
-        return {valid, scheme: 'argon2id', needsRehash: valid && needsRehash(parsed), busy: false};
+        return {valid, scheme: 'argon2id', needsRehash: valid && needsRehash(parsed), busy: false, inputValid: true};
       }
       // Absent, unknown, malformed or hostile verifier: comparable normal-work dummy.
       try {
         await dummyWork(input);
       } catch {
-        return {valid: false, scheme: 'unknown', needsRehash: false, busy: false};
+        return {valid: false, scheme: 'unknown', needsRehash: false, busy: false, inputValid: true};
       }
-      return {valid: false, scheme: 'unknown', needsRehash: false, busy: false};
+      return {valid: false, scheme: 'unknown', needsRehash: false, busy: false, inputValid: true};
     }, {scheme: parsed.scheme, memoryKiB: argonSpec.memoryKiB, passes: argonSpec.passes, parallelism: argonSpec.parallelism, inputBytes: Buffer.byteLength(input, 'utf8')});
   }
 
@@ -273,4 +288,4 @@ export function createPasswordPolicy({
   };
 }
 
-export const __internals = Object.freeze({boundedInput, validatePolicy, SCRYPT_HASH, ARGON2ID_HASH, DUMMY_INPUT});
+export const __internals = Object.freeze({classifyInput, validatePolicy, SCRYPT_HASH, ARGON2ID_HASH, DUMMY_INPUT});

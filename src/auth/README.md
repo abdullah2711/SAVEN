@@ -169,8 +169,13 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   dummy derivation (configured memory/passes/parallelism) and return a normalized
   failure. Invalid shapes never take an immediate no-work branch, and native provider
   errors become bounded credential failures rather than 503 escapes.
-- Oversized or non-string input is replaced by a fixed bounded dummy input before any
-  KDF; raw oversized bytes never reach a native buffer.
+- Input validity is tracked separately from the value used for dummy work. Non-string,
+  empty, oversized and NUL-containing input performs the same bounded admitted dummy
+  derivation and then returns **invalid unconditionally** — it is never compared against
+  the stored verifier, so the public dummy string cannot be used as a credential. The
+  dummy string itself is not banned; it remains a legitimate password whose real
+  value still authenticates, while ill-formed input for that account still fails. Raw
+  oversized bytes never reach a native buffer.
 - Absolute protocol caps (`ABSOLUTE_KDF_LIMITS`) bound memory, passes, parallelism, tag
   and salt length, and the verification path re-checks the *stored* verifier against
   those caps and against decoded salt/tag lengths before native allocation. A policy may
@@ -201,6 +206,22 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   account and a fresh unknown account are indistinguishable beyond their own attempt
   history. Throttled attempts are audited with `outcome = 'denied'` and do not extend
   the window.
+- **Reservation and serialization.** An attempt first takes a session-scoped advisory
+  lock for its scopes on one pooled client, then in a short committed transaction
+  re-checks the budget and writes either a denial row or a reservation row carrying the
+  post-lock order. Only after that commit may verification run. The scope lock is held
+  until the attempt ends, so a waiting concurrent request cannot observe an unrecorded
+  attempt or start KDF work early; a crash after the reservation leaves a durable counted
+  attempt, and a crash before it leaves none. Successful rehash + session + success audit
+  still commit atomically in their own transaction, and the success row's later order
+  resets earlier reservations for that scope.
+- **Accounting breaker.** If the reservation/denial row cannot be written, the limiter
+  fails closed and opens a cooldown breaker; every request during the cooldown is refused
+  before any KDF admission. Recovery is tested by advancing the clock past the cooldown
+  with a healthy store.
+- **Commit ambiguity.** A store commit whose acknowledgement is lost withholds all
+  credentials, but it is not proof that no row exists; the ambiguity is documented rather
+  than claimed as rollback.
 - **Ordering.** Each accounted attempt records the application-clock time sampled
   *after* the scope lock together with `pg_current_xact_id()` sampled at the same point
   (`attempt_at`, `attempt_order` in the audit detail). Counters ignore PostgreSQL
@@ -216,8 +237,11 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   the ledger is unwritable, durable accounting cannot be guaranteed, although KDF
   admission remains bounded per process.
 - **Ingress.** The trusted header is default-off and must be named by deployment
-  composition. Only a syntactically valid IP from that exact header is used, for the
-  network scope, the session row and audit metadata. All socket-related headers
+  composition. One validated, canonical IP (IPv4 dotted decimal, IPv6 compressed via the
+  URL parser) from that exact header feeds *every* consumer — the limiter scope for both
+  login and reset, the session row and audit metadata. Invalid values yield no identity
+  and therefore no network scope. Equivalent spellings of one address share a single
+  budget. All socket-related headers
   (`cf-connecting-ip`, `x-forwarded-for`, `x-real-ip`, `forwarded`, …) are stripped from
   the request view handed to the audit writer otherwise, so an untrusted or malformed
   value can neither fail the failure audit nor be persisted. Naming a header is not proof
