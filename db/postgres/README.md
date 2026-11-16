@@ -13,6 +13,9 @@ This directory is the new PostgreSQL target for the controlled pivot. SQLite rem
 7. `db/postgres/30-rls-policies.sql` — PIVOT-004: adds the constrained canonical-principal projection, forces row-level security on all tenant tables, creates the isolation and admission policies and grants the runtime its per-table privileges, all in one transaction. It requires `00`, `05`, `10`, `20` and `021` to have been applied and refuses to run on a partial stack.
 8. `db/postgres/migrations/031-rls-corrections.sql` — PIVOT-004-R1, applied by the **separate offline administrator (superuser)**, not by the migration login: it provisions the `saven_tenant_admission_definer` NOLOGIN role, transfers only the admission function to it, enables forced membership isolation on `auth.tenant_membership` with two principal-bound policies, completes the represented company foreign keys and replaces the blanket runtime sequence grant. It refuses a second application and runs as one transaction.
 9. `db/postgres/migrations/032-rls-hardening.sql` — PIVOT-004-R2, also applied by the offline administrator: it first validates the admission owner's **full authority surface** against an exact allow-list and refuses (rolling back) on any excess, then adds the restrictive membership guards that stop an extra permissive policy from widening preselection or the admission lookup. It changes no privilege and is refused on re-application.
+10. `db/postgres/migrations/040-posted-immutability.sql` — PIVOT-005 payload 040 (applied by a member of `saven_migrator`): trigger functions that protect retained posted sources, children, evidence, numbering and drafts. It attaches no trigger by itself and is immutable; a second application is refused.
+11. `db/postgres/migrations/042-entry-voiding.sql` — PIVOT-005 payload 042, applied by the **offline administrator**: creates the append-only `entry_voids` record and `void_denials` log, the canonical `active_general_ledger` and `voided_entries` projections, the atomic void primitive and its narrow `saven_void_definer` owner, plus payload 042 guards. Role-agnostic: no business role name, eligibility class or void-specific read restriction. Refused on re-application.
+12. `db/postgres/40-triggers.sql` — the explicit dispatcher. It attaches every registered payload guard (040 and 042), refuses when a required payload is missing, and refuses when an installed payload is not registered. Run it after each payload; re-running is safe and never reapplies a payload. Later PIVOT-006 audit work adds payload 041 and must register it here without editing 040/042.
 
 Migrations under `db/postgres/migrations/` are additive corrections applied after their base file, in numeric order, with the same principal. They never rewrite a delivered base SQL file, and they validate existing data instead of repairing it.
 
@@ -164,6 +167,28 @@ Preselection is the login path: after credential/session verification the auth s
 Lookup indexes back the new parents: `journals (tenant_id, company)`, `journal_drafts (tenant_id, company)`, `document_registry (tenant_id, company)`, plus `assignments (tenant_id, role_id)` from PIVOT-004.
 
 **Sequence privilege.** The runtime no longer holds `USAGE, SELECT` on every tenant sequence. It keeps `tenant_data.audit_id_seq` (the only identity it inserts through) and the trigger-only `audit_event_id_seq` is withheld, so change-event evidence cannot be minted by the runtime. New sequences require an explicit grant.
+
+## Posted-source retention and terminal void (PIVOT-005)
+
+Posted accounting sources are physically retained and immutable, and an authorized user can remove a posted entry from the active ledger by an **atomic terminal void**. This follows the owner decision D-013 and the role-agnostic correction D-014; the database does not decide which business roles may see voided entries.
+
+| Object | Purpose |
+| --- | --- |
+| `tenant_data.entry_voids` | Append-only void record. `UNIQUE (tenant_id, entry_id)` makes exactly one terminal void possible; the row carries actor (text id plus canonical UUID), reason, original/effective state, source digest and version, line count, request digest, idempotency key, correlation/policy/approval versions, period-lock snapshot and void time. Never updated or deleted. |
+| `tenant_data.void_denials` | Append-only denial log. A denied void raises and therefore cannot write its own audit row; the application records the refusal here in a separate transaction. |
+| `tenant_data.active_general_ledger` | Canonical active-GL projection: every line of a non-voided journal. Consumers (balances, trial balance, reports, exports, search) must use this inclusion rule rather than filtering registers ad hoc. |
+| `tenant_data.voided_entries` | Canonical Deleted/Voided projection: the original posting plus the retained void record and void time. |
+| `tenant_data.void_posted_entry(...)` | The single atomic primitive. Verifies verified transaction context, actor mapping, the `accounting.entry.void` action key (reference action data, never a role name here), posted state, the supported dependency graph and exact balance; writes receipt, native audit, change audit, outbox and void record in one transaction; replays an identical request without a second event. |
+
+Terminal rules enforced by the database: a voided entry cannot be edited, unvoided, physically deleted or deleted twice; the source journal, lines, command receipt, evidence and permanent numbers stay byte-for-byte retained; no late lines, evidence, movements or decisions may be attached after posting; void audit rows are immutable now, while generic audit coverage arrives with PIVOT-006.
+
+Read and delete authority are separate mechanisms: normal module access reads the projections (tenant/company/branch scope still applies), while executing the void requires the action key independently. Fine-grained visibility of Voided Entries is intentionally **not** a database rule (D-014): no eligibility column, role-name predicate or category-specific denial exists in 042. A future application RBAC / User Access Settings phase owns that policy and must apply it consistently to pages, APIs, search, exports and AI tools.
+
+Supported dependency graph for this increment is the plain journal. Trade-backed commands and journals that are one side of a posted correction are refused explicitly (`VOID_DEPENDENCY_UNSUPPORTED`, `VOID_LINKED_CORRECTION`) with no partial effect; broader dependency reconciliation is a later reviewed operational workflow. Voiding does not undo physical stock movement or customer custody, and period-lock state is captured for attribution rather than silently rewriting history.
+
+Reference registration (follow-up owned by the business-rules file's owner): the `VOIDED` command state and the action keys `accounting.entry.void` and `accounting.voided_entries.read` belong in `contracts/postgres-business-rules-v1.json` with `is_active`/effective dates and versioned schema, not in a growing CHECK list. That file is outside this contract's TOUCH list, so 042 annotates the domains inline and records the registration as a follow-up; the structural terminal states used by the guards are the regulated command names (`POSTED`, `VOIDED`) plus the draft `DRAFT` state, and every other state value stays reference data.
+
+Limits: no application route, page, confirmation flow or RBAC setting is delivered here (AUTH-006 and PIVOT-013 gate application acceptance; a UI contract owns the Delete/Voided pages). The database primitive is the contract; a denied attempt's durable security log is written by the application because PostgreSQL has no autonomous transaction.
 
 ## Security and boundaries
 
