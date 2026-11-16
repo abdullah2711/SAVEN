@@ -177,6 +177,82 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     }
   }
 
+  // Runs a transaction on an ALREADY-OWNED client. No second pool checkout is taken, so
+  // a caller holding session locks cannot deadlock against itself when the pool is
+  // smallest. A lost COMMIT acknowledgement or failed ROLLBACK marks the lease uncertain;
+  // the lease owner destroys that connection instead of returning it to the pool.
+  async function transactionOn(client, action, {markUncertain = null} = {}) {
+    try {
+      await client.query('BEGIN');
+    } catch (error) {
+      // A BEGIN whose acknowledgement is lost or rejected may have opened a transaction
+      // on the server. The caller's lease must be destroyed; never infer cleanliness from
+      // a later successful unlock or from a following statement.
+      if (markUncertain) markUncertain();
+      throw error;
+    }
+    let result;
+    try {
+      result = await action(client);
+    } catch (error) {
+      let rollbackOk = true;
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        rollbackOk = false;
+      }
+      if (!rollbackOk && markUncertain) markUncertain();
+      throw error;
+    }
+    try {
+      await client.query('COMMIT');
+    } catch {
+      try {
+        await client.query('ROLLBACK');
+      } catch {
+        // Unknown state.
+      }
+      if (markUncertain) markUncertain();
+      throw new AuthError(
+        503,
+        'SESSION_TRANSACTION_UNCERTAIN',
+        'The session transaction outcome is unknown; no credential was issued.',
+      );
+    }
+    return result;
+  }
+
+  // Checked-out client lease with an explicit destroy path. Used by the throttling layer
+  // so session advisory locks and uncertain transactions cannot leak into later borrowers.
+  async function withClientLease(action) {
+    const client = await connect();
+    let released = false;
+    let destroyed = false;
+    const markUncertain = () => {
+      destroyed = true;
+    };
+    const lease = {
+      query: (text, params) => client.query(text, params),
+      transaction: run => transactionOn(client, run, {markUncertain}),
+      destroy: markUncertain,
+      get destroyed() {
+        return destroyed;
+      },
+    };
+    try {
+      return await action(lease);
+    } finally {
+      if (!released) {
+        released = true;
+        try {
+          await client.release?.(destroyed ? true : undefined);
+        } catch {
+          // A release failure cannot be repaired here; never return to the pool again.
+        }
+      }
+    }
+  }
+
   // Uses a caller-owned transaction when provided, otherwise one checked-out client.
   async function run(tx, action) {
     if (tx) return action(tx);
@@ -499,6 +575,8 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     revokeAllSessions,
     withClient,
     withTransaction,
+    withClientLease,
+    transactionOn,
     config: settings,
     clock: now,
   };

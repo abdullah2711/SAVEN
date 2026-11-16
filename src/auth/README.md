@@ -1,6 +1,7 @@
 # `src/auth` — versioned PostgreSQL authentication boundary (AUTH-002)
 
-Status: schema-backed auth service modules. Nothing here is imported by an active
+Status: schema-backed auth service modules with versioned password policy and durable
+throttling (AUTH-003). Nothing here is imported by an active
 entry point. The SQLite `/api` handler in `src/local` remains the running
 authentication path, and no existing route, table or session was changed. This module
 is not a claim of a completed PostgreSQL auth cutover. The pinned Better Auth package
@@ -46,8 +47,8 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
 - Atomic success: the session insert and its `login_success` audit row commit on one
   checked-out transaction client, and the cookie is only set after commit. Logout
   revokes and audits in one transaction; a failed logout audit rolls the revocation
-  back. Failed-login audit is a separate autocommit statement so a refused attempt is
-  still recorded.
+  back. A sign-in attempt is durably reserved in its own committed statement before
+  verification starts, so a refused or failed attempt is already recorded.
 - Transaction outcomes are reported honestly. A known failed statement is rolled back
   and reported as a failure. A lost COMMIT acknowledgement is an indeterminate
   outcome: the response is `503 SESSION_TRANSACTION_UNCERTAIN`, no credential is
@@ -144,3 +145,134 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   clock; it is not production evidence, and SQLite remains the production path. The
   library adapter covers sessions only — accounts, verification, 2FA, passkey and any
   OIDC connector remain future contracts.
+
+## Password policy and throttling (AUTH-003)
+
+### Password policy (`src/auth/password-policy.mjs`)
+
+- Argon2id is the preferred verifier and is produced through Node's native OpenSSL
+  binding, so no new dependency is introduced. Parameters are bounded
+  (64 MiB, 3 passes, parallelism 1, 32-byte tag, 16-byte salt) and every verification
+  re-checks those bounds against the stored verifier, so a tampered or absurd hash fails
+  closed instead of consuming arbitrary memory.
+- Retained bounded scrypt verifiers stay valid. A successful sign-in upgrades them to
+  Argon2id inside the same transaction, conditional on the verifier being unchanged, and
+  the upgrade is recorded in the success audit (`rehashed: true`).
+- Unknown, malformed, bcrypt or plaintext verifiers never authenticate; they still run a
+  bounded dummy derivation so response timing does not disclose account state.
+- New-password input is validated (12–128 characters, ≤512 bytes, no NUL) and KDF work
+  is capped at two concurrent derivations; excess work is refused with
+  `429 PASSWORD_BUSY` rather than queued without bound. Admission covers **every**
+  derivation — hash, Argon2id verify, retained scrypt verify and the dummy path — so a
+  burst of unknown/malformed verifiers cannot bypass the bound.
+- Absent, unknown, malformed and hostile stored verifiers all run the same normal-work
+  dummy derivation (configured memory/passes/parallelism) and return a normalized
+  failure. Invalid shapes never take an immediate no-work branch, and native provider
+  errors become bounded credential failures rather than 503 escapes.
+- Input validity is tracked separately from the value used for dummy work. Non-string,
+  empty, oversized and NUL-containing input performs the same bounded admitted dummy
+  derivation and then returns **invalid unconditionally** — it is never compared against
+  the stored verifier, so the public dummy string cannot be used as a credential. The
+  dummy string itself is not banned; it remains a legitimate password whose real
+  value still authenticates, while ill-formed input for that account still fails. Raw
+  oversized bytes never reach a native buffer.
+- Absolute protocol caps (`ABSOLUTE_KDF_LIMITS`) bound memory, passes, parallelism, tag
+  and salt length, and the verification path re-checks the *stored* verifier against
+  those caps and against decoded salt/tag lengths before native allocation. A policy may
+  lower these values, never raise them.
+- Compatibility note: retained scrypt verification (N=32768, r=8, p=1) performs different
+  work from the Argon2id dummy, so a legacy scrypt account's wrong-password timing
+  differs from an unknown account until the successful upgrade replaces it. This is an
+  accepted, documented ADR03 compatibility limit, bounded by the same admission gate.
+- The policy version and parameters are documented constants; changing them is a
+  reviewed policy change, not a per-tenant value.
+
+### Throttling (`src/auth/rate-limit.mjs`)
+
+- Storage is the append-only `auth.auth_audit` ledger: no schema change, no new grant.
+  A scope is blocked when its recent failure rows reach the configured limit; a
+  successful sign-in ends that scope's failure window.
+- Each attempt takes a **session-scoped** advisory lock per scope on one leased client,
+  writes a reservation (or denial) row in a short committed transaction, and keeps the
+  lock until the whole attempt ends. Verification and the success transaction then run on
+  that same leased client, so a correct login needs no second pool checkout and cannot
+  deadlock a size-one pool or starve a saturated one. Deterministic tests cover eight
+  simultaneous failures against a limit of three, a size-one pool success and saturated
+  same-scope successes. This requires direct or session-pooling connections with a pinned
+  backend; transaction pooling is refused at configuration time.
+- Scopes are pseudonymous SHA-256 digests of the realm plus the normalised account and,
+  optionally, a trusted ingress address. Raw emails and forwarded-header values are
+  never stored. The ingress header is used only when a deployment explicitly names it
+  (`trustedClientHeader`, for example behind the owner's tunnel/proxy); arbitrary
+  `x-forwarded-for` values are ignored by default.
+- Login and password-reset requests share the limiter, policy shape, ledger and audit
+  event family. Responses are generic: a throttled known account, a throttled unknown
+  account and a fresh unknown account are indistinguishable beyond their own attempt
+  history. Throttled attempts are audited with `outcome = 'denied'` and do not extend
+  the window.
+- **Reservation and serialization.** An attempt first takes a session-scoped advisory
+  lock for its scopes on one pooled client, then in a short committed transaction
+  re-checks the budget and writes either a denial row or a reservation row carrying the
+  post-lock order. Only after that commit may verification run. The scope lock is held
+  until the attempt ends, so a waiting concurrent request cannot observe an unrecorded
+  attempt or start KDF work early; a crash after the reservation leaves a durable counted
+  attempt, and a crash before it leaves none. Successful rehash + session + success audit
+  still commit atomically in their own transaction, and the success row's later order
+  resets earlier reservations for that scope.
+- **Accounting breaker.** If the reservation/denial row cannot be written, the limiter
+  fails closed and opens a cooldown breaker; every request during the cooldown is refused
+  before any KDF admission. Recovery is tested by advancing the clock past the cooldown
+  with a healthy store.
+- **Commit ambiguity.** A store commit whose acknowledgement is lost withholds all
+  credentials, but it is not proof that no row exists; the ambiguity is documented rather
+  than claimed as rollback.
+- **Ordering.** Each accounted attempt records the application-clock time sampled
+  *after* the scope lock together with `pg_current_xact_id()` sampled at the same point
+  (`attempt_at`, `attempt_order` in the audit detail). Counters ignore PostgreSQL
+  `occurred_at`, which is fixed at transaction start and can therefore order a delayed
+  transaction before a success that actually committed first. Ordering is the serialized
+  post-lock order; the transaction id resolves equal timestamps unambiguously. No
+  append-only row is rewritten.
+- **Exceptional attempts.** The reservation is committed before verification, so
+  verification, rehash, session or success-audit failures cannot erase the attempt; only
+  the success transaction rolls back, withholding the credential. There is no separate
+  post-rollback accounting write. A lost reservation COMMIT or failed ROLLBACK destroys
+  the leased client. If the audit store itself is unavailable, the request fails closed
+  with `503 AUTH_ACCOUNTING_UNAVAILABLE` and a cooldown breaker refuses further requests
+  before any KDF admission; the evidence limit is that an unwritable ledger cannot be
+  durable, but work is not admitted without it.
+- **Ingress.** The trusted header is default-off and must be named by deployment
+  composition. One validated, canonical IP (IPv4 dotted decimal, IPv6 compressed via the
+  URL parser) from that exact header feeds *every* consumer — the limiter scope for both
+  login and reset, the session row and audit metadata. Invalid values yield no identity
+  and therefore no network scope. Equivalent spellings of one address share a single
+  budget. All socket-related headers
+  (`cf-connecting-ip`, `x-forwarded-for`, `x-real-ip`, `forwarded`, …) are stripped from
+  the request view handed to the audit writer otherwise, so an untrusted or malformed
+  value can neither fail the failure audit nor be persisted. Naming a header is not proof
+  that clients cannot forge it: a verified trusted-ingress contract is still required
+  before enabling this in production.
+- `RATE_LIMIT_DEFAULTS` (8 login failures / 5 reset requests per 15 minutes) are
+  bootstrap values only. Neither these nor any test value are approved production
+  policy; thresholds and the trusted-ingress header must come from trusted server
+  composition, versioned and reviewed. The retained `createAuthServer` entry point does
+  not yet forward that configuration — a narrow `server.mjs` contract is required before
+  activation, and no deployment runtime upgrade is implied by this module. Audit-ledger
+  scans on `detail_jsonb` are a Phase-1 design; indexed storage and measured load
+  evidence need their own migration contract.
+- `/v1/auth/forgot-password` exists solely to apply this shared policy: it answers `202`
+  with a generic body, writes a `password_reset_requested` audit row marked
+  `delivery: deferred_to_auth_005`, and creates no token or mail. AUTH-005 owns real
+  recovery.
+
+### Extension points
+
+- A dedicated rate-limit table with an index (and per-tenant policy rows) is the
+  expected optimisation; the audit ledger remains the durable fallback and the audit
+  event family stays the same.
+- New KDF schemes are added through the policy adapter boundary and must be bounded,
+  versioned and covered by fail-closed tests.
+- Thresholds, window lengths and trusted-ingress headers are deployment policy; they
+  must never be inferred from request input.
+- Session and token lists remain digest-only: no raw token is ever returned in an API
+  payload or rendered in a UI (owner decision D-012).
