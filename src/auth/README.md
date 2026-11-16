@@ -290,10 +290,17 @@ identity as MFA-required.
 | Route | Method | Behaviour |
 | --- | --- | --- |
 | `/v1/auth/mfa` | GET | Factor status: required, enrolled, available, recovery codes remaining, current session assurance, pending flag. |
-| `/v1/auth/mfa/enroll` | POST | Starts or restarts enrollment; returns the `otpauth://` URI. CSRF + origin required. Restarting invalidates outstanding recovery codes. |
+| `/v1/auth/mfa/enroll` | POST | Initial enrollment (empty body) only while no verified factor exists. Replacing a verified factor requires `password` plus a current `code`/`recoveryCode` in the same transaction; session assurance is never accepted as reauthentication. Returns the `otpauth://` URI and audits started/replaced. |
 | `/v1/auth/mfa/enroll/verify` | POST | Completes enrollment with a TOTP code, upgrades the session to `mfa_verified` and returns the one-time recovery codes. |
 | `/v1/auth/mfa/verify` | POST | Login step-up with `{code}` or `{recoveryCode}`; upgrades the session to `mfa_verified`. |
 | `/v1/auth/mfa/disable` | POST | Reauthentication with password plus a TOTP or recovery code; removes the verified factor and downgrades the session. |
+
+Authority is resolved inside a transaction that first binds the verified server-side
+principal to transaction-local `app.current_user_id`, so the accepted PIVOT-004/032
+forced membership policies return that user's rows. The result is explicitly
+`resolved` or not: an unresolved authority fails closed
+(`MFA_AUTHORITY_UNAVAILABLE`) and is never treated as a verified non-required identity.
+No client-supplied id, session-level `SET`, broad grant, superuser or RLS bypass is used.
 
 Password login for a required identity always yields a **pending** session
 (`assurance_level = single_factor`, `mfa.pending = true` in the response). The cookie is
@@ -316,8 +323,19 @@ unverified admin can enrol a factor and nothing else.
 - Failed codes increment `failed_attempts`; reaching the configured limit sets
   `locked_until`. Failure counters are committed even though the request is refused.
 - Disable requires password reauthentication **and** a current TOTP or recovery code.
-  Disabling replaces the seed with a fresh unverified one, clears `verified_at`, and
-  marks all outstanding recovery codes used; re-enrollment is required.
+  Disabling (and any authorized replacement) replaces the seed with a fresh unverified
+  one, clears `verified_at`, marks all outstanding recovery codes used, and downgrades
+  every live session for that user to `single_factor`; pending status also requires a
+  currently verified factor, so a stale assurance label cannot outlive its factor.
+- Lifecycle transitions lock the principal row and then the factor row in a fixed order
+  (`users` → `two_factor` → `sessions`) inside one transaction, so concurrent
+  verification, replacement and disable cannot resurrect an old seed. Session reads for
+  mutations take no row lock; only the lifecycle transaction does.
+- Durable failure policy covers enrollment completion, restart, TOTP verification,
+  recovery codes and disable-password reauthentication. Counters increment atomically
+  (`failed_attempts = failed_attempts + 1`) and are committed even when the request is
+  refused; a pending restart never resets the counter or an active lock. Verification
+  starts are bounded by the lock check, not merely by response shape.
 - No MFA bypass exists through alternate factors: the routes accept exactly `code` or
   `recoveryCode`; passkeys, social defaults and unknown fields are rejected. Cloud
   operator MFA remains delegated to validated Access/IdP assurance (AUTH-007), and no
@@ -327,8 +345,12 @@ unverified admin can enrol a factor and nothing else.
 
 ### Configuration and fail-closed behaviour
 
-`createMfaService` requires `keys: [{version, key: Buffer(32)}]` and a
-`recoveryHashKey` (≥32 bytes), plus bounded digits/period/window/failure/lockout values.
+`createMfaService` requires unique versioned `keys: [{version, key: Buffer(32)}]` and
+`recoveryKeys: [{version, key: Buffer(≥32)}]` with an existing active version, plus
+bounded `secretBytes` (20–64), `recoveryCodeBytes` (10–32), digits/period/window/
+failure/lockout values. Issued recovery rows record the real hash-key version; codes
+issued under a retained version remain verifiable until that key is retired. TOTP
+output is validated against the RFC 6238 appendix B vectors.
 These are deployment-controlled and versioned; no production numeric policy is approved
 by this module. With no keys configured the service reports `available: false`, and a
 password login for an MFA-required identity fails closed with `503 MFA_UNAVAILABLE`
