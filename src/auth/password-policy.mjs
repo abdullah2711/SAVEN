@@ -2,18 +2,34 @@ import {argon2 as argon2Callback, randomBytes, timingSafeEqual} from 'node:crypt
 import {promisify} from 'node:util';
 import {encodePassword as retainedScryptEncode, verifyPassword as retainedScryptVerify} from '../passwords.mjs';
 
-// AUTH-003 password policy and versioned KDF adapter.
+// AUTH-003-R1 password policy and versioned KDF adapter.
 //
 // Argon2id is preferred for new verifiers and is available through Node's native
-// OpenSSL binding, so no new dependency is introduced. Existing bounded scrypt
-// verifiers remain compatible and are upgraded on the next successful sign-in.
-// bcrypt and plaintext storage are not supported. Unknown or malformed schemes fail
-// closed after the same bounded dummy derivation, so timing does not disclose
-// account state.
+// OpenSSL binding, so no new dependency is introduced. Retained bounded scrypt
+// verifiers stay compatible and are upgraded on the next successful sign-in.
+//
+// Every derivation — hash, Argon2id verification, retained scrypt verification and the
+// dummy verification used for absent/unknown/malformed verifiers — passes through the
+// same admission counter. Overload is refused before any new native work starts.
+// A fixed bounded dummy input is used whenever the supplied input is not a bounded
+// string, so an oversized request can never create an oversized KDF buffer.
 
 const argon2 = promisify(argon2Callback);
 
 export const PASSWORD_POLICY_VERSION = 1;
+
+// Hard protocol ceiling. A deployment policy may lower these, never raise them, and the
+// verification path re-checks the *stored* verifier against the same absolute caps.
+export const ABSOLUTE_KDF_LIMITS = Object.freeze({
+  memoryKiB: 262144,
+  passes: 10,
+  parallelism: 8,
+  tagLength: 64,
+  saltBytes: 64,
+  concurrentKdfs: 4,
+});
+
+const DUMMY_INPUT = 'saven-bounded-dummy-verification-input';
 
 export const DEFAULT_PASSWORD_POLICY = Object.freeze({
   version: PASSWORD_POLICY_VERSION,
@@ -29,10 +45,6 @@ export const DEFAULT_PASSWORD_POLICY = Object.freeze({
     parallelism: 1,
     tagLength: 32,
     saltBytes: 16,
-    // Verification bounds protect against a tampered or absurd stored verifier.
-    maxMemoryKiB: 262144,
-    maxPasses: 10,
-    maxParallelism: 8,
   }),
 });
 
@@ -47,169 +59,206 @@ export class PasswordPolicyError extends Error {
   }
 }
 
-function validatePolicy(policy) {
-  const merged = {...DEFAULT_PASSWORD_POLICY, ...policy, argon2id: {...DEFAULT_PASSWORD_POLICY.argon2id, ...policy?.argon2id}};
-  if (!Number.isInteger(merged.minLength) || merged.minLength < 8) throw new Error('Password minimum length must be an integer of at least 8.');
-  if (!Number.isInteger(merged.maxLength) || merged.maxLength < merged.minLength) throw new Error('Password maximum length must be an integer of at least the minimum.');
-  if (!Number.isInteger(merged.maxBytes) || merged.maxBytes < merged.maxLength) throw new Error('Password byte bound must be at least the character bound.');
-  if (merged.maxBytes > 1024) throw new Error('Password byte bound may not exceed 1024.');
-  if (!Number.isInteger(merged.maxConcurrentKdfs) || merged.maxConcurrentKdfs < 1 || merged.maxConcurrentKdfs > 4) {
-    throw new Error('Password KDF concurrency must be between 1 and 4.');
+function requireBound(name, value, minimum, maximum) {
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be an integer between ${minimum} and ${maximum}.`);
   }
+  return value;
+}
+
+export function validatePolicy(policy = {}) {
+  const merged = {
+    ...DEFAULT_PASSWORD_POLICY,
+    ...policy,
+    argon2id: {...DEFAULT_PASSWORD_POLICY.argon2id, ...(policy.argon2id ?? {})},
+  };
+  requireBound('Password minimum length', merged.minLength, 8, 512);
+  requireBound('Password maximum length', merged.maxLength, merged.minLength, 1024);
+  if (!Number.isInteger(merged.maxBytes) || merged.maxBytes < merged.maxLength || merged.maxBytes > 1024) {
+    throw new Error('Password byte bound must be an integer between the character bound and 1024.');
+  }
+  requireBound('Password KDF concurrency', merged.maxConcurrentKdfs, 1, ABSOLUTE_KDF_LIMITS.concurrentKdfs);
   const argon = merged.argon2id;
-  if (!Number.isInteger(argon.memoryKiB) || argon.memoryKiB < 8192 || argon.memoryKiB > argon.maxMemoryKiB) throw new Error('Invalid Argon2id memory bound.');
-  if (!Number.isInteger(argon.passes) || argon.passes < 1 || argon.passes > argon.maxPasses) throw new Error('Invalid Argon2id pass bound.');
-  if (!Number.isInteger(argon.parallelism) || argon.parallelism < 1 || argon.parallelism > argon.maxParallelism) throw new Error('Invalid Argon2id parallelism bound.');
-  if (!Number.isInteger(argon.tagLength) || argon.tagLength < 16 || argon.tagLength > 64) throw new Error('Invalid Argon2id tag length.');
-  if (!Number.isInteger(argon.saltBytes) || argon.saltBytes < 16 || argon.saltBytes > 64) throw new Error('Invalid Argon2id salt length.');
+  requireBound('Argon2id memory', argon.memoryKiB, 8192, ABSOLUTE_KDF_LIMITS.memoryKiB);
+  requireBound('Argon2id passes', argon.passes, 1, ABSOLUTE_KDF_LIMITS.passes);
+  requireBound('Argon2id parallelism', argon.parallelism, 1, ABSOLUTE_KDF_LIMITS.parallelism);
+  requireBound('Argon2id tag length', argon.tagLength, 16, ABSOLUTE_KDF_LIMITS.tagLength);
+  requireBound('Argon2id salt length', argon.saltBytes, 16, ABSOLUTE_KDF_LIMITS.saltBytes);
+  // Verification caps may tighten but never exceed the absolute protocol ceiling.
+  requireBound('Argon2id verification memory cap', argon.maxMemoryKiB ?? ABSOLUTE_KDF_LIMITS.memoryKiB, 8192, ABSOLUTE_KDF_LIMITS.memoryKiB);
+  requireBound('Argon2id verification pass cap', argon.maxPasses ?? ABSOLUTE_KDF_LIMITS.passes, 1, ABSOLUTE_KDF_LIMITS.passes);
+  requireBound('Argon2id verification parallelism cap', argon.maxParallelism ?? ABSOLUTE_KDF_LIMITS.parallelism, 1, ABSOLUTE_KDF_LIMITS.parallelism);
+  if (argon.memoryKiB > (argon.maxMemoryKiB ?? ABSOLUTE_KDF_LIMITS.memoryKiB)) throw new Error('Argon2id memory exceeds its verification cap.');
+  if (argon.passes > (argon.maxPasses ?? ABSOLUTE_KDF_LIMITS.passes)) throw new Error('Argon2id passes exceed its verification cap.');
+  if (argon.parallelism > (argon.maxParallelism ?? ABSOLUTE_KDF_LIMITS.parallelism)) throw new Error('Argon2id parallelism exceeds its verification cap.');
   if (merged.preferredScheme !== 'argon2id' && merged.preferredScheme !== 'scrypt') throw new Error('Unsupported preferred password scheme.');
   return merged;
 }
 
-function requirePasswordInput(password, policy) {
-  if (typeof password !== 'string') throw new PasswordPolicyError(422, 'PASSWORD_INVALID', 'Use a password of 12 to 128 characters.');
-  if (password.length < policy.minLength || password.length > policy.maxLength) {
-    throw new PasswordPolicyError(422, 'PASSWORD_LENGTH', `Use a password of ${policy.minLength} to ${policy.maxLength} characters.`);
-  }
-  if (Buffer.byteLength(password, 'utf8') > policy.maxBytes) {
-    throw new PasswordPolicyError(422, 'PASSWORD_LENGTH', 'The password is too long.');
-  }
-  if (password.includes('\u0000')) throw new PasswordPolicyError(422, 'PASSWORD_INVALID', 'Use a password of 12 to 128 characters.');
+// Bounded input: anything that is not a string within the configured character/byte
+// bounds is replaced by a fixed dummy value. The original bytes never reach a KDF.
+function boundedInput(password, settings) {
+  if (typeof password !== 'string') return DUMMY_INPUT;
+  if (password.length < 1 || password.length > settings.maxLength) return DUMMY_INPUT;
+  if (password.includes('\u0000')) return DUMMY_INPUT;
+  if (Buffer.byteLength(password, 'utf8') > settings.maxBytes) return DUMMY_INPUT;
+  return password;
 }
 
-export function createPasswordPolicy({policy = {}, scryptEncode = null, scryptVerify = null} = {}) {
+export function createPasswordPolicy({
+  policy = {},
+  scryptEncode = null,
+  scryptVerify = null,
+  argon2Impl = null,
+  onDerivation = null,
+} = {}) {
   const settings = validatePolicy(policy);
   const scryptHash = scryptEncode ?? retainedScryptEncode;
   const scryptCheck = scryptVerify ?? retainedScryptVerify;
+  const argon = argon2Impl ?? argon2;
+  const argonSpec = settings.argon2id;
+  const absolute = ABSOLUTE_KDF_LIMITS;
 
   let activeKdfs = 0;
-  async function bounded(operation, fallback) {
+  async function derive(kind, work, record = {}) {
     if (activeKdfs >= settings.maxConcurrentKdfs) {
-      // Refuse rather than queue unbounded work; the caller maps this to a retry.
-      return fallback();
+      // Refuse before starting any further native work. Callers translate this to a
+      // controlled busy outcome; it never queues unbounded jobs.
+      throw new PasswordPolicyError(429, 'PASSWORD_BUSY', 'Sign-in is busy. Try again shortly.');
     }
     activeKdfs += 1;
     try {
-      return await operation();
+      onDerivation?.({kind, ...record});
+      return await work();
     } finally {
       activeKdfs -= 1;
     }
   }
 
-  async function argon2idHash(password) {
-    const salt = randomBytes(settings.argon2id.saltBytes);
-    const tag = await argon2('argon2id', {
-      message: Buffer.from(password, 'utf8'),
+  function argonWork(input, salt, overrides) {
+    return argon('argon2id', {
+      message: Buffer.from(input, 'utf8'),
       nonce: salt,
-      memory: settings.argon2id.memoryKiB,
-      passes: settings.argon2id.passes,
-      parallelism: settings.argon2id.parallelism,
-      tagLength: settings.argon2id.tagLength,
+      memory: overrides.memoryKiB,
+      passes: overrides.passes,
+      parallelism: overrides.parallelism,
+      tagLength: overrides.tagLength,
     });
-    return {
-      hash: `$argon2id$v=19$m=${settings.argon2id.memoryKiB},t=${settings.argon2id.passes},p=${settings.argon2id.parallelism}` +
-        `$${salt.toString('base64')}$${Buffer.from(tag).toString('base64')}`,
-      scheme: 'argon2id',
-    };
   }
 
   async function hash(password) {
-    requirePasswordInput(password, settings);
-    if (settings.preferredScheme === 'argon2id') {
-      return bounded(() => argon2idHash(password), async () => {
-        throw new PasswordPolicyError(429, 'PASSWORD_BUSY', 'Sign-in is busy. Try again shortly.');
-      });
+    if (typeof password !== 'string') throw new PasswordPolicyError(422, 'PASSWORD_INVALID', 'Use a password of 12 to 128 characters.');
+    if (password.length < settings.minLength || password.length > settings.maxLength || Buffer.byteLength(password, 'utf8') > settings.maxBytes) {
+      throw new PasswordPolicyError(422, 'PASSWORD_LENGTH', `Use a password of ${settings.minLength} to ${settings.maxLength} characters.`);
     }
-    return scryptHash(password).then(value => ({hash: value, scheme: 'scrypt'}));
+    if (password.includes('\u0000')) throw new PasswordPolicyError(422, 'PASSWORD_INVALID', 'Use a password of 12 to 128 characters.');
+    if (settings.preferredScheme === 'scrypt') {
+      return derive('hash', async () => ({hash: await scryptHash(password), scheme: 'scrypt'}), {scheme: 'scrypt'});
+    }
+    const salt = randomBytes(argonSpec.saltBytes);
+    return derive('hash', async () => {
+      const tag = await argonWork(password, salt, argonSpec);
+      return {
+        hash: `$argon2id$v=19$m=${argonSpec.memoryKiB},t=${argonSpec.passes},p=${argonSpec.parallelism}` +
+          `$${salt.toString('base64')}$${Buffer.from(tag).toString('base64')}`,
+        scheme: 'argon2id',
+      };
+    }, {scheme: 'argon2id', memoryKiB: argonSpec.memoryKiB, passes: argonSpec.passes, parallelism: argonSpec.parallelism, inputBytes: Buffer.byteLength(password, 'utf8')});
   }
 
-  // Always performs a bounded derivation, even for an absent or unknown verifier.
-  async function dummy(password) {
-    const salt = randomBytes(settings.argon2id.saltBytes);
-    await argon2('argon2id', {
-      message: Buffer.from(password, 'utf8'),
-      nonce: salt,
-      memory: settings.argon2id.memoryKiB,
-      passes: 1,
-      parallelism: 1,
-      tagLength: settings.argon2id.tagLength,
-    }).catch(() => null);
+  // The dummy derivation uses exactly the normal configured workload and a fixed bounded
+  // input, so absent, unknown and malformed verifiers do comparable work to a real
+  // wrong-password verification.
+  async function dummyWork(input) {
+    const salt = randomBytes(argonSpec.saltBytes);
+    await argonWork(input, salt, argonSpec);
     return false;
   }
 
   function inspect(credential) {
     const hash = typeof credential === 'string' ? credential : credential?.hash;
-    if (typeof hash !== 'string') return {scheme: 'unknown'};
+    if (typeof hash !== 'string') return {scheme: 'absent'};
     if (SCRYPT_HASH.test(hash)) return {scheme: 'scrypt', hash};
-    const argon = ARGON2ID_HASH.exec(hash);
-    if (argon) {
+    const match = ARGON2ID_HASH.exec(hash);
+    if (match) {
+      const salt = Buffer.from(match[4], 'base64');
+      const tag = Buffer.from(match[5], 'base64');
       return {
         scheme: 'argon2id',
         hash,
-        memoryKiB: Number(argon[1]),
-        passes: Number(argon[2]),
-        parallelism: Number(argon[3]),
-        salt: argon[4],
-        tag: argon[5],
+        memoryKiB: Number(match[1]),
+        passes: Number(match[2]),
+        parallelism: Number(match[3]),
+        salt,
+        tag,
       };
     }
     return {scheme: 'unknown'};
   }
 
-  async function verifyArgon2id(password, parsed) {
-    const argon = settings.argon2id;
-    if (
-      !Number.isInteger(parsed.memoryKiB) || parsed.memoryKiB < 8192 || parsed.memoryKiB > argon.maxMemoryKiB ||
-      !Number.isInteger(parsed.passes) || parsed.passes < 1 || parsed.passes > argon.maxPasses ||
-      !Number.isInteger(parsed.parallelism) || parsed.parallelism < 1 || parsed.parallelism > argon.maxParallelism
-    ) {
-      return false;
-    }
-    const salt = Buffer.from(parsed.salt, 'base64');
-    const expected = Buffer.from(parsed.tag, 'base64');
-    const tag = await argon2('argon2id', {
-      message: Buffer.from(password, 'utf8'),
-      nonce: salt,
-      memory: parsed.memoryKiB,
-      passes: parsed.passes,
-      parallelism: parsed.parallelism,
-      tagLength: expected.length,
-    });
-    const actual = Buffer.from(tag);
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  function argonVerifierUsable(parsed) {
+    if (!Number.isInteger(parsed.memoryKiB) || parsed.memoryKiB < 8192 || parsed.memoryKiB > (argonSpec.maxMemoryKiB ?? absolute.memoryKiB)) return false;
+    if (!Number.isInteger(parsed.passes) || parsed.passes < 1 || parsed.passes > (argonSpec.maxPasses ?? absolute.passes)) return false;
+    if (!Number.isInteger(parsed.parallelism) || parsed.parallelism < 1 || parsed.parallelism > (argonSpec.maxParallelism ?? absolute.parallelism)) return false;
+    if (!(parsed.salt instanceof Buffer) || parsed.salt.length < 16 || parsed.salt.length > absolute.saltBytes) return false;
+    if (!(parsed.tag instanceof Buffer) || parsed.tag.length < 16 || parsed.tag.length > absolute.tagLength) return false;
+    return true;
   }
 
+  async function verifyArgon2id(input, parsed) {
+    const tag = await argonWork(input, parsed.salt, {
+      memoryKiB: parsed.memoryKiB,
+      passes: parsed.passes,
+      parallelism: parsed.parallelism,
+      tagLength: parsed.tag.length,
+    });
+    const actual = Buffer.from(tag);
+    return actual.length === parsed.tag.length && timingSafeEqual(actual, parsed.tag);
+  }
+
+  // Verification never throws for input shape, provider failure or hostile verifier
+  // parameters: every such path is normalized to a bounded failure after comparable
+  // work. The only exception is the controlled PASSWORD_BUSY refusal from admission.
   async function verify(password, credential) {
-    // Verification never throws for input shape: it fails closed with the same dummy
-    // work so callers cannot distinguish a bad password from an invalid verifier.
-    if (typeof password !== 'string') return dummy('');
-    if (password.length < 1 || password.length > settings.maxLength || Buffer.byteLength(password, 'utf8') > settings.maxBytes) {
-      return dummy(password);
-    }
+    const input = boundedInput(password, settings);
     const parsed = inspect(credential);
-    const result = await bounded(async () => {
-      if (parsed.scheme === 'scrypt') return scryptCheck(password, parsed.hash);
-      if (parsed.scheme === 'argon2id') return verifyArgon2id(password, parsed);
-      return dummy(password);
-    }, () => dummy(password));
-    if (result === true) {
-      return {
-        valid: true,
-        scheme: parsed.scheme,
-        needsRehash: needsRehash(parsed),
-      };
-    }
-    return {valid: false, scheme: parsed.scheme, needsRehash: false};
+    return derive('verify', async () => {
+      if (parsed.scheme === 'scrypt') {
+        let valid = false;
+        try {
+          valid = await scryptCheck(input, parsed.hash);
+        } catch {
+          valid = false;
+        }
+        return {valid: valid === true, scheme: 'scrypt', needsRehash: valid === true, busy: false};
+      }
+      if (parsed.scheme === 'argon2id' && argonVerifierUsable(parsed)) {
+        let valid = false;
+        try {
+          valid = await verifyArgon2id(input, parsed);
+        } catch {
+          valid = false;
+        }
+        return {valid, scheme: 'argon2id', needsRehash: valid && needsRehash(parsed), busy: false};
+      }
+      // Absent, unknown, malformed or hostile verifier: comparable normal-work dummy.
+      try {
+        await dummyWork(input);
+      } catch {
+        return {valid: false, scheme: 'unknown', needsRehash: false, busy: false};
+      }
+      return {valid: false, scheme: 'unknown', needsRehash: false, busy: false};
+    }, {scheme: parsed.scheme, memoryKiB: argonSpec.memoryKiB, passes: argonSpec.passes, parallelism: argonSpec.parallelism, inputBytes: Buffer.byteLength(input, 'utf8')});
   }
 
   function needsRehash(credential) {
-    const parsed = typeof credential === 'string' ? inspect(credential) : credential?.scheme ? credential : inspect(credential);
-    if (!parsed || parsed.scheme === 'unknown') return false;
+    const parsed = typeof credential === 'string' ? inspect(credential) : (credential?.scheme ? credential : inspect(credential));
+    if (!parsed || parsed.scheme === 'unknown' || parsed.scheme === 'absent') return false;
     if (settings.preferredScheme === 'argon2id') {
       if (parsed.scheme !== 'argon2id') return true;
-      return parsed.memoryKiB < settings.argon2id.memoryKiB ||
-        parsed.passes < settings.argon2id.passes ||
-        parsed.parallelism !== settings.argon2id.parallelism;
+      return parsed.memoryKiB < argonSpec.memoryKiB ||
+        parsed.passes < argonSpec.passes ||
+        parsed.parallelism !== argonSpec.parallelism;
     }
     return false;
   }
@@ -220,7 +269,8 @@ export function createPasswordPolicy({policy = {}, scryptEncode = null, scryptVe
     verify,
     inspect,
     needsRehash,
+    activeDerivations: () => activeKdfs,
   };
 }
 
-export const __internals = Object.freeze({validatePolicy, requirePasswordInput, SCRYPT_HASH, ARGON2ID_HASH});
+export const __internals = Object.freeze({boundedInput, validatePolicy, SCRYPT_HASH, ARGON2ID_HASH, DUMMY_INPUT});

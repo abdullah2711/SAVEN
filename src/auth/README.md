@@ -162,7 +162,23 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   bounded dummy derivation so response timing does not disclose account state.
 - New-password input is validated (12–128 characters, ≤512 bytes, no NUL) and KDF work
   is capped at two concurrent derivations; excess work is refused with
-  `429 PASSWORD_BUSY` rather than queued without bound.
+  `429 PASSWORD_BUSY` rather than queued without bound. Admission covers **every**
+  derivation — hash, Argon2id verify, retained scrypt verify and the dummy path — so a
+  burst of unknown/malformed verifiers cannot bypass the bound.
+- Absent, unknown, malformed and hostile stored verifiers all run the same normal-work
+  dummy derivation (configured memory/passes/parallelism) and return a normalized
+  failure. Invalid shapes never take an immediate no-work branch, and native provider
+  errors become bounded credential failures rather than 503 escapes.
+- Oversized or non-string input is replaced by a fixed bounded dummy input before any
+  KDF; raw oversized bytes never reach a native buffer.
+- Absolute protocol caps (`ABSOLUTE_KDF_LIMITS`) bound memory, passes, parallelism, tag
+  and salt length, and the verification path re-checks the *stored* verifier against
+  those caps and against decoded salt/tag lengths before native allocation. A policy may
+  lower these values, never raise them.
+- Compatibility note: retained scrypt verification (N=32768, r=8, p=1) performs different
+  work from the Argon2id dummy, so a legacy scrypt account's wrong-password timing
+  differs from an unknown account until the successful upgrade replaces it. This is an
+  accepted, documented ADR03 compatibility limit, bounded by the same admission gate.
 - The policy version and parameters are documented constants; changing them is a
   reviewed policy change, not a per-tenant value.
 
@@ -185,9 +201,36 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   account and a fresh unknown account are indistinguishable beyond their own attempt
   history. Throttled attempts are audited with `outcome = 'denied'` and do not extend
   the window.
+- **Ordering.** Each accounted attempt records the application-clock time sampled
+  *after* the scope lock together with `pg_current_xact_id()` sampled at the same point
+  (`attempt_at`, `attempt_order` in the audit detail). Counters ignore PostgreSQL
+  `occurred_at`, which is fixed at transaction start and can therefore order a delayed
+  transaction before a success that actually committed first. Ordering is the serialized
+  post-lock order; the transaction id resolves equal timestamps unambiguously. No
+  append-only row is rewritten.
+- **Exceptional attempts.** Verification, rehash, session creation and success-audit
+  failures roll the attempt transaction back, so no session and no cookie exist. The
+  attempt is then accounted on its own durable autocommit path with its post-lock order,
+  so it consumes the budget. If the audit store itself is unavailable, the request fails
+  closed with `503 AUTH_ACCOUNTING_UNAVAILABLE` and the evidence limit is stated: while
+  the ledger is unwritable, durable accounting cannot be guaranteed, although KDF
+  admission remains bounded per process.
+- **Ingress.** The trusted header is default-off and must be named by deployment
+  composition. Only a syntactically valid IP from that exact header is used, for the
+  network scope, the session row and audit metadata. All socket-related headers
+  (`cf-connecting-ip`, `x-forwarded-for`, `x-real-ip`, `forwarded`, …) are stripped from
+  the request view handed to the audit writer otherwise, so an untrusted or malformed
+  value can neither fail the failure audit nor be persisted. Naming a header is not proof
+  that clients cannot forge it: a verified trusted-ingress contract is still required
+  before enabling this in production.
 - `RATE_LIMIT_DEFAULTS` (8 login failures / 5 reset requests per 15 minutes) are
-  bootstrap values only. The contract explicitly does not approve the fixture's
-  eight/15-minutes value as production policy; deployments must set reviewed limits.
+  bootstrap values only. Neither these nor any test value are approved production
+  policy; thresholds and the trusted-ingress header must come from trusted server
+  composition, versioned and reviewed. The retained `createAuthServer` entry point does
+  not yet forward that configuration — a narrow `server.mjs` contract is required before
+  activation, and no deployment runtime upgrade is implied by this module. Audit-ledger
+  scans on `detail_jsonb` are a Phase-1 design; indexed storage and measured load
+  evidence need their own migration contract.
 - `/v1/auth/forgot-password` exists solely to apply this shared policy: it answers `202`
   with a generic body, writes a `password_reset_requested` audit row marked
   `delivery: deferred_to_auth_005`, and creates no token or mail. AUTH-005 owns real

@@ -91,48 +91,59 @@ export function createRateLimiter({store, clock = () => new Date(), policy = {}}
     }
   }
 
+  // Attempt rows carry the application-clock time sampled AFTER the scope lock and a
+  // PostgreSQL transaction id sampled at the same point. Ordering therefore follows the
+  // serialized attempt order, not transaction start time (PostgreSQL now() is fixed at
+  // transaction start and would let a delayed transaction look older than it is). The
+  // transaction id is the unambiguous tie-breaker for equal timestamps, and no
+  // append-only row is ever rewritten.
   async function countScope(executor, kind, column, key, at) {
     const config = settings[kind];
     const params = [column, key, at.toISOString(), Math.floor(config.windowMs / 1000)];
     if (kind === 'login') {
-      // A successful sign-in ends the previous failure window for this scope.
+      // A successful sign-in ends the previous failure window for this scope in
+      // serialized order, and the time window still expires old failures.
       const result = await executor.query(
         `SELECT count(*)::int AS failures,
-                min(a.occurred_at) AS first_failure
+                min((a.detail_jsonb->>'attempt_at')::timestamptz) AS first_failure
          FROM auth.auth_audit a
          WHERE a.event_type = 'login_failure'
            AND a.outcome = 'failure'
            AND a.detail_jsonb->>$1 = $2
-           AND a.occurred_at > GREATEST(
-             $3::timestamptz - make_interval(secs => $4),
-             COALESCE((
-               SELECT max(s.occurred_at)
-               FROM auth.auth_audit s
-               WHERE s.event_type = 'login_success'
-                 AND s.detail_jsonb->>$1 = $2
-             ), 'epoch'::timestamptz))`,
+           AND (a.detail_jsonb->>'attempt_order')::numeric >
+               COALESCE((
+                 SELECT max((s.detail_jsonb->>'attempt_order')::numeric)
+                 FROM auth.auth_audit s
+                 WHERE s.event_type = 'login_success'
+                   AND s.detail_jsonb->>$1 = $2
+               ), -1)
+           AND (a.detail_jsonb->>'attempt_at')::timestamptz > $3::timestamptz - make_interval(secs => $4)`,
         params,
       );
       return result.rows[0];
     }
     const result = await executor.query(
       `SELECT count(*)::int AS failures,
-              min(a.occurred_at) AS first_failure
+              min((a.detail_jsonb->>'attempt_at')::timestamptz) AS first_failure
        FROM auth.auth_audit a
        WHERE a.event_type = 'password_reset_requested'
          AND a.outcome <> 'denied'
          AND a.detail_jsonb->>$1 = $2
-         AND a.occurred_at > $3::timestamptz - make_interval(secs => $4)`,
+         AND (a.detail_jsonb->>'attempt_at')::timestamptz > $3::timestamptz - make_interval(secs => $4)`,
       params,
     );
     return result.rows[0];
   }
 
-  // Must be called inside a transaction that already holds the scope locks and then
-  // writes the attempt row before commit.
+  // Must be called inside a transaction that already holds the scope locks, before the
+  // attempt row is written. Returns the authoritative post-lock time and order that the
+  // caller must persist on the audit row.
   async function checkScopes(executor, keys, kind) {
     const config = settings[kind];
     const at = now();
+    const orderResult = await executor.query('SELECT pg_current_xact_id()::text AS id');
+    const order = orderResult.rows[0].id;
+    const verdict = {allowed: true, retryAfterMs: 0, limit: config.limit, kind, at: at.toISOString(), order};
     for (const [name, key] of Object.entries(keys.scopes)) {
       if (!key) continue;
       const column = name === 'network' ? 'throttle_network' : DETAIL_KEY[kind];
@@ -141,10 +152,10 @@ export function createRateLimiter({store, clock = () => new Date(), policy = {}}
         const first = row.first_failure ? new Date(row.first_failure).getTime() : at.getTime();
         // The caller never needs to wait longer than one window for this scope.
         const retryAfterMs = Math.min(config.windowMs, Math.max(0, first + config.windowMs - at.getTime()));
-        return {allowed: false, retryAfterMs, limit: config.limit, kind, scope: name};
+        return {...verdict, allowed: false, retryAfterMs, scope: name};
       }
     }
-    return {allowed: true, retryAfterMs: 0, limit: config.limit, kind};
+    return verdict;
   }
 
   async function attempt({keys, kind, action}) {

@@ -1,4 +1,5 @@
 import {timingSafeEqual} from 'node:crypto';
+import {isIP} from 'node:net';
 import {AuthError, digestToken, isTokenDigest} from './session-store.mjs';
 import {createPasswordPolicy} from './password-policy.mjs';
 import {createRateLimiter} from './rate-limit.mjs';
@@ -18,6 +19,11 @@ import {createRateLimiter} from './rate-limit.mjs';
 const MAX_BODY_BYTES = 32 * 1024;
 const EMAIL_MAX = 320;
 const PASSWORD_MAX_BYTES = 512;
+
+// Distinguishes an audit-store failure from an authentication/provider failure. The
+// former fails closed with an explicit accounting-unavailable outcome; the latter is
+// retried once on a durable path so the attempt consumes the budget.
+class AuditWriteError extends Error {}
 
 export const REALMS = Object.freeze({
   customer: {cookieBase: 'saven_session', sameSite: 'Lax'},
@@ -92,11 +98,47 @@ function validEmail(email) {
   return email.length >= 3 && email.length <= EMAIL_MAX && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function throttleDetail(keys, extra = {}) {
+// Only an explicitly configured trusted header, carrying a syntactically valid IP
+// address, can contribute ingress identity. Everything else is discarded before it can
+// reach the audit writer (which would otherwise read cf-connecting-ip unconditionally)
+// or the session row.
+function sanitizeIngress(request, trustedClientHeader) {
+  if (!trustedClientHeader) return {ip: null};
+  const value = request.headers.get(trustedClientHeader);
+  if (typeof value !== 'string') return {ip: null};
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 64 || isIP(trimmed) === 0) return {ip: null};
+  return {ip: trimmed};
+}
+
+const SOCKET_HEADERS = new Set([
+  'cf-connecting-ip',
+  'x-forwarded-for',
+  'x-real-ip',
+  'forwarded',
+  'true-client-ip',
+  'x-client-ip',
+]);
+
+// A request view for audit persistence that cannot carry an untrusted socket address.
+function auditView(request, trustedClientHeader, ip) {
+  const headers = new Headers();
+  for (const [name, value] of request.headers) {
+    const lower = name.toLowerCase();
+    if (SOCKET_HEADERS.has(lower)) continue;
+    if (lower === 'x-request-id' && !/^[A-Za-z0-9._:-]{1,200}$/.test(value)) continue;
+    headers.set(name, lower === 'user-agent' ? value.slice(0, 1000) : value);
+  }
+  if (ip && trustedClientHeader === 'cf-connecting-ip') headers.set(trustedClientHeader, ip);
+  return {headers};
+}
+
+function throttleDetail(keys, verdict, extra = {}) {
   return {
     ...extra,
     throttle_account: keys.scopes.account,
     throttle_network: keys.scopes.network,
+    ...(verdict ? {attempt_at: verdict.at, attempt_order: verdict.order} : {}),
   };
 }
 
@@ -167,6 +209,28 @@ export function createAuthRoutes({
     return response;
   }
 
+  // All in-transaction audit writes go through here so an audit-store failure is
+  // distinguishable from a provider failure.
+  async function record(event, options) {
+    try {
+      await audit(event, options);
+    } catch (error) {
+      throw new AuditWriteError('audit store unavailable', {cause: error});
+    }
+  }
+
+  // Writes an exceptional-attempt record on its own autocommit statement path, after any
+  // failed transaction has rolled back. Returns false when the audit store itself is
+  // unavailable, which the caller must treat as an evidence limit, not as success.
+  async function durableExceptional(event) {
+    try {
+      await audit(event);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function login(request, url, realm) {
     if (realm === 'operator') {
       throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator sign-in is not enabled.');
@@ -181,81 +245,122 @@ export function createAuthRoutes({
     }
     const email = normalizeEmail(body.email);
     const password = typeof body.password === 'string' ? body.password : '';
-
+    const ingress = sanitizeIngress(request, trustedClientHeader);
+    const archive = auditView(request, trustedClientHeader, ingress.ip);
     const keys = limiter.keysFor({email, request, trustedClientHeader, realm});
     const user = validEmail(email) ? await findUserByEmail(email) : null;
 
-    const outcome = await limiter.attempt({
-      keys,
-      kind: 'login',
-      action: async (tx, verdict) => {
-        if (!verdict.allowed) {
-          await audit({
-            eventType: 'login_failure',
-            outcome: 'denied',
-            realm,
-            user,
-            request,
-            detail: throttleDetail(keys, {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}),
-          }, {tx});
-          return {throttled: verdict};
-        }
-        // A missing account still performs the same bounded derivation.
-        const verification = await policy.verify(password, user?.passwordHash ?? null);
-        if (!user || !verification.valid || user.status !== 'active') {
-          await audit({
-            eventType: 'login_failure',
-            outcome: 'failure',
-            realm,
-            user,
-            request,
-            detail: throttleDetail(keys, {reason: user ? 'invalid_credentials' : 'unknown_identity'}),
-          }, {tx});
-          return {rejected: true};
-        }
-        if (verification.needsRehash) {
-          const upgraded = await policy.hash(password);
-          // Conditional on the unchanged verifier so a concurrent credential change is
-          // never overwritten by an upgrade.
-          const updated = await tx.query(
-            `UPDATE auth.users
-             SET password_hash = $1, password_scheme = $2, password_updated_at = now(), updated_by = 'auth003-rehash'
-             WHERE id = $3 AND password_hash = $4`,
-            [upgraded.hash, upgraded.scheme, user.id, user.passwordHash],
-          );
-          if (updated.rowCount !== 1) {
-            await audit({
+    let verdict = null;
+    let phase = 'verify';
+    let outcome;
+    try {
+      outcome = await limiter.attempt({
+        keys,
+        kind: 'login',
+        action: async (tx, currentVerdict) => {
+          verdict = currentVerdict;
+          if (!currentVerdict.allowed) {
+            await record({
+              eventType: 'login_failure',
+              outcome: 'denied',
+              realm,
+              user,
+              request: archive,
+              detail: throttleDetail(keys, currentVerdict, {reason: 'throttled', retry_after_ms: currentVerdict.retryAfterMs}),
+            }, {tx});
+            return {throttled: currentVerdict};
+          }
+          // A missing account still performs the same bounded derivation.
+          phase = 'verify';
+          const verification = await policy.verify(password, user?.passwordHash ?? null);
+          if (!user || !verification.valid || user.status !== 'active') {
+            await record({
               eventType: 'login_failure',
               outcome: 'failure',
               realm,
               user,
-              request,
-              detail: throttleDetail(keys, {reason: 'credential_changed'}),
+              request: archive,
+              detail: throttleDetail(keys, currentVerdict, {reason: user ? 'invalid_credentials' : 'unknown_identity'}),
             }, {tx});
             return {rejected: true};
           }
-        }
-        const created = await store.createSession({
-          userId: user.id,
-          realm,
-          roleId: null,
-          assuranceLevel: 'single_factor',
-          ipAddress: trustedClientHeader ? request.headers.get(trustedClientHeader) ?? null : null,
-          userAgent: request.headers.get('user-agent') ?? null,
-          credentialVersion: user.credentialVersion,
-        }, {tx});
-        await audit({
-          eventType: 'login_success',
-          outcome: 'success',
-          realm,
-          user,
-          request,
-          sessionId: created.session.id,
-          detail: throttleDetail(keys, {assurance: 'single_factor', rehashed: verification.needsRehash === true}),
-        }, {tx});
-        return {created, user};
-      },
-    });
+          if (verification.needsRehash) {
+            phase = 'rehash';
+            const upgraded = await policy.hash(password);
+            // Conditional on the unchanged verifier so a concurrent credential change is
+            // never overwritten by an upgrade.
+            const updated = await tx.query(
+              `UPDATE auth.users
+               SET password_hash = $1, password_scheme = $2, password_updated_at = now(), updated_by = 'auth003-rehash'
+               WHERE id = $3 AND password_hash = $4`,
+              [upgraded.hash, upgraded.scheme, user.id, user.passwordHash],
+            );
+            if (updated.rowCount !== 1) {
+              await record({
+                eventType: 'login_failure',
+                outcome: 'failure',
+                realm,
+                user,
+                request: archive,
+                detail: throttleDetail(keys, currentVerdict, {reason: 'credential_changed'}),
+              }, {tx});
+              return {rejected: true};
+            }
+          }
+          phase = 'session';
+          const created = await store.createSession({
+            userId: user.id,
+            realm,
+            roleId: null,
+            assuranceLevel: 'single_factor',
+            ipAddress: ingress.ip,
+            userAgent: archive.headers.get('user-agent') ?? null,
+            credentialVersion: user.credentialVersion,
+          }, {tx});
+          await record({
+            eventType: 'login_success',
+            outcome: 'success',
+            realm,
+            user,
+            request: archive,
+            sessionId: created.session.id,
+            detail: throttleDetail(keys, currentVerdict, {
+              assurance: 'single_factor',
+              rehashed: verification.needsRehash === true,
+            }),
+          }, {tx});
+          return {created, user};
+        },
+      });
+    } catch (error) {
+      // Any escape from verification, rehash, session creation or the success audit has
+      // already rolled the attempt transaction back, so no session or cookie exists.
+      // Account the exceptional attempt on its own durable path; if that store is also
+      // unavailable, fail closed and state the evidence limit instead of pretending.
+      if (error instanceof AuditWriteError) {
+        // The ledger itself is unavailable: fail closed and state the evidence limit
+        // rather than claiming guaranteed durable accounting.
+        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      }
+      const busy = error?.code === 'PASSWORD_BUSY';
+      const uncertain = error instanceof AuthError;
+      const accounted = await durableExceptional({
+        eventType: 'login_failure',
+        outcome: 'failure',
+        realm,
+        user,
+        request: archive,
+        detail: throttleDetail(keys, verdict, {
+          reason: busy ? 'password_busy' : uncertain ? 'transaction_uncertain' : 'provider_or_store_error',
+          phase,
+        }),
+      });
+      if (!accounted) {
+        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      }
+      if (uncertain) return failure(error.status, error.code, error.message);
+      return failure(503, busy ? 'SIGN_IN_BUSY' : 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+    }
 
     if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'SIGN_IN_THROTTLED');
     if (outcome.rejected) throw new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.');
@@ -289,31 +394,53 @@ export function createAuthRoutes({
       throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown reset fields.');
     }
     const email = normalizeEmail(body.email);
+    const ingress = sanitizeIngress(request, trustedClientHeader);
+    const archive = auditView(request, trustedClientHeader, ingress.ip);
     const keys = limiter.keysFor({email, request, trustedClientHeader, realm});
-    const outcome = await limiter.attempt({
-      keys,
-      kind: 'reset',
-      action: async (tx, verdict) => {
-        if (!verdict.allowed) {
-          await audit({
+    let verdict = null;
+    let outcome;
+    try {
+      outcome = await limiter.attempt({
+        keys,
+        kind: 'reset',
+        action: async (tx, currentVerdict) => {
+          verdict = currentVerdict;
+          if (!currentVerdict.allowed) {
+            await record({
+              eventType: 'password_reset_requested',
+              outcome: 'denied',
+              realm,
+              request: archive,
+              detail: throttleDetail(keys, currentVerdict, {reason: 'throttled', retry_after_ms: currentVerdict.retryAfterMs}),
+            }, {tx});
+            return {throttled: currentVerdict};
+          }
+          await record({
             eventType: 'password_reset_requested',
-            outcome: 'denied',
+            outcome: 'success',
             realm,
-            request,
-            detail: throttleDetail(keys, {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}),
+            request: archive,
+            detail: throttleDetail(keys, currentVerdict, {delivery: 'deferred_to_auth_005'}),
           }, {tx});
-          return {throttled: verdict};
-        }
-        await audit({
-          eventType: 'password_reset_requested',
-          outcome: 'success',
-          realm,
-          request,
-          detail: throttleDetail(keys, {delivery: 'deferred_to_auth_005'}),
-        }, {tx});
-        return {accepted: true};
-      },
-    });
+          return {accepted: true};
+        },
+      });
+    } catch (error) {
+      if (error instanceof AuditWriteError) {
+        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      }
+      const uncertain = error instanceof AuthError;
+      const accounted = await durableExceptional({
+        eventType: 'password_reset_requested',
+        outcome: 'failure',
+        realm,
+        request: archive,
+        detail: throttleDetail(keys, verdict, {reason: uncertain ? 'transaction_uncertain' : 'provider_or_store_error'}),
+      });
+      if (!accounted) return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      if (uncertain) return failure(error.status, error.code, error.message);
+      return failure(503, 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+    }
     if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'RESET_THROTTLED');
     return json({accepted: true}, 202);
   }
@@ -362,12 +489,12 @@ export function createAuthRoutes({
         tx,
       });
       if (!result) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-      await audit({
+      await record({
         eventType: 'logout',
         outcome: 'success',
         realm,
         user: {id: session.userId},
-        request,
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
         sessionId: session.id,
         detail: {},
       }, {tx});

@@ -15,7 +15,7 @@ const origins = {customer: 'https://app.saven.test', operator: 'https://ops.save
 const customerCookie = cookieName('customer', true);
 const sha256 = value => createHash('sha256').update(value, 'utf8').digest('hex');
 
-function connectionConfig(database) {
+function connectionConfig(database, overrides = {}) {
   return {
     host: process.env.PGHOST ?? '127.0.0.1',
     port: Number(process.env.PGPORT ?? 5432),
@@ -24,6 +24,7 @@ function connectionConfig(database) {
     database,
     max: 8,
     application_name: 'saven-auth-003-test',
+    ...overrides,
   };
 }
 
@@ -119,7 +120,7 @@ test('AUTH-003 password policy prefers Argon2id and retains bounded scrypt', asy
   assert.equal(created.hash.includes('correct-horse-battery'), false, 'the verifier must not contain the password');
 
   const good = await policy.verify('correct-horse-battery', created.hash);
-  assert.deepEqual(good, {valid: true, scheme: 'argon2id', needsRehash: false});
+  assert.deepEqual({valid: good.valid, scheme: good.scheme, needsRehash: good.needsRehash}, {valid: true, scheme: 'argon2id', needsRehash: false});
   assert.equal((await policy.verify('wrong-password-value', created.hash)).valid, false);
 
   const retained = await encodePassword('retained-scrypt-password');
@@ -434,4 +435,366 @@ test('AUTH-003 rate policy rejects unsafe configuration', () => {
   const ok = normalizeRatePolicy({login: {limit: 4, windowMs: 5 * 60 * 1000}});
   assert.equal(ok.login.limit, 4);
   assert.equal(ok.reset.limit, 5, 'unconfigured kinds keep their documented default');
+});
+
+// ---------------------------------------------------------------------------
+// AUTH-003-R1 corrections
+// ---------------------------------------------------------------------------
+
+const quoteRole = name => `"${String(name).replaceAll('"', '""')}"`;
+const quoteLiteral = value => `'${String(value).replaceAll("'", "''")}'`;
+
+async function withAuthServicePool(db, action) {
+  const suffix = randomBytesHex(4);
+  const login = `saven_auth_${suffix}_service_login`;
+  const password = randomBytesHex(24);
+  await db.adminQuery(
+    `CREATE ROLE ${quoteRole(login)} LOGIN PASSWORD ${quoteLiteral(password)} ` +
+    'NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOBYPASSRLS NOREPLICATION',
+  );
+  await db.adminQuery(`GRANT ${quoteRole(db.roles.authService)} TO ${quoteRole(login)}`);
+  const pool = new Pool(connectionConfig(db.database, {user: login, password}));
+  try {
+    return await action(pool, login);
+  } finally {
+    await pool.end().catch(() => {});
+    await db.adminQuery(`DROP ROLE IF EXISTS ${quoteRole(login)}`).catch(() => {});
+  }
+}
+
+function randomBytesHex(bytes) {
+  return createHash('sha256').update(String(Math.random())).digest('hex').slice(0, bytes * 2);
+}
+
+test('AUTH-003-R1 every verification path is admitted and uses comparable work', async () => {
+  const derivations = [];
+  const policy = createPasswordPolicy({onDerivation: record => derivations.push(record)});
+  const real = await policy.hash('correct-horse-battery');
+  const retained = await encodePassword('retained-scrypt-password');
+
+  derivations.length = 0;
+  const wrong = await policy.verify('wrong-password-value', real.hash);
+  const absent = await policy.verify('wrong-password-value', null);
+  const malformed = await policy.verify('wrong-password-value', '$argon2id$v=19$m=1,t=1,p=1$c2FsdA==$dGFn');
+  const unknown = await policy.verify('wrong-password-value', 'bcrypt$2b$whatever');
+  assert.equal(wrong.valid, false);
+  assert.equal(absent.valid, false);
+  assert.equal(malformed.valid, false);
+  assert.equal(unknown.valid, false);
+
+  const argonRecords = derivations.filter(record => record.kind === 'verify');
+  assert.equal(argonRecords.length, 4, 'each verification runs exactly one admitted derivation');
+  const work = argonRecords.map(record => `${record.memoryKiB}/${record.passes}/${record.parallelism}`);
+  assert.equal(new Set(work).size, 1, 'absent, malformed and wrong verifiers use the same configured workload');
+  assert.equal(work[0], '65536/3/1');
+  for (const record of argonRecords.slice(1)) {
+    assert.ok(record.inputBytes <= 512, 'invalid-shape paths use a bounded dummy input');
+  }
+  const oversized = await policy.verify('x'.repeat(20000), real.hash);
+  assert.equal(oversized.valid, false);
+  const oversizedRecord = derivations.at(-1);
+  assert.ok(oversizedRecord.inputBytes <= 512, 'oversized input never reaches a KDF buffer');
+
+  const scrypt = await policy.verify('retained-scrypt-password', retained);
+  assert.equal(scrypt.valid, true);
+  assert.equal(scrypt.needsRehash, true);
+  assert.equal(derivations.at(-1).kind, 'verify');
+  assert.equal(derivations.at(-1).scheme, 'scrypt', 'retained scrypt stays a documented, admitted compatibility path');
+});
+
+test('AUTH-003-R1 admission covers dummy and mixed paths and recovers after overload', async () => {
+  const records = [];
+  const policy = createPasswordPolicy({policy: {maxConcurrentKdfs: 1}, onDerivation: record => records.push(record)});
+  const real = await policy.hash('correct-horse-battery');
+  const settled = await Promise.allSettled([
+    policy.verify('wrong-password-value', real.hash),
+    policy.verify('wrong-password-value', null),
+    policy.verify('wrong-password-value', 'bcrypt$2b$x'),
+  ]);
+  const rejected = settled.filter(result => result.status === 'rejected');
+  const fulfilled = settled.filter(result => result.status === 'fulfilled');
+  assert.equal(fulfilled.length, 1, 'exactly one derivation may run at a time');
+  assert.equal(rejected.length, 2);
+  for (const rejection of rejected) {
+    assert.equal(rejection.reason.code, 'PASSWORD_BUSY');
+    assert.equal(rejection.reason.status, 429);
+  }
+  assert.equal(policy.activeDerivations(), 0, 'the admission counter unwinds after overload');
+  const recovery = await policy.verify('wrong-password-value', real.hash);
+  assert.equal(recovery.valid, false, 'verification works again after the burst');
+});
+
+test('AUTH-003-R1 provider failures are normalized, never escaped', async () => {
+  const throwing = createPasswordPolicy({
+    argon2Impl: async () => {
+      throw new Error('native provider unavailable');
+    },
+  });
+  const result = await throwing.verify('wrong-password-value', '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA==$dGFndGFndGFndGFndGFn');
+  assert.equal(result.valid, false, 'a provider failure is a bounded credential failure');
+  const absent = await throwing.verify('wrong-password-value', null);
+  assert.equal(absent.valid, false);
+
+  for (const bad of [
+    {argon2id: {memoryKiB: 1048576}},
+    {argon2id: {maxMemoryKiB: 1048576}},
+    {argon2id: {maxPasses: 99}},
+    {argon2id: {maxParallelism: 99}},
+    {argon2id: {tagLength: 128}},
+    {maxConcurrentKdfs: 9},
+  ]) {
+    assert.throws(() => createPasswordPolicy({policy: bad}), undefined, JSON.stringify(bad));
+  }
+});
+
+test('AUTH-003-R1 exceptional attempts are durably accounted and publish nothing', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'exceptional@example.com', 'correct-horse-battery');
+      const base = createPasswordPolicy();
+
+      const cases = [
+        ['provider error', {
+          ...base,
+          verify: async () => {
+            throw new Error('verifier exploded');
+          },
+        }, 'AUTH_UNAVAILABLE', 'provider_or_store_error'],
+        ['busy', {
+          ...base,
+          verify: async () => {
+            throw new PasswordPolicyError(429, 'PASSWORD_BUSY', 'Sign-in is busy.');
+          },
+        }, 'SIGN_IN_BUSY', 'password_busy'],
+        ['rehash error', {
+          ...base,
+          verify: async () => ({valid: true, scheme: 'scrypt', needsRehash: true}),
+          hash: async () => {
+            throw new Error('rehash exploded');
+          },
+        }, 'AUTH_UNAVAILABLE', 'provider_or_store_error'],
+      ];
+
+      for (const [label, passwordPolicy, code, expectedReason] of cases) {
+        const before = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+        const email = `exceptional-${label.replaceAll(' ', '-')}@example.com`;
+        await insertUser(db, email, 'correct-horse-battery');
+        const {handler} = buildRoutes({pool, clock, passwordPolicy, rateLimitPolicy: {login: {limit: 1, windowMs: 60 * 1000}}});
+        const response = await handler(loginRequest({email, password: 'correct-horse-battery'}));
+        assert.equal(response.status, 503, label);
+        assert.equal((await response.json()).error.code, code, label);
+        assert.equal(response.headers.get('set-cookie'), null, `${label}: no credential may be published`);
+        const after = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+        assert.equal(after.rows[0].n, before.rows[0].n, `${label}: no session may survive`);
+        const audit = await db.adminQuery(
+          `SELECT detail_jsonb->>'reason' AS reason, detail_jsonb->>'attempt_order' AS ordering
+           FROM auth.auth_audit WHERE event_type = 'login_failure' ORDER BY id DESC LIMIT 1`,
+        );
+        assert.equal(audit.rows[0].reason, expectedReason, label);
+        assert.ok(/^[0-9]+$/.test(audit.rows[0].ordering), `${label}: the exceptional attempt carries a durable order`);
+
+        // The next request reflects the consumed budget (limit 1).
+        const next = await handler(loginRequest({email, password: 'correct-horse-battery'}));
+        assert.equal(next.status, 429, `${label}: the next attempt is throttled`);
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 accounting failure fails closed and reports the evidence limit', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'audit-down@example.com', 'correct-horse-battery');
+      const brokenAudit = async () => {
+        throw new Error('audit store unavailable');
+      };
+      const {handler} = buildRoutes({
+        pool,
+        clock,
+        audit: brokenAudit,
+        passwordPolicy: {
+          ...createPasswordPolicy(),
+          verify: async () => {
+            throw new Error('verifier exploded');
+          },
+        },
+      });
+      const response = await handler(loginRequest({email: 'audit-down@example.com', password: 'correct-horse-battery'}));
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      assert.equal(response.headers.get('set-cookie'), null);
+      const sessions = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions');
+      assert.equal(sessions.rows[0].n, 0);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 untrusted ingress headers never reach audit or session storage', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      await insertUser(db, 'ingress@example.com', 'correct-horse-battery');
+
+      // Default-off: even a syntactically invalid cf-connecting-ip cannot break the
+      // failure audit (the retained writer would otherwise cast it to inet) and no raw
+      // value is persisted.
+      const untrusted = buildRoutes({pool, clock});
+      const bad = await untrusted.handler(loginRequest(
+        {email: 'ingress@example.com', password: 'wrong-password-value'},
+        {headers: {'cf-connecting-ip': 'not-an-ip', 'x-forwarded-for': '203.0.113.9'}},
+      ));
+      assert.equal(bad.status, 401, 'an invalid untrusted header must not break accounting');
+      const success = await untrusted.handler(loginRequest(
+        {email: 'ingress@example.com', password: 'correct-horse-battery'},
+        {headers: {'cf-connecting-ip': '203.0.113.9', 'x-forwarded-for': '203.0.113.10'}},
+      ));
+      assert.equal(success.status, 200);
+      const token = tokenFrom(success);
+      const session = await db.adminQuery('SELECT host(ip_address) AS ip FROM auth.sessions WHERE token_hash = $1', [sha256(token)]);
+      assert.equal(session.rows[0].ip, null, 'an untrusted address is never stored on the session');
+      const audit = await db.adminQuery(`SELECT coalesce(host(ip_address), 'null') AS ip, row_to_json(a)::text AS json FROM auth.auth_audit a`);
+      for (const row of audit.rows) {
+        assert.equal(row.ip, 'null', 'an untrusted address is never stored in audit');
+        assert.equal(row.json.includes('203.0.113.9'), false);
+        assert.equal(row.json.includes('203.0.113.10'), false);
+        assert.equal(row.json.includes('not-an-ip'), false);
+      }
+
+      // Trusted and valid: the sanitized address is stored; invalid values are ignored.
+      const trusted = buildRoutes({pool, clock, trustedClientHeader: 'cf-connecting-ip'});
+      const trustedLogin = await trusted.handler(loginRequest(
+        {email: 'ingress@example.com', password: 'correct-horse-battery'},
+        {headers: {'cf-connecting-ip': '198.51.100.7'}},
+      ));
+      assert.equal(trustedLogin.status, 200);
+      const trustedToken = tokenFrom(trustedLogin);
+      const trustedSession = await db.adminQuery('SELECT host(ip_address) AS ip FROM auth.sessions WHERE token_hash = $1', [sha256(trustedToken)]);
+      assert.equal(trustedSession.rows[0].ip, '198.51.100.7');
+      const invalid = await trusted.handler(loginRequest(
+        {email: 'ingress@example.com', password: 'wrong-password-value'},
+        {headers: {'cf-connecting-ip': '999.999.999.999'}},
+      ));
+      assert.equal(invalid.status, 401, 'an invalid trusted value is discarded without an audit failure');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 ordering follows serialized post-lock attempts, with ties resolved', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+      const limiter = createRateLimiter({store, clock: clock.clock, policy: {login: {limit: 2, windowMs: 60 * 1000}}});
+      const account = 'order@example.com';
+      const keys = limiter.keysFor({email: account, request: null, realm: 'customer'});
+      const column = 'throttle_account';
+      const key = keys.scopes.account;
+      const at = clock.now();
+      const old = new Date(at.getTime() - 10 * 60 * 1000).toISOString();
+
+      const write = async (eventType, outcome, order, attemptAt) => {
+        await pool.query(
+          `INSERT INTO auth.auth_audit(event_type, outcome, occurred_at, detail_jsonb)
+           VALUES($1, $2, now(), $3::jsonb)`,
+          [eventType, outcome, JSON.stringify({
+            throttle_account: key,
+            attempt_order: order,
+            attempt_at: attemptAt,
+          })],
+        );
+      };
+
+      // A failure with a lower post-lock order than a success (but the same or older
+      // time) is BEFORE that success and must not count against the window.
+      await write('login_success', 'success', '900', at.toISOString());
+      await write('login_failure', 'failure', '800', at.toISOString());
+
+      const beforeCount = await store.withTransaction(async tx => {
+        await limiter.lockScopes(tx, keys);
+        return limiter.checkScopes(tx, keys, 'login');
+      });
+      assert.equal(beforeCount.allowed, true, 'an earlier-order failure is reset by the later success');
+      assert.match(beforeCount.order, /^[0-9]+$/, 'the verdict exposes the post-lock transaction order');
+
+      // Equal attempt_at but higher order counts, and the tie is unambiguous.
+      await write('login_failure', 'failure', '901', at.toISOString());
+      await write('login_failure', 'failure', '902', at.toISOString());
+      const equalTime = await store.withTransaction(async tx => {
+        await limiter.lockScopes(tx, keys);
+        return limiter.checkScopes(tx, keys, 'login');
+      });
+      assert.equal(equalTime.allowed, false, 'two same-time failures after the success reach the limit of two');
+
+      // Window expiry excludes even correctly ordered failures.
+      await write('login_success', 'success', '1000', at.toISOString());
+      await write('login_failure', 'failure', '1001', old);
+      const expired = await store.withTransaction(async tx => {
+        await limiter.lockScopes(tx, keys);
+        return limiter.checkScopes(tx, keys, 'login');
+      });
+      assert.equal(expired.allowed, true, 'a failure older than the window does not count');
+
+      // Concurrent login and reset histories both account, with unique orders.
+      const {handler} = buildRoutes({pool, clock, rateLimitPolicy: {login: {limit: 5, windowMs: 60 * 1000}, reset: {limit: 5, windowMs: 60 * 1000}}});
+      await Promise.all([
+        handler(loginRequest({email: 'order@example.com', password: 'wrong-password-value'})),
+        handler(resetRequest({email: 'order@example.com'})),
+        handler(loginRequest({email: 'order-2@example.com', password: 'wrong-password-value'})),
+      ]);
+      const orders = await db.adminQuery(
+        `SELECT count(*)::int AS rows, count(DISTINCT detail_jsonb->>'attempt_order')::int AS unique_orders
+         FROM auth.auth_audit WHERE detail_jsonb ? 'attempt_order'`,
+      );
+      assert.equal(orders.rows[0].rows, orders.rows[0].unique_orders, 'every accounted attempt carries a unique post-lock order');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-003-R1 restricted auth-service role and composition path', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    const userId = await insertUser(db, 'composed@example.com', 'correct-horse-battery', {scrypt: true});
+    await withAuthServicePool(db, async (pool, roleLogin) => {
+      // Real composition root (createAuthServer), not a hand-wired factory.
+      const server = createAuthServer({pool, clock: clock.clock, origins, secureCookies: true});
+      const success = await server.handler(loginRequest({email: 'composed@example.com', password: 'correct-horse-battery'}));
+      assert.equal(success.status, 200, `${roleLogin} must authenticate through the composition root`);
+      const token = tokenFrom(success);
+      assert.ok(token);
+      const upgraded = await db.adminQuery('SELECT password_scheme FROM auth.users WHERE id = $1', [userId]);
+      assert.equal(upgraded.rows[0].password_scheme, 'argon2id', 'the conditional rehash UPDATE succeeds under auth-service grants');
+      const session = await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions WHERE token_hash = $1', [sha256(token)]);
+      assert.equal(session.rows[0].n, 1);
+
+      // Default composed throttle: eight failures are evaluated, the ninth is refused.
+      let last = null;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        last = await server.handler(loginRequest({email: 'composed@example.com', password: 'wrong-password-value'}));
+        assert.equal(last.status, 401);
+      }
+      const throttled = await server.handler(loginRequest({email: 'composed@example.com', password: 'wrong-password-value'}));
+      assert.equal(throttled.status, 429, 'the composed default policy still throttles');
+
+      const who = await pool.query('SELECT current_user AS name').then(result => result.rows[0].name);
+      assert.equal(who, roleLogin);
+      const ddl = await pool.query('ALTER TABLE auth.sessions ADD COLUMN probe integer').then(() => 'allowed').catch(error => error.code);
+      assert.equal(ddl, '42501', 'the runtime role cannot alter auth tables');
+      const tenant = await pool.query('SELECT count(*) FROM operator.tenant').then(() => 'allowed').catch(error => error.code);
+      assert.equal(tenant, '42501', 'the runtime role cannot read tenant financial data');
+    });
+  });
 });
