@@ -231,3 +231,142 @@ objects left.
 ## GIT (R1)
 
 branch=opencode/auth-003-passwords commits=`2f7cc80`,report commit pushed=yes
+
+# AUTH-003-R2 revision — 16 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-003-R1-passwords-and-limits.md` at
+`ce520d0`. Contract executed: its three Required corrections, on branch
+`opencode/auth-003-passwords`. Implementation commit `1223f95`, plus this report commit.
+TOUCH stayed exact; `server.mjs`, schema, grants, dependencies and PIVOT-004 untouched.
+
+## Finding 1 — invalid input can never authenticate
+
+- Input validity is now a separate `inputValid` flag. Non-string, empty, oversized and
+  NUL-containing input performs the same bounded admitted dummy derivation and then
+  returns `valid: false`, `needsRehash: false`, `inputValid: false` unconditionally — it
+  is never compared with the stored verifier. The dummy string is not banned.
+- Adapter regression: a verifier deliberately created from the exact public dummy string
+  rejects `undefined`, `null`, numeric, empty, 20 000-character and NUL-bearing input for
+  both Argon2id and retained scrypt, never requests a rehash, and still accepts the real
+  dummy string (with scrypt still flagged for upgrade).
+- Route regression: a user whose password is the dummy string gets `401` and no cookie
+  for each ill-formed body, zero sessions, an unchanged verifier, and `200` only for the
+  actual valid string. A short string is treated as a well-formed wrong credential, not
+  an invalid shape.
+
+## Finding 2 — reservation before work, serialized with admission
+
+- `createRateLimiter.attempt` now: takes a **session-scoped** advisory lock per scope on
+  one checked-out client; in a short transaction re-checks the budget and commits either
+  a denied row or a reservation row carrying the post-lock time/order; only then calls
+  the caller's action (verification plus its own atomic success transaction); releases
+  the lock at the end. The reservation is durable before any KDF starts, a waiting
+  concurrent attempt cannot observe an unrecorded attempt, and a crash after the
+  reservation leaves a counted attempt while a crash before it leaves none.
+- Successful rehash + session + success audit remain one atomic transaction; the success
+  row's later transaction order resets the reservation for that scope.
+- Audit-store failure during reservation fails closed with
+  `503 AUTH_ACCOUNTING_UNAVAILABLE` and opens a cooldown breaker; requests during the
+  cooldown are refused **before** any KDF admission. Tests assert zero derivations across
+  three consecutive audit-down requests and recovery after the cooldown with a healthy
+  store.
+- A later success-audit failure leaves the durable reservation counted, withholds the
+  cookie, rolls the session transaction back, and cools down admission; after cooldown
+  the next attempt is throttled.
+- Paused-reservation test: while the first reservation's audit write is paused, a
+  concurrent same-scope request starts no KDF (derivations 0); with limit 1 exactly one
+  request is evaluated, one is throttled, one admitted derivation runs and exactly one
+  durable attempt row exists.
+- Commit ambiguity is documented rather than denied: a lost commit acknowledgement
+  withholds all credentials but is not evidence that the row does not exist.
+- Ordering: `attempt_at`/`attempt_order` are sampled after the lock; the real
+  delayed-lock/closing interleaving is covered by the paused-reservation test plus the
+  synthetic order/ties/window test. Transaction identifiers reflect allocation order, so
+  the post-lock/no-earlier-allocation precondition is stated rather than generalised.
+
+## Finding 3 — one canonical ingress identity everywhere
+
+- `canonicalizeIp` validates and canonicalises once (IPv4 dotted decimal, IPv6 compressed
+  and lower-cased through the URL parser) and returns null for anything invalid.
+- The same canonical value feeds the limiter scope for **both** login and forgot-password,
+  the session row and audit metadata; `throttleScopes` no longer receives a raw request.
+- Tests: invalid configured values create no network scope and cannot break the failure
+  audit; equivalent IPv6 spellings share one budget across login and reset; default-off
+  headers stay ignored; untrusted addresses are stored nowhere.
+
+## Dispositions and remaining limits
+
+- Thresholds and the trusted-ingress header remain deployment-controlled and versioned;
+  no numeric production policy or header is approved. The retained `createAuthServer`
+  still cannot forward rate policy/trusted header (needs a narrow `server.mjs` contract).
+- Audit-ledger scope scans remain Phase-1; indexed storage/load evidence needs its own
+  contract. Mail/reset tokens remain AUTH-005. `.nvmrc`/Node pins and native Argon2id
+  preserved.
+- `operator.tenant` denial is an operator-directory negative, not a financial-table test;
+  the auth-schema negative grants from AUTH-001 remain the broader evidence.
+
+## Out-of-TOUCH test expectations that now need an engineer update
+
+The corrected semantics intentionally change two accepted AUTH-002 assertions, which are
+outside this TOUCH and were not edited:
+
+1. `tests/auth-002-sessions.test.mjs:368` — after an injected success-audit failure the
+   next attempt is now `503 AUTH_ACCOUNTING_UNAVAILABLE` during the accounting cooldown
+   (fail-closed admission), not `401`. The test needs to advance the clock/cooldown or
+   use a fresh server before expecting `401`; its later "exactly one failure row"
+   assertion also predates durable reservations.
+2. The same file's commit-uncertainty case expects `SESSION_TRANSACTION_UNCERTAIN`, but
+   the intercepted COMMIT is now the reservation commit, which fails closed as
+   `AUTH_ACCOUNTING_UNAVAILABLE` (no session work had begun). The assertion needs to
+   target the success-transaction commit or accept the accounting code.
+
+Full branch suite on the corrected source: `227` tests, `224` pass, `3` fail — the two
+stale AUTH-002 assertions above plus the pre-existing PIVOT-004 fixture prerequisite
+(`role "saven_customer_app" does not exist`), which is not attributed to this patch. The
+suite is not claimed green and PIVOT-004 was not touched.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs && node --test tests/auth-003-passwords.test.mjs
+PASS: 158 JavaScript files parsed; package manifest valid.
+✔ AUTH-003 password policy prefers Argon2id and retains bounded scrypt (1722.015908ms)
+✔ AUTH-003 KDF concurrency is bounded and overload is refused (203.321278ms)
+✔ AUTH-003 a successful sign-in upgrades a retained scrypt verifier (1140.225525ms)
+✔ AUTH-003 login throttling is deterministic, durable and non-enumerating (1977.559025ms)
+✔ AUTH-003 a successful sign-in resets the failure window (1557.29112ms)
+✔ AUTH-003 concurrent failures cannot slip past the configured limit (1116.970346ms)
+✔ AUTH-003 throttle scopes ignore spoofed forwarding headers unless configured (1933.257141ms)
+✔ AUTH-003 password-reset requests share the throttle policy and send nothing (484.471304ms)
+✔ AUTH-003 audit records throttle digests and never raw secrets (971.897017ms)
+✔ AUTH-003 rate policy rejects unsafe configuration (0.710728ms)
+✔ AUTH-003-R1 every verification path is admitted and uses comparable work (1419.151917ms)
+✔ AUTH-003-R1 admission covers dummy and mixed paths and recovers after overload (615.983584ms)
+✔ AUTH-003-R1 provider failures are normalized, never escaped (0.805123ms)
+✔ AUTH-003-R1 exceptional attempts are durably accounted and publish nothing (1406.673128ms)
+✔ AUTH-003-R1 audit-store failure fails closed before KDF admission and recovers (694.113098ms)
+✔ AUTH-003-R1 reservations are serialized: paused logging blocks concurrent work (734.114314ms)
+✔ AUTH-003-R1 a post-reservation audit failure keeps the attempt counted and withholds credentials (676.996755ms)
+✔ AUTH-003-R1 untrusted ingress headers never reach audit or session storage (1316.621487ms)
+✔ AUTH-003-R1 ordering follows serialized post-lock attempts, with ties resolved (505.330311ms)
+✔ AUTH-003-R1 restricted auth-service role and composition path (2344.596264ms)
+✔ AUTH-003-R1 invalid input never authenticates through the dummy substitution (5666.054679ms)
+✔ AUTH-003-R1 ingress identity is canonical, validated and shared by both endpoints (917.083159ms)
+ℹ tests 22
+ℹ pass 22
+ℹ fail 0
+ℹ skipped 0
+```
+
+Exit `0`. Without the dedicated-cluster opt-in: exit `1`, six DB-free unit passes and
+sixteen refusals.
+
+Environment: disposable PostgreSQL 18.6 on loopback `127.0.0.1:55443`; fixture objects
+and per-test auth-service logins removed; cluster stopped and deleted; no `saven_auth_%`
+objects remain.
+
+## GIT (R2)
+
+branch=opencode/auth-003-passwords commits=`1223f95`,report commit pushed=yes
