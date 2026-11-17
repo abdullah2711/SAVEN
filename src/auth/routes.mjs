@@ -159,6 +159,7 @@ export function createAuthRoutes({
   recoveryConfig = {},
   mailQueueLimit = 256,
   tenantSelection = null,
+  operatorAccess = null,
   trustedClientHeader = null,
   audit = async () => {},
   origins,
@@ -720,6 +721,133 @@ export function createAuthRoutes({
     return json(result);
   }
 
+  // AUTH-007: Cloud operator Access exchange. The assertion is the only credential; no
+  // password/TOTP field is accepted. A successful exchange creates an operator-realm
+  // session from an explicit active subject mapping.
+  function operatorRealmGuard(realm) {
+    if (realm !== 'operator') {
+      throw new AuthError(403, 'OPERATOR_REALM_REQUIRED', 'Operator access must use the operator origin.');
+    }
+  }
+
+  async function auditOperatorFailure(error, request, realm) {
+    try {
+      await audit({
+        eventType: 'login_failure',
+        outcome: error?.status === 409 ? 'denied' : 'failure',
+        realm,
+        user: null,
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+        detail: {reason: typeof error?.code === 'string' ? error.code : 'operator_access_failed'},
+      }, {});
+    } catch {
+      // Failure audit must not replace the authentication decision.
+    }
+  }
+
+  async function operatorAccessRoute(request, url, realm) {
+    operatorRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    if (Object.keys(body).length > 0) throw new AuthError(400, 'UNKNOWN_FIELDS', 'No exchange fields are accepted.');
+    if (!operatorAccess) throw new AuthError(503, 'OPERATOR_ACCESS_UNAVAILABLE', 'Operator Access is not configured.');
+    const authorization = request.headers.get('authorization') ?? '';
+    const match = /^Bearer\s+(\S+)$/.exec(authorization);
+    if (!match || match[1].length > 16384) {
+      throw new AuthError(401, 'OPERATOR_ACCESS_REQUIRED', 'A Cloud operator assertion is required.');
+    }
+    const ingress = sanitizeIngress(request, trustedClientHeader);
+    const archive = auditView(request, trustedClientHeader, ingress.ip);
+    try {
+      const result = await operatorAccess.exchange(match[1], {
+        ipAddress: ingress.ip,
+        userAgent: archive.headers.get('user-agent') ?? null,
+        requestId: archive.headers.get('x-request-id') ?? null,
+        onSuccess: async ({tx, claims, mapping, session}) => {
+          await record({
+            eventType: 'login_success',
+            outcome: 'success',
+            realm: 'operator',
+            user: {id: mapping.user_id},
+            request: archive,
+            sessionId: session.session.id,
+            detail: {
+              operator_subject: mapping.subject,
+              operator_role: mapping.operator_role_id,
+              access_issuer: claims.issuer,
+              access_audience: claims.audience,
+              assurance: claims.assurance,
+              exchange: 'consumed',
+            },
+          }, {tx});
+        },
+      });
+      const response = json({
+        realm: 'operator',
+        csrfToken: result.csrfToken,
+        operator: {subject: result.subject, roleId: result.roleId, assurance: result.assurance},
+        session: {assuranceLevel: 'access_asserted'},
+      });
+      response.headers.set('Set-Cookie', sessionCookie({
+        realm: 'operator',
+        token: result.token,
+        secure: secureCookies,
+        maxAgeSeconds: cookieMaxAge,
+      }));
+      return response;
+    } catch (error) {
+      await auditOperatorFailure(error, request, realm);
+      throw error;
+    }
+  }
+
+  async function operatorMeRoute(request, url, realm) {
+    operatorRealmGuard(realm);
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const session = await store.readSession(token, {realm});
+    if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const refreshed = await store.refreshSession(session.id);
+    if (!refreshed) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    return json({
+      operator: {userId: session.userId, roleId: refreshed.selectedRoleId ?? session.roleId ?? null, assuranceLevel: refreshed.assuranceLevel},
+      session: {
+        realm: refreshed.realm,
+        assuranceLevel: refreshed.assuranceLevel,
+        idleExpiresAt: refreshed.idleExpiresAt,
+        absoluteExpiresAt: refreshed.absoluteExpiresAt,
+      },
+    });
+  }
+
+  async function operatorLogoutRoute(request, url, realm) {
+    operatorRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const provided = request.headers.get('x-csrf-token');
+    const revoked = await store.withTransaction(async tx => {
+      const session = await store.lockSession(token, {realm, tx});
+      if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      if (!csrfMatches(provided, session.csrfTokenHash)) throw new AuthError(403, 'CSRF_FAILED', 'CSRF verification failed.');
+      const result = await store.revokeSession(session.tokenHash, {reason: 'logout', actor: session.userId, tx});
+      if (!result) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      await record({
+        eventType: 'logout',
+        outcome: 'success',
+        realm: 'operator',
+        user: {id: session.userId},
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+        sessionId: session.id,
+        detail: {},
+      }, {tx});
+      return result;
+    });
+    const response = json({ok: true});
+    response.headers.set('Set-Cookie', sessionCookie({realm, token: '', secure: secureCookies, maxAgeSeconds: 0}));
+    return response;
+  }
+
   function requireCsrf(request, session) {
     const provided = request.headers.get('x-csrf-token');
     if (!csrfMatches(provided, session.csrfTokenHash)) {
@@ -1049,6 +1177,12 @@ export function createAuthRoutes({
         response = await selectTenant(request, url, realm);
       } else if (path === '/v1/auth/tenant/clear' && request.method === 'POST') {
         response = await clearTenant(request, url, realm);
+      } else if (path === '/v1/auth/operator/access' && request.method === 'POST') {
+        response = await operatorAccessRoute(request, url, realm);
+      } else if (path === '/v1/auth/operator/me' && request.method === 'GET') {
+        response = await operatorMeRoute(request, url, realm);
+      } else if (path === '/v1/auth/operator/logout' && request.method === 'POST') {
+        response = await operatorLogoutRoute(request, url, realm);
       } else if (path === '/v1/auth/mfa' && request.method === 'GET') {
         response = await mfaStatusRoute(request, url, realm);
       } else if (path === '/v1/auth/mfa/enroll' && request.method === 'POST') {

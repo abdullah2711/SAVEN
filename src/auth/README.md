@@ -552,3 +552,57 @@ a business before verification. Operator realms refuse selection.
   full business policy engine.
 - No tenant-selection audit event is emitted; the canonical `auth_event_type` domain has no
   such value (AUTH-009/reference-data owner).
+
+## Cloud operator Access (AUTH-007)
+
+Cloud operators authenticate through a validated Cloudflare Access/approved IdP assertion,
+not a local operator password or TOTP. The assertion is exchanged once for an operator-realm
+session bound to an explicit local subject mapping.
+
+### Routes
+
+| Route | Method | Behaviour |
+| --- | --- | --- |
+| `/v1/auth/operator/access` | POST | Requires the operator origin and `Authorization: Bearer <Access JWT>`; validates issuer/audience/algorithm/keys/time/assurance, resolves an active subject mapping, consumes a one-time exchange nonce, and issues a host-only operator session cookie. No exchange body fields are accepted. |
+| `/v1/auth/operator/me` | GET | Returns the current operator session's local user/role/assurance and expiry metadata. No tenant context. |
+| `/v1/auth/operator/logout` | POST | CSRF-checked revocation of the operator session and audit. |
+
+Local `/v1/auth/login`, password reset and MFA routes continue to refuse the operator realm.
+
+### Invariants
+
+- The validator trusts exactly one configured issuer, audience, algorithm set
+  (RS256/RS384/RS512) and fixed key source. `jku`/`x5u` and any token-supplied URL are
+  ignored. Unknown keys fail closed; a fixed-source refresh may run once per cooldown.
+- Expiry, not-before, issue time, issuer, audience, signature and subject are checked with a
+  bounded skew. A valid signature alone is not MFA proof.
+- Operator subjects are explicit rows in `operator.access_identity`: Access subject -> local
+  auth identity + operator role + assurance class + effective window. There is no wildcard or
+  universal support subject. The mapped auth role must be an active/effective
+  `auth.roles.is_operator` role; the local identity must be active.
+- The required assurance class (default `access_mfa`) must match both the verified claim
+  derived assurance and the mapping's assurance class. Missing or stale assurance is refused.
+- One-time exchange: a SHA-256 digest of `identity_nonce` (or the assertion when absent) is
+  inserted into `operator.access_exchange`; a conflict is a replay refusal. Raw assertions
+  are never stored. Ordinary unexpired bearer validation is reusable; no impossible
+  replay-proof claim is made for a captured bearer.
+- Success audit and the session/nonce transaction commit together; failures are audited
+  independently with generic reasons and never include the assertion. No local operator
+  password/TOTP secret exists.
+- Fully Private local administration stays independent; this module adds no Cloud-only
+  dependency to the local path.
+
+### Configuration and extension points
+
+- Issuer, audience, allowed algorithms, fixed key source/refresh, skew, maximum token age,
+  refresh cooldown and required assurance are deployment configuration. Access policy/DNS/
+  tunnel changes are outside this module.
+- Additional operator roles/scopes are `auth.roles`/mapping data, not new code branches.
+- Operator data reads still require the separate PIVOT-007 grants/audit; this module only
+  creates the operator session.
+
+### Non-claims
+
+- No live Access policy, network key fetch, DNS/tunnel change or production credential is
+  included; tests use mocked keys/assertions.
+- Complete operator-read audit and failure taxonomy remain AUTH-009/PIVOT-007 work.
