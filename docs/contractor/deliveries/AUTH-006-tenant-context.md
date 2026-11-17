@@ -108,3 +108,106 @@ tokens stay digest-only (D-012).
 ## GIT
 
 branch=opencode/auth-006-context commit=`dc690f5`,report+checkpoint commit pushed=yes
+
+# AUTH-006-R1 revision — 17 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-006-tenant-context.md` at
+`dc183a2`. Implementation `e5eb06e`; report + checkpoint follow. TOUCH unchanged; no
+schema, migration, grant, dependency, entry point or native source change.
+
+## Findings closed
+
+1. **HIGH — one authoritative admission boundary.** Status: **closed within current
+   RLS/role limits, with one explicitly requested amendment.** `withAuthority` no longer
+   commits before business work: it opens ONE auth-service transaction, row-locks
+   `auth.users`, `auth.two_factor` and `auth.sessions` in AUTH-004 lifecycle order,
+   validates the customer realm, principal, credential generation, exact session and
+   selected membership identity/tenant/epoch, and keeps the transaction and its locks open
+   while the business transaction runs. A concurrent logout/revocation, rotation,
+   credential reset or factor disable/change blocks on those locks until business work
+   ends; if it committed before the locks, admission fails closed. Membership/role/epoch
+   authority is re-read at the admission point, so a change committed during a pause is
+   observed and refused before the handler.
+   - Tests: a paused admission blocks revocation, credential-generation change and
+     selection clearing (each update times out while the boundary holds); the handler runs,
+     the business effect commits, and the changes apply afterwards. A membership epoch
+     change committed during the pause wins and the handler is not invoked
+     (`TENANT_SELECTION_STALE`, no effect). Expiry advanced during the pause is refused
+     (`SESSION_REQUIRED`, no effect). A factor disable during the pause blocks; business
+     wins and the next admission requires MFA. BEGIN failure, rollback failure and a
+     persisted COMMIT whose acknowledgement is lost all destroy the business client, with
+     the lost-ack case honestly reported as uncertain and not undone.
+   - **Requested narrow amendment (not authorized here):** `auth.tenant_membership` has
+     forced RLS with SELECT policies only for the auth service, so a runtime
+     `SELECT … FOR SHARE/UPDATE` is filtered/denied and cannot lock membership rows. To
+     serialize a membership/role/epoch change for the whole business transaction, a
+     narrowly reviewed additive interface is required (for example a SECURITY DEFINER
+     membership lock/validation function or a reviewed locking policy). Until that
+     amendment, such a change is caught by the admission re-read; a change committing
+     after that re-read and during handler execution is caught by the next request. This is
+     stated in both module READMEs and is not claimed as full serialization.
+
+2. **CRITICAL — MFA and realm are part of reusable admission.** Status: **closed.**
+   `readSessionById` now filters the customer realm by default and exposes
+   `mfa_verified_at`; selection and admission derive requirements from active/effective
+   assurance-role data (`requires_mfa`), require a currently verified factor plus
+   `mfa_verified` session assurance, and fail closed with `503
+   TENANT_AUTHORITY_UNAVAILABLE` if requirements cannot be resolved. The checks run inside
+   `list`, `select`, `clear` and `withAuthority`, not only in the HTTP pre-MFA guard.
+   Tests: pending/enrollment-only admin is denied at both selection and context even with a
+   row-forced selection; verified admin is a positive path; member-to-admin promotion
+   without an epoch bump is denied; factor disable and assurance downgrade after selection
+   are denied; operator-realm session is refused; unresolved role authority fails closed.
+   No hardcoded business role names are used.
+
+3. **MEDIUM — same-tenant company/resource evidence and guidance.** Status: **closed.**
+   The DB README now states that forced RLS tenant isolation complements the shared
+   business authorization layer and never replaces it; configurable per-tenant rules stay
+   in versioned policy data (`business_rule`/approval/assignment), not RLS, and the wrapper
+   is explicitly not the business policy engine. A new composition test runs inside a T1
+   context: a `business_rule` company scope allows company `alpha` and denies company
+   `beta` in the same tenant. The allowed warehouse write commits; the denied write throws
+   and leaves no row. **Acceptance dependency:** the production company/resource
+   authorization module (approval/assignment/denial evaluation) is future shared-layer
+   work; this test composes an illustrative authorizer over the canonical `business_rule`
+   data and does not claim to implement that engine.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 166 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-006-context.test.mjs
+tests 16  pass 16  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6 on
+`127.0.0.1:55432`, accepted PIVOT-004/031/032 RLS stack, real non-owner auth-service and
+customer-app logins):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 16/16
+combined 109 tests, 109 pass, 0 fail
+```
+
+## Boundaries
+
+- The requested membership-lock amendment above is the only open serialization dependency;
+  no migration/grant change was made.
+- No tenant-selection audit event is emitted (no canonical `auth_event_type` value;
+  AUTH-009/reference-data owner).
+- No active entry point/UI/feature activation; no PgBouncer instance, production load or
+  full-branch default-concurrency claim.
+- SQLite remains production.
+
+## EXTENSIBILITY
+
+compliant — requirements are reference-driven, admission is an injected protocol, locks
+follow the accepted lifecycle order, and company/resource rules remain versioned policy
+data rather than RLS or hardcoded roles.
+
+## GIT (R1)
+
+branch=opencode/auth-006-context commit=`e5eb06e`,report+checkpoint commit pushed=yes
