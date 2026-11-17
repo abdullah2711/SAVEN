@@ -1,14 +1,15 @@
 CONTRACT: docs/contractor/contracts/PIVOT-006-audit-triggers.md
-STATUS: DONE (R1 revision: database audit payload and mechanism evidence; application/UI/RBAC and AUTH-006 acceptance remain limits below)
+STATUS: DONE (R2 revision: database audit payload and mechanism evidence; application/UI/RBAC and AUTH-006 acceptance remain limits below)
 
 ## Identity
 
 - Branch: `opencode/pivot-006-audit`.
 - Worktree: `/home/esc/saven/wt-pivot-006`.
 - Base: `testing-1 @ 32fef2beac91a73b2c8a5ae9c150603736993e97`.
-- Previously reviewed head: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281`.
-- Implementation commit: `12732d3d1210a98fe446078d5a2b359a7a302553`
-  (`db: bound audit authority, native actors, serialization and provenance
+- Previously reviewed heads: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281` (initial) and
+  `8af08cc24bfd37748c2cc13d5b93acebb94daeda` (R1).
+- Implementation commit: `98e86de9754a267803b6bcace22b5ef7ffe7b914`
+  (`db: support parameterized numeric audit schemas and per-table inventory
   [contract:PIVOT-006]`).
 - Report commit: the commit that carries this file; pushed on the same branch.
 - Not merged. No other branch, main, production path or applied 040/042 payload byte was changed.
@@ -52,11 +53,21 @@ STATUS: DONE (R1 revision: database audit payload and mechanism evidence; applic
 ### Serialization contract (version 1)
 
 - `immutability_041_serialize(regclass, jsonb)` is the versioned audit boundary.
-- Structured scalar columns and reviewed business text are retained.
-- JSONB and unreviewed text are replaced by
-  `{redacted:true,type,sha256}` and named in `redactedColumns`.
-- An unreviewed column type raises `AUDIT_SERIALIZATION_UNSUPPORTED` and rolls the
-  business mutation back.
+- Supported base types are classified by catalog identity (`pg_type.typname`), not by
+  formatted type strings. Parameterized numerics such as `numeric(20,4)` on
+  `approval_policy.max_self_approval_amount`/`approval_threshold_amount` and
+  `numeric(9,6)` on `tax_profile.rate` retain their exact JSON numeric value; there is no
+  float cast or rounding.
+- Every registered table has an exact reviewed schema fingerprint over ordered column
+  names, base type names and typmods
+  (`immutability_041_schema_fingerprint` / `immutability_041_expected_fingerprint`). A
+  new, renamed or retyped column raises `AUDIT_SERIALIZATION_SCHEMA_CHANGED`; a genuinely
+  unknown base type raises `AUDIT_SERIALIZATION_UNSUPPORTED`; both roll the mutation
+  back. A new column whose name is allow-listed on another table therefore cannot
+  inherit raw retention.
+- Structured scalar columns and reviewed business text are retained; JSONB and
+  unreviewed text are replaced by `{redacted:true,type,sha256}` and named in
+  `redactedColumns`.
 - This is a sidecar redaction boundary, not a claim that arbitrary free text typed into
   a reviewed business field can be made secret-free. Original financial/source bytes
   are untouched.
@@ -110,6 +121,12 @@ STATUS: DONE (R1 revision: database audit payload and mechanism evidence; applic
   default privilege), including untouched role/grant preservation.
 - Secret-leak negatives across INSERT/UPDATE/DELETE for JSONB and text payloads, safe
   business-value positives, and an unsupported `bytea` column fail-closed.
+- Real customer-role INSERT/UPDATE on `approval_policy` `numeric(20,4)` and
+  `tax_profile` `numeric(9,6)`, exact before/after values, decimal write rollback and a
+  context-bound DELETE/rollback path.
+- Catalog-driven coverage over every registered table's schema fingerprint, plus
+  supported/unsupported schema-change negatives: a new allow-listed-name column and a
+  changed base type both fail closed and roll back.
 - Human/AI/integration provenance positives; AI/human/invalid-origin spoof negatives;
   generic GUC-spoof negative.
 - Dispatcher registration/re-run/refusal, exact 040/042 bindings retained, 041
@@ -130,6 +147,18 @@ STATUS: DONE (R1 revision: database audit payload and mechanism evidence; applic
 `trade_allocations`, `trade_controls`, `trade_credit_lines`, `trade_credits`,
 `trade_documents`, `trade_lines`, `trade_operations`, `trade_parties`,
 `verified_entitlement`, `warehouses`.
+
+Every table in this list has an exact schema fingerprint in 041; the catalog-driven test
+asserts all 42 expected fingerprints match the live schema. The per-schema review records
+are the expected-fingerprint CASE entries in `041-audit.sql`; each covers all ordered
+column names, base types and typmods for that table. The parameterized numeric columns
+are explicitly:
+
+| Table | Column | Type | Serialization |
+| --- | --- | --- | --- |
+| `approval_policy` | `max_self_approval_amount` | `numeric(20,4)` | exact JSON numeric, no float cast/rounding |
+| `approval_policy` | `approval_threshold_amount` | `numeric(20,4)` | exact JSON numeric, no float cast/rounding |
+| `tax_profile` | `rate` | `numeric(9,6)` | exact JSON numeric, no float cast/rounding |
 
 ## Explicit exclusions
 
@@ -165,25 +194,24 @@ $ node --test tests/pivot-006-audit.test.mjs
 ✔ PIVOT-006 native audit inserts are bound to the admitted actor and tenant
 ✔ PIVOT-006 serialization redacts extensible payloads and validates provenance
 ✔ PIVOT-006 activation is atomic and the 041-without-dispatcher window is explicit
-ℹ tests 10
-ℹ pass 10
+ℹ tests 11
+ℹ pass 11
 ℹ fail 0
 ```
 
 PIVOT-005 regression on the same tree: **18/18 pass**.
 
-Full suite serial (`--test-concurrency=1`): **306/308 pass**, two failures:
+Full suite serial (`--test-concurrency=1`): **308/309 pass**, one failure:
 
-1. `AUTH-004-R1 durable bounded failure policy spans sessions and endpoints` —
-   fixture-teardown transient (`terminating connection due to administrator command`)
-   under the combined run; unchanged AUTH test, outside PIVOT-006 TOUCH.
-2. `PIVOT-004 resists an extra permissive policy and an attacker permissive policy on
+1. `PIVOT-004 resists an extra permissive policy and an attacker permissive policy on
    auth` — the known out-of-TOUCH literal global-role `saven_customer_app` prerequisite
    on a namespaced pristine cluster. Not repaired here; no global role was created to
    mask it.
 
-No PIVOT-006 focused or PIVOT-005 test failed. These are worker-executed gates, not an
-independent reviewer run or an application/AUTH-006 proof.
+An earlier combined run also showed the unchanged AUTH-004-R1 fixture-teardown transient
+(`terminating connection due to administrator command`); the final serial run above did
+not reproduce it. No PIVOT-006 focused or PIVOT-005 test failed. These are worker-executed
+gates, not an independent reviewer run or an application/AUTH-006 proof.
 
 ## Upgrade / activation procedure and quiescence boundary
 
@@ -266,5 +294,5 @@ preserved.
 ## GIT
 
 branch=opencode/pivot-006-audit base=testing-1 @ 32fef2b
-implementation=12732d3d1210a98fe446078d5a2b359a7a302553
+implementation=98e86de9754a267803b6bcace22b5ef7ffe7b914
 report=this commit pushed=yes merged=no

@@ -1,4 +1,4 @@
-# WORKER-B checkpoint — PIVOT-006 R1 corrections delivered, awaiting review
+# WORKER-B checkpoint — PIVOT-006 R2 corrections delivered, awaiting review
 
 Date: 17 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
 directive; this file is outside any contract TOUCH.
@@ -9,16 +9,17 @@ directive; this file is outside any contract TOUCH.
   `32fef2beac91a73b2c8a5ae9c150603736993e97`; post-merge checkpoint `e671882`.
 - PIVOT-006 branch: `opencode/pivot-006-audit`.
 - Worktree: `/home/esc/saven/wt-pivot-006`, based on `32fef2b`.
-- Previously reviewed head: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281`.
-- R1 implementation commit: `12732d3d1210a98fe446078d5a2b359a7a302553`
-  (`db: bound audit authority, native actors, serialization and provenance
+- Previously reviewed heads: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281` (initial) and
+  `8af08cc24bfd37748c2cc13d5b93acebb94daeda` (R1).
+- R2 implementation commit: `98e86de9754a267803b6bcace22b5ef7ffe7b914`
+  (`db: support parameterized numeric audit schemas and per-table inventory
   [contract:PIVOT-006]`).
 - Delivery report: `docs/contractor/deliveries/PIVOT-006-audit-triggers.md`
   (required by review `d8fe104`).
 - This checkpoint is a follow-up commit on the same branch. PIVOT-006 is **not merged**;
   no main/other branch was changed and no force was used.
 
-## Review corrections closed (d8fe104)
+## Review corrections closed (d8fe104 and R1 review)
 
 1. **Dedicated least-privileged audit owner.** 041 is now an offline-admin payload that
    provisions `saven_audit_definer` (`NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
@@ -57,16 +58,28 @@ directive; this file is outside any contract TOUCH.
    the 041-without-dispatcher window is explicitly unaudited and requires write
    quiescence. 040/042 bytes are untouched and 040/042-only compatibility remains
    honestly non-PIVOT-006 coverage.
+6. **R1 serialization/schema correction.** The serializer now classifies supported base
+   types by `pg_type.typname`, preserving exact parameterized numerics
+   (`numeric(20,4)` on `approval_policy` thresholds/self-approval and `numeric(9,6)` on
+   `tax_profile.rate`) without float casts/rounding. Every registered table has an exact
+   reviewed schema fingerprint over ordered column names, base types and typmods; new,
+   renamed or retyped columns raise `AUDIT_SERIALIZATION_SCHEMA_CHANGED`, unknown base
+   types raise `AUDIT_SERIALIZATION_UNSUPPORTED`, and both roll back. Real
+   customer-role INSERT/UPDATE tests cover both decimal tables with exact before/after
+   values; rollback and context-bound DELETE/rollback are tested. Catalog-driven coverage
+   asserts all 42 registered table fingerprints, a new allow-listed-name column and a
+   supported base-type change both fail closed. Reviewed business free text remains
+   explicitly retained with the documented non-universal-secret-free limit.
 
 ## Evidence
 
 - `node scripts/check.mjs` → PASS, 165 JavaScript files.
-- Focused `node --test tests/pivot-006-audit.test.mjs` → **10/10 pass**.
+- Focused `node --test tests/pivot-006-audit.test.mjs` → **11/11 pass**.
 - PIVOT-005 regression → **18/18 pass**.
-- Serial full suite → **306/308 pass**; the two failures are the known out-of-TOUCH
-  PIVOT-004 literal-global-role prerequisite and an AUTH-004-R1 fixture-teardown
-  transient (`terminating connection due to administrator command`) under the combined
-  run. No PIVOT-006 focused or PIVOT-005 test failed.
+- Serial full suite → **308/309 pass**; the only failure is the known out-of-TOUCH
+  PIVOT-004 literal-global-role prerequisite. An earlier combined run also showed an
+  AUTH-004-R1 fixture-teardown transient, not reproduced in the final serial run. No
+  PIVOT-006 focused or PIVOT-005 test failed.
 - Environment: dedicated disposable PostgreSQL 18.6 on loopback `127.0.0.1:55435`,
   `SAVEN_PIVOT_TEST_CLUSTER=1`, local admin `esc`, Node v24.19.0 via
   `npm exec --yes --package=node@24.19.0`. No global `saven_*` role was created; the
@@ -86,7 +99,7 @@ PIVOT-004 fixtures/tests are untouched.
 
 ## Where I stopped
 
-R1 implementation, delivery report, focused/regression/serial full-suite evidence,
+R2 implementation, delivery report, focused/regression/serial full-suite evidence,
 commit and push are complete on `opencode/pivot-006-audit`. No review corrections have
 been started. PIVOT-006 is not merged.
 
