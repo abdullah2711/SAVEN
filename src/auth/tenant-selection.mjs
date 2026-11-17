@@ -245,25 +245,30 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
         membershipEpoch: Number(selected.membership_epoch),
         roleId: selected.role_id,
       });
+      const resolvedRoleId = selected.role_id;
 
       const assertAdmission = async () => {
         const at = now();
         assertSessionUnexpired(current, at);
         // Membership/role/epoch state is re-read here because those rows cannot be
         // row-locked by the runtime under the accepted RLS. A committed change during a
-        // paused resolution is therefore observed and fails closed.
+        // paused resolution or during handler execution is therefore observed and fails
+        // closed before the business transaction may commit.
         const fresh = (await readMemberships(executor, current.userId)).rows;
         const selectedNow = fresh.find(row => row.id === current.selectedMembershipId) ?? null;
         if (!selectedNow ||
             selectedNow.tenant_id !== current.selectedTenantId ||
             Number(selectedNow.membership_epoch) !== current.membershipEpoch ||
+            selectedNow.role_id !== resolvedRoleId ||
             !membershipUsable(selectedNow, at)) {
           throw new TenantSelectionError(409, 'TENANT_SELECTION_STALE', 'Your access changed. Select the business again.');
         }
         assertAssurance(current, authority.factor, evaluate(fresh, at).required);
       };
 
-      // A final admission check before the callback opens the business transaction.
+      // Admission is checked before business work and again immediately before the
+      // business transaction commits, so an authority change committed during handler
+      // execution rolls the business effects back instead of retaining an earlier role.
       await assertAdmission();
       return action({resolved, assertAdmission});
     });

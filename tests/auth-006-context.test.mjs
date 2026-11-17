@@ -1094,3 +1094,200 @@ test('AUTH-006-R1 BEGIN, rollback and lost-ack uncertainty destroy the business 
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// AUTH-006-R2: exact role provenance, pre-commit revalidation, new authority.
+// ---------------------------------------------------------------------------
+
+async function addAuditorRole(db) {
+  await db.adminQuery(`
+    INSERT INTO auth.roles(role_id, label, assurance_class, requires_mfa, is_operator, is_active, effective_from)
+    VALUES ('auditor', 'Auditor', 'single_factor', false, false, true, now())
+    ON CONFLICT (role_id) DO NOTHING
+  `);
+}
+
+test('AUTH-006-R2 a selected-role change without an epoch bump during a pause is stale', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await addAuditorRole(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+      const session = await makeSession(store, U1);
+      assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+      const current = await store.readSession(session.token);
+
+      const gate = makeGate();
+      const context = createTenantContext({
+        connect: async () => {
+          gate.enter();
+          await gate.gate;
+          return business.pool.connect();
+        },
+        resolveAuthority: selection.withAuthority,
+      });
+      let called = false;
+      const run = context.withTenantContext(current, async client => {
+        called = true;
+        await client.query(
+          "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-role-pause', 'main', 'Role pause', true)",
+          [T1],
+        );
+      });
+      await gate.entered;
+      // Non-MFA role change with no epoch bump: the old resolved role must not survive.
+      await db.adminQuery(
+        "UPDATE auth.tenant_membership SET role_id = 'auditor' WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
+        [T1, U1],
+      );
+      gate.release();
+      await assert.rejects(
+        () => run,
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      );
+      assert.equal(called, false, 'the handler is not invoked with a stale role');
+      const effect = await db.adminQuery(
+        "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-role-pause'",
+        [T1],
+      );
+      assert.equal(effect.rows[0].n, 0, 'no business effect commits with a stale role');
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R2 a role change during handler execution rolls the business effects back', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await addAuditorRole(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+      const session = await makeSession(store, U1);
+      assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+      const current = await store.readSession(session.token);
+      const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+
+      await assert.rejects(
+        () => context.withTenantContext(current, async client => {
+          await client.query(
+            "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-role-handler', 'main', 'Role handler', true)",
+            [T1],
+          );
+          // A concurrent committed authority change after admission but before commit.
+          await db.adminQuery(
+            "UPDATE auth.tenant_membership SET role_id = 'auditor' WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
+            [T1, U1],
+          );
+          return 'should-not-commit';
+        }),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      );
+      const effect = await db.adminQuery(
+        "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-role-handler'",
+        [T1],
+      );
+      assert.equal(effect.rows[0].n, 0, 'the pre-commit revalidation discards the earlier-role effects');
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R2 a new MFA-requiring membership association during a pause wins admission', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+      const session = await makeSession(store, U1);
+      assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+      const current = await store.readSession(session.token);
+
+      const gate = makeGate();
+      const context = createTenantContext({
+        connect: async () => {
+          gate.enter();
+          await gate.gate;
+          return business.pool.connect();
+        },
+        resolveAuthority: selection.withAuthority,
+      });
+      let called = false;
+      const run = context.withTenantContext(current, async client => {
+        called = true;
+        await client.query(
+          "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-new-mfa', 'main', 'New MFA', true)",
+          [T1],
+        );
+      });
+      await gate.entered;
+      // Activate the previously revoked T3 membership as tenant_admin: a new association
+      // that makes MFA mandatory, without touching the selected T1 membership.
+      await db.adminQuery(
+        `UPDATE auth.tenant_membership
+         SET role_id = 'tenant_admin', status = 'active', revoked_at = NULL, accepted_at = now()
+         WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
+        [T3, U1],
+      );
+      gate.release();
+      await assert.rejects(
+        () => run,
+        error => error instanceof TenantSelectionError && error.code === 'MFA_REQUIRED',
+      );
+      assert.equal(called, false, 'a new MFA-requiring association blocks admission');
+      const effect = await db.adminQuery(
+        "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-new-mfa'",
+        [T1],
+      );
+      assert.equal(effect.rows[0].n, 0);
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R2 an ineffective selected role fails admission', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+      const session = await makeSession(store, U1);
+      assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+      const current = await store.readSession(session.token);
+      await db.adminQuery(
+        "UPDATE auth.roles SET is_active = false WHERE role_id = 'member'",
+      );
+      const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      let called = false;
+      await assert.rejects(
+        () => context.withTenantContext(current, async () => {
+          called = true;
+        }),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      );
+      assert.equal(called, false);
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});

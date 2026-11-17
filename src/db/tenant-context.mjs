@@ -107,6 +107,9 @@ export function createTenantContext({connect, resolveAuthority} = {}) {
         // role/epoch state is re-read here.
         await assertAdmission();
         const result = await handler(client, context);
+        // Revalidate immediately before COMMIT: a membership/role/assurance change that
+        // committed during handler execution discards the business effects.
+        await assertAdmission();
         try {
           await client.query('COMMIT');
         } catch {
