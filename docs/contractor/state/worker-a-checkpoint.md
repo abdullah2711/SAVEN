@@ -1,103 +1,94 @@
-# WORKER-A checkpoint — AUTH-006-R2 delivered, amendment proposal attached
+# WORKER-A checkpoint — AUTH-005-R2 delivered, awaiting verdict
 
 Date: 17 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
 directive; this file is outside any contract TOUCH.
 
 ## Context
 
-- AUTH-006 branch/worktree: `opencode/auth-006-context` at
-  `/home/esc/saven/wt-auth-006`, based on `testing-1 @ 1b9ff78`.
-- Round just delivered: **AUTH-006-R2**, correcting the remaining HIGH correction in
-  `docs/contractor/reviews/AUTH-006-R1-tenant-context.md` at `d9e2bb1`.
+- AUTH-004 was human-merged into `testing-1` at merge commit
+  `a81ce5903919797c12ae98c96eb4df542179db3e`.
+- AUTH-005 branch/worktree: `opencode/auth-005-recovery` at
+  `/home/esc/saven/wt-auth-005`, based on `a81ce59`.
 
 ## Exact contract
 
-- Contract: `docs/contractor/contracts/AUTH-006-tenant-context.md` — bind verified
-  selected membership to every PG business transaction on one checked-out client.
-- TOUCH: `src/db/tenant-context.mjs`, `src/db/README.md`,
-  `src/auth/tenant-selection.mjs`, `src/auth/routes.mjs`,
-  `src/auth/session-store.mjs`, `src/auth/README.md`,
-  `tests/auth-006-context.test.mjs`.
-- DONE WHEN: `node scripts/check.mjs && node --test tests/auth-006-context.test.mjs`.
-- Implementation commit: `09ce585` (`app: bind exact selected role and revalidate
-  admission before commit [contract:AUTH-006-R2]`).
+- Contract: `docs/contractor/contracts/AUTH-005-verification-and-reset.md` — email
+  verification and non-enumerating single-use password reset via a controlled mail
+  adapter.
+- Round just delivered: **AUTH-005-R2**, correcting review
+  `docs/contractor/reviews/AUTH-005-recovery.md` at `700a4d2`.
+- TOUCH: `src/auth/recovery.mjs`, `src/auth/mail.mjs`, `src/auth/routes.mjs`,
+  `src/auth/session-store.mjs`, `src/auth/README.md`, `tests/auth-005-recovery.test.mjs`.
+- DONE WHEN: `node scripts/check.mjs && node --test tests/auth-005-recovery.test.mjs`.
+- Implementation commit: `d088f47` (`app: bind recovery to address and credential
+  generation [contract:AUTH-005-R2]`).
 - Report + this checkpoint are the next commit; that commit is the pushed head at
   checkpoint time.
 
 ## TOUCH used
 
-`src/auth/tenant-selection.mjs`, `src/db/tenant-context.mjs`, `src/db/README.md`,
-`tests/auth-006-context.test.mjs`, delivery report and this checkpoint. No routes/session
-store delta this round. No schema/migration/grant/RLS/owner change.
+`src/auth/recovery.mjs`, `src/auth/mail.mjs`, `src/auth/routes.mjs`, `src/auth/README.md`,
+`tests/auth-005-recovery.test.mjs`, delivery report and this checkpoint.
+`session-store.mjs` still needed no delta. Nothing else changed.
 
-## R2 correction and status (review `d9e2bb1`)
+## R2 corrections and status (review `700a4d2`)
 
-**HIGH — exact role provenance + final admission. Corrected within TOUCH; true membership
-locking remains the requested amendment.**
-
-- Frozen `resolved.roleId` is now compared with `selectedNow.role_id` on every admission
-  check; a role change without an epoch bump fails closed as stale.
-- Admission revalidation runs before the handler **and again immediately before the
-  business COMMIT**, re-reading the complete membership/role authority set, recomputing MFA
-  requirements (including new associations), and discarding business effects if authority
-  changed.
-- Tests: role change without epoch bump during a pause; role change committed during handler
-  execution (effect rolled back); new MFA-requiring membership association during a pause;
-  ineffective selected role. All refuse with no handler/effects.
-- Residual: a change committing between the last pre-commit check and COMMIT is not
-  DB-serialized; not claimed as complete membership locking.
-
-## Concrete bounded amendment proposal (attached, not authorized)
-
-Documented in full in
-`docs/contractor/deliveries/AUTH-006-tenant-context.md` (AUTH-006-R2 section). Summary:
-
-- Additive migration only; no table/column change, no runtime grant, no RLS relaxation,
-  no BYPASSRLS.
-- Transaction-scoped advisory locks: per user
-  `pg_advisory_xact_lock(hashtext('saven.auth.membership:'||user_id))` and global role key
-  `pg_advisory_xact_lock(hashtext('saven.auth.roles'))`.
-- Admission takes both keys on the owned auth transaction and holds them through the
-  business transaction.
-- DB-enforced writer side: AFTER INSERT/UPDATE/DELETE triggers on
-  `auth.tenant_membership` (per-user key for NEW/OLD user) and `auth.roles` (global roles
-  key), SECURITY INVOKER, `search_path=pg_catalog`, owned by the offline DDL role.
-- Deterministic order: user then roles on admission; writers take one key. No cycle.
-- Once authorized, add the migration to the fixture and prove both orderings (invalidation
-  wins with no handler/effects; admission wins with writer blocking) plus role-without-epoch,
-  role policy/effectiveness, new membership/promotion and revocation/epoch cases.
-- Preserve uncertain-COMMIT semantics: the auth/business transactions are not a distributed
-  atomic commit.
+1. **HIGH — immutable address binding + transactional request authority. Closed.**
+   Issuance locks the account and resolves the current active email on the owned
+   transaction. Verification/reset consume compare the challenge identifier with the
+   locked current normalized email. `emailVerificationRequest` runs AUTH-004
+   `assertMutationAuthority` inside the issuance transaction (revocation/expiry/status/
+   epoch). Tests cover old-address verification/reset, current-address issuance, and
+   read-valid-then-stale revoke/expire/disable/credential request probes.
+2. **HIGH — generation-bound stale reset. Closed.** Reset tokens are
+   `<random>.<credential-generation>`; the generation is digest-covered and rechecked
+   under the principal lock. Purpose validity is rechecked at consumption. Tests cover
+   older-start/later-commit, two-links-one-generation, reset-vs-credential-change race,
+   audit/revocation rollback, unknown COMMIT, and zero-KDF stale refusal.
+3. **HIGH — max=1 deadlock. Closed.** Forgot-password lookup runs on the limiter lease
+   (`loadUserByEmail(lease, email)`), challenge insert on `lease.transaction`; no nested
+   checkout. Real-role `max:1` known/unknown and `max:2` concurrent tests pass without
+   raising pool size.
+4. **MEDIUM — non-enumerating response boundary. Closed.** Bounded, drainable
+   `createMailDispatcher` decouples provider latency from the response/lease; failures
+   count and invalidate via callback. Slow/blocked transport tests return 202 before
+   delivery; cleanup-failure residual boundary is tested and reported honestly.
+5. **MEDIUM — verification admission. Closed.** Durable challenge-row budget with
+   purpose/account/network scoping, transaction advisory locks, `429 MAIL_THROTTLED` and
+   no challenge/mail on denial. Repeated, concurrent, cooldown and store-failure tests.
 
 ## Evidence recorded with the delivery
 
-- Focused gate: `node scripts/check.mjs && node --test tests/auth-006-context.test.mjs`
-  → PASS, 20/20, exit 0, Node v24.19.0, disposable PostgreSQL 18.6 on
-  `127.0.0.1:55432`, accepted PIVOT-004/031/032 RLS stack with real non-owner
-  auth-service and customer-app logins.
-- Regressions: AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27.
-- Combined serial run (`--test-concurrency=1`): 113 tests, 113 pass, 0 fail.
-- Findings 2 (realm/MFA) and 3 (same-tenant company composition) remain closed from R1.
+- Focused gate: `node scripts/check.mjs && node --test tests/auth-005-recovery.test.mjs`
+  → PASS, 27/27, exit 0, Node v24.19.0, disposable PostgreSQL 18.6 on
+  `127.0.0.1:55432`.
+- Regressions: AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21.
+- Combined serial run (`--test-concurrency=1`): 93 tests, 93 pass, 0 fail.
+- Honest limit: one combined attempt hit the known fixture-teardown transient
+  (`terminating connection due to administrator command`) in an unchanged AUTH-004 case;
+  the immediate serial rerun was 93/93.
 - Cleanup: disposable cluster stopped and deleted; `node_modules` removed; worktree clean
   at checkpoint time.
-- Merge state: AUTH-006 not merged; `testing-1` remains `1b9ff78`.
+- Merge state: AUTH-005 not merged; `testing-1` remains `a81ce59`.
 
 ## Where I stopped
 
-Last completed step: committed `09ce585`, then the delivery report (with the amendment
-proposal) and this checkpoint. No further code, tests, merges or new contracts started.
+Last completed step: committed `d088f47`, then the delivery report and this checkpoint.
+No further code, tests, merges or new contracts started after that.
 
 ## Exact next step
 
-1. Await the engineer's decision on the bounded amendment and/or the Codex verdict on
-   AUTH-006-R2.
-2. On **ACCEPT/amendment authorized**: implement exactly the authorized additive interface,
-   add it to the fixture, prove both orderings and the listed authority-change cases, then
-   resubmit; do not merge.
-3. On **REVISE within current TOUCH**: fetch the rulings branch, apply only scoped
-   corrections, re-run focused plus AUTH-002..005, update the report, commit/push on
-   `opencode/auth-006-context`, and stop without merging.
+1. Await the Codex verdict on AUTH-005-R2 (expected on
+   `origin/codex/pivot-003-rulings`).
+2. On **ACCEPT**: nothing further from me for AUTH-005; it queues for a human Business
+   Merge Request (dispatcher issues any merge command separately).
+3. On **REVISE**: fetch the rulings branch, read the new review in full, apply exactly the
+   scoped corrections inside the AUTH-005 TOUCH, re-run the focused gate plus
+   AUTH-002/003/004, update `docs/contractor/deliveries/AUTH-005-recovery.md`, commit and
+   push on `opencode/auth-005-recovery`, and stop without merging.
 
-Open items: the requested membership/role locking amendment; AUTH-009 tenant-selection
-audit vocabulary; production company/resource authorization engine; business feature
-wiring. No load/PgBouncer-instance claim.
+Open items still needing the engineer (not blocking this checkpoint): inject the reviewed
+mail transport/base URL and own dispatcher shutdown; approve production TTL/admission
+values; AUTH-009 email-verification audit vocabulary and complete failure history;
+AUTH-006 business assurance enforcement. Undelivered-challenge cleanup is best effort; a
+failed invalidation can leave a token live until expiry.
