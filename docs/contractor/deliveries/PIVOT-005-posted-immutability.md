@@ -1,5 +1,5 @@
 CONTRACT: docs/contractor/contracts/PIVOT-005-posted-immutability.md
-STATUS: DONE (R2 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
+STATUS: DONE (R3 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
 
 ## What was delivered
 
@@ -114,6 +114,8 @@ branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b commits=recorded
 
 ## Revision 2 — PIVOT-005 R1 corrections (verdict 950b22c)
 
+> Historical section. Its test names, counts and `215/215` claim are superseded by Revision 3 below. The R2 full-suite number was produced on a cluster that already had manually bootstrapped global `saven_*` roles; it was not a pristine-cluster result. See the R3 gate evidence and the explicit PIVOT-004 explanation.
+
 Finding-by-finding closure, all inside the existing TOUCH paths plus the review-authorized fixture and reference-seed additions.
 
 | Finding | Correction | Evidence |
@@ -148,3 +150,112 @@ $ node --test tests/*.test.mjs
 ```
 
 Remaining limits: no application route/page/RBAC (AUTH-006, PIVOT-013, UI contract); denial durability is the kernel's separate `void_denials` write (PostgreSQL has no autonomous transaction); supported dependency graph is the plain journal; Private packaging and representative-volume measurements remain out of scope. PIVOT-006 must register payload 041 alongside 040/042.
+
+---
+
+## Revision 3 — PIVOT-005 R2 corrections (verdict 63a25a, review PIVOT-005-R2)
+
+All four required corrections are implemented inside the contract TOUCH paths. 040 is still the new, never-applied payload, so its correction is in-place; no actually applied payload bytes were rewritten and no additive 043 was needed. 042 remains additive and re-applied in this disposable evidence environment.
+
+### Finding-by-finding closure
+
+| Review finding | Correction | Focused evidence |
+| --- | --- | --- |
+| 1. Approval metadata is not authority; policy units/selection incomplete | `immutability_040_approver_authority()` is the single canonical approver check: current active independent tenant member, `journal.approve` (or protected owner) grant scoped to the command resource, explicit denial refused. `approval_requests` may no longer be inserted as `APPROVED`; the transition is actor-bound to the verified member (`decided_by` must equal the current principal), `decided_by` and the bound digest become immutable, and the accepted command digest must match. 042 requires the pre-registered command's actor/digest/full submission to equal the void request, requires the approved canonical decision to equal the current decision exactly (entry, request digest, amount, currency, policy key/version, ordered role identities), and revalidates the approver at execution. `entry_voids.approver_actor`, `approval_digest` and the real policy `approval_version` are retained. Policy selection filters by the company currency, takes the highest active/effective version, fails closed on a same-version multi-key ambiguity or a currency mismatch, defines thresholds as exact minor units (non-integral/negative/out-of-bound invalid), and orders role identities deterministically with ids in the digest. Malformed `maxMinor`/`review` fails closed instead of becoming unlimited. | `rejects fabricated, self, unauthorised, wrong-submission and stale approvals`; `approval policy is currency-matched, deterministic, exact and revalidated at execution`; `void authority uses canonical permissions, explicit denials, scope, locked periods and maxMinor` |
+| 2. Correction guards protect only the original | `immutability_040_correction_guard` takes both command locks in one deterministic order, rejects self-reference, requires a posted non-voided original **and** a non-final, non-voided reversal, and rejects a late link onto a posted or voided reversal. The deferred `correction_committed` rechecks both ends. The native accept-then-execute flow stays valid: the link is created while the reversal is pending and the commit-time check accepts it. | `correction links protect both ends, require link-before-post and refuse late links`; `correction and void writers serialize on both ends` |
+| 3. Operational posting reconciliation is shallow | `assert_posted_effects` no longer accepts any stock/trade shape. A command carrying `trade_operations`, trade documents/lines/allocations/credits or `stock_operations`/`stock_movements` is refused before `POSTED` with `POSTED_OPERATION_UNSUPPORTED`. The supported boundary is the plain balanced journal; retained/imported operational rows are also refused by the void primitive with `VOID_DEPENDENCY_UNSUPPORTED`. This is an explicit fail-closed limitation, not a parity claim. | `runtime posting is exact for a plain journal and refuses unreconciled trade/stock shapes`; `refuses voiding retained operational dependencies without partial effects` |
+| 4. Required regression evidence removed | Restored: runtime plain-journal posting; missing audit/outbox refusal; atomic injected outbox failure with zero partial void effects; exact `entry_voids`/`audit`/`audit_event`/`outbox` counts and receipt retention; role-agnostic module-reader positive; cross-tenant and missing/spoofed-context negatives; permissive-policy widening resistance; denial-log durability and actor binding; terminal mutations under runtime and administrative roles; same-source replay and same-key/different-entry conflict; both correction directions and late-child/late-line/evidence cases; interrupted/atomic activation; repeat dispatcher install; immutable re-application; five polluted-owner classes (extra table ACL, schema CREATE, membership, relation ownership, default privilege). Admin seeding/catalog checks are separated from runtime proofs. | The 15 focused cases below |
+| Additional idempotency contract | The void primitive now takes a deterministic ordered pair of entry and idempotency-key locks, so same-key/different-entry concurrency returns `VOID_IDEMPOTENCY_CONFLICT` instead of a raw unique-index failure. | `replay, duplicate and same-key/different-entry races follow the idempotency contract` |
+
+### Acceptance matrix (R3, actual runs)
+
+| Required case | Focused test |
+| --- | --- |
+| Successful plain-journal void, exact active totals, retained bytes/numbers, atomic receipt/audit/audit_event/outbox | `active GL follows the POSTED lifecycle...` |
+| Terminal no-update/no-delete/no-unvoid/no-late-child under runtime and administrative roles | `void is terminal under runtime and administrative roles...` |
+| Injected effect failure leaves zero partial void effects | `void is terminal under runtime and administrative roles...` (pre-existing outbox id collision) |
+| Idempotent replay, duplicate void, concurrent replay and same-key/different-entry conflict | `replay, duplicate and same-key/different-entry races...` |
+| Canonical action/scope/denial/locked-period/maxMinor authority, malformed limit fail-closed | `void authority uses canonical permissions...` |
+| Independent actor-bound approval; reject direct APPROVED insert, requester-stamped decider, self, unauthorised, wrong-submission, stale and revoked approval | `rejects fabricated, self, unauthorised, wrong-submission and stale approvals` |
+| Currency-matched deterministic policy, threshold boundary, exact minor units, ambiguous key/currency/integral failure, real approval version, revocation between approval and execution | `approval policy is currency-matched, deterministic, exact and revalidated at execution` |
+| Plain-journal posting and fail-closed unsupported trade/stock shapes | `runtime posting is exact for a plain journal...` |
+| Both-ended correction protection, link-before-post positive, late-link-to-posted/voided refusal, void-versus-post | `correction links protect both ends...` |
+| Correction/void serialization in both directions | `correction and void writers serialize on both ends` |
+| Retained/imported operational dependency refusal without partial effects | `refuses voiding retained operational dependencies...` |
+| Cross-tenant, missing/malformed/spoofed context, permissive widening, role-agnostic reader | `tenant isolation, missing/spoofed context...`; `active GL follows...` |
+| Durable denial log, append-only, verified actor binding | `denial log is durable, append-only and bound to verified context` |
+| Fail-closed/interrupted/atomic activation, repeat install, immutable payload re-application | `activation is fail-closed, atomic and repeatable` |
+| Polluted owner classes refuse without repair | `refuses every polluted pre-existing void owner class...` |
+| Static contract structure, canonical authority, reference registration | `static contract: lifecycle predicate, both-ended corrections...` |
+
+### GATE EVIDENCE (R3)
+
+Environment: dedicated disposable PostgreSQL 18.6 cluster created for this run on loopback `127.0.0.1:55435` with `initdb --auth=trust`, local admin principal `esc`, no SSH/owner-server/production/shared cluster. `SAVEN_PIVOT_TEST_CLUSTER=1`; Node **v24.19.0** via `npm exec --yes --package=node@24.19.0`. The fixture created only `saven_pivot_%` objects and dropped each database/role after the test; no global `saven_*` role was created.
+
+```text
+$ node scripts/check.mjs
+PASS: 156 JavaScript files parsed; package manifest valid.
+
+$ node --test tests/pivot-005-immutability.test.mjs
+✔ PIVOT-005 active GL follows the POSTED lifecycle, retains source bytes and exposes a filterable voided projection
+✔ PIVOT-005 void authority uses canonical permissions, explicit denials, scope, locked periods and maxMinor
+✔ PIVOT-005 rejects fabricated, self, unauthorised, wrong-submission and stale approvals
+✔ PIVOT-005 approval policy is currency-matched, deterministic, exact and revalidated at execution
+✔ PIVOT-005 runtime posting is exact for a plain journal and refuses unreconciled trade/stock shapes
+✔ PIVOT-005 void is terminal under runtime and administrative roles, and a failing effect leaves no trace
+✔ PIVOT-005 correction links protect both ends, require link-before-post and refuse late links
+✔ PIVOT-005 correction and void writers serialize on both ends
+✔ PIVOT-005 replay, duplicate and same-key/different-entry races follow the idempotency contract
+✔ PIVOT-005 refuses voiding retained operational dependencies without partial effects
+✔ PIVOT-005 tenant isolation, missing/spoofed context and permissive-widening resistance hold
+✔ PIVOT-005 denial log is durable, append-only and bound to verified context
+✔ PIVOT-005 activation is fail-closed, atomic and repeatable
+✔ PIVOT-005 refuses every polluted pre-existing void owner class without repairing it
+✔ PIVOT-005 static contract: lifecycle predicate, both-ended corrections, fail-closed posting, role-agnostic activation
+ℹ tests 15
+ℹ pass 15
+ℹ fail 0
+EXIT=0
+```
+
+Full branch suite on the same clean cluster and Node version:
+
+```text
+$ node --test tests/*.test.mjs
+ℹ tests 220
+ℹ pass 219
+ℹ fail 1
+EXIT=1
+```
+
+The single failure is pre-existing and outside this contract's TOUCH: `tests/pivot-004-rls.test.mjs` → `PIVOT-004 resists an extra permissive policy and an attacker permissive policy on auth`. It executes:
+
+```sql
+CREATE POLICY pivot004_attack ON tenant_data.accounts AS PERMISSIVE FOR ALL TO saven_customer_app USING (true) WITH CHECK (true)
+```
+
+The fixture namespaces every role per disposable database, so on a pristine cluster the literal global role `saven_customer_app` does not exist and PostgreSQL raises `role "saven_customer_app" does not exist` (42704). This is the same out-of-TOUCH PIVOT-004 test defect disclosed in R2. It is **not** caused by 040/042/40 and was not repaired here.
+
+**Correction to the R2 evidence claim:** R2's `215/215` was produced on a cluster that already carried manually bootstrapped global `saven_*` roles, which made that literal-role test pass. It was not a pristine-cluster result. R3 uses a fresh cluster, creates no global SAVEN roles, and therefore reports the unchanged prerequisite failure honestly instead of reproducing the earlier environment. No PIVOT-004 source or test change is part of this delivery.
+
+An earlier full-suite run also showed `AUTH-002-R2 concurrent revoke and rotation linearize to at most one live session` timing out once under 220-test parallel load; a focused rerun of that test passed and the final full run above passed it. It is a pre-existing timing-sensitive test outside TOUCH, not a PIVOT-005 change.
+
+### Explicit limits (unchanged or narrowed)
+
+1. **No application integration.** No production route, command handler, Delete confirmation/reason flow or Deleted/Voided Entries page. AUTH-006 gates verified application identity/action authority; PIVOT-013 owns command/policy/adapter integration and active query consumers; a UI contract owns the pages and settings.
+2. **No fine-grained visibility policy.** Per D-014, Voided Entries visibility is future application RBAC / User Access Settings. The database intentionally has no eligibility model, role-name predicate or category denial.
+3. **Denial durability is application-side.** PostgreSQL has no autonomous transaction; a denied void cannot write its own audit row. `void_denials` is the durable store the kernel writes in a separate transaction.
+4. **Operational reconciliation is not claimed.** The PostgreSQL posting boundary supports the plain balanced journal and fails closed on trade/stock shapes. PIVOT-013 owns the reviewed operational adapter/reconciliation workflow. Voiding never undoes physical stock/custody.
+5. **Approval execution revalidates tenant-local membership and approval/resource authority.** Auth-session admission of the approver is checked at the approval decision (AUTH-006 session context); execution does not re-probe another principal's auth session, preserving the admission helper's anti-oracle rule. Revoking the tenant-local member/role or changing policy/roles invalidates execution.
+6. **Locked-period policy.** Voiding a posted entry in a locked period is refused rather than silently overriding the period lock. A future policy may define an authorized exception with its own evidence.
+7. **Reference registration** remains `VOIDED`, `accounting.entry.void` and `accounting.voided_entries.read`; no new domain or role-name rule was added.
+8. **Private packaging** must implement the same controls locally with no vendor authority; this Cloud schema does not approve a Private mapping.
+9. **PIVOT-006** still owns generic audit coverage (payload 041); 042 protects only its own void audit rows and the dispatcher refuses an installed-but-unregistered 041.
+
+### EXTENSIBILITY
+
+compliant: no new hardcoded business-role or eligibility rule; policy/role identity is data with deterministic ordering and versioning; approval policy is currency/unit explicit and fails closed on malformed/ambiguous configuration; corrections and voids use one shared lock protocol; the dispatcher remains version-aware and additive; all source/evidence/numbers/applied bytes and the SQLite/reference code remain preserved. The operational fail-closed refusal is an explicit boundary for a later reviewed adapter, not concrete cross-module coupling.
+
+### GIT
+
+branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b (R2 delivery 1ee28b9) commits=pushed with this report merged=no

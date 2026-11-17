@@ -12,10 +12,13 @@
 --
 -- AUTHORITY (finding 2): the primitive evaluates the canonical role-permission contract
 -- (actions + companies/branches/accounts + maxMinor + review), explicit denials and the
--- effective approval policy through reviewed helper functions; denied, unknown, stale or
--- out-of-scope decisions fail closed. Locked posting periods are refused (no blanket
--- locked-period voiding). Approval, when required, must be an APPROVED approval_requests
--- row bound to this exact request digest and decided by a different actor.
+-- currency-matched effective approval policy through reviewed helper functions; denied,
+-- unknown, stale or out-of-scope decisions fail closed. Locked posting periods are
+-- refused (no blanket locked-period voiding). Approval, when required, must be an
+-- APPROVED approval_requests row bound to this exact request digest and canonical
+-- decision, decided by a different actor whose current membership and approval/resource
+-- authority are revalidated at execution. Fabricated, self, wrong-submission, revoked
+-- and stale approvals are refused.
 --
 -- CONCURRENCY (finding 3): every source/dependency writer uses the shared command lock
 -- from payload 040; a deferred constraint trigger re-checks both ends of correction
@@ -95,6 +98,8 @@ CREATE TABLE tenant_data.entry_voids (
   policy_decision jsonb NOT NULL DEFAULT '{}'::jsonb,
   policy_digest text NOT NULL DEFAULT '',
   approval_command_id text,
+  approver_actor text,
+  approval_digest text,
   correlation_id text,
   policy_version bigint,
   approval_version bigint,
@@ -121,7 +126,11 @@ CREATE TABLE tenant_data.entry_voids (
   CONSTRAINT entry_voids_request_not_blank CHECK (length(btrim(request_digest)) BETWEEN 1 AND 200),
   CONSTRAINT entry_voids_version_positive CHECK (source_version > 0),
   CONSTRAINT entry_voids_lines_balanced CHECK (source_line_count >= 2),
-  CONSTRAINT entry_voids_debit_positive CHECK (source_debit > 0)
+  CONSTRAINT entry_voids_debit_positive CHECK (source_debit > 0),
+  CONSTRAINT entry_voids_approval_binding CHECK (
+    (approval_command_id IS NULL AND approver_actor IS NULL AND approval_digest IS NULL)
+    OR (approval_command_id IS NOT NULL AND approver_actor IS NOT NULL AND approval_digest IS NOT NULL)
+  )
 );
 
 COMMENT ON TABLE tenant_data.entry_voids IS
@@ -130,6 +139,10 @@ COMMENT ON COLUMN tenant_data.entry_voids.policy_decision IS
   'Canonical decision payload from the reviewed permission/policy helpers captured at void time (denials, matching roles, scope, review requirement and policy version).';
 COMMENT ON COLUMN tenant_data.entry_voids.approval_command_id IS
   'Pre-registered void command receipt whose APPROVED approval_requests row authorised a review-required void; null when no review was required.';
+COMMENT ON COLUMN tenant_data.entry_voids.approver_actor IS
+  'Exact verified approver identity (tenant-local member id) captured at void time; null when no approval was required.';
+COMMENT ON COLUMN tenant_data.entry_voids.approval_digest IS
+  'Canonical decision digest that the independent approver approved, revalidated against the current policy/role decision at execution time; null when no approval was required.';
 
 CREATE TABLE tenant_data.void_denials (
   tenant_id uuid NOT NULL,
@@ -200,6 +213,9 @@ SELECT v.tenant_id,
        v.period_locked,
        v.policy_version,
        v.approval_version,
+       v.approval_command_id,
+       v.approver_actor,
+       v.approval_digest,
        v.correlation_id,
        v.voided_at,
        j.company,
@@ -258,21 +274,45 @@ CREATE FUNCTION tenant_data.immutability_042_policy_decision(
   p_amount bigint,
   p_company text,
   p_branch text,
-  p_accounts text[]
+  p_accounts text[],
+  p_entry text,
+  p_request_digest text
 ) RETURNS jsonb
 LANGUAGE plpgsql STABLE
 SET search_path = pg_catalog, tenant_data
 AS $fn$
 DECLARE
   v_denied boolean;
-  v_roles jsonb;
+  v_roles jsonb := '[]'::jsonb;
   v_allowed boolean;
   v_review boolean := true;
+  v_currency text;
+  v_role record;
+  v_actions jsonb;
+  v_companies jsonb;
+  v_branches jsonb;
+  v_account_scope jsonb;
+  v_max numeric;
+  v_role_review boolean;
+  v_role_matches boolean;
+  v_matches integer := 0;
+  v_policy_exists boolean;
   v_policy_version bigint;
+  v_policy_key text;
+  v_policy_count integer;
   v_threshold numeric;
   v_requires_approver boolean := false;
   v_decision jsonb;
 BEGIN
+  -- Currency is part of the policy identity: a threshold recorded for another
+  -- currency must never be compared against this entry's exact minor units.
+  SELECT cp.currency INTO v_currency
+  FROM tenant_data.company_profiles cp
+  WHERE cp.tenant_id = p_tenant AND cp.id = p_company;
+  IF v_currency IS NULL THEN
+    RAISE EXCEPTION 'VOID_POLICY_UNKNOWN_CURRENCY: company % has no declared currency', p_company;
+  END IF;
+
   -- Explicit denial wins, including the wildcard denial.
   SELECT EXISTS (
     SELECT 1 FROM tenant_data.denials d
@@ -280,60 +320,127 @@ BEGIN
       AND d.action IN ('accounting.entry.void', '*')
   ) INTO v_denied;
 
-  -- Canonical role grants: actions array, company/branch/account scopes, maxMinor and
-  -- the review flag. The protected ultimate owner role keeps full authority.
-  SELECT coalesce(jsonb_agg(rule), '[]'::jsonb), coalesce(bool_and(coalesce((rule->>'review')::boolean, true)), true)
-    INTO v_roles, v_review
-  FROM (
+  -- Canonical role grants, evaluated in a stable role-id order so the decision digest
+  -- and its role identities are deterministic. Malformed permission data fails closed
+  -- instead of silently granting or silently ignoring a limit.
+  FOR v_role IN
     SELECT r.id AS role_id, r.protected, r.permissions::jsonb AS rule
     FROM tenant_data.members m
     JOIN tenant_data.assignments a ON a.tenant_id = m.tenant_id AND a.user_id = m.user_id
     JOIN tenant_data.roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id
     WHERE m.tenant_id = p_tenant AND m.user_id = p_actor AND m.active
-      AND (
-        r.protected
-        OR (
-          r.permissions IS JSON
-          AND jsonb_typeof(r.permissions::jsonb -> 'actions') = 'array'
-          AND (r.permissions::jsonb -> 'actions') ? 'accounting.entry.void'
-          AND coalesce(jsonb_typeof(r.permissions::jsonb -> 'companies') = 'array', false)
-          AND (r.permissions::jsonb -> 'companies') ?| array['*', p_company]
-          AND coalesce(jsonb_typeof(r.permissions::jsonb -> 'branches') = 'array', false)
-          AND (r.permissions::jsonb -> 'branches') ?| array['*', p_branch]
-          AND coalesce(jsonb_typeof(r.permissions::jsonb -> 'accounts') = 'array', false)
-          AND NOT EXISTS (
-            SELECT 1 FROM unnest(p_accounts) AS acc(code)
-            WHERE NOT (
-              (r.permissions::jsonb -> 'accounts') ? '*'
-              OR (r.permissions::jsonb -> 'accounts') ? acc.code
-            )
-          )
-          AND (
-            jsonb_typeof(r.permissions::jsonb -> 'maxMinor') IS DISTINCT FROM 'number'
-            OR p_amount <= (r.permissions::jsonb ->> 'maxMinor')::bigint
-          )
-        )
-      )
-  ) grants;
+    ORDER BY r.id
+  LOOP
+    v_role_matches := false;
+    IF v_role.protected THEN
+      v_role_matches := true;
+      v_role_review := false;
+    ELSE
+      IF jsonb_typeof(v_role.rule) IS DISTINCT FROM 'object' THEN
+        RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has a malformed permission payload', v_role.role_id;
+      END IF;
+      v_actions := v_role.rule -> 'actions';
+      IF jsonb_typeof(v_actions) IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has no canonical actions array', v_role.role_id;
+      END IF;
+      v_companies := v_role.rule -> 'companies';
+      v_branches := v_role.rule -> 'branches';
+      v_account_scope := v_role.rule -> 'accounts';
+      IF jsonb_typeof(v_companies) IS DISTINCT FROM 'array'
+         OR jsonb_typeof(v_branches) IS DISTINCT FROM 'array'
+         OR jsonb_typeof(v_account_scope) IS DISTINCT FROM 'array' THEN
+        RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has malformed resource scope arrays', v_role.role_id;
+      END IF;
+      IF jsonb_exists(v_role.rule, 'review') AND jsonb_typeof(v_role.rule -> 'review') IS DISTINCT FROM 'boolean' THEN
+        RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has a non-boolean review rule', v_role.role_id;
+      END IF;
+      IF jsonb_exists(v_role.rule, 'maxMinor') THEN
+        IF jsonb_typeof(v_role.rule -> 'maxMinor') IS DISTINCT FROM 'number' THEN
+          RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has a non-numeric maxMinor; an unknown limit fails closed', v_role.role_id;
+        END IF;
+        v_max := (v_role.rule ->> 'maxMinor')::numeric;
+        IF v_max < 0 OR v_max <> trunc(v_max) OR v_max > 999999999999 THEN
+          RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has an invalid maxMinor', v_role.role_id;
+        END IF;
+      ELSE
+        v_max := NULL;
+      END IF;
 
-  v_allowed := NOT v_denied AND jsonb_array_length(v_roles) > 0;
+      v_role_review := coalesce((v_role.rule ->> 'review')::boolean, true);
+      IF jsonb_exists(v_actions, 'accounting.entry.void')
+         AND (jsonb_exists(v_companies, '*') OR jsonb_exists(v_companies, p_company))
+         AND (jsonb_exists(v_branches, '*') OR jsonb_exists(v_branches, p_branch))
+         AND NOT EXISTS (
+           SELECT 1 FROM unnest(p_accounts) AS acc(code)
+           WHERE NOT (jsonb_exists(v_account_scope, '*') OR jsonb_exists(v_account_scope, acc.code))
+         )
+         AND (v_max IS NULL OR p_amount <= v_max) THEN
+        v_role_matches := true;
+      END IF;
+    END IF;
 
-  -- Effective approval policy for this action, when configured.
-  SELECT ap.version,
-         (ap.approval_threshold_amount)::numeric,
-         ap.requires_different_approver
-    INTO v_policy_version, v_threshold, v_requires_approver
-  FROM tenant_data.approval_policy ap
-  WHERE ap.tenant_id = p_tenant
-    AND ap.action_type = 'accounting.entry.void'
-    AND ap.is_active
-    AND ap.effective_from <= now()
-    AND (ap.effective_to IS NULL OR ap.effective_to > now())
-  ORDER BY ap.version DESC
-  LIMIT 1;
+    IF v_role_matches THEN
+      v_matches := v_matches + 1;
+      v_review := v_review AND v_role_review;
+      v_roles := v_roles || jsonb_build_array(jsonb_build_object(
+        'roleId', v_role.role_id,
+        'permissions', v_role.rule));
+    END IF;
+  END LOOP;
 
-  IF v_policy_version IS NOT NULL THEN
-    IF v_threshold IS NOT NULL AND p_amount > v_threshold THEN
+  v_allowed := NOT v_denied AND v_matches > 0;
+
+  -- Effective approval policy. Currency is matched explicitly; the highest version is
+  -- selected, and two different policy keys claiming the same version are ambiguous
+  -- and fail closed rather than resolving by storage order. Thresholds are defined as
+  -- exact minor units of the policy currency, so no lossy decimal-to-minor conversion
+  -- and no hardcoded currency exponent table is introduced.
+  SELECT EXISTS (
+    SELECT 1 FROM tenant_data.approval_policy ap
+    WHERE ap.tenant_id = p_tenant
+      AND ap.action_type = 'accounting.entry.void'
+      AND ap.is_active
+      AND ap.effective_from <= now()
+      AND (ap.effective_to IS NULL OR ap.effective_to > now())
+  ) INTO v_policy_exists;
+  IF v_policy_exists THEN
+    SELECT max(ap.version) INTO v_policy_version
+    FROM tenant_data.approval_policy ap
+    WHERE ap.tenant_id = p_tenant
+      AND ap.action_type = 'accounting.entry.void'
+      AND ap.currency = v_currency
+      AND ap.is_active
+      AND ap.effective_from <= now()
+      AND (ap.effective_to IS NULL OR ap.effective_to > now());
+    IF v_policy_version IS NULL THEN
+      RAISE EXCEPTION 'VOID_POLICY_CURRENCY_MISMATCH: approval policies exist for this action but none applies to currency %', v_currency;
+    END IF;
+    SELECT count(*) INTO v_policy_count
+    FROM tenant_data.approval_policy ap
+    WHERE ap.tenant_id = p_tenant
+      AND ap.action_type = 'accounting.entry.void'
+      AND ap.currency = v_currency
+      AND ap.version = v_policy_version
+      AND ap.is_active
+      AND ap.effective_from <= now()
+      AND (ap.effective_to IS NULL OR ap.effective_to > now());
+    IF v_policy_count <> 1 THEN
+      RAISE EXCEPTION 'VOID_POLICY_AMBIGUOUS: multiple policy keys claim version % for currency %', v_policy_version, v_currency;
+    END IF;
+    SELECT ap.policy_key, ap.approval_threshold_amount, ap.requires_different_approver
+      INTO v_policy_key, v_threshold, v_requires_approver
+    FROM tenant_data.approval_policy ap
+    WHERE ap.tenant_id = p_tenant
+      AND ap.action_type = 'accounting.entry.void'
+      AND ap.currency = v_currency
+      AND ap.version = v_policy_version
+      AND ap.is_active
+      AND ap.effective_from <= now()
+      AND (ap.effective_to IS NULL OR ap.effective_to > now());
+    IF v_threshold IS NULL OR v_threshold < 0 OR v_threshold <> trunc(v_threshold) OR v_threshold > 999999999999 THEN
+      RAISE EXCEPTION 'VOID_POLICY_INVALID: threshold % is not an exact non-negative minor-unit value', v_threshold;
+    END IF;
+    IF p_amount > v_threshold THEN
       v_review := true;
     END IF;
   END IF;
@@ -342,19 +449,24 @@ BEGIN
     'allowed', v_allowed,
     'denied', v_denied,
     'review', CASE WHEN v_allowed THEN v_review ELSE true END,
-    'requiresDifferentApprover', v_requires_approver,
+    'requiresDifferentApprover', coalesce(v_requires_approver, false),
     'policyVersion', v_policy_version,
+    'policyKey', v_policy_key,
+    'currency', v_currency,
+    'thresholdMinor', CASE WHEN v_policy_version IS NULL THEN NULL ELSE v_threshold::bigint END,
     'amount', p_amount,
     'company', p_company,
     'branch', p_branch,
+    'entry', p_entry,
+    'requestDigest', p_request_digest,
     'roles', v_roles
   );
   RETURN v_decision;
 END;
 $fn$;
 
-COMMENT ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[]) IS
-  'PIVOT-005: reviewed decision over the canonical role permission contract (actions, company/branch/account scope, maxMinor, review), explicit denials and the effective approval policy. Returns a canonical JSON decision; callers must fail closed on denied/unknown/stale.';
+COMMENT ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[], text, text) IS
+  'PIVOT-005: canonical decision over the role permission contract (actions, company/branch/account scope, maxMinor, review), explicit denials and the currency-matched effective approval policy. Thresholds are exact minor units; malformed limits, ambiguous policy keys and currency mismatches fail closed. Roles carry their ids and are ordered for a stable digest.';
 
 CREATE FUNCTION tenant_data.immutability_042_decision_digest(p_decision jsonb) RETURNS text
 LANGUAGE sql IMMUTABLE
@@ -404,9 +516,17 @@ DECLARE
   v_approval_state text;
   v_approval_digest text;
   v_approval_actor text;
+  v_approval_uuid uuid;
+  v_approval_snapshot jsonb;
+  v_approval_version bigint;
+  v_command_actor text;
+  v_command_digest text;
+  v_command_payload jsonb;
   v_void_command text;
   v_payload jsonb;
   v_policy_version bigint;
+  v_lock_entry bigint;
+  v_lock_idem bigint;
 BEGIN
   IF p_tenant IS NULL OR p_entry IS NULL OR p_actor IS NULL OR p_reason IS NULL
      OR p_idempotency_key IS NULL THEN
@@ -433,8 +553,19 @@ BEGIN
     concat_ws('|', p_entry, p_actor, p_reason, p_idempotency_key), 'UTF8')), 'hex');
 
   -- Serialize every writer on this entry (posting, children, corrections and voids all
-  -- use the same payload-040 advisory key), then re-check idempotency under the lock.
-  PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(p_tenant, p_entry));
+  -- use the same payload-040 advisory key) AND every call that reuses this idempotency
+  -- key, in one deterministic order. Without the key lock, two concurrent calls with
+  -- the same key on different entries would race to the UNIQUE index instead of the
+  -- declared idempotency contract.
+  v_lock_entry := tenant_data.immutability_040_lock_key(p_tenant, p_entry);
+  v_lock_idem := tenant_data.immutability_040_lock_key(p_tenant, 'idem:' || p_idempotency_key);
+  IF v_lock_entry <= v_lock_idem THEN
+    PERFORM pg_advisory_xact_lock(v_lock_entry);
+    PERFORM pg_advisory_xact_lock(v_lock_idem);
+  ELSE
+    PERFORM pg_advisory_xact_lock(v_lock_idem);
+    PERFORM pg_advisory_xact_lock(v_lock_entry);
+  END IF;
 
   SELECT v.void_command_id, v.request_digest, v.entry_id
     INTO v_existing_entry, v_existing_digest, v_existing_source
@@ -496,7 +627,8 @@ BEGIN
 
   -- Canonical permission/policy decision, verified and bound into the void record.
   v_decision := tenant_data.immutability_042_policy_decision(
-    p_tenant, v_actor, v_debit::bigint, v_company, v_branch, v_accounts);
+    p_tenant, v_actor, v_debit::bigint, v_company, v_branch, v_accounts,
+    p_entry, v_request_digest);
   v_decision_digest := tenant_data.immutability_042_decision_digest(v_decision);
   IF NOT coalesce((v_decision ->> 'allowed')::boolean, false) THEN
     IF coalesce((v_decision ->> 'denied')::boolean, false) THEN
@@ -507,35 +639,65 @@ BEGIN
   v_review := coalesce((v_decision ->> 'review')::boolean, true);
   v_policy_version := (v_decision ->> 'policyVersion')::bigint;
 
-  -- Review-required voids need a pre-registered receipt with an APPROVED request bound
-  -- to this exact request digest and an independent approver.
+  -- Review-required voids need a pre-registered receipt whose exact submission and
+  -- approved canonical decision are independently verified. Metadata alone is never
+  -- treated as authority: the approver's current membership and approval grant are
+  -- revalidated here, so a revoked or changed approver fails closed.
   IF v_review THEN
     IF p_void_command_id IS NULL THEN
       RAISE EXCEPTION 'VOID_APPROVAL_REQUIRED';
     END IF;
-    SELECT c.state INTO v_command_state
+
+    SELECT c.state, c.actor, c.digest, c.payload::jsonb
+      INTO v_command_state, v_command_actor, v_command_digest, v_command_payload
     FROM tenant_data.command_inbox c
     WHERE c.tenant_id = p_tenant AND c.id = p_void_command_id;
-    IF v_command_state IS DISTINCT FROM 'ACCEPTED_PENDING' AND v_command_state IS DISTINCT FROM 'AWAITING_APPROVAL' THEN
+    IF v_command_state IS NULL THEN
       RAISE EXCEPTION 'VOID_APPROVAL_RECEIPT_INVALID';
     END IF;
-    SELECT ar.state, ar.payload_digest, ar.decided_by
-      INTO v_approval_state, v_approval_digest, v_approval_actor
+    IF v_command_state IS DISTINCT FROM 'ACCEPTED_PENDING'
+       AND v_command_state IS DISTINCT FROM 'AWAITING_APPROVAL' THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_RECEIPT_INVALID';
+    END IF;
+
+    -- The pre-registered command must be this exact void submission by this actor.
+    IF v_command_actor IS DISTINCT FROM p_actor
+       OR v_command_digest IS DISTINCT FROM v_request_digest
+       OR v_command_payload IS NULL
+       OR jsonb_typeof(v_command_payload) IS DISTINCT FROM 'object'
+       OR coalesce(v_command_payload ->> 'kind', '') <> 'ENTRY_VOID'
+       OR (v_command_payload ->> 'entry') IS DISTINCT FROM p_entry
+       OR (v_command_payload ->> 'reason') IS DISTINCT FROM p_reason
+       OR (v_command_payload ->> 'requestDigest') IS DISTINCT FROM v_request_digest
+       OR (v_command_payload ->> 'correlationId') IS DISTINCT FROM p_correlation_id THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_COMMAND_MISMATCH: the pre-registered command is not this exact void submission';
+    END IF;
+
+    SELECT ar.state, ar.payload_digest, ar.decided_by, ar.policy_snapshot::jsonb
+      INTO v_approval_state, v_approval_digest, v_approval_actor, v_approval_snapshot
     FROM tenant_data.approval_requests ar
     WHERE ar.tenant_id = p_tenant AND ar.command_id = p_void_command_id;
-    IF v_approval_state IS DISTINCT FROM 'APPROVED'
-       OR v_approval_digest IS DISTINCT FROM v_request_digest
-       OR v_approval_actor IS NULL
-       OR v_approval_actor = p_actor THEN
+    IF v_approval_state IS DISTINCT FROM 'APPROVED' THEN
       RAISE EXCEPTION 'VOID_APPROVAL_REQUIRED';
     END IF;
-    IF NOT EXISTS (
-      SELECT 1 FROM tenant_data.approval_requests ar
-      WHERE ar.tenant_id = p_tenant AND ar.command_id = p_void_command_id
-        AND ar.policy_snapshot::jsonb ->> 'decisionDigest' = v_decision_digest
-    ) THEN
-      RAISE EXCEPTION 'VOID_APPROVAL_STALE';
+    IF v_approval_digest IS DISTINCT FROM v_request_digest THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_BINDING_MISMATCH: the approval is bound to a different submission';
     END IF;
+    IF v_approval_actor IS NULL OR v_approval_actor = p_actor THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_REQUIRED';
+    END IF;
+    -- Require the exact canonical decision, including entry, request digest, amounts,
+    -- currency, policy key/version and ordered role identities. Any policy, role or
+    -- amount change after approval makes the approval stale.
+    IF v_approval_snapshot IS DISTINCT FROM v_decision THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_STALE: the approved decision no longer matches current authority, policy or submission';
+    END IF;
+
+    -- Revalidate the approver now: fabricated, revoked, self, out-of-scope or
+    -- authority-changed approvers cannot authorise execution.
+    v_approval_uuid := tenant_data.immutability_040_approver_authority(
+      p_tenant, p_void_command_id, v_approval_actor);
+    v_approval_version := (v_approval_snapshot ->> 'policyVersion')::bigint;
     v_approval_command := p_void_command_id;
     v_void_command := p_void_command_id;
   ELSE
@@ -615,12 +777,13 @@ BEGIN
     (tenant_id, void_command_id, entry_id, reason, actor, actor_uuid,
      original_state, effective_state, source_digest, source_version, source_line_count,
      source_debit, request_digest, idempotency_key, policy_decision, policy_digest,
-     approval_command_id, correlation_id, policy_version, approval_version, period_locked)
+     approval_command_id, approver_actor, approval_digest, correlation_id, policy_version,
+     approval_version, period_locked)
   VALUES (p_tenant, v_void_command, p_entry, p_reason, p_actor, tenant_data.current_user_id(),
           'POSTED', 'VOIDED', v_source_digest, v_source_version, v_line_count,
           v_debit::bigint, v_request_digest, p_idempotency_key, v_decision, v_decision_digest,
-          v_approval_command, p_correlation_id, v_policy_version,
-          (CASE WHEN v_approval_command IS NULL THEN NULL ELSE 1 END), v_period_locked);
+          v_approval_command, v_approval_actor, CASE WHEN v_approval_command IS NULL THEN NULL ELSE v_decision_digest END,
+          p_correlation_id, v_policy_version, v_approval_version, v_period_locked);
 
   RETURN v_void_command;
 END;
@@ -640,6 +803,9 @@ AS $fn$
 DECLARE
   v_receipt_state text;
   v_receipt_digest text;
+  v_receipt_entry text;
+  v_receipt_kind text;
+  v_receipt_approver text;
   v_posted text;
   v_voids integer;
 BEGIN
@@ -653,11 +819,30 @@ BEGIN
   -- Serialize against the source command writers while the bundle is validated.
   PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.entry_id));
 
-  SELECT c.state, (c.payload::jsonb) #>> '{requestDigest}' INTO v_receipt_state, v_receipt_digest
+  SELECT c.state, (c.payload::jsonb) #>> '{requestDigest}', (c.payload::jsonb) #>> '{entry}',
+         (c.payload::jsonb) #>> '{kind}', c.approved_by
+    INTO v_receipt_state, v_receipt_digest, v_receipt_entry, v_receipt_kind, v_receipt_approver
   FROM tenant_data.command_inbox c
   WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.void_command_id;
-  IF v_receipt_state IS DISTINCT FROM 'VOIDED' OR v_receipt_digest IS DISTINCT FROM NEW.request_digest THEN
-    RAISE EXCEPTION 'VOID_RECEIPT_INVALID: the void record must match its VOIDED command receipt';
+  IF v_receipt_state IS DISTINCT FROM 'VOIDED'
+     OR v_receipt_digest IS DISTINCT FROM NEW.request_digest
+     OR v_receipt_entry IS DISTINCT FROM NEW.entry_id
+     OR v_receipt_kind IS DISTINCT FROM 'ENTRY_VOID' THEN
+    RAISE EXCEPTION 'VOID_RECEIPT_INVALID: the void record must match its VOIDED void-command receipt';
+  END IF;
+
+  IF NEW.approval_command_id IS NOT NULL THEN
+    IF v_receipt_approver IS DISTINCT FROM NEW.approver_actor THEN
+      RAISE EXCEPTION 'VOID_RECEIPT_INVALID: the approved receipt must record the same approver';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM tenant_data.approval_requests ar
+      WHERE ar.tenant_id = NEW.tenant_id AND ar.command_id = NEW.approval_command_id
+        AND ar.state = 'APPROVED' AND ar.decided_by = NEW.approver_actor
+        AND ar.payload_digest = NEW.request_digest
+    ) THEN
+      RAISE EXCEPTION 'VOID_APPROVAL_REQUIRED: the void record must reference its exact approved request';
+    END IF;
   END IF;
 
   SELECT c.state INTO v_posted
@@ -763,6 +948,7 @@ COMMENT ON FUNCTION tenant_data.immutability_042_denial_guard() IS
 GRANT USAGE ON SCHEMA tenant_data TO saven_void_definer;
 
 GRANT SELECT (tenant_id, id, company, branch, posting_date) ON tenant_data.journals TO saven_void_definer;
+GRANT SELECT (tenant_id, id, currency) ON tenant_data.company_profiles TO saven_void_definer;
 GRANT SELECT (tenant_id, journal_id, line_no, debit, credit, account) ON tenant_data.journal_lines TO saven_void_definer;
 GRANT SELECT (tenant_id, id, actor, state, digest, payload, updated_at, approved_by) ON tenant_data.command_inbox TO saven_void_definer;
 GRANT SELECT (tenant_id, void_command_id, entry_id, idempotency_key, request_digest) ON tenant_data.entry_voids TO saven_void_definer;
@@ -772,7 +958,7 @@ GRANT SELECT (tenant_id, user_id, role_id) ON tenant_data.assignments TO saven_v
 GRANT SELECT (tenant_id, user_id, action) ON tenant_data.denials TO saven_void_definer;
 GRANT SELECT (tenant_id, company, start_date, end_date, locked) ON tenant_data.periods TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id, payload_digest, policy_snapshot, state, decided_by) ON tenant_data.approval_requests TO saven_void_definer;
-GRANT SELECT (tenant_id, action_type, policy_key, version, approval_threshold_amount, requires_different_approver, is_active, effective_from, effective_to) ON tenant_data.approval_policy TO saven_void_definer;
+GRANT SELECT (tenant_id, action_type, policy_key, version, approval_threshold_amount, currency, requires_different_approver, is_active, effective_from, effective_to) ON tenant_data.approval_policy TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id) ON tenant_data.trade_operations TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id) ON tenant_data.command_decisions TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id) ON tenant_data.stock_operations TO saven_void_definer;
@@ -787,7 +973,8 @@ GRANT UPDATE (state, approved_by, updated_at) ON tenant_data.command_inbox TO sa
 GRANT INSERT (tenant_id, void_command_id, entry_id, reason, actor, actor_uuid, original_state,
               effective_state, source_digest, source_version, source_line_count, source_debit,
               request_digest, idempotency_key, policy_decision, policy_digest, approval_command_id,
-              correlation_id, policy_version, approval_version, period_locked, voided_at, created_at, updated_at)
+              approver_actor, approval_digest, correlation_id, policy_version, approval_version,
+              period_locked, voided_at, created_at, updated_at)
   ON tenant_data.entry_voids TO saven_void_definer;
 GRANT INSERT (tenant_id, command_id, actor, event, detail, happened_at)
   ON tenant_data.audit TO saven_void_definer;
@@ -797,7 +984,8 @@ GRANT INSERT (tenant_id, id, event, state, attempts)
   ON tenant_data.outbox TO saven_void_definer;
 
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) TO saven_void_definer;
-GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[]) TO saven_void_definer;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) TO saven_void_definer;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[], text, text) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_decision_digest(jsonb) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.current_tenant_id() TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.current_user_id() TO saven_void_definer;
@@ -821,6 +1009,8 @@ DECLARE
   allowed_columns text[] := ARRAY[
     'tenant_data.journals.tenant_id:SELECT','tenant_data.journals.id:SELECT','tenant_data.journals.company:SELECT',
     'tenant_data.journals.branch:SELECT','tenant_data.journals.posting_date:SELECT',
+    'tenant_data.company_profiles.tenant_id:SELECT','tenant_data.company_profiles.id:SELECT',
+    'tenant_data.company_profiles.currency:SELECT',
     'tenant_data.journal_lines.tenant_id:SELECT','tenant_data.journal_lines.journal_id:SELECT',
     'tenant_data.journal_lines.line_no:SELECT','tenant_data.journal_lines.debit:SELECT',
     'tenant_data.journal_lines.credit:SELECT','tenant_data.journal_lines.account:SELECT',
@@ -846,7 +1036,8 @@ DECLARE
     'tenant_data.entry_voids.source_line_count:INSERT','tenant_data.entry_voids.source_debit:INSERT',
     'tenant_data.entry_voids.request_digest:INSERT','tenant_data.entry_voids.idempotency_key:INSERT',
     'tenant_data.entry_voids.policy_decision:INSERT','tenant_data.entry_voids.policy_digest:INSERT',
-    'tenant_data.entry_voids.approval_command_id:INSERT','tenant_data.entry_voids.correlation_id:INSERT',
+    'tenant_data.entry_voids.approval_command_id:INSERT','tenant_data.entry_voids.approver_actor:INSERT',
+    'tenant_data.entry_voids.approval_digest:INSERT','tenant_data.entry_voids.correlation_id:INSERT',
     'tenant_data.entry_voids.policy_version:INSERT','tenant_data.entry_voids.approval_version:INSERT',
     'tenant_data.entry_voids.period_locked:INSERT','tenant_data.entry_voids.voided_at:INSERT',
     'tenant_data.entry_voids.created_at:INSERT','tenant_data.entry_voids.updated_at:INSERT',
@@ -865,6 +1056,7 @@ DECLARE
     'tenant_data.approval_policy.tenant_id:SELECT','tenant_data.approval_policy.action_type:SELECT',
     'tenant_data.approval_policy.policy_key:SELECT','tenant_data.approval_policy.version:SELECT',
     'tenant_data.approval_policy.approval_threshold_amount:SELECT',
+    'tenant_data.approval_policy.currency:SELECT',
     'tenant_data.approval_policy.requires_different_approver:SELECT',
     'tenant_data.approval_policy.is_active:SELECT','tenant_data.approval_policy.effective_from:SELECT',
     'tenant_data.approval_policy.effective_to:SELECT',
@@ -889,6 +1081,7 @@ DECLARE
   allowed_functions text[] := ARRAY[
     'tenant_data.current_tenant_id:EXECUTE','tenant_data.current_user_id:EXECUTE',
     'tenant_data.session_admitted:EXECUTE','tenant_data.immutability_040_lock_key:EXECUTE',
+    'tenant_data.immutability_040_approver_authority:EXECUTE',
     'tenant_data.immutability_042_policy_decision:EXECUTE','tenant_data.immutability_042_decision_digest:EXECUTE'
   ];
   actual text[];

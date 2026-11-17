@@ -14,7 +14,8 @@
 -- What is protected, mapped to the real accepted tables (see db/postgres/README.md):
 --   * command_inbox: accepted bytes (id, actor, digest, payload, created_at) are
 --     immutable; only lifecycle/lease columns may change; POSTED is final; a reviewed
---     command is final; entering POSTED requires balanced, reconciled effects.
+--     command is final; entering POSTED requires a balanced journal, audit, outbox and
+--     refuses every operational trade/stock shape that is not exactly reconciled.
 --   * journals, journal_lines: posted sources are append-only; a posted command cannot
 --     receive a late journal or line.
 --   * trade_operations/documents/lines/allocations/credits/credit_lines,
@@ -95,9 +96,11 @@ $fn$;
 COMMENT ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) IS
   'PIVOT-005 payload 040: deterministic advisory-lock key for one tenant-scoped command/entry. Shared by posting, children, corrections and voids.';
 
--- Verify that a command entering POSTED has the accepted effects. Mirrors the native
--- kernel contract: balanced journal with at least two lines, an audit row for the
--- posting event, an outbox row, and reconciled trade/stock effects when present.
+-- Verify that a command entering POSTED has the accepted plain-journal effects.
+-- Mirrors the native kernel contract for the supported shape: balanced journal with at
+-- least two lines, an audit row for the posting event and an outbox row. Any
+-- operational trade/stock row on the command is refused, because this boundary does
+-- not reconcile those effects exactly; a shallow existence check would be wrong.
 CREATE FUNCTION tenant_data.immutability_040_assert_posted_effects(p_tenant uuid, p_command text)
 RETURNS void
 LANGUAGE plpgsql STABLE
@@ -107,9 +110,8 @@ DECLARE
   v_lines integer;
   v_debit numeric;
   v_credit numeric;
-  v_total numeric;
-  v_sum numeric;
   v_posted integer;
+  v_operational text;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM tenant_data.journals j
@@ -150,47 +152,40 @@ BEGIN
     RAISE EXCEPTION 'POSTED_REQUIRES_OUTBOX: command % has no outbox row', p_command;
   END IF;
 
-  -- Trade documents must reconcile with their lines and allocations.
-  FOR v_total IN
-    SELECT d.total FROM tenant_data.trade_documents d
-    WHERE d.tenant_id = p_tenant AND d.command_id = p_command
-  LOOP
-    SELECT coalesce(sum(l.amount), 0) INTO v_sum
-    FROM tenant_data.trade_lines l
-    WHERE l.tenant_id = p_tenant AND l.command_id = p_command;
-    IF v_sum <> v_total THEN
-      RAISE EXCEPTION 'TRADE_UNRECONCILED: command % total % differs from its lines %', p_command, v_total, v_sum;
-    END IF;
-    SELECT coalesce(sum(a.amount), 0) INTO v_sum
-    FROM tenant_data.trade_allocations a
-    WHERE a.tenant_id = p_tenant AND a.document_id = p_command;
-    IF v_sum > v_total THEN
-      RAISE EXCEPTION 'TRADE_OVERALLOCATED: command % allocates % against a total of %', p_command, v_sum, v_total;
-    END IF;
-  END LOOP;
-
-  -- Credits must reconcile with their lines.
-  FOR v_total IN
-    SELECT c.total FROM tenant_data.trade_credits c
-    WHERE c.tenant_id = p_tenant AND c.command_id = p_command
-  LOOP
-    SELECT coalesce(sum(l.amount), 0) INTO v_sum
-    FROM tenant_data.trade_credit_lines l
-    WHERE l.tenant_id = p_tenant AND l.command_id = p_command;
-    IF v_sum <> v_total THEN
-      RAISE EXCEPTION 'TRADE_CREDIT_UNRECONCILED: command % total % differs from its credit lines %', p_command, v_total, v_sum;
-    END IF;
-  END LOOP;
-
-  -- A stock command must carry its movements.
-  IF EXISTS (
-    SELECT 1 FROM tenant_data.stock_operations s
-    WHERE s.tenant_id = p_tenant AND s.command_id = p_command
-  ) AND NOT EXISTS (
-    SELECT 1 FROM tenant_data.stock_movements m
-    WHERE m.tenant_id = p_tenant AND m.command_id = p_command
-  ) THEN
-    RAISE EXCEPTION 'STOCK_REQUIRES_MOVEMENTS: command % has a stock operation without movements', p_command;
+  -- Operational trade/stock shapes are NOT reconciled by this payload. Accepting an
+  -- arbitrary movement next to an unrelated balanced journal would be a shallow check,
+  -- not financial parity, so every unsupported shape is refused before POSTED. The
+  -- supported posting boundary is the plain balanced journal; PIVOT-013 owns the
+  -- reviewed operational adapter/reconciliation workflow. This is fail-closed, not a
+  -- silent broadening of the plain-journal void scope.
+  SELECT string_agg(t, ', ' ORDER BY t) INTO v_operational
+  FROM (
+    SELECT 'trade_operations' AS t WHERE EXISTS (
+      SELECT 1 FROM tenant_data.trade_operations x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'trade_documents' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.trade_documents x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'trade_lines' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.trade_lines x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'trade_allocations' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.trade_allocations x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'trade_credits' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.trade_credits x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'trade_credit_lines' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.trade_credit_lines x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'stock_operations' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.stock_operations x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+    UNION ALL
+    SELECT 'stock_movements' WHERE EXISTS (
+      SELECT 1 FROM tenant_data.stock_movements x WHERE x.tenant_id = p_tenant AND x.command_id = p_command)
+  ) shapes;
+  IF v_operational IS NOT NULL THEN
+    RAISE EXCEPTION 'POSTED_OPERATION_UNSUPPORTED: command % carries operational effects (%), and this PostgreSQL posting boundary supports only a plain balanced journal', p_command, v_operational;
   END IF;
 
   SELECT count(*) INTO v_posted FROM tenant_data.command_inbox c
@@ -202,7 +197,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) IS
-  'PIVOT-005 payload 040: balanced journal, audit, outbox and reconciled trade/stock effects required before a command may enter POSTED. Invoker, RLS-scoped.';
+  'PIVOT-005 payload 040: plain balanced journal, audit and outbox required before a command may enter POSTED; unsupported operational trade/stock shapes fail closed. Invoker, RLS-scoped.';
 
 -- =====================================================================
 -- command_inbox: accepted bytes immutable, POSTED final, effects required
@@ -215,6 +210,7 @@ SET search_path = pg_catalog, tenant_data
 AS $fn$
 DECLARE
   v_allowed text[] := ARRAY['state', 'lease_token', 'lease_until', 'error', 'approved_by', 'updated_at', 'updated_by'];
+  v_context_actor text;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'COMMAND_RECEIPT_RETAINED: accepted commands are retained';
@@ -226,6 +222,19 @@ BEGIN
     END IF;
     IF NEW.state = 'POSTED' THEN
       RAISE EXCEPTION 'POSTED_REQUIRES_ACCEPT: a command must be accepted and posted through its guarded transition, not inserted as POSTED';
+    END IF;
+    -- When verified tenant context is present, the receipt actor is bound to the
+    -- canonical member of the current principal. This stops a runtime from
+    -- fabricating a receipt in another member's name to manufacture approval
+    -- independence or submission provenance. Administrative/bootstrap seeding has
+    -- no context and is unaffected.
+    IF tenant_data.current_tenant_id() IS NOT NULL AND tenant_data.current_user_id() IS NOT NULL THEN
+      SELECT m.user_id INTO v_context_actor
+      FROM tenant_data.members m
+      WHERE m.tenant_id = NEW.tenant_id AND m.user_uuid = tenant_data.current_user_id() AND m.active;
+      IF v_context_actor IS NULL OR v_context_actor IS DISTINCT FROM NEW.actor THEN
+        RAISE EXCEPTION 'COMMAND_ACTOR_CONTEXT_MISMATCH: the accepted actor must be the verified member for this transaction';
+      END IF;
     END IF;
     RETURN NEW;
   END IF;
@@ -353,15 +362,31 @@ SET search_path = pg_catalog, tenant_data
 AS $fn$
 DECLARE
   v_original_state text;
-  v_voided boolean := false;
+  v_reversal_state text;
+  v_lock_original bigint;
+  v_lock_reversal bigint;
 BEGIN
   IF TG_OP <> 'INSERT' THEN
     RAISE EXCEPTION 'CORRECTION_IMMUTABLE: correction links are immutable and retained';
   END IF;
+  IF NEW.command_id IS NOT DISTINCT FROM NEW.original_id THEN
+    RAISE EXCEPTION 'CORRECTION_SELF_REFERENCE: a correction cannot reverse itself';
+  END IF;
 
-  -- Serialize against posting and voiding of the original entry.
-  PERFORM pg_advisory_xact_lock(tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.original_id));
+  -- Serialize against posting and voiding of BOTH ends in one deterministic order, so
+  -- a concurrent void of the original and a concurrent void of the reversal cannot
+  -- interleave between the two lifecycle checks.
+  v_lock_original := tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.original_id);
+  v_lock_reversal := tenant_data.immutability_040_lock_key(NEW.tenant_id, NEW.command_id);
+  IF v_lock_original <= v_lock_reversal THEN
+    PERFORM pg_advisory_xact_lock(v_lock_original);
+    PERFORM pg_advisory_xact_lock(v_lock_reversal);
+  ELSE
+    PERFORM pg_advisory_xact_lock(v_lock_reversal);
+    PERFORM pg_advisory_xact_lock(v_lock_original);
+  END IF;
 
+  -- The original must be an active posted source, never a voided one.
   SELECT c.state INTO v_original_state
   FROM tenant_data.command_inbox c
   WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.original_id;
@@ -373,6 +398,25 @@ BEGIN
     WHERE v.tenant_id = NEW.tenant_id AND v.entry_id = NEW.original_id
   ) THEN
     RAISE EXCEPTION 'CORRECTION_ORIGINAL_VOIDED: a voided entry cannot be corrected';
+  END IF;
+
+  -- The reversal side is equally protected: a link may only be created before the
+  -- reversal is final (the native accept-then-execute flow links while pending) and
+  -- never onto an already voided terminal reversal.
+  SELECT c.state INTO v_reversal_state
+  FROM tenant_data.command_inbox c
+  WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.command_id;
+  IF v_reversal_state IS NULL THEN
+    RAISE EXCEPTION 'CORRECTION_REVERSAL_NOT_FOUND: the reversal command must exist';
+  END IF;
+  IF v_reversal_state IN ('POSTED', 'VOIDED') THEN
+    RAISE EXCEPTION 'CORRECTION_REVERSAL_FINAL: a correction link must be created before the reversal posts';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM tenant_data.entry_voids v
+    WHERE v.tenant_id = NEW.tenant_id AND v.entry_id = NEW.command_id
+  ) THEN
+    RAISE EXCEPTION 'CORRECTION_REVERSAL_VOIDED: a voided reversal cannot become a linked correction';
   END IF;
   RETURN NEW;
 END;
@@ -388,6 +432,7 @@ SET search_path = pg_catalog, tenant_data
 AS $fn$
 DECLARE
   v_original_state text;
+  v_reversal_state text;
 BEGIN
   SELECT c.state INTO v_original_state
   FROM tenant_data.command_inbox c
@@ -401,18 +446,155 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'CORRECTION_ORIGINAL_VOIDED: a voided entry cannot be corrected';
   END IF;
+
+  SELECT c.state INTO v_reversal_state
+  FROM tenant_data.command_inbox c
+  WHERE c.tenant_id = NEW.tenant_id AND c.id = NEW.command_id;
+  IF v_reversal_state IS NULL THEN
+    RAISE EXCEPTION 'CORRECTION_REVERSAL_NOT_FOUND: the reversal command must exist';
+  END IF;
+  IF v_reversal_state = 'VOIDED' THEN
+    RAISE EXCEPTION 'CORRECTION_REVERSAL_VOIDED: a voided reversal cannot remain a linked correction';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM tenant_data.entry_voids v
+    WHERE v.tenant_id = NEW.tenant_id AND v.entry_id = NEW.command_id
+  ) THEN
+    RAISE EXCEPTION 'CORRECTION_REVERSAL_VOIDED: a voided reversal cannot remain a linked correction';
+  END IF;
   RETURN NEW;
 END;
 $fn$;
 
 COMMENT ON FUNCTION tenant_data.immutability_040_correction_guard() IS
-  'PIVOT-005 payload 040: correction links take the shared command lock, need a posted original, reject a voided original and are immutable.';
+  'PIVOT-005 payload 040: correction links lock and validate BOTH ends, require a posted non-voided original and a non-final, non-voided reversal, and are immutable.';
 COMMENT ON FUNCTION tenant_data.immutability_040_correction_committed() IS
-  'PIVOT-005 payload 040: deferred commit-time re-check of both ends of a correction reference.';
+  'PIVOT-005 payload 040: deferred commit-time re-check of both ends of a correction reference (original active posted, reversal not voided).';
 
 -- =====================================================================
 -- approval_requests: decided digest and policy snapshot are immutable
 -- =====================================================================
+
+-- Verify that a proposed approver is a current, admitted, independent member with
+-- approval/resource authority for this exact command. This is the single canonical
+-- authority check used both by the approval transition guard and by the void
+-- primitive at execution time, so a revocation or an authority change between
+-- approval and execution fails closed. It does not trust decided_by as metadata.
+CREATE FUNCTION tenant_data.immutability_040_approver_authority(
+  p_tenant uuid,
+  p_command text,
+  p_approver text
+) RETURNS uuid
+LANGUAGE plpgsql STABLE
+SET search_path = pg_catalog, tenant_data
+AS $fn$
+DECLARE
+  v_approver_uuid uuid;
+  v_requester text;
+  v_requester_uuid uuid;
+  v_company text;
+  v_branch text;
+  v_entry text;
+  v_payload jsonb;
+  v_role record;
+  v_actions jsonb;
+  v_companies jsonb;
+  v_branches jsonb;
+  v_matches integer := 0;
+BEGIN
+  IF p_approver IS NULL OR length(btrim(p_approver)) = 0 THEN
+    RAISE EXCEPTION 'APPROVAL_DECIDER_REQUIRED: an approval must record its approver';
+  END IF;
+
+  SELECT m.user_uuid INTO v_approver_uuid
+  FROM tenant_data.members m
+  WHERE m.tenant_id = p_tenant AND m.user_id = p_approver AND m.active;
+  IF v_approver_uuid IS NULL THEN
+    RAISE EXCEPTION 'APPROVAL_APPROVER_NOT_ACTIVE: the approver is not a current tenant member';
+  END IF;
+
+  SELECT c.actor, c.payload::jsonb INTO v_requester, v_payload
+  FROM tenant_data.command_inbox c
+  WHERE c.tenant_id = p_tenant AND c.id = p_command;
+  IF v_requester IS NULL THEN
+    RAISE EXCEPTION 'APPROVAL_COMMAND_NOT_FOUND: the approval command is not visible in this scope';
+  END IF;
+  IF v_requester = p_approver THEN
+    RAISE EXCEPTION 'APPROVAL_SELF_FORBIDDEN: an independent approver is required';
+  END IF;
+  SELECT m.user_uuid INTO v_requester_uuid
+  FROM tenant_data.members m
+  WHERE m.tenant_id = p_tenant AND m.user_id = v_requester;
+  IF v_requester_uuid IS NOT NULL AND v_requester_uuid = v_approver_uuid THEN
+    RAISE EXCEPTION 'APPROVAL_SELF_FORBIDDEN: an independent approver is required';
+  END IF;
+
+  -- Resource scope comes from the command's own journal, or from the target entry of
+  -- a void command. When neither resolves, only the action grant is required; the
+  -- void primitive always resolves the target entry before authorising execution.
+  SELECT j.company, j.branch INTO v_company, v_branch
+  FROM tenant_data.journals j
+  WHERE j.tenant_id = p_tenant AND j.id = p_command;
+  IF v_company IS NULL AND coalesce(v_payload ->> 'kind', '') = 'ENTRY_VOID' THEN
+    v_entry := v_payload ->> 'entry';
+    SELECT j.company, j.branch INTO v_company, v_branch
+    FROM tenant_data.journals j
+    WHERE j.tenant_id = p_tenant AND j.id = v_entry;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM tenant_data.denials d
+    WHERE d.tenant_id = p_tenant AND d.user_id = p_approver
+      AND d.action IN ('journal.approve', '*')
+  ) THEN
+    RAISE EXCEPTION 'APPROVAL_AUTHORITY_DENIED: the approver has an explicit denial';
+  END IF;
+
+  FOR v_role IN
+    SELECT r.id, r.protected, r.permissions::jsonb AS p
+    FROM tenant_data.assignments a
+    JOIN tenant_data.roles r ON r.tenant_id = a.tenant_id AND r.id = a.role_id
+    WHERE a.tenant_id = p_tenant AND a.user_id = p_approver
+    ORDER BY r.id
+  LOOP
+    IF v_role.protected THEN
+      v_matches := v_matches + 1;
+      CONTINUE;
+    END IF;
+    IF jsonb_typeof(v_role.p) IS DISTINCT FROM 'object' THEN
+      RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has a malformed permission payload', v_role.id;
+    END IF;
+    v_actions := v_role.p -> 'actions';
+    IF jsonb_typeof(v_actions) IS DISTINCT FROM 'array' THEN
+      RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has no canonical actions array', v_role.id;
+    END IF;
+    IF NOT (jsonb_exists(v_actions, 'journal.approve') OR jsonb_exists(v_actions, '*')) THEN
+      CONTINUE;
+    END IF;
+    v_companies := v_role.p -> 'companies';
+    v_branches := v_role.p -> 'branches';
+    IF jsonb_typeof(v_companies) IS DISTINCT FROM 'array'
+       OR jsonb_typeof(v_branches) IS DISTINCT FROM 'array' THEN
+      RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has malformed scope arrays', v_role.id;
+    END IF;
+    IF v_company IS NOT NULL AND NOT (jsonb_exists(v_companies, '*') OR jsonb_exists(v_companies, v_company)) THEN
+      CONTINUE;
+    END IF;
+    IF v_branch IS NOT NULL AND NOT (jsonb_exists(v_branches, '*') OR jsonb_exists(v_branches, v_branch)) THEN
+      CONTINUE;
+    END IF;
+    v_matches := v_matches + 1;
+  END LOOP;
+
+  IF v_matches = 0 THEN
+    RAISE EXCEPTION 'APPROVAL_AUTHORITY_REQUIRED: the approver holds no current approval grant for this command';
+  END IF;
+  RETURN v_approver_uuid;
+END;
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) IS
+  'PIVOT-005 payload 040: canonical approver verification. Requires a current active tenant member (not the requester) with an active journal.approve (or protected owner) grant scoped to the command resource, and no explicit denial. The approval transition guard additionally requires the verified session context; the void primitive re-runs this check at execution so a revoked or authority-changed approver fails closed.';
 
 CREATE FUNCTION tenant_data.immutability_040_approval_guard()
 RETURNS trigger
@@ -422,22 +604,40 @@ AS $fn$
 DECLARE
   v_allowed text[] := ARRAY['state', 'decided_by', 'updated_at', 'updated_by'];
   v_state text;
+  v_digest text;
+  v_context_actor text;
+  v_context_uuid uuid;
+  v_approver_uuid uuid;
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'APPROVAL_RETAINED: approval requests are retained';
   END IF;
 
   IF TG_OP = 'INSERT' THEN
-    SELECT ci.state INTO v_state FROM tenant_data.command_inbox ci
+    SELECT ci.state, ci.digest INTO v_state, v_digest FROM tenant_data.command_inbox ci
     WHERE ci.tenant_id = NEW.tenant_id AND ci.id = NEW.command_id;
+    IF v_state IS NULL THEN
+      RAISE EXCEPTION 'APPROVAL_COMMAND_NOT_FOUND: an approval must reference a visible command';
+    END IF;
     IF v_state IN ('POSTED', 'VOIDED') THEN
       RAISE EXCEPTION 'POSTED_SOURCE_LATE_APPROVAL: command % is already final', NEW.command_id;
     END IF;
     IF btrim(NEW.state) = '' THEN
       RAISE EXCEPTION 'APPROVAL_STATE_REQUIRED: an approval request requires a state';
     END IF;
-    IF NEW.state = 'APPROVED' AND NEW.decided_by IS NULL THEN
-      RAISE EXCEPTION 'APPROVAL_DECIDER_REQUIRED: an approved request must record its approver';
+    -- An approval decision is a transition by the approver, never an insert that
+    -- asserts its own outcome. The accepted digest is bound at creation.
+    IF NEW.state = 'APPROVED' THEN
+      RAISE EXCEPTION 'APPROVAL_TRANSITION_REQUIRED: create the request pending and record the decision as an actor-bound transition';
+    END IF;
+    IF NEW.decided_by IS NOT NULL THEN
+      RAISE EXCEPTION 'APPROVAL_DECIDER_UNEXPECTED: a pending request cannot already name its decider';
+    END IF;
+    IF NEW.payload_digest IS DISTINCT FROM v_digest THEN
+      RAISE EXCEPTION 'APPROVAL_DIGEST_MISMATCH: the approval must bind the exact accepted command digest';
+    END IF;
+    IF jsonb_typeof(NEW.policy_snapshot::jsonb) IS DISTINCT FROM 'object' THEN
+      RAISE EXCEPTION 'APPROVAL_POLICY_INVALID: the policy snapshot must be a JSON object';
     END IF;
     RETURN NEW;
   END IF;
@@ -445,16 +645,48 @@ BEGIN
   IF (to_jsonb(NEW) - v_allowed) IS DISTINCT FROM (to_jsonb(OLD) - v_allowed) THEN
     RAISE EXCEPTION 'APPROVAL_BINDING_IMMUTABLE: the decided digest and policy snapshot are immutable';
   END IF;
+  IF OLD.decided_by IS NOT NULL AND NEW.decided_by IS DISTINCT FROM OLD.decided_by THEN
+    RAISE EXCEPTION 'APPROVAL_DECIDER_IMMUTABLE: the exact recorded approver identity is immutable';
+  END IF;
   IF OLD.state = 'APPROVED' AND NEW.state IS DISTINCT FROM 'APPROVED' THEN
     RAISE EXCEPTION 'APPROVAL_STATE_FINAL: an approved request is final';
   END IF;
   IF btrim(NEW.state) = '' THEN
     RAISE EXCEPTION 'APPROVAL_STATE_REQUIRED: an approval request requires a state';
   END IF;
-  -- Only the structural approval outcome is named here; other values are reference
-  -- data and are validated by the application, not by a growing CHECK list.
-  IF NEW.state = 'APPROVED' AND NEW.decided_by IS NULL THEN
-    RAISE EXCEPTION 'APPROVAL_DECIDER_REQUIRED: an approved request must record its approver';
+
+  IF NEW.state = 'APPROVED' THEN
+    IF OLD.state IS DISTINCT FROM 'PENDING' THEN
+      RAISE EXCEPTION 'APPROVAL_TRANSITION_INVALID: only a pending request may be approved';
+    END IF;
+    IF NEW.decided_by IS NULL THEN
+      RAISE EXCEPTION 'APPROVAL_DECIDER_REQUIRED: an approved request must record its approver';
+    END IF;
+    -- The decision must be made by the verified principal itself, not merely stamped
+    -- with an arbitrary member id by the requester.
+    v_context_uuid := tenant_data.current_user_id();
+    IF tenant_data.current_tenant_id() IS DISTINCT FROM NEW.tenant_id OR v_context_uuid IS NULL THEN
+      RAISE EXCEPTION 'APPROVAL_CONTEXT_REQUIRED: an approval decision requires verified tenant context';
+    END IF;
+    IF NOT tenant_data.session_admitted(NEW.tenant_id, v_context_uuid) THEN
+      RAISE EXCEPTION 'APPROVAL_CONTEXT_REQUIRED: the approver has no active admitted session';
+    END IF;
+    SELECT m.user_id INTO v_context_actor FROM tenant_data.members m
+    WHERE m.tenant_id = NEW.tenant_id AND m.user_uuid = v_context_uuid AND m.active;
+    IF v_context_actor IS NULL OR v_context_actor IS DISTINCT FROM NEW.decided_by THEN
+      RAISE EXCEPTION 'APPROVAL_DECIDER_MISMATCH: the recorded approver must be the verified member taking the decision';
+    END IF;
+    SELECT ci.digest INTO v_digest FROM tenant_data.command_inbox ci
+    WHERE ci.tenant_id = NEW.tenant_id AND ci.id = NEW.command_id;
+    IF NEW.payload_digest IS DISTINCT FROM v_digest THEN
+      RAISE EXCEPTION 'APPROVAL_DIGEST_MISMATCH: the approval must bind the exact accepted command digest';
+    END IF;
+    v_approver_uuid := tenant_data.immutability_040_approver_authority(
+      NEW.tenant_id, NEW.command_id, NEW.decided_by);
+  ELSE
+    IF NEW.decided_by IS NOT NULL THEN
+      RAISE EXCEPTION 'APPROVAL_DECIDER_UNEXPECTED: only an approved request names its decider';
+    END IF;
   END IF;
   RETURN NEW;
 END;
@@ -561,6 +793,7 @@ COMMENT ON FUNCTION tenant_data.immutability_040_revision_guard() IS
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_command_state(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_command_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_journal_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_journal_line_guard() FROM PUBLIC;
@@ -575,6 +808,7 @@ REVOKE ALL ON FUNCTION tenant_data.immutability_040_revision_guard() FROM PUBLIC
 -- EXECUTE on them; the guard functions themselves are invoked as triggers.
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) TO saven_customer_app;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_command_guard() TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_journal_guard() TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_journal_line_guard() TO saven_customer_app;
