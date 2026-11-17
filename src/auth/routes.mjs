@@ -4,6 +4,7 @@ import {createPasswordPolicy} from './password-policy.mjs';
 import {createMfaService} from './factors.mjs';
 import {createRecoveryService} from './recovery.mjs';
 import {createMailDispatcher} from './mail.mjs';
+import {createTenantSelection} from './tenant-selection.mjs';
 import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './rate-limit.mjs';
 
 // AUTH-003 versioned auth routes.
@@ -157,6 +158,7 @@ export function createAuthRoutes({
   mail = null,
   recoveryConfig = {},
   mailQueueLimit = 256,
+  tenantSelection = null,
   trustedClientHeader = null,
   audit = async () => {},
   origins,
@@ -188,6 +190,7 @@ export function createAuthRoutes({
   // forgot-password route keeps the AUTH-003 no-delivery behaviour instead of inventing
   // an ad-hoc channel.
   const recovery = createRecoveryService({store, clock, config: recoveryConfig});
+  const selectionService = tenantSelection ?? createTenantSelection({store, clock});
   // Delivery is decoupled from the public response: the route enqueues a bounded job and
   // never waits for the external provider. The dispatcher owns the in-memory token until
   // delivery and invalidates an undelivered challenge through `onFailure` (best effort).
@@ -677,6 +680,46 @@ export function createAuthRoutes({
     return response;
   }
 
+  // AUTH-006: tenant-less selection routes. They are deliberately NOT in the pre-MFA
+  // allow-list, so a pending MFA session cannot choose a business before verification.
+  function tenantRealmGuard(realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; tenant selection is not available here.');
+    }
+  }
+
+  async function listTenants(request, url, realm) {
+    tenantRealmGuard(realm);
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const session = await store.readSession(token, {realm});
+    if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const result = await selectionService.list(session);
+    return json(result);
+  }
+
+  async function selectTenant(request, url, realm) {
+    tenantRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    if (Object.keys(body).some(key => !['tenantId', 'membershipId'].includes(key))) {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown tenant selection fields.');
+    }
+    const session = await mutationSession(request, realm);
+    const selected = await selectionService.select(session, body);
+    return json({selected});
+  }
+
+  async function clearTenant(request, url, realm) {
+    tenantRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    if (Object.keys(body).length > 0) throw new AuthError(400, 'UNKNOWN_FIELDS', 'No fields are accepted.');
+    const session = await mutationSession(request, realm);
+    const result = await selectionService.clear(session);
+    return json(result);
+  }
+
   function requireCsrf(request, session) {
     const provided = request.headers.get('x-csrf-token');
     if (!csrfMatches(provided, session.csrfTokenHash)) {
@@ -1000,6 +1043,12 @@ export function createAuthRoutes({
         response = await me(request, url, realm);
       } else if (path === '/v1/auth/logout' && request.method === 'POST') {
         response = await logout(request, url, realm);
+      } else if (path === '/v1/auth/tenants' && request.method === 'GET') {
+        response = await listTenants(request, url, realm);
+      } else if (path === '/v1/auth/tenant/select' && request.method === 'POST') {
+        response = await selectTenant(request, url, realm);
+      } else if (path === '/v1/auth/tenant/clear' && request.method === 'POST') {
+        response = await clearTenant(request, url, realm);
       } else if (path === '/v1/auth/mfa' && request.method === 'GET') {
         response = await mfaStatusRoute(request, url, realm);
       } else if (path === '/v1/auth/mfa/enroll' && request.method === 'POST') {
