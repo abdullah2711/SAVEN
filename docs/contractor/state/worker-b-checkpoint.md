@@ -82,6 +82,16 @@ directive; this file is outside any contract TOUCH.
    changes. The unrepresentable-type decision is explicitly fail-closed (no
    redact-and-warn).
 
+## Intermediate failure evidence (R3)
+
+- First R3 activation run failed with exact text
+  `PIVOT-006: unreviewed schema change on audit table account_profiles`.
+  Hypothesis: `immutability_041_resolve_type` is `RETURNS TABLE` but used bare `RETURN;`,
+  so it emitted zero rows; the fingerprint aggregate was NULL for every table. Fix:
+  `RETURN QUERY SELECT v_type, v_mod; RETURN;`. The same resolver failure made the new
+  schema-wide type enumeration initially return an empty actual-OID set. After the fix,
+  the catalog fingerprint, decimal, domain and pipeline-alarm tests passed.
+
 ## Hardening directive status
 
 - (i) schema-wide column-type enumeration: implemented in
