@@ -90,6 +90,59 @@ $fn$;
 COMMENT ON FUNCTION tenant_data.immutability_041_row_key(regclass, jsonb) IS
   'PIVOT-006 payload 041: canonical JSON target identity built from the table primary key columns. Catalog-driven; no per-table hardcoded key list.';
 
+-- Resolve a column type to its catalog base type identity. Domains are followed
+-- recursively to their base type and effective typmod. Type identity is never a name
+-- string comparison.
+CREATE FUNCTION tenant_data.immutability_041_resolve_type(p_type oid, p_typmod integer)
+RETURNS TABLE(base_oid oid, base_typmod integer)
+LANGUAGE plpgsql STABLE
+SET search_path = pg_catalog
+AS $fn$
+DECLARE
+  v_type oid := p_type;
+  v_mod integer := p_typmod;
+  v_kind "char";
+  v_base oid;
+  v_dommod integer;
+BEGIN
+  LOOP
+    SELECT t.typtype, t.typbasetype, t.typtypmod
+      INTO v_kind, v_base, v_dommod
+    FROM pg_type t WHERE t.oid = v_type;
+    IF NOT FOUND THEN
+      RETURN;
+    END IF;
+    IF v_kind <> 'd' THEN
+      RETURN QUERY SELECT v_type, v_mod;
+      RETURN;
+    END IF;
+    v_type := v_base;
+    IF v_dommod <> -1 THEN
+      v_mod := v_dommod;
+    END IF;
+  END LOOP;
+END;
+$fn$;
+
+CREATE FUNCTION tenant_data.immutability_041_type_supported(p_base_oid oid)
+RETURNS boolean
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog
+AS $fn$
+  SELECT p_base_oid IN (
+    'pg_catalog.jsonb'::regtype, 'pg_catalog.json'::regtype,
+    'pg_catalog.text'::regtype, 'pg_catalog.varchar'::regtype, 'pg_catalog.bpchar'::regtype,
+    'pg_catalog.int8'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int2'::regtype,
+    'pg_catalog.numeric'::regtype, 'pg_catalog.bool'::regtype, 'pg_catalog.uuid'::regtype,
+    'pg_catalog.timestamptz'::regtype, 'pg_catalog.timestamp'::regtype,
+    'pg_catalog.date'::regtype)
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_041_resolve_type(oid, integer) IS
+  'PIVOT-006 payload 041: resolves a column type (including nested domains) to its catalog base type OID and effective typmod. No name-string comparison.';
+COMMENT ON FUNCTION tenant_data.immutability_041_type_supported(oid) IS
+  'PIVOT-006 payload 041: exact catalog-OID allow-list for representable base types. Domains are resolved before this check; anything else is unrepresentable and fails closed.';
+
 -- Exact reviewed schema fingerprint (serialization contract version 1). The
 -- fingerprint covers every registered table's ordered column names, base type names and
 -- typmods, so a new/renamed/retyped column cannot inherit raw retention silently. The
@@ -100,10 +153,10 @@ LANGUAGE sql STABLE
 SET search_path = pg_catalog
 AS $fn$
   SELECT encode(sha256(convert_to(
-    string_agg(a.attname || ':' || t.typname || ':' || a.atttypmod, ',' ORDER BY a.attnum),
+    string_agg(a.attname || ':' || r.base_oid::text || ':' || r.base_typmod, ',' ORDER BY a.attnum),
     'UTF8')), 'hex')
   FROM pg_attribute a
-  JOIN pg_type t ON t.oid = a.atttypid
+  CROSS JOIN LATERAL tenant_data.immutability_041_resolve_type(a.atttypid, a.atttypmod) r
   WHERE a.attrelid = p_table AND a.attnum > 0 AND NOT a.attisdropped
 $fn$;
 
@@ -113,48 +166,48 @@ LANGUAGE sql IMMUTABLE
 SET search_path = pg_catalog
 AS $fn$
   SELECT CASE p_table::text
-    WHEN 'tenant_data.account_profiles' THEN '180d26137c69e3dbc211d423c7f7b4d8e2ee10f767957a4ce24dc93e76485738'
-    WHEN 'tenant_data.accounts' THEN 'b9c9953a8dacbf9c02421c61b160fa02f6fb72e50da2fdb543560bc5dac11339'
-    WHEN 'tenant_data.approval_policy' THEN '1802db30499fb7941ed9d0dfd9303eb393c6143f0edc313b0a7934b6a5ef8a68'
-    WHEN 'tenant_data.approval_requests' THEN 'e5bce7fcaf994a14c4a12a3e5138a9b2bc6ad233e425245b7772ca1e0bb7de56'
-    WHEN 'tenant_data.assignments' THEN '3feb3c05cfc38e3ffadd5eee6713cfaffabccbbcecaa61c1e403755310cf57af'
-    WHEN 'tenant_data.business' THEN 'a052fd48e1b8b3855746fefc830194288db36376e7d7451d74b836d9ea4865bd'
-    WHEN 'tenant_data.business_rule' THEN '8b292c992d82925c7062b4935b0cad3b480055c7ddc4b245c0648611237e2d70'
-    WHEN 'tenant_data.command_decisions' THEN '7a78993e1b2d00aef0f64ac96ef52a756e5711c1f915b931dd67b3baaf89e41b'
-    WHEN 'tenant_data.command_files' THEN '9ddcff6d30893cd8766fb1694c1de0e6e3619bcc08c1970149600368413adbfa'
-    WHEN 'tenant_data.company_profiles' THEN 'abed9c8c70fdc327351bdc933f1d270e4a61fae57d858bc2cd4b89516b5ec438'
-    WHEN 'tenant_data.company_settings' THEN '5e6b03f5b71d20d14f764e9bc86375fa8cd07636781f09ce8d7375a4a3375e5b'
-    WHEN 'tenant_data.denials' THEN 'dc72f0e5ffd64f8a0d6e69b6f5da8c88e9ad9c192fc7322b48dd99c4602c6f4b'
-    WHEN 'tenant_data.document_numbers' THEN 'c82a4b5b3b500b1d915075bc71ecf9ce27d57a47f7ce795b1b49011c619173d8'
-    WHEN 'tenant_data.document_registry' THEN 'c66762675da6ddf3e26f1a228fa57a6e89e28a034617ea8e4659a979d38c605b'
-    WHEN 'tenant_data.document_revisions' THEN 'fb82b76e639577ea7f6ac2a3eab3bf456216eed28f332c1c079cfe76ea6ec5e4'
-    WHEN 'tenant_data.document_sequences' THEN '354b421aab37914ea073327fdcce5e7c00b5951b4f2e4a2f96867230529e369c'
-    WHEN 'tenant_data.inventory_controls' THEN '5b2b6dd46ce764a4071c2f364b9a8a6b3c27d72201b90056eba4b8a8689c55f0'
-    WHEN 'tenant_data.journal_corrections' THEN '3d2d2295274de99ac2a65202df2cd8e83a0505d68fa52ae32358ea4a02c87d08'
-    WHEN 'tenant_data.journal_drafts' THEN '5b1cadf4530750fd05a23ddb7a4c42d722f34157dde9bcdb9b186f73942b8949'
-    WHEN 'tenant_data.journal_lines' THEN 'd2dfe225e478095f7a8d63ddb52ffb3e8eaa3299da9fd2b110db374dace319d5'
-    WHEN 'tenant_data.journals' THEN '6c1ddc15ecfa58b8c4e611fe74c469064362ad5ee50a860b1e416d2e4b2d3715'
-    WHEN 'tenant_data.members' THEN '3d0b59fb56c762935f148a7852981ad531f2eaa03f8b6082eeafcdded8fc665c'
-    WHEN 'tenant_data.periods' THEN '1417a27b40c5dbe009b9a02b4e91a892e54b5e9e4dc996c3efe092a542d4ad81'
-    WHEN 'tenant_data.posting_constraint' THEN '3a2f51ebf39769949825c1cc2f390ca87e70000b4d46adc56d8cb8f09f560b45'
-    WHEN 'tenant_data.reference_values' THEN 'a44a45020dd6d97d58cc81cce47c2cb13228fbea125797e73987d8ceca52324b'
-    WHEN 'tenant_data.roles' THEN 'f6d07c4129a008c1309460413a063145dbf8295c07b6aca370dcef909ca5a98b'
-    WHEN 'tenant_data.stock_balances' THEN '4f8245ee8b7734b63a56f254802be2a41cc1b82de393fb9e79a3a33bd5535003'
-    WHEN 'tenant_data.stock_items' THEN '6913bb217f44388df1d0ebbc09684e7c55ad87ec90ac8c34d840480d3afaa804'
-    WHEN 'tenant_data.stock_movements' THEN '39003a6156c3ca12eeacc93372c65e3231c42e670eba4058eaa57c17b60b2093'
-    WHEN 'tenant_data.stock_operations' THEN '8f9dea0e00e5b0a9da7921cfbacf379bd9866445306148fe760643e5a6823acb'
-    WHEN 'tenant_data.support_grants' THEN 'bd78dc94a1341f2f69cd911998582854b4f5956b81b9441655364a6a76c82201'
-    WHEN 'tenant_data.tax_profile' THEN 'd514cef534d9d078a51ea6d7da3ee7c58977ea263ea78ea471b8c7ee6e8cce92'
-    WHEN 'tenant_data.trade_allocations' THEN 'cb99415e7df1a46cf35d4378d037cdaaaca4bc71749292f143f831088e6d905b'
-    WHEN 'tenant_data.trade_controls' THEN 'fec35f2f0947331c4957ed8a7e360bacb06c2e890d80ffd68c124d32245edb64'
-    WHEN 'tenant_data.trade_credit_lines' THEN '8609e512a1ba085033469368c5b54f6a21480f5757948be608fa5e9bfe80b18e'
-    WHEN 'tenant_data.trade_credits' THEN '50de39ddcf1646f69bf725537c35470a91b4779813c8418d3561167861f9a322'
-    WHEN 'tenant_data.trade_documents' THEN '7063fd368dd80a4d395e7067010585aef268132893f6deb6ad97e193671ded04'
-    WHEN 'tenant_data.trade_lines' THEN 'd263ecfd5cdd3f13d3692f6ca4d4412129b9f18316052da1472812dd13969606'
-    WHEN 'tenant_data.trade_operations' THEN 'b3423d16511215fe6ee4c0e12dec32ccdf290f13c1caa58690fed14ab7a17d9e'
-    WHEN 'tenant_data.trade_parties' THEN '527946b6ee579a1b1c7d656f37acdb377dd060aa769e39f3a32fed47357e1cf4'
-    WHEN 'tenant_data.verified_entitlement' THEN 'bb1fba9f3a33e748f2ce80b7fb2712c5176dfafef4598f750315ff1910cf6acb'
-    WHEN 'tenant_data.warehouses' THEN '74c0e5b2519adb6e031460b20cf46e1de04a379a4d3066085b45f3c556b51887'
+    WHEN 'tenant_data.account_profiles' THEN 'c900004a9a44f0c08faa3e0cc08164831f906b8f5c7ce94ebf206a819702ce64'
+    WHEN 'tenant_data.accounts' THEN 'e1814fdefafba042e46d94e3889a5bb9e8b06d97a434e94546101c31f89333fc'
+    WHEN 'tenant_data.approval_policy' THEN 'b9c3e6f6c8a5e28f98a25af0a92615aaa26ae75c377aa29ee25b7ae247b48d97'
+    WHEN 'tenant_data.approval_requests' THEN '3569fb3fdff4c59011d30b6f888683cd6452be9968316728eb55f3302c21d12c'
+    WHEN 'tenant_data.assignments' THEN '0ecbf90620f6174424e1365cbeee4a9c30e6c756a757cc35bffaa17707a6f00a'
+    WHEN 'tenant_data.business' THEN 'c9effa81e6d8edb7ee23d903e7db0585dbae72a068efc8da2ee3398e54b0be76'
+    WHEN 'tenant_data.business_rule' THEN '2238cb481dc92f24766b5d09bfccf6ea13b175bdbf52eb8dd384456673a36271'
+    WHEN 'tenant_data.command_decisions' THEN 'e385b60c68f1085e06edf514562d286550f6762c8a39d4b4182e838768f1f21c'
+    WHEN 'tenant_data.command_files' THEN '594dfe9d43f18ef1af680182dbcbc3a89e201d4af043fec47c79a0975742727e'
+    WHEN 'tenant_data.company_profiles' THEN 'efce45b0c8e0015f438b8acbb405f17e7d511cb014d628da194226fd5c37b83e'
+    WHEN 'tenant_data.company_settings' THEN '71633b2df765fd05962cbe6555058cb79dfb0ea176e4219105c9e0b01f01310d'
+    WHEN 'tenant_data.denials' THEN 'dd586d45f2619011cab6bd72ba19eb9d8458e2d3b6ef9c5b48fe7ed310fc5d0c'
+    WHEN 'tenant_data.document_numbers' THEN '7bdeed7d05a13003752a765e3dfaa8b7461713a2e96836b47218be24214c01ce'
+    WHEN 'tenant_data.document_registry' THEN '200f0febd163fd3dd37594c71b75670543559231d34c09fead0caed9e8309592'
+    WHEN 'tenant_data.document_revisions' THEN '971e4a7f717b8f61f9f8d02b16cc8b7e8fec5a7539f7fbb12c6cd1297139369d'
+    WHEN 'tenant_data.document_sequences' THEN 'b1ff532b9ee3c1f43547b017bc03de33be89724d86c145bddb459a13b10371a6'
+    WHEN 'tenant_data.inventory_controls' THEN 'cd546f1c4e9ef41f99a01570b6bd8b0a888717db51f8b8c5947c5d65a6238881'
+    WHEN 'tenant_data.journal_corrections' THEN '9486512e450ed90ccc5b8bdc93d754e489c420f56a323cd0043b27fde393666c'
+    WHEN 'tenant_data.journal_drafts' THEN '3e43345d1b450931e72114ebf20bcafb5464a0ff3dcdc5330f9644daf3a178e8'
+    WHEN 'tenant_data.journal_lines' THEN 'edc77b423a62254c60a127833d2c89b7d5531b94054e4e5e98c6b9136e02a5a6'
+    WHEN 'tenant_data.journals' THEN '78e8524b95e70c6c9e5f1029fbc112c00893bbb977c71daca1706fab0d23edf9'
+    WHEN 'tenant_data.members' THEN '5392ec796dcf87799033e8d98f5e7e5d72019b3c4a311d3d2cb13826bdb0b713'
+    WHEN 'tenant_data.periods' THEN 'c391e41ec9e01b2125a522343a129caba9d8dc2a1e58fce9e9e40021b48eec5c'
+    WHEN 'tenant_data.posting_constraint' THEN '58831f006a2336f096440a965e712133d81dc7a4e90eb41d29dca32ed757f942'
+    WHEN 'tenant_data.reference_values' THEN '1142ad09baf60bcc3746f625aeeb05ed15210051fec1a960fe7a0b8a6b15e4d1'
+    WHEN 'tenant_data.roles' THEN '3b47c933d8de5abfac5eed0038fe2f4affb142d699cbe7701fdde2049c9cb15f'
+    WHEN 'tenant_data.stock_balances' THEN 'b95efcb325181ce17676254984ff964e7e33d516935a3f97973ff7d44469ee03'
+    WHEN 'tenant_data.stock_items' THEN 'a0e62f65e65dafdb0e22b26560201021c08a9f7148c879a43e74ca4b85d683cd'
+    WHEN 'tenant_data.stock_movements' THEN '2b8614df369813b4c534896d421e74d93d97d08153152de2c57994538ce83a2c'
+    WHEN 'tenant_data.stock_operations' THEN 'a1b71a3c72be8708889906d382856ef27fb3adb8b137b23e0935c96c4c652feb'
+    WHEN 'tenant_data.support_grants' THEN '2dae81ac3ff4d4228a4b4e43a0d5dc64a6adbd2753d3a8414d9289d3972f4aef'
+    WHEN 'tenant_data.tax_profile' THEN 'f16bb966c3c20c0f5c3d553c6b482733e88af30b662a0d87943be79be0bc99a0'
+    WHEN 'tenant_data.trade_allocations' THEN '568110dbdfd095b0f224d2373fb4299508638eedb1a51b9cbb50b88b5fbaef60'
+    WHEN 'tenant_data.trade_controls' THEN '49751d18dcd147982d95d529d4604f256741a1551ab22389ae4fb2578ea5bd7e'
+    WHEN 'tenant_data.trade_credit_lines' THEN 'c029415b96c704c6388613b2301ae6aaab1f262d0bc07838e1c00f171262dd0c'
+    WHEN 'tenant_data.trade_credits' THEN '47e191fa5338f7564b709146a0d1fbc34ae27941462d9300f5647358ed72e4e6'
+    WHEN 'tenant_data.trade_documents' THEN '40a8cdaa50f9105feef229aabc2256278253379be5cfaf6e4d478924d0fdca81'
+    WHEN 'tenant_data.trade_lines' THEN '6542630e0ff1986c2fe80ee8d853a27219775c056f9e8afaf53e9269e40bf481'
+    WHEN 'tenant_data.trade_operations' THEN '83e7de236ac73080e6c0282684b570f40ebca0b50e04483f519b105c5f15ebdb'
+    WHEN 'tenant_data.trade_parties' THEN 'a2fee79ab8fcb98a89eb4765770b336caef3e9ebecf668013a7a90f3ae9bbd96'
+    WHEN 'tenant_data.verified_entitlement' THEN '61f810264d5c7a5ce99002253ee66052d3367cab1bd6ff69acd14f10653966f6'
+    WHEN 'tenant_data.warehouses' THEN '35c658bdc72a18bb0c80e6a1ac27251eb4be2246f166a359778496eb89d7ad8e'
   END
 $fn$;
 
@@ -202,38 +255,42 @@ BEGIN
   END IF;
 
   FOR v_col IN
-    SELECT a.attname, t.typname AS typ
+    SELECT a.attname, r.base_oid, r.base_typmod
     FROM pg_attribute a
-    JOIN pg_type t ON t.oid = a.atttypid
+    CROSS JOIN LATERAL tenant_data.immutability_041_resolve_type(a.atttypid, a.atttypmod) r
     WHERE a.attrelid = p_table AND a.attnum > 0 AND NOT a.attisdropped
     ORDER BY a.attnum
   LOOP
     v_value := p_row -> v_col.attname;
     IF v_value IS NULL THEN
       v_row := v_row || jsonb_build_object(v_col.attname, NULL);
-    ELSIF v_col.typ IN ('jsonb', 'json') THEN
+    ELSIF v_col.base_oid IN ('pg_catalog.jsonb'::regtype, 'pg_catalog.json'::regtype) THEN
       v_row := v_row || jsonb_build_object(v_col.attname, jsonb_build_object(
         'redacted', true,
-        'type', v_col.typ,
+        'type', format_type(v_col.base_oid, v_col.base_typmod),
         'sha256', encode(sha256(convert_to(v_value::text, 'UTF8')), 'hex')));
       v_redacted := array_append(v_redacted, v_col.attname);
-    ELSIF v_col.typ IN ('text', 'varchar', 'bpchar') THEN
+    ELSIF v_col.base_oid IN ('pg_catalog.text'::regtype, 'pg_catalog.varchar'::regtype,
+                             'pg_catalog.bpchar'::regtype) THEN
       IF v_col.attname = ANY(v_safe_text) THEN
         v_row := v_row || jsonb_build_object(v_col.attname, v_value);
       ELSE
         v_row := v_row || jsonb_build_object(v_col.attname, jsonb_build_object(
           'redacted', true,
-          'type', v_col.typ,
+          'type', format_type(v_col.base_oid, v_col.base_typmod),
           'sha256', encode(sha256(convert_to(v_value::text, 'UTF8')), 'hex')));
         v_redacted := array_append(v_redacted, v_col.attname);
       END IF;
-    ELSIF v_col.typ IN ('int8','int4','int2','numeric','bool','uuid',
-                        'timestamptz','timestamp','date') THEN
-      -- Catalog base type identity. Parameterized numerics (for example
-      -- numeric(20,4) and numeric(9,6)) keep their exact JSON numeric value.
+    ELSIF v_col.base_oid IN (
+      'pg_catalog.int8'::regtype, 'pg_catalog.int4'::regtype, 'pg_catalog.int2'::regtype,
+      'pg_catalog.numeric'::regtype, 'pg_catalog.bool'::regtype, 'pg_catalog.uuid'::regtype,
+      'pg_catalog.timestamptz'::regtype, 'pg_catalog.timestamp'::regtype,
+      'pg_catalog.date'::regtype) THEN
+      -- Catalog base type identity (domains already resolved). Parameterized numerics
+      -- (for example numeric(20,4) and numeric(9,6)) keep their exact JSON value.
       v_row := v_row || jsonb_build_object(v_col.attname, v_value);
     ELSE
-      RAISE EXCEPTION 'AUDIT_SERIALIZATION_UNSUPPORTED: column %.% has unreviewed type %', p_table, v_col.attname, v_col.typ;
+      RAISE EXCEPTION 'AUDIT_SERIALIZATION_UNSUPPORTED: column %.% has unreviewed base type oid %', p_table, v_col.attname, v_col.base_oid;
     END IF;
   END LOOP;
   RETURN jsonb_build_object(
@@ -493,6 +550,10 @@ COMMENT ON FUNCTION tenant_data.immutability_041_audit_truncate_guard() IS
 
 ALTER FUNCTION tenant_data.immutability_041_row_key(regclass, jsonb)
   OWNER TO saven_audit_definer;
+ALTER FUNCTION tenant_data.immutability_041_resolve_type(oid, integer)
+  OWNER TO saven_audit_definer;
+ALTER FUNCTION tenant_data.immutability_041_type_supported(oid)
+  OWNER TO saven_audit_definer;
 ALTER FUNCTION tenant_data.immutability_041_schema_fingerprint(regclass)
   OWNER TO saven_audit_definer;
 ALTER FUNCTION tenant_data.immutability_041_expected_fingerprint(regclass)
@@ -512,6 +573,8 @@ ALTER FUNCTION tenant_data.immutability_041_audit_truncate_guard()
   OWNER TO saven_migrator;
 
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_row_key(regclass, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_041_resolve_type(oid, integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_041_type_supported(oid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_schema_fingerprint(regclass) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_expected_fingerprint(regclass) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_serialize(regclass, jsonb) FROM PUBLIC;
@@ -572,7 +635,8 @@ DECLARE
     'tenant_data.session_admitted:EXECUTE'
   ];
   owned_functions text[] := ARRAY[
-    'immutability_041_row_key','immutability_041_schema_fingerprint',
+    'immutability_041_row_key','immutability_041_resolve_type',
+    'immutability_041_type_supported','immutability_041_schema_fingerprint',
     'immutability_041_expected_fingerprint','immutability_041_serialize',
     'immutability_041_audit_origin','immutability_041_audit_row',
     'immutability_041_audit_native_guard'
@@ -613,7 +677,7 @@ BEGIN
   SELECT count(*) INTO v_count
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE p.proowner = v_owner AND n.nspname = 'tenant_data' AND p.proname = ANY (owned_functions);
-  IF v_count <> 7 THEN RAISE EXCEPTION 'AUDIT-OWNER: expected seven owned audit functions, found %', v_count; END IF;
+  IF v_count <> 9 THEN RAISE EXCEPTION 'AUDIT-OWNER: expected nine owned audit functions, found %', v_count; END IF;
 
   SELECT string_agg(datname, ', ') INTO v_bad FROM pg_database WHERE datdba = v_owner;
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'AUDIT-OWNER: owns databases: %', v_bad; END IF;
@@ -683,7 +747,8 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE p.proowner = v_owner AND n.nspname = 'tenant_data'
     AND NOT (
-      (p.proname IN ('immutability_041_row_key','immutability_041_serialize',
+      (p.proname IN ('immutability_041_row_key','immutability_041_resolve_type',
+                     'immutability_041_type_supported','immutability_041_serialize',
                      'immutability_041_schema_fingerprint','immutability_041_expected_fingerprint')
         AND NOT p.prosecdef AND p.proconfig = ARRAY['search_path=pg_catalog'])
       OR (p.proname = 'immutability_041_audit_origin'

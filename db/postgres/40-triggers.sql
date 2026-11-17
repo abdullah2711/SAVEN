@@ -364,6 +364,10 @@ END $$;
 -- reviewed tables, owned by the narrow DDL role with a fixed search_path, and the
 -- runtime cannot mutate audit storage directly.
 DO $$
+DECLARE
+  v_bad text;
+  v_audit_table text;
+  v_table_oid regclass;
 BEGIN
   -- 041 is optional for a PIVOT-005-only installation; when present it must be fully
   -- valid. PIVOT-006 acceptance requires the 041 payload and this block to pass.
@@ -400,6 +404,37 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'PIVOT-006: audit writer/actor-binding functions must be SECURITY DEFINER owned by saven_audit_definer with the exact fixed search_path';
   END IF;
+
+  -- Pipeline alarm: every table actually attached to the audit writer must still match
+  -- its reviewed schema fingerprint, and every column base type (domains resolved) must
+  -- be in the exact representable-type allow-list. A new column/type without a recorded
+  -- serialization decision refuses activation rather than silently inheriting raw
+  -- retention or failing later on a business write.
+  FOR v_audit_table IN
+    SELECT c.relname
+    FROM pg_trigger tg
+    JOIN pg_class c ON c.oid = tg.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_proc p ON p.oid = tg.tgfoid
+    WHERE n.nspname = 'tenant_data'
+      AND p.proname = 'immutability_041_audit_row'
+      AND NOT tg.tgisinternal
+    ORDER BY c.relname
+  LOOP
+    v_table_oid := format('tenant_data.%I', v_audit_table)::regclass;
+    IF tenant_data.immutability_041_schema_fingerprint(v_table_oid)
+       IS DISTINCT FROM tenant_data.immutability_041_expected_fingerprint(v_table_oid) THEN
+      RAISE EXCEPTION 'PIVOT-006: unreviewed schema change on audit table %', v_audit_table;
+    END IF;
+    SELECT string_agg(a.attname, ', ' ORDER BY a.attnum) INTO v_bad
+    FROM pg_attribute a
+    CROSS JOIN LATERAL tenant_data.immutability_041_resolve_type(a.atttypid, a.atttypmod) r
+    WHERE a.attrelid = v_table_oid AND a.attnum > 0 AND NOT a.attisdropped
+      AND NOT tenant_data.immutability_041_type_supported(r.base_oid);
+    IF v_bad IS NOT NULL THEN
+      RAISE EXCEPTION 'PIVOT-006: unreviewed column type on audit table %: %', v_audit_table, v_bad;
+    END IF;
+  END LOOP;
 
   IF NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_accounts' AND NOT tg.tgisinternal)
      OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_journals' AND NOT tg.tgisinternal)

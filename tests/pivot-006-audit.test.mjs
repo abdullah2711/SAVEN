@@ -369,12 +369,16 @@ test('PIVOT-006 static contract: immutable payload, explicit registration and no
   assert.match(audit, /immutability_041_audit_native_guard/);
   assert.match(audit, /AUDIT_ACTOR_MISMATCH/);
   assert.match(audit, /immutability_041_serialize/);
+  assert.match(audit, /immutability_041_resolve_type/);
+  assert.match(audit, /immutability_041_type_supported/);
   assert.match(audit, /immutability_041_schema_fingerprint/);
   assert.match(audit, /immutability_041_expected_fingerprint/);
   assert.match(audit, /AUDIT_SERIALIZATION_SCHEMA_CHANGED/);
   assert.match(audit, /serializationVersion/);
   assert.match(audit, /AUDIT_SERIALIZATION_UNSUPPORTED/);
-  assert.match(audit, /numeric/);
+  assert.match(audit, /'pg_catalog\.numeric'::regtype/);
+  assert.doesNotMatch(audit, /typname/);
+  assert.doesNotMatch(audit, /IN \('text'/);
   assert.match(audit, /immutability_041_audit_origin/);
   assert.match(audit, /AUDIT_PROVENANCE_INVALID/);
   assert.match(audit, /reference_values/);
@@ -403,8 +407,12 @@ test('PIVOT-006 static contract: immutable payload, explicit registration and no
   assert.match(readme, /saven_audit_definer/);
   assert.match(readme, /serialization/i);
   assert.match(readme, /fingerprint/i);
+  assert.match(readme, /catalog type identity/i);
+  assert.match(readme, /domains are followed/i);
   assert.match(readme, /numeric\(20,4\)/);
   assert.match(readme, /numeric\(9,6\)/);
+  assert.match(readme, /unrepresentable-type decision.*fail closed/i);
+  assert.match(readme, /pipeline alarm/i);
   assert.match(readme, /provenance/i);
   assert.match(readme, /quiesc/i);
   assert.match(readme, /append-only actor-bound tenant change audit/i);
@@ -451,9 +459,11 @@ test('PIVOT-006 dedicated audit owner has only the reviewed authority and refuse
       WHERE r.rolname = $1 AND p.proname LIKE 'immutability_041_%'
       ORDER BY p.proname
     `, [role])).rows;
-    assert.equal(owned.length, 7);
+    assert.equal(owned.length, 9);
     const config = Object.fromEntries(owned.map(row => [row.proname, [row.prosecdef, row.proconfig]]));
     assert.deepEqual(config.immutability_041_row_key, [false, ['search_path=pg_catalog']]);
+    assert.deepEqual(config.immutability_041_resolve_type, [false, ['search_path=pg_catalog']]);
+    assert.deepEqual(config.immutability_041_type_supported, [false, ['search_path=pg_catalog']]);
     assert.deepEqual(config.immutability_041_schema_fingerprint, [false, ['search_path=pg_catalog']]);
     assert.deepEqual(config.immutability_041_expected_fingerprint, [false, ['search_path=pg_catalog']]);
     assert.deepEqual(config.immutability_041_serialize, [false, ['search_path=pg_catalog']]);
@@ -879,6 +889,39 @@ test('PIVOT-006 serializes parameterized numeric schemas exactly and covers ever
     await seed(db);
     await activate(db);
 
+    // Schema-wide enumeration over every column type actually present in the
+    // registered tables. This is the pipeline alarm for a new type without a recorded
+    // serialization decision. Expected set is the reviewed catalog-OID set.
+    const expectedTypeOids = (await db.adminQuery(`
+      SELECT array_agg(t.oid::text ORDER BY t.oid::text) AS oids
+      FROM pg_type t
+      WHERE t.oid IN (
+        'pg_catalog.bool'::regtype, 'pg_catalog.int8'::regtype, 'pg_catalog.int4'::regtype,
+        'pg_catalog.text'::regtype, 'pg_catalog.timestamptz'::regtype,
+        'pg_catalog.numeric'::regtype, 'pg_catalog.uuid'::regtype, 'pg_catalog.jsonb'::regtype)
+    `)).rows[0].oids;
+    const actualTypeOids = (await db.adminQuery(`
+      SELECT array_agg(DISTINCT r.base_oid::text ORDER BY r.base_oid::text) AS oids
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL tenant_data.immutability_041_resolve_type(a.atttypid, a.atttypmod) r
+      WHERE n.nspname = 'tenant_data' AND c.relname = ANY($1)
+        AND a.attnum > 0 AND NOT a.attisdropped
+    `, [auditedTables])).rows[0].oids;
+    assert.deepEqual(actualTypeOids, expectedTypeOids);
+    const unsupported = (await db.adminQuery(`
+      SELECT count(*)::int AS n
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      CROSS JOIN LATERAL tenant_data.immutability_041_resolve_type(a.atttypid, a.atttypmod) r
+      WHERE n.nspname = 'tenant_data' AND c.relname = ANY($1)
+        AND a.attnum > 0 AND NOT a.attisdropped
+        AND NOT tenant_data.immutability_041_type_supported(r.base_oid)
+    `, [auditedTables])).rows[0].n;
+    assert.equal(unsupported, 0);
+
     const fingerprints = (await db.adminQuery(`
       SELECT c.relname,
              tenant_data.immutability_041_schema_fingerprint(c.oid) AS actual,
@@ -1012,5 +1055,93 @@ test('PIVOT-006 serializes parameterized numeric schemas exactly and covers ever
              tenant_data.immutability_041_expected_fingerprint('tenant_data.accounts'::regclass) AS ok
     `)).rows[0].ok;
     assert.equal(restored, true);
+  });
+});
+
+test('PIVOT-006 resolves domains to catalog base types and alarms on unreviewed schema change', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await activate(db);
+
+    // Domain over text: resolved to the catalog text base type; the redacted payload
+    // column remains redacted and no secret reaches the audit row.
+    await db.adminQuery('CREATE DOMAIN tenant_data.p006_text_domain AS text');
+    await db.adminQuery('ALTER TABLE tenant_data.document_revisions ALTER COLUMN payload TYPE tenant_data.p006_text_domain');
+    const textDomainFingerprint = (await db.adminQuery(`
+      SELECT tenant_data.immutability_041_schema_fingerprint('tenant_data.document_revisions'::regclass) =
+             tenant_data.immutability_041_expected_fingerprint('tenant_data.document_revisions'::regclass) AS ok
+    `)).rows[0].ok;
+    assert.equal(textDomainFingerprint, true);
+    const domainSecret = 'P006_DOMAIN_TEXT_SECRET_6a2f';
+    await asUser(db, T1, U1, client => client.query(`
+      INSERT INTO tenant_data.document_registry(tenant_id, document_id, document_type, document_status, company, branch,
+        origin_type, origin_user_id)
+        VALUES ('${T1}', 'p006-domain-doc', 'journal', 'PENDING_APPROVAL', 'alpha', 'main', 'human', 'user-1')
+    `), {commit: true});
+    await asUser(db, T1, U1, client => client.query(`
+      INSERT INTO tenant_data.document_revisions(tenant_id, document_id, revision, document_type, document_status,
+        payload, payload_digest, policy_snapshot, origin_type, origin_user_id)
+        VALUES ('${T1}', 'p006-domain-doc', 1, 'journal', 'PENDING_APPROVAL',
+          '{"password":"${domainSecret}"}', 'd', '{}', 'human', 'user-1')
+    `), {commit: true});
+    const domainTextAudit = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'document_revisions' ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.ok(!JSON.stringify(domainTextAudit).includes(domainSecret));
+    assert.equal(domainTextAudit.after.row.payload.redacted, true);
+    await db.adminQuery('ALTER TABLE tenant_data.document_revisions ALTER COLUMN payload TYPE text');
+    await db.adminQuery('DROP DOMAIN tenant_data.p006_text_domain');
+
+    // Domain over numeric(20,4): resolved to the exact catalog numeric base type; the
+    // money column still writes and audits exact decimal values.
+    await db.adminQuery('CREATE DOMAIN tenant_data.p006_money_domain AS numeric(20,4)');
+    await db.adminQuery('ALTER TABLE tenant_data.approval_policy ALTER COLUMN approval_threshold_amount TYPE tenant_data.p006_money_domain');
+    const moneyDomainFingerprint = (await db.adminQuery(`
+      SELECT tenant_data.immutability_041_schema_fingerprint('tenant_data.approval_policy'::regclass) =
+             tenant_data.immutability_041_expected_fingerprint('tenant_data.approval_policy'::regclass) AS ok
+    `)).rows[0].ok;
+    assert.equal(moneyDomainFingerprint, true);
+    await asUser(db, T1, U1, client => client.query(`
+      INSERT INTO tenant_data.approval_policy(tenant_id, policy_key, version, action_type, role_id,
+        max_self_approval_amount, approval_threshold_amount, currency, requires_different_approver, is_active)
+        VALUES ('${T1}', 'p006-domain-money', 1, 'accounting.entry.void', NULL, 0.0000, 987.6543, 'PKR', false, true)
+    `), {commit: true});
+    const moneyAudit = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'approval_policy' AND detail_jsonb -> 'after' -> 'row' ->> 'policy_key' = 'p006-domain-money'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(moneyAudit.after.row.approval_threshold_amount, 987.6543);
+    await asUser(db, T1, U1, client => client.query(`
+      UPDATE tenant_data.approval_policy SET approval_threshold_amount = 0.0002
+       WHERE tenant_id = '${T1}' AND policy_key = 'p006-domain-money' AND version = 1
+    `), {commit: true});
+    const moneyUpdate = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'approval_policy' AND event = 'TENANT_CHANGE_UPDATE'
+        AND detail_jsonb -> 'after' -> 'row' ->> 'policy_key' = 'p006-domain-money'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(moneyUpdate.after.row.approval_threshold_amount, 0.0002);
+    await db.adminQuery('ALTER TABLE tenant_data.approval_policy ALTER COLUMN approval_threshold_amount TYPE numeric(20,4)');
+    await db.adminQuery('DROP DOMAIN tenant_data.p006_money_domain');
+
+    // Pipeline alarm: a new column (even a supported scalar) without a recorded schema
+    // decision refuses activation; an unsupported range type likewise refuses.
+    await db.adminQuery('ALTER TABLE tenant_data.accounts ADD COLUMN p006_new_flag boolean');
+    const dispatcher = await readFile(new URL('db/postgres/40-triggers.sql', repoRoot), 'utf8');
+    await assert.rejects(() => db.adminQuery(namespaceSql(dispatcher, db.roles)),
+      /unreviewed schema change|unreviewed column type/);
+    await db.adminQuery('ROLLBACK').catch(() => {});
+    await db.adminQuery('ALTER TABLE tenant_data.accounts DROP COLUMN p006_new_flag');
+    await activate(db);
+
+    await db.adminQuery('ALTER TABLE tenant_data.accounts ADD COLUMN p006_range int4range');
+    await assert.rejects(() => db.adminQuery(namespaceSql(dispatcher, db.roles)),
+      /unreviewed schema change|unreviewed column type/);
+    await db.adminQuery('ROLLBACK').catch(() => {});
+    await db.adminQuery('ALTER TABLE tenant_data.accounts DROP COLUMN p006_range');
+    await activate(db);
   });
 });
