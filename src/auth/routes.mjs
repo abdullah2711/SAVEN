@@ -1,6 +1,7 @@
 import {timingSafeEqual} from 'node:crypto';
 import {AuthError, digestToken, isTokenDigest} from './session-store.mjs';
 import {createPasswordPolicy} from './password-policy.mjs';
+import {createMfaService} from './factors.mjs';
 import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './rate-limit.mjs';
 
 // AUTH-003 versioned auth routes.
@@ -148,6 +149,9 @@ export function createAuthRoutes({
   rateLimitPolicy = {},
   accountingCooldownMs = 30 * 1000,
   poolingMode = 'session',
+  mfa = null,
+  mfaConfig = {},
+  mfaOnVerification = null,
   trustedClientHeader = null,
   audit = async () => {},
   origins,
@@ -174,6 +178,7 @@ export function createAuthRoutes({
       : undefined,
   });
   const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy, accountingCooldownMs, poolingMode});
+  const mfaService = mfa ?? createMfaService({store, clock, config: mfaConfig, onVerification: mfaOnVerification});
 
   function realmFor(url) {
     if (url.origin === customerOrigin) return 'customer';
@@ -266,6 +271,22 @@ export function createAuthRoutes({
             // The reservation already counts this attempt; no extra failure row is written.
             return {rejected: true};
           }
+          // Current assurance authority: any active membership whose role requires MFA.
+          // Reuse the leased client for MFA authority reads: one transaction binds the
+          // verified principal to RLS context, with no second pool checkout while the
+          // reservation scope lock is held.
+          const mfaDecision = await lease.transaction(async tx => ({
+            requirement: await mfaService.authority(user.id, {tx}),
+            state: await mfaService.status(user.id, {tx}),
+          }));
+          const requirement = mfaDecision.requirement;
+          const mfaState = mfaDecision.state;
+          if (!requirement.resolved) {
+            throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
+          }
+          if (requirement.required && !mfaState.available) {
+            throw new AuthError(503, 'MFA_UNAVAILABLE', 'Multi-factor authentication is required but is not configured.');
+          }
           // Successful upgrade, session and success audit stay atomic in one transaction.
           const created = await lease.transaction(async tx => {
             const orderRow = await tx.query('SELECT pg_current_xact_id()::text AS id');
@@ -307,7 +328,17 @@ export function createAuthRoutes({
             return session;
           });
           if (!created) return {rejected: true};
-          return {created, user};
+          return {
+            created,
+            user,
+            mfa: {
+              required: requirement.required,
+              enrolled: mfaState.enrolled,
+              pending: requirement.required,
+              available: mfaState.available,
+              resolved: true,
+            },
+          };
         },
       });
     } catch (error) {
@@ -331,6 +362,8 @@ export function createAuthRoutes({
       realm,
       csrfToken: outcome.created.csrfToken,
       user: {id: outcome.user.id, email: outcome.user.email, emailVerified: outcome.user.emailVerified === true},
+      mfa: outcome.mfa,
+      session: {assuranceLevel: 'single_factor'},
     });
     response.headers.set('Set-Cookie', sessionCookie({
       realm,
@@ -400,6 +433,8 @@ export function createAuthRoutes({
     if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const refreshed = await store.refreshSession(session.id);
     if (!refreshed) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const status = await store.withTransaction(tx => mfaService.status(session.userId, {tx}));
+    if (!status.resolved) throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
     return json({
       user: {id: session.userId, email: session.email},
       session: {
@@ -408,6 +443,14 @@ export function createAuthRoutes({
         selectedTenantId: refreshed.selectedTenantId,
         idleExpiresAt: refreshed.idleExpiresAt,
         absoluteExpiresAt: refreshed.absoluteExpiresAt,
+      },
+      mfa: {
+        required: status.required,
+        enrolled: status.enrolled,
+        pending: status.required && (refreshed.assuranceLevel !== 'mfa_verified' || !status.enrolled),
+        available: status.available,
+        resolved: status.resolved,
+        recoveryRemaining: status.recoveryRemaining,
       },
     });
   }
@@ -450,12 +493,291 @@ export function createAuthRoutes({
     return response;
   }
 
+  function requireCsrf(request, session) {
+    const provided = request.headers.get('x-csrf-token');
+    if (!csrfMatches(provided, session.csrfTokenHash)) {
+      throw new AuthError(403, 'CSRF_FAILED', 'CSRF verification failed.');
+    }
+  }
+
+  async function loadUserById(tx, userId) {
+    const result = await tx.query(
+      `SELECT id, email, password_hash, password_scheme, status, credential_version
+       FROM auth.users WHERE id = $1`,
+      [userId],
+    );
+    if (result.rowCount !== 1) return null;
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      email: row.email,
+      passwordHash: row.password_hash,
+      passwordScheme: row.password_scheme,
+      status: row.status,
+      credentialVersion: Number(row.credential_version),
+    };
+  }
+
+  // Reads the verified session WITHOUT row locks. Lifecycle transactions then take the
+  // deterministic users -> two_factor -> sessions lock order, so concurrent lifecycle
+  // requests cannot deadlock on opposing session-row locks.
+  async function mutationSession(request, realm) {
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const session = await store.readSession(token, {realm});
+    if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    requireCsrf(request, session);
+    return session;
+  }
+
+  function mfaRealmGuard(realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator MFA is not enabled.');
+    }
+  }
+
+  async function mfaStatusRoute(request, url, realm) {
+    mfaRealmGuard(realm);
+    const token = readCookies(request)[cookieName(realm, secureCookies)];
+    if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const session = await store.readSession(token, {realm});
+    if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    const status = await store.withTransaction(tx => mfaService.status(session.userId, {tx}));
+    if (!status.resolved) throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
+    return json({
+      required: status.required,
+      enrolled: status.enrolled,
+      available: status.available,
+      recoveryRemaining: status.recoveryRemaining,
+      assuranceLevel: session.assuranceLevel,
+      pending: status.required && (session.assuranceLevel !== 'mfa_verified' || !status.enrolled),
+    });
+  }
+
+  async function mfaEnrollRoute(request, url, realm) {
+    mfaRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    const allowed = ['password', 'code', 'recoveryCode'];
+    const keys = Object.keys(body);
+    if (keys.some(key => !allowed.includes(key))) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown enrollment fields.');
+    const replaceProof = keys.includes('password') || keys.includes('code') || keys.includes('recoveryCode');
+    const usesCode = typeof body.code === 'string' && body.recoveryCode === undefined;
+    const usesRecovery = typeof body.recoveryCode === 'string' && body.code === undefined;
+    if (replaceProof && (typeof body.password !== 'string' || (!usesCode && !usesRecovery))) {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Replacement requires the password and exactly one existing code.');
+    }
+    const session = await mutationSession(request, realm);
+    const result = await store.withTransaction(async tx => {
+      // Common lifecycle authority: revalidate the actual session token/realm,
+      // revocation, both expiries, active principal and credential epoch inside this
+      // owned transaction AFTER the deterministic lifecycle locks, before any
+      // reauthentication or factor mutation.
+      await mfaService.assertMutationAuthority({session, tx});
+      const status = await mfaService.status(session.userId, {tx});
+      if (!status.resolved) throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
+      let authorizedReplacement = false;
+      if (status.enrolled) {
+        // Never treat session assurance as reauthentication proof: the current password
+        // and an existing TOTP/recovery factor are both required in this transaction.
+        if (!replaceProof) throw new AuthError(403, 'MFA_REAUTH_REQUIRED', 'Reauthentication and an existing factor are required to replace the enrolled factor.');
+        // Durable per-user admission precedes any password/KDF work. Locked requests
+        // refuse without starting a derivation or a factor step; the failure accounting
+        // for wrong credentials still commits (returned as {failed}).
+        try {
+          await mfaService.checkLocked(session.userId, {tx});
+        } catch (error) {
+          if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+          throw error;
+        }
+        const user = await loadUserById(tx, session.userId);
+        const verification = user ? await policy.verify(body.password, user.passwordHash) : {valid: false};
+        if (!verification.valid) {
+          await mfaService.registerPasswordFailure(session.userId, {tx});
+          return {failed: new AuthError(401, 'SIGN_IN_FAILED', 'Reauthentication failed.')};
+        }
+        try {
+          if (usesRecovery) await mfaService.verifyRecovery(session.userId, body.recoveryCode, {tx});
+          else await mfaService.verifyTotp(session.userId, body.code, {tx});
+        } catch (error) {
+          if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+          throw error;
+        }
+        authorizedReplacement = true;
+      } else if (replaceProof) {
+        throw new AuthError(400, 'UNKNOWN_FIELDS', 'Initial enrollment takes no proof fields.');
+      }
+      const started = await mfaService.beginEnrollment(session.userId, {tx, replaceAuthorized: authorizedReplacement});
+      await record({
+        eventType: 'mfa_enrolled',
+        outcome: 'success',
+        realm,
+        user: {id: session.userId},
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+        sessionId: session.id,
+        detail: {stage: started.replaced ? 'replaced' : 'started'},
+      }, {tx});
+      return started;
+    });
+    if (result.failed) throw result.failed;
+    return json({otpauthUri: result.otpauthUri, pending: true, replaced: result.replaced === true});
+  }
+
+  async function mfaEnrollVerifyRoute(request, url, realm) {
+    mfaRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    if (Object.keys(body).some(key => key !== 'code')) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown verification fields.');
+    const session = await mutationSession(request, realm);
+    const result = await store.withTransaction(async tx => {
+      await mfaService.assertMutationAuthority({session, tx});
+      let completed;
+      try {
+        completed = await mfaService.completeEnrollment(session.userId, body.code, {tx});
+      } catch (error) {
+        if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+        throw error;
+      }
+      const assurance = await store.setSessionAssurance(session.id, 'mfa_verified', {tx});
+      if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      await record({
+        eventType: 'mfa_enrolled',
+        outcome: 'success',
+        realm,
+        user: {id: session.userId},
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+        sessionId: session.id,
+        detail: {stage: 'completed', recovery_codes_issued: completed.recoveryCodes.length},
+      }, {tx});
+      return completed;
+    });
+    if (result.failed) throw result.failed;
+    return json({ok: true, assuranceLevel: 'mfa_verified', recoveryCodes: result.recoveryCodes});
+  }
+
+  async function mfaVerifyRoute(request, url, realm) {
+    mfaRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    const keys = Object.keys(body);
+    const usesCode = keys.includes('code') && keys.length === 1;
+    const usesRecovery = keys.includes('recoveryCode') && keys.length === 1;
+    if (!usesCode && !usesRecovery) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide exactly one code or recovery code.');
+    const session = await mutationSession(request, realm);
+    const result = await store.withTransaction(async tx => {
+      await mfaService.assertMutationAuthority({session, tx});
+      let verified;
+      try {
+        verified = usesRecovery
+          ? await mfaService.verifyRecovery(session.userId, body.recoveryCode, {tx})
+          : await mfaService.verifyTotp(session.userId, body.code, {tx});
+      } catch (error) {
+        if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+        throw error;
+      }
+      const assurance = await store.setSessionAssurance(session.id, 'mfa_verified', {tx});
+      if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      await record({
+        eventType: 'mfa_verified',
+        outcome: 'success',
+        realm,
+        user: {id: session.userId},
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+        sessionId: session.id,
+        detail: {method: verified.method, assurance: 'mfa_verified'},
+      }, {tx});
+      return verified;
+    });
+    if (result.failed) throw result.failed;
+    return json({ok: true, method: result.method, assuranceLevel: 'mfa_verified'});
+  }
+
+  async function mfaDisableRoute(request, url, realm) {
+    mfaRealmGuard(realm);
+    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    const body = await readJson(request);
+    const allowed = ['password', 'code', 'recoveryCode'];
+    if (Object.keys(body).some(key => !allowed.includes(key)) || typeof body.password !== 'string') {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown disable fields.');
+    }
+    const usesCode = typeof body.code === 'string' && body.recoveryCode === undefined;
+    const usesRecovery = typeof body.recoveryCode === 'string' && body.code === undefined;
+    if (!usesCode && !usesRecovery) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide exactly one code or recovery code.');
+    const session = await mutationSession(request, realm);
+    const result = await store.withTransaction(async tx => {
+      await mfaService.assertMutationAuthority({session, tx});
+      // Reauthentication reads run on the already-owned transaction: no nested checkout.
+      const user = await loadUserById(tx, session.userId);
+      if (!user || user.id !== session.userId) throw new AuthError(401, 'SIGN_IN_FAILED', 'Reauthentication failed.');
+      try {
+        await mfaService.checkLocked(session.userId, {tx});
+      } catch (error) {
+        if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+        throw error;
+      }
+      const verification = await policy.verify(body.password, user.passwordHash);
+      if (!verification.valid) {
+        await mfaService.registerPasswordFailure(session.userId, {tx});
+        return {failed: new AuthError(401, 'SIGN_IN_FAILED', 'Reauthentication failed.')};
+      }
+      try {
+        if (usesRecovery) await mfaService.verifyRecovery(session.userId, body.recoveryCode, {tx});
+        else await mfaService.verifyTotp(session.userId, body.code, {tx});
+      } catch (error) {
+        if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+        throw error;
+      }
+      await mfaService.disable(session.userId, {tx});
+      const assurance = await store.setSessionAssurance(session.id, 'single_factor', {tx});
+      if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      await record({
+        eventType: 'mfa_disabled',
+        outcome: 'success',
+        realm,
+        user: {id: session.userId},
+        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+        sessionId: session.id,
+        detail: {reenrollment_required: true},
+      }, {tx});
+      return {disabled: true};
+    });
+    if (result.failed) throw result.failed;
+    return json({ok: true, disabled: result.disabled, mfa: {required: true, pending: true}});
+  }
+
   return async function handle(request) {
     let response;
     try {
       const url = new URL(request.url);
       const realm = realmFor(url);
       const path = url.pathname;
+      // Pending-MFA sessions may only reach MFA completion, me and logout.
+      const preMfaAllowed = new Set([
+        '/v1/auth/login',
+        '/v1/auth/forgot-password',
+        '/v1/auth/me',
+        '/v1/auth/logout',
+        '/v1/auth/mfa',
+        '/v1/auth/mfa/enroll',
+        '/v1/auth/mfa/enroll/verify',
+        '/v1/auth/mfa/verify',
+        '/v1/auth/mfa/disable',
+      ]);
+      if (!preMfaAllowed.has(path) && realm === 'customer') {
+        const token = readCookies(request)[cookieName(realm, secureCookies)];
+        if (token) {
+          const pendingSession = await store.readSession(token, {realm});
+          if (pendingSession) {
+            const status = await store.withTransaction(tx => mfaService.status(pendingSession.userId, {tx}));
+            if (!status.resolved) {
+              return failure(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
+            }
+            if (status.required && (pendingSession.assuranceLevel !== 'mfa_verified' || !status.enrolled)) {
+              return failure(403, 'MFA_REQUIRED', 'Multi-factor verification is required before this request.');
+            }
+          }
+        }
+      }
       if (path === '/v1/auth/login' && request.method === 'POST') {
         response = await login(request, url, realm);
       } else if (path === '/v1/auth/forgot-password' && request.method === 'POST') {
@@ -464,11 +786,21 @@ export function createAuthRoutes({
         response = await me(request, url, realm);
       } else if (path === '/v1/auth/logout' && request.method === 'POST') {
         response = await logout(request, url, realm);
+      } else if (path === '/v1/auth/mfa' && request.method === 'GET') {
+        response = await mfaStatusRoute(request, url, realm);
+      } else if (path === '/v1/auth/mfa/enroll' && request.method === 'POST') {
+        response = await mfaEnrollRoute(request, url, realm);
+      } else if (path === '/v1/auth/mfa/enroll/verify' && request.method === 'POST') {
+        response = await mfaEnrollVerifyRoute(request, url, realm);
+      } else if (path === '/v1/auth/mfa/verify' && request.method === 'POST') {
+        response = await mfaVerifyRoute(request, url, realm);
+      } else if (path === '/v1/auth/mfa/disable' && request.method === 'POST') {
+        response = await mfaDisableRoute(request, url, realm);
       } else {
         response = failure(404, 'AUTH_ROUTE_UNAVAILABLE', 'Versioned auth endpoint unavailable.');
       }
     } catch (error) {
-      if (error instanceof AuthError) {
+      if (error instanceof AuthError || (typeof error?.status === 'number' && typeof error?.code === 'string')) {
         response = failure(error.status, error.code, error.message);
       } else {
         response = failure(503, 'AUTH_UNAVAILABLE', 'Authentication is temporarily unavailable.');

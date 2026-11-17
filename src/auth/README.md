@@ -276,3 +276,108 @@ customer/operator origin pair; an unrecognised origin fails before any lookup.
   must never be inferred from request input.
 - Session and token lists remain digest-only: no raw token is ever returned in an API
   payload or rendered in a UI (owner decision D-012).
+
+## Multi-factor authentication (AUTH-004)
+
+Tenant administrators and ultimate owners must complete TOTP assurance before an
+authenticated session may reach anything beyond `/v1/auth/me`, `/v1/auth/logout` and the
+MFA endpoints. The requirement is derived from current authority, not a role name in the
+request: any active membership whose `auth.roles` row has `requires_mfa` marks the
+identity as MFA-required.
+
+### Routes
+
+| Route | Method | Behaviour |
+| --- | --- | --- |
+| `/v1/auth/mfa` | GET | Factor status: required, enrolled, available, recovery codes remaining, current session assurance, pending flag. |
+| `/v1/auth/mfa/enroll` | POST | Initial enrollment (empty body) only while no verified factor exists. Replacing a verified factor requires `password` plus a current `code`/`recoveryCode` in the same transaction; session assurance is never accepted as reauthentication. Durable per-user admission (lock check under the lifecycle locks) precedes any password/KDF or factor work, so a locked factor starts no derivation. Returns the `otpauth://` URI and audits started/replaced. |
+| `/v1/auth/mfa/enroll/verify` | POST | Completes enrollment with a TOTP code, upgrades the session to `mfa_verified` and returns the one-time recovery codes. |
+| `/v1/auth/mfa/verify` | POST | Login step-up with `{code}` or `{recoveryCode}`; upgrades the session to `mfa_verified`. |
+| `/v1/auth/mfa/disable` | POST | Reauthentication with password plus a TOTP or recovery code; removes the verified factor and downgrades the session. |
+
+Authority is resolved inside a transaction that first binds the verified server-side
+principal to transaction-local `app.current_user_id`, so the accepted PIVOT-004/032
+forced membership policies return that user's rows. The result is explicitly
+`resolved` or not: an unresolved authority fails closed
+(`MFA_AUTHORITY_UNAVAILABLE`) and is never treated as a verified non-required identity.
+No client-supplied id, session-level `SET`, broad grant, superuser or RLS bypass is used.
+
+Password login for a required identity always yields a **pending** session
+(`assurance_level = single_factor`, `mfa.pending = true` in the response). The cookie is
+issued so the challenge can be completed, but the pending session is refused elsewhere
+with `403 MFA_REQUIRED`. Enrollment is therefore an "enrollment-only" state: an
+unverified admin can enrol a factor and nothing else.
+
+### Invariants
+
+- TOTP seeds are 20 random bytes stored only as AES-256-GCM envelopes
+  (`secret_ciphertext`, `secret_algorithm`, `secret_key_version`). Keys are injected by
+  deployment composition; none are in the repository. Decryption uses the stored key
+  version.
+- Recovery codes are random base32 values shown once; the database stores only
+  HMAC-SHA-256 digests with a key version. Consumption is one atomic conditional
+  `UPDATE … WHERE used_at IS NULL`, so concurrent attempts yield exactly one success.
+- Verification is RFC 6238 (HMAC-SHA1, 6 digits, 30 s period, ±1 step window) with
+  constant-time comparison. A step is consumed through a conditional
+  `last_used_step < step` update, so replaying a code — including concurrently — fails.
+- Failed codes increment `failed_attempts`; reaching the configured limit sets
+  `locked_until`. Failure counters are committed even though the request is refused.
+- Disable requires password reauthentication **and** a current TOTP or recovery code.
+  Disabling (and any authorized replacement) replaces the seed with a fresh unverified
+  one, clears `verified_at`, marks all outstanding recovery codes used, and downgrades
+  every live session for that user to `single_factor`; pending status also requires a
+  currently verified factor, so a stale assurance label cannot outlive its factor.
+- Lifecycle transitions lock the principal row and then the factor row in a fixed order
+  (`users` → `two_factor` → `sessions`) inside one transaction, so concurrent
+  verification, replacement and disable cannot resurrect an old seed. Session reads for
+  mutations take no row lock; only the lifecycle transaction does.
+- The common lifecycle authorization boundary revalidates the actual session inside the
+  owned transaction **after** those locks are held: session id/user/realm, revocation,
+  both expiries, active principal status and credential epoch. A session that was valid
+  at the earlier non-transactional read but was revoked, expired, disabled or
+  credential-rotated in between is refused before any reauthentication or factor
+  mutation. The session row is read without a row lock (no opposing lock) and no nested
+  pool checkout is taken, so this is safe on a size-one pool and does not reintroduce
+  the session-row lock ordering that R1 removed.
+- Replacement admission is ordered before derivation: the durable factor lock is checked
+  under the lifecycle locks before `password.verify` runs, so a locked factor performs
+  no password KDF and no TOTP/recovery step. Candidate password and factor proofs are
+  both required, but they are evaluated only after admission; wrong-credential failure
+  accounting still commits even though the request is refused.
+- Durable failure policy covers enrollment completion, restart, TOTP verification,
+  recovery codes and disable-password reauthentication. Counters increment atomically
+  (`failed_attempts = failed_attempts + 1`) and are committed even when the request is
+  refused; a pending restart never resets the counter or an active lock. Verification
+  starts are bounded by the lock check, not merely by response shape.
+- No MFA bypass exists through alternate factors: the routes accept exactly `code` or
+  `recoveryCode`; passkeys, social defaults and unknown fields are rejected. Cloud
+  operator MFA remains delegated to validated Access/IdP assurance (AUTH-007), and no
+  local operator factor is created here.
+- Audit rows (`mfa_enrolled`, `mfa_verified`, `mfa_disabled`) never contain seeds,
+  recovery codes or passwords.
+
+### Configuration and fail-closed behaviour
+
+`createMfaService` requires unique versioned `keys: [{version, key: Buffer(32)}]` and
+`recoveryKeys: [{version, key: Buffer(≥32)}]` with an existing active version, plus
+bounded `secretBytes` (20–64), `recoveryCodeBytes` (10–32), digits/period/window/
+failure/lockout values. Issued recovery rows record the real hash-key version; codes
+issued under a retained version remain verifiable until that key is retired. TOTP
+output is validated against the RFC 6238 appendix B vectors.
+These are deployment-controlled and versioned; no production numeric policy is approved
+by this module. With no keys configured the service reports `available: false`, and a
+password login for an MFA-required identity fails closed with `503 MFA_UNAVAILABLE`
+instead of issuing a session. Non-required identities are unaffected.
+
+### Extension points
+
+- New factor types are new reference values plus a typed adapter; they must satisfy the
+  same session-assurance rule and must never bypass required assurance.
+- Key rotation: add a new versioned key and re-encrypt lazily; old versions stay
+  readable until retired.
+- AUTH-006 will bind selection to a verified membership; the conservative "any active
+  MFA-required membership" rule then narrows to the selected membership.
+- AUTH-007 owns operator Access assurance; this module intentionally has no operator
+  password/TOTP path.
+- Recovery-code reissue, trusted devices and notification policy are future contracts;
+  no mail is sent here.
