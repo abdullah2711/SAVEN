@@ -40,6 +40,13 @@ Once the user answers, generate the governance files in `docs/agents/` using the
 # PHASE 3: THE INFRASTRUCTURE (Missile-Proofing)
 If the user selected "Yes" for Disaster Recovery:
 1. Run `bash .opencode/skills/ai-factory-orchestrator/scripts/install-blackbox.sh`.
+   The black box archives each worker's checkpoint source-to-destination:
+   create and maintain `docs/agents/worker-map.env` (template:
+   `scripts/saven-worker-map.env.example`) with one entry per worker —
+   contract, branch, worktree — and update it on every assignment, verdict
+   and merge. The script refuses to push when a worker's contract and branch
+   disagree, verifies both checkpoints exist in every pushed tree, and
+   annotates commits with STALE-CHECKPOINT when a checkpoint lags.
 2. Create `docs/contractor/state/`.
 3. Generate `docs/agents/PHOENIX_RECOVERY_PROMPT.md`.
 
