@@ -133,10 +133,12 @@ BEGIN
   -- installed 041 payload fails closed.
   IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NOT NULL
      OR to_regprocedure('tenant_data.immutability_041_audit_append_guard()') IS NOT NULL
-     OR to_regprocedure('tenant_data.immutability_041_audit_truncate_guard()') IS NOT NULL THEN
+     OR to_regprocedure('tenant_data.immutability_041_audit_truncate_guard()') IS NOT NULL
+     OR to_regprocedure('tenant_data.immutability_041_audit_native_guard()') IS NOT NULL THEN
     IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NULL
        OR to_regprocedure('tenant_data.immutability_041_audit_append_guard()') IS NULL
-       OR to_regprocedure('tenant_data.immutability_041_audit_truncate_guard()') IS NULL THEN
+       OR to_regprocedure('tenant_data.immutability_041_audit_truncate_guard()') IS NULL
+       OR to_regprocedure('tenant_data.immutability_041_audit_native_guard()') IS NULL THEN
       v_missing := v_missing || 'incomplete PIVOT-006 audit payload 041';
     ELSE
       FOREACH v_audit_table IN ARRAY v_audit_tables LOOP
@@ -150,6 +152,12 @@ BEGIN
           'saven_p006_audit_' || v_audit_table, v_audit_table,
           'PIVOT-006 dispatcher: audit payload 041 actor-bound tenant change audit.');
       END LOOP;
+
+      DROP TRIGGER IF EXISTS saven_p006_audit_native_insert ON tenant_data.audit;
+      CREATE TRIGGER saven_p006_audit_native_insert BEFORE INSERT ON tenant_data.audit
+        FOR EACH ROW EXECUTE FUNCTION tenant_data.immutability_041_audit_native_guard();
+      COMMENT ON TRIGGER saven_p006_audit_native_insert ON tenant_data.audit IS
+        'PIVOT-006 dispatcher: audit payload 041 native-audit actor/tenant binding.';
 
       DROP TRIGGER IF EXISTS saven_p006_audit_append ON tenant_data.audit;
       CREATE TRIGGER saven_p006_audit_append BEFORE UPDATE OR DELETE ON tenant_data.audit
@@ -270,6 +278,7 @@ BEGIN
 
   SELECT string_agg(expected, ', ' ORDER BY expected) INTO v_bad
   FROM unnest(ARRAY[
+    'audit.saven_p006_audit_native_insert',
     'audit.saven_p006_audit_append',
     'audit_event.saven_p006_audit_event_append',
     'audit.saven_p006_audit_truncate_audit',
@@ -360,6 +369,15 @@ BEGIN
   -- valid. PIVOT-006 acceptance requires the 041 payload and this block to pass.
   IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NOT NULL THEN
   IF NOT EXISTS (
+    SELECT 1 FROM pg_roles r
+    WHERE r.rolname = 'saven_audit_definer'
+      AND r.rolcanlogin = false AND r.rolsuper = false AND r.rolcreatedb = false
+      AND r.rolcreaterole = false AND r.rolinherit = false AND r.rolbypassrls = false
+      AND r.rolreplication = false
+  ) THEN
+    RAISE EXCEPTION 'PIVOT-006: dedicated constrained audit owner is missing or has excess attributes';
+  END IF;
+  IF NOT EXISTS (
     SELECT 1
     FROM pg_proc p
     JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -367,15 +385,25 @@ BEGIN
     WHERE n.nspname = 'tenant_data'
       AND p.proname = 'immutability_041_audit_row'
       AND p.prosecdef
-      AND r.rolname = 'saven_migrator'
-      AND EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, ARRAY[]::text[])) c
-                  WHERE c LIKE 'search_path=%')
+      AND r.rolname = 'saven_audit_definer'
+      AND p.proconfig = ARRAY['search_path=pg_catalog, tenant_data']
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN pg_roles r ON r.oid = p.proowner
+    WHERE n.nspname = 'tenant_data'
+      AND p.proname = 'immutability_041_audit_native_guard'
+      AND p.prosecdef
+      AND r.rolname = 'saven_audit_definer'
+      AND p.proconfig = ARRAY['search_path=pg_catalog, tenant_data']
   ) THEN
-    RAISE EXCEPTION 'PIVOT-006: audit writer must be SECURITY DEFINER owned by saven_migrator with a fixed search_path';
+    RAISE EXCEPTION 'PIVOT-006: audit writer/actor-binding functions must be SECURITY DEFINER owned by saven_audit_definer with the exact fixed search_path';
   END IF;
 
   IF NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_accounts' AND NOT tg.tgisinternal)
      OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_journals' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_native_insert' AND NOT tg.tgisinternal)
      OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_append' AND NOT tg.tgisinternal)
      OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_truncate_audit' AND NOT tg.tgisinternal)
      OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_truncate_audit_event' AND NOT tg.tgisinternal) THEN
