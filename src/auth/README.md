@@ -517,9 +517,16 @@ a business before verification. Operator realms refuse selection.
   take the gate exclusively, so revocation, epoch/role, `requires_mfa` and new-association
   changes either win before admission or block until business completion. The final
   pre-COMMIT check remains a backstop, not the serialization mechanism.
-- The gate functions are SECURITY INVOKER, fixed `search_path`, owned by the offline DDL
-  authority and grant nothing to runtime roles. If migration 033 is missing or misinstalled,
-  admission fails closed with `503 TENANT_AUTHORITY_GATE_UNAVAILABLE`.
+- The gate functions are SECURITY INVOKER, fixed `search_path`, owned by an offline DDL
+  role not reachable from the runtime's memberships, and grant nothing to runtime roles.
+  Admission validates the exact binding contract (function signature/configuration and each
+  trigger's table, event, BEFORE STATEMENT timing, function OID, unconditional predicate
+  and origin/always firing mode), not counts; replica-only, disabled, wrong-function,
+  wrong-event, wrong-table, row-conditional and re-configured profiles fail closed with
+  `503 TENANT_AUTHORITY_GATE_UNAVAILABLE`. This proves the installed bindings; privileged
+  function-body tampering by the owning DDL authority is the documented migration trust
+  boundary. Migration 033 owns its `BEGIN/COMMIT` and is administrator-applied without an
+  ambient transaction.
 - `select` resolves the selector against active memberships (status active, no
   suspension/revocation, active and effective role), then writes the selection with a
   guarded UPDATE that refuses revoked, expired, disabled or credential-stale sessions.

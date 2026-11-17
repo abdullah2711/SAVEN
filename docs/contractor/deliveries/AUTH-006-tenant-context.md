@@ -429,3 +429,85 @@ versioned policy data outside RLS. The trigger functions carry no business logic
 ## GIT (R3)
 
 branch=opencode/auth-006-context commit=`bbe9bdb`,report+checkpoint commit pushed=yes
+
+# AUTH-006-R4 revision — 18 November 2026
+
+Verdict: `docs/contractor/reviews/AUTH-006-R3-tenant-context.md` at `5ddb603`.
+Implementation `52c9822`; report + checkpoint follow. Two bounded completion corrections to
+the already-accepted gate design; no redesign of admission.
+
+## HIGH — exact authority-gate contract validation (implemented)
+
+`assertAuthorityGateInstalled` no longer counts names. Before any authority read/lock it
+validates:
+
+- exactly one zero-argument `auth.lock_authority_gate()` plpgsql trigger function returning
+  `trigger`, `SECURITY INVOKER`, `proconfig` exactly `search_path=pg_catalog`, owned by a
+  role that is NOLOGIN/NOSUPERUSER/NOBYPASSRLS and **not reachable from the runtime's role
+  memberships**;
+- each of the six required triggers by exact table (`auth.tenant_membership`/`auth.roles`),
+  event (INSERT/UPDATE/DELETE), BEFORE STATEMENT timing (`tgtype` exactly `2|event`),
+  function OID, unconditional predicate (`tgqual IS NULL`, no arguments, no column list, no
+  constraint, no deferral), and firing mode origin/always. Replica-only (`R`) and disabled
+  (`D`) profiles are refused.
+
+Failure is `503 TENANT_AUTHORITY_GATE_UNAVAILABLE`, before any business client or handler.
+The negative tests replace required bindings while retaining the expected name/count:
+replica-only trigger, wrong function OID, wrong table, wrong event, row-level conditional
+trigger, SECURITY DEFINER, and wrong `search_path`. Each refuses admission with no handler
+or effect, then a restored valid profile recovers and the pool is reused cleanly.
+
+Trust boundary (documented in both READMEs): catalog validation proves the installed
+reviewed bindings and function configuration. It cannot detect arbitrary body tampering by
+the privileged DDL owner; that remains a migration/configuration trust boundary.
+
+## MEDIUM — atomic 033 installation (implemented)
+
+`db/postgres/migrations/033-membership-admission-lock.sql` now owns an explicit
+`BEGIN/COMMIT`, with the conflict preflight before any persistent mutation. Application
+mode is documented: administrator-applied with no ambient transaction; a
+statement-by-statement runner is atomic, and the payload must not be pre-wrapped.
+
+Tests read and split the actual migration (dollar-quote/string/comment aware) and apply it
+statement by statement to a disposable database without 033:
+
+- a pre-existing foreign gate-like function/trigger is refused by the guard, no new gate
+  objects appear, and the foreign objects remain unchanged;
+- an injected interruption after some DDL (following `ALTER FUNCTION`) rolls back with zero
+  gate function/triggers; a clean retry then installs all six triggers and the function;
+- the freshly installed protocol composes with a real selected session/business context.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 166 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-006-context.test.mjs
+tests 27  pass 27  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6, accepted
+PIVOT-004/031/032 + 033 stack, real non-owner auth-service/customer-app logins):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 27/27
+combined 120 tests, 120 pass, 0 fail
+```
+
+## Boundaries
+
+- Gate remains global for authority writes; no throughput/SLA claim. Concurrent admissions
+  share it, writers contend globally.
+- Arbitrary administrative SQL that violates the documented order can still deadlock; the
+  runtime fails closed and destroys owned clients. Auth and business transactions remain
+  distinct; a late auth commit failure is uncertain, not an undo.
+- Migration 033 is administrator-applied; this session did not execute it in production.
+  No non-disposable installation was rewritten.
+- Findings 2 (realm/MFA) and 3 (same-tenant composition) remain closed. No active entry
+  point/UI, PgBouncer instance or production-load claim; SQLite remains production.
+
+## GIT (R4)
+
+branch=opencode/auth-006-context commit=`52c9822`,report+checkpoint commit pushed=yes

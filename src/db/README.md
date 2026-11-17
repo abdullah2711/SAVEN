@@ -89,9 +89,22 @@ Concurrent admissions share the gate; membership/role writers (new associations,
 activations, revocations, epochs, `requires_mfa`/`is_active`/effective-date changes) wait
 for admitted business work to finish. The deliberate cost is global authority-write
 contention; a later amendment may refine per-scope keys with a reviewed order. The trigger
-functions are SECURITY INVOKER, fixed `search_path = pg_catalog`, owned by the offline DDL
-authority, and grant nothing to runtime roles. The runtime verifies the gate is installed
-and fails closed (`TENANT_AUTHORITY_GATE_UNAVAILABLE`) if 033 is omitted or misinstalled.
+functions are SECURITY INVOKER, fixed `search_path = pg_catalog`, owned by an offline
+DDL role that is not reachable from the runtime's role memberships, and grant nothing to
+runtime roles.
+
+Admission validates the **actual contract**, not object counts: exactly one zero-argument
+plpgsql trigger function with the reviewed configuration/owner, and each of the six
+triggers bound to its exact table, event, BEFORE STATEMENT timing, function OID,
+unconditional (no WHEN/arguments/column list/constraint/deferral) predicate and an origin
+or always firing mode. Replica-only or disabled triggers are refused. Missing or
+misinstalled profiles fail closed (`TENANT_AUTHORITY_GATE_UNAVAILABLE`). Catalog validation
+proves the installed bindings; it does not claim detection of arbitrary privileged
+function-body tampering by the owning DDL authority — that is the migration trust boundary.
+
+Migration 033 is administrator-applied with no ambient transaction; the payload owns its
+`BEGIN/COMMIT`, runs its conflict preflight before mutation, and is atomic under a
+statement-by-statement runner. Do not pre-wrap it in another transaction.
 
 Ordering is: authority gate -> users -> factor -> session -> membership/role reads ->
 business client/transaction. Future transactions combining authority writes with
