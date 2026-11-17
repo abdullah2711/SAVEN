@@ -511,3 +511,9 @@ combined 120 tests, 120 pass, 0 fail
 ## GIT (R4)
 
 branch=opencode/auth-006-context commit=`52c9822`,report+checkpoint commit pushed=yes
+
+## MERGE — 18 November 2026
+
+- Human-approved merge of `opencode/auth-006-context` (`797b244`) into `testing-1`.
+- Merge commit: `0df990a73c883b67e22dbfacfcb4f90162eef910`.
+- `testing-1` head after merge: `0df990a73c883b67e22dbfacfcb4f90162eef910`.
