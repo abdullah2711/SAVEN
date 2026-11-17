@@ -2,6 +2,7 @@ import {timingSafeEqual} from 'node:crypto';
 import {AuthError, digestToken, isTokenDigest} from './session-store.mjs';
 import {createPasswordPolicy} from './password-policy.mjs';
 import {createMfaService} from './factors.mjs';
+import {createRecoveryService} from './recovery.mjs';
 import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './rate-limit.mjs';
 
 // AUTH-003 versioned auth routes.
@@ -152,6 +153,8 @@ export function createAuthRoutes({
   mfa = null,
   mfaConfig = {},
   mfaOnVerification = null,
+  mail = null,
+  recoveryConfig = {},
   trustedClientHeader = null,
   audit = async () => {},
   origins,
@@ -179,6 +182,11 @@ export function createAuthRoutes({
   });
   const limiter = rateLimiter ?? createRateLimiter({store, clock, policy: rateLimitPolicy, accountingCooldownMs, poolingMode});
   const mfaService = mfa ?? createMfaService({store, clock, config: mfaConfig, onVerification: mfaOnVerification});
+  // Recovery owns challenge rows; mailer owns delivery. With no injected mail adapter the
+  // forgot-password route keeps the AUTH-003 no-delivery behaviour instead of inventing
+  // an ad-hoc channel.
+  const recovery = createRecoveryService({store, clock, config: recoveryConfig});
+  const mailer = mail ?? null;
 
   function realmFor(url) {
     if (url.origin === customerOrigin) return 'customer';
@@ -374,8 +382,10 @@ export function createAuthRoutes({
     return response;
   }
 
-  // AUTH-005 owns reset tokens and delivery. This endpoint applies the shared throttle
-  // policy and records the request without disclosing account existence or sending mail.
+  // AUTH-005 password reset request. The throttle reservation and its generic response
+  // are retained from AUTH-003. Only when a controlled mail adapter is injected is a
+  // single-use, hash-stored token created and delivered; an unknown or inactive account
+  // takes the same path and response as a known one.
   async function forgotPassword(request, url, realm) {
     if (realm === 'operator') {
       throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator recovery is not enabled.');
@@ -402,15 +412,52 @@ export function createAuthRoutes({
         request: archive,
         detail: throttleDetail(keys, verdict, denied
           ? {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}
-          : {delivery: 'deferred_to_auth_005', reason: 'request_reserved'}),
+          : {reason: 'request_reserved', delivery: mailer ? 'mail_adapter' : 'deferred_to_auth_005'}),
       }, {tx: lease});
     };
 
     let outcome;
     try {
-      // The reserved request row is the durable accounting record; no mail or token is
-      // created here.
-      outcome = await limiter.attempt({keys, kind: 'reset', reserve, action: async () => ({accepted: true})});
+      outcome = await limiter.attempt({
+        keys,
+        kind: 'reset',
+        reserve,
+        action: async (verdict, lease) => {
+          if (!mailer) return {accepted: true};
+          let user = null;
+          try {
+            user = validEmail(email) ? await findUserByEmail(email) : null;
+          } catch {
+            user = null;
+          }
+          if (!user || user.status !== 'active') return {accepted: true};
+          let issued;
+          try {
+            // The throttle lease already owns a client and its scope locks: issue on that
+            // same connection instead of taking a nested checkout that a size-one pool
+            // could deadlock.
+            issued = await lease.transaction(tx => recovery.issueReset({
+              userId: user.id,
+              email: user.email ?? email,
+              tx,
+            }));
+          } catch {
+            // A challenge-store failure must not become an existence oracle.
+            return {accepted: true};
+          }
+          try {
+            await mailer.sendPasswordReset({
+              to: user.email ?? email,
+              token: issued.token,
+              expiresAt: issued.expiresAt,
+            });
+          } catch {
+            // Withhold nothing from the caller and leave no live undelivered token.
+            await lease.transaction(tx => recovery.invalidate(issued.id, {tx})).catch(() => {});
+          }
+          return {accepted: true};
+        },
+      });
     } catch (error) {
       if (error instanceof AccountingUnavailableError || error instanceof AuditWriteError) {
         limiter.noteAccountingFailure();
@@ -421,6 +468,108 @@ export function createAuthRoutes({
     }
     if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'RESET_THROTTLED');
     return json({accepted: true}, 202);
+  }
+
+  // Consumes a single-use reset token, sets the new credential, bumps the credential
+  // epoch and revokes every live session in one transaction. No session or token is
+  // returned; the user signs in again with the new password.
+  async function resetPassword(request, url, realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local password reset is not enabled.');
+    }
+    if (request.headers.get('origin') !== url.origin) {
+      throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    }
+    const body = await readJson(request);
+    if (Object.keys(body).some(key => !['token', 'password'].includes(key))) {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown reset fields.');
+    }
+    if (typeof body.token !== 'string' || typeof body.password !== 'string') {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide the reset token and a new password.');
+    }
+    // Cheap usability check first so an invalid token never starts a KDF.
+    const usable = await recovery.probe(body.token, 'password_reset').catch(() => false);
+    if (!usable) throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
+    const hashed = await policy.hash(body.password);
+    const archive = auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip);
+    let result;
+    try {
+      result = await store.withTransaction(async tx => {
+        const consumed = await recovery.consumeReset(body.token, {
+          passwordHash: hashed.hash,
+          passwordScheme: hashed.scheme,
+          tx,
+        });
+        await record({
+          eventType: 'password_reset_completed',
+          outcome: 'success',
+          realm,
+          user: {id: consumed.userId},
+          request: archive,
+          detail: {
+            purpose: 'password_reset',
+            sessions_revoked: consumed.revoked,
+            credential_version: consumed.credentialVersion,
+          },
+        }, {tx});
+        return consumed;
+      });
+    } catch (error) {
+      // One coherent outward contract for the reset route: the cheap pre-check and the
+      // authoritative consume report the same codes.
+      if (error?.code === 'RECOVERY_TOKEN_INVALID') {
+        throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
+      }
+      if (error?.code === 'RECOVERY_TOKEN_STALE') {
+        throw new AuthError(400, 'RESET_TOKEN_STALE', 'The reset link is no longer valid. Request a new one.');
+      }
+      throw error;
+    }
+    return json({ok: true, userId: result.userId});
+  }
+
+  // Authenticated request for an email-verification message. Uses the verified session's
+  // own address, so no address can be probed from request input.
+  async function emailVerificationRequest(request, url, realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local email verification is not enabled.');
+    }
+    if (request.headers.get('origin') !== url.origin) {
+      throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    }
+    const body = await readJson(request);
+    if (Object.keys(body).length > 0) throw new AuthError(400, 'UNKNOWN_FIELDS', 'No fields are accepted.');
+    if (!mailer) throw new AuthError(503, 'MAIL_UNAVAILABLE', 'Email verification is not configured.');
+    const session = await mutationSession(request, realm);
+    const issued = await store.withTransaction(tx => recovery.issueVerification({
+      userId: session.userId,
+      email: session.email,
+      tx,
+    }));
+    try {
+      await mailer.sendVerification({to: session.email, token: issued.token, expiresAt: issued.expiresAt});
+    } catch {
+      await store.withTransaction(tx => recovery.invalidate(issued.id, {tx})).catch(() => {});
+      throw new AuthError(503, 'MAIL_UNAVAILABLE', 'The verification message could not be delivered.');
+    }
+    return json({accepted: true}, 202);
+  }
+
+  // Public consumption of an email-verification token. The token is account-bound and
+  // single-use; the verified address is the one stored on the challenge.
+  async function emailVerifyRoute(request, url, realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local email verification is not enabled.');
+    }
+    if (request.headers.get('origin') !== url.origin) {
+      throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    }
+    const body = await readJson(request);
+    if (Object.keys(body).some(key => key !== 'token') || typeof body.token !== 'string') {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide the verification token.');
+    }
+    const result = await store.withTransaction(tx => recovery.consumeVerification(body.token, {tx}));
+    return json({ok: true, verified: true, userId: result.userId});
   }
 
   async function me(request, url, realm) {
@@ -755,6 +904,9 @@ export function createAuthRoutes({
       const preMfaAllowed = new Set([
         '/v1/auth/login',
         '/v1/auth/forgot-password',
+        '/v1/auth/reset-password',
+        '/v1/auth/email/verification/request',
+        '/v1/auth/email/verify',
         '/v1/auth/me',
         '/v1/auth/logout',
         '/v1/auth/mfa',
@@ -782,6 +934,12 @@ export function createAuthRoutes({
         response = await login(request, url, realm);
       } else if (path === '/v1/auth/forgot-password' && request.method === 'POST') {
         response = await forgotPassword(request, url, realm);
+      } else if (path === '/v1/auth/reset-password' && request.method === 'POST') {
+        response = await resetPassword(request, url, realm);
+      } else if (path === '/v1/auth/email/verification/request' && request.method === 'POST') {
+        response = await emailVerificationRequest(request, url, realm);
+      } else if (path === '/v1/auth/email/verify' && request.method === 'POST') {
+        response = await emailVerifyRoute(request, url, realm);
       } else if (path === '/v1/auth/me' && request.method === 'GET') {
         response = await me(request, url, realm);
       } else if (path === '/v1/auth/logout' && request.method === 'POST') {

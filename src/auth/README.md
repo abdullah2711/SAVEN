@@ -381,3 +381,74 @@ instead of issuing a session. Non-required identities are unaffected.
   password/TOTP path.
 - Recovery-code reissue, trusted devices and notification policy are future contracts;
   no mail is sent here.
+
+## Password reset and email verification (AUTH-005)
+
+Password reset and email verification use single-use challenges in `auth.verification`.
+Only a SHA-256 digest of a 32–64 byte random token is stored; the plaintext token exists
+only long enough to be placed in a message by the injected mail adapter. Nothing here is
+wired into an active entry point, and the frozen composition root does not yet supply a
+mail transport.
+
+### Routes
+
+| Route | Method | Behaviour |
+| --- | --- | --- |
+| `/v1/auth/forgot-password` | POST | Retained AUTH-003 route. Always answers `202 {accepted:true}` with the shared throttle. With a mail adapter, an active known account gets a single-use reset link; unknown and inactive accounts get the identical response and no token. |
+| `/v1/auth/reset-password` | POST | Consumes `{token, password}`. One atomic consume; sets a new Argon2id (or retained scrypt) verifier, advances `credential_version` and revokes every live session as `password_reset` in one transaction. Returns `{ok:true, userId}` and no session. |
+| `/v1/auth/email/verification/request` | POST | Session-authenticated and CSRF-checked, empty body. Issues and mails a verification link to the session's own stored address; no address can be supplied by the request. |
+| `/v1/auth/email/verify` | POST | Public `{token}` consumption. Marks the account `email_verified`/`email_verified_at`. |
+
+### Invariants
+
+- Challenge rows are account- and purpose-bound (`user_id`, normalised `identifier`,
+  `purpose`, `expires_at`). Purposes are validated against the `token_purpose` reference
+  domain, so a purpose is usable only while its row is active and effective.
+- Consumption locks the row (`SELECT … FOR UPDATE`), re-checks `consumed_at IS NULL` and
+  `expires_at > now`, then performs one conditional `UPDATE … WHERE consumed_at IS NULL`.
+  Two concurrent consumers of one token yield exactly one success; a replay, an expired
+  token and an unknown token are refused with a generic invalid-link response.
+- The reset transaction is all-or-nothing: consume, verifier replacement, credential-epoch
+  increment and revocation of every live session commit together. A failure leaves the
+  credential and sessions unchanged. Roles, memberships and owner authority are never
+  reassigned by these routes.
+- Stale credentials: a reset token issued before a later `password_updated_at` (an
+  authenticated password change or an earlier reset) is refused rather than overwriting
+  that newer credential.
+- Non-enumeration is preserved from AUTH-003: the forgot-password reservation, shared
+  login/reset throttle ledger and generic response are unchanged. A throttled request
+  sends no mail and creates no token. A delivery failure is indistinguishable from success
+  to the caller and invalidates the undelivered challenge so no live token remains.
+- Mail is only possible through an explicitly injected transport. The adapter composes the
+  links, never logs, and never surfaces a provider error (which could echo the token). With
+  no adapter the forgot-password route keeps the AUTH-003 `deferred_to_auth_005` no-delivery
+  behaviour instead of inventing an ad-hoc channel.
+- A cheap usability probe runs before `password.hash`, so an invalid or expired token
+  cannot start a KDF. Password length/entropy and the bounded KDF admission come from the
+  AUTH-003 policy; a busy KDF returns `429 PASSWORD_BUSY`.
+- Audit rows are append-only and never contain a token or password: `password_reset_requested`
+  (reservation, `delivery: mail_adapter|deferred_to_auth_005`) and
+  `password_reset_completed` (user id, purpose, revoked-session count, credential version).
+
+### Configuration and limits
+
+`verificationTtlMs` (24 h) and `resetTtlMs` (30 min) are validated between one minute and
+seven days, and `tokenBytes` between 32 and 64. These are fixture/bootstrap values, not
+approved production policy.
+
+### Extension points
+
+- New challenge purposes are `auth.reference_value` rows plus a typed caller; they are not
+  edits to a growing enum.
+- Mail transports (SMTP, provider API, capture collector) are injected behind the adapter;
+  no provider is hardcoded and a new one is a configuration/composition change.
+- Delivery retry, metrics and notification policy are future operations contracts; the
+  durable challenge and audit rows are the stable interface.
+
+### Non-claims
+
+- No SMTP/provider client, template system, UI or active entry-point wiring is delivered;
+  the deployment must inject a reviewed transport and base URL.
+- The canonical reference domain has no email-verification audit event, so this module
+  does not invent one; adding it is a reference-data/migration change owned by AUTH-009.
+- No session is issued by reset and no email address is changed by verification.
