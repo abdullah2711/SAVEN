@@ -97,3 +97,129 @@ introduced. Session tokens stay digest-only (D-012).
 ## GIT
 
 branch=opencode/auth-005-recovery commit=`f8d4ca5`,report+checkpoint commit pushed=yes
+
+# AUTH-005-R2 revision — 17 November 2026
+
+Verdict and corrections: `docs/contractor/reviews/AUTH-005-recovery.md` at `700a4d2`.
+Implementation commit `d088f47`; report + checkpoint follow. TOUCH unchanged; no schema,
+migration, grant, dependency, server wiring or native source change.
+
+## Findings closed
+
+1. **HIGH — address binding and transactional request authority.** Status: **closed**.
+   Issuance no longer trusts a caller snapshot: `issue` locks the account and resolves the
+   current active `email` on the owned transaction. `consumeVerification` compares the
+   challenge's stored identifier with the locked account's current normalized email before
+   setting `email_verified`; `consumeReset` performs the same check before accepting a
+   reset. A challenge issued for an old address can no longer verify or reset a different
+   current address. `emailVerificationRequest` now reuses AUTH-004's
+   `assertMutationAuthority` inside the issuance transaction, so a session that was
+   revoked, idle/absolutely expired, disabled or credential-epoch-changed after the
+   non-transactional read is refused before any challenge or mail. Tests: old-address
+   verification refused with no wrong-address verification/partial consume; old-address
+   reset refused with unchanged credential; issuance resolves the current address and the
+   replaced address no longer resolves; revoke/expire/disable/credential-change
+   read-valid-then-stale probes each create no challenge and no mail.
+
+2. **HIGH — generation-bound stale-reset refusal.** Status: **closed**. Reset tokens are
+   now `<random>.<credential-generation>` and the generation is part of the stored digest.
+   Consumption compares it with `auth.users.credential_version` under the principal row
+   lock; no wall-clock/date comparison remains. Purpose validity is rechecked at
+   consumption, not only at issuance. A credential change that starts earlier and commits
+   later still advances the generation and invalidates the link. Tests: older-start /
+   later-commit (uncommitted credential update held while a reset starts, then committed)
+   refuses the reset and preserves the newer credential; two links for one generation —
+   the first accepted change makes the second invalid; a true reset-vs-authenticated
+   conditional credential-change race accepts exactly one change, stores exactly one new
+   credential and leaves the other link invalid in either outcome; audit-write failure and
+   revocation failure both roll the complete reset back (credential, token, sessions
+   unchanged); an unknown reset COMMIT returns `503 SESSION_TRANSACTION_UNCERTAIN`, never
+   publishes the token and destroys the client. Reset completion no longer starts a KDF
+   for a stale/invalid token: the probe checks address, generation, purpose and expiry
+   first (asserted with a zero-hash counter).
+
+3. **HIGH — no nested checkout on a single-connection pool.** Status: **closed**. The
+   forgot-password lookup now runs on the limiter's already-owned lease client
+   (`loadUserByEmail(executor, email)`), while the challenge insert still uses the same
+   `lease.transaction`. Durable reservations, the current-account check and the generic
+   response are unchanged. Tests: a real restricted auth-service login on a `max:1` pool
+   completes known and unknown reset requests within a 15 s bound, and two concurrent
+   same-scope requests complete on a `max:2` pool. No pool size was raised.
+
+4. **MEDIUM — non-enumerating response boundary.** Status: **closed**. Delivery is now a
+   controlled, bounded, drainable in-process queue (`createMailDispatcher`). The public
+   response and the throttle lease are released without waiting for the provider; the
+   queue owns the in-memory token, counts failures and invalidates an undelivered
+   challenge through a callback. There is no unmanaged fire-and-forget and no raw-token
+   persistence. Tests use a blocked (never-resolving until released) transport: known,
+   inactive and unknown forgot-password requests all return the identical `202` before any
+   delivery resolves, and only the active account yields a message. A failing transport
+   still returns `202`, and the failure callback invalidates the challenge when cleanup
+   succeeds. The residual boundary is tested and reported: if invalidation itself fails
+   (`onFailure` rejects), `flush()` still completes, the failure is counted, and the
+   challenge may remain live until expiry — the report no longer claims an unconditional
+   no-live-token guarantee. Known vs unknown still differ by bounded local DB work; the
+   provider latency branch is removed.
+
+5. **MEDIUM — verification request admission.** Status: **closed**. Verification mail now
+   passes a durable purpose/account/network issuance budget before any challenge exists:
+   challenge rows are the budget, transaction-scoped advisory locks serialize concurrent
+   requests for the account and network scope, and denial returns `429 MAIL_THROTTLED`
+   with `Retry-After` and no challenge/mail. It does not reuse or pollute password-reset
+   audit counters. Tests: repeated requests hit the limit, a denied request creates/sends
+   nothing, the window admits again after cooldown, two concurrent requests admit exactly
+   the configured budget, and a store failure returns 503 with zero challenges and zero
+   mail.
+
+## DONE WHEN evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 163 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-005-recovery.test.mjs
+tests 27  pass 27  fail 0
+```
+
+Exit `0`.
+
+Combined serial run (`--test-concurrency=1`, same disposable cluster):
+
+```text
+tests/auth-002-sessions.test.mjs   18/18
+tests/auth-003-passwords.test.mjs  27/27
+tests/auth-004-mfa.test.mjs        21/21
+tests/auth-005-recovery.test.mjs   27/27
+combined                            93 tests, 93 pass, 0 fail
+```
+
+Honest limit: one combined attempt hit the known fixture-teardown transient
+(`terminating connection due to administrator command`) in an unchanged AUTH-004 case; the
+immediate serial rerun was 93/93. It is the disposable-fixture cross-file teardown race
+already reported in AUTH-004-R2, not a behavioural failure of these corrections, and is
+reported rather than hidden.
+
+## Boundaries
+
+- No SMTP/provider client, template system or active entry-point wiring is delivered; the
+  deployment must inject a transport/base URL and own dispatcher shutdown.
+- TTLs and verification admission values are validated bootstrap values, not approved
+  production policy.
+- The canonical reference domain still has no email-verification audit event; reset
+  request/completion are audited, verification remains an explicit AUTH-009/reference-data
+  limitation. Challenge metadata is mutable operational state, not event history.
+- Undelivered-challenge cleanup is best effort; a failed invalidation can leave a token
+  live until expiry. No unconditional guarantee is claimed.
+- SQLite remains production; no profile or entry point was activated.
+
+## EXTENSIBILITY
+
+compliant — purposes remain reference rows validated at issue and consumption, generation
+and address binding are immutable fields inside the existing token/row, delivery is an
+injected bounded owner, and admission is purpose/account/network scoped without new
+hardcoded business domains. Session tokens stay digest-only (D-012).
+
+## GIT (R2)
+
+branch=opencode/auth-005-recovery commits=`d088f47`,report+checkpoint commit pushed=yes
