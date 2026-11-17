@@ -14,175 +14,419 @@
     "AI-origin ledger documents are ordinary documents with document_status PENDING_APPROVAL and origin_type ai. There is no ai_proposal table.",
     "ai_origin_direct_post_allowed defaults to false and must remain false in Phase 1.",
     "Monetary values in tenant ledgers are exact integer minor units (bigint). Approval thresholds are exact numeric decimals. No floats are used anywhere.",
-    "A reference value can change the configured set of labels/domains; it can never grant protected owner authority or install posting logic."
+    "A reference value can change the configured set of labels/domains; it can never grant protected owner authority or install posting logic.",
+    "D-013/D-014: a posted entry can be terminally voided through the audited atomic primitive; the source stays retained and immutable, and voided entries are readable by normal module access. Fine-grained visibility is future application RBAC, never a database role rule."
   ],
   "reference_domains": {
     "action_type": {
       "table": "tenant_data.denials, tenant_data.approval_policy",
       "values": [
-        {"value": "journal.read", "label": "Read journal entries"},
-        {"value": "journal.prepare", "label": "Prepare journal entry"},
-        {"value": "journal.post", "label": "Post journal entry"},
-        {"value": "journal.approve", "label": "Approve journal entry"},
-        {"value": "ledger.read", "label": "Read ledger"},
-        {"value": "ledger.export", "label": "Export ledger"},
-        {"value": "roles.manage", "label": "Manage roles"},
-        {"value": "inventory.read", "label": "Read inventory"},
-        {"value": "inventory.manage", "label": "Manage inventory"},
-        {"value": "inventory.prepare", "label": "Prepare stock operation"},
-        {"value": "inventory.post", "label": "Post stock operation"},
-        {"value": "inventory.approve", "label": "Approve stock operation"},
-        {"value": "accounts.manage", "label": "Manage chart of accounts"},
-        {"value": "periods.manage", "label": "Manage posting periods"},
-        {"value": "workspace.manage", "label": "Manage accounting workspace"},
-        {"value": "assistant.use", "label": "Use assistant"}
+        {
+          "value": "journal.read",
+          "label": "Read journal entries"
+        },
+        {
+          "value": "journal.prepare",
+          "label": "Prepare journal entry"
+        },
+        {
+          "value": "journal.post",
+          "label": "Post journal entry"
+        },
+        {
+          "value": "journal.approve",
+          "label": "Approve journal entry"
+        },
+        {
+          "value": "ledger.read",
+          "label": "Read ledger"
+        },
+        {
+          "value": "ledger.export",
+          "label": "Export ledger"
+        },
+        {
+          "value": "roles.manage",
+          "label": "Manage roles"
+        },
+        {
+          "value": "inventory.read",
+          "label": "Read inventory"
+        },
+        {
+          "value": "inventory.manage",
+          "label": "Manage inventory"
+        },
+        {
+          "value": "inventory.prepare",
+          "label": "Prepare stock operation"
+        },
+        {
+          "value": "inventory.post",
+          "label": "Post stock operation"
+        },
+        {
+          "value": "inventory.approve",
+          "label": "Approve stock operation"
+        },
+        {
+          "value": "accounts.manage",
+          "label": "Manage chart of accounts"
+        },
+        {
+          "value": "periods.manage",
+          "label": "Manage posting periods"
+        },
+        {
+          "value": "workspace.manage",
+          "label": "Manage accounting workspace"
+        },
+        {
+          "value": "assistant.use",
+          "label": "Use assistant"
+        },
+        {
+          "value": "accounting.entry.void",
+          "label": "Void a posted entry"
+        },
+        {
+          "value": "accounting.voided_entries.read",
+          "label": "Read voided entries"
+        }
       ]
     },
     "account_kind": {
       "table": "tenant_data.account_profiles",
       "values": [
-        {"value": "asset", "label": "Asset"},
-        {"value": "liability", "label": "Liability"},
-        {"value": "equity", "label": "Equity"},
-        {"value": "income", "label": "Income"},
-        {"value": "expense", "label": "Expense"}
+        {
+          "value": "asset",
+          "label": "Asset"
+        },
+        {
+          "value": "liability",
+          "label": "Liability"
+        },
+        {
+          "value": "equity",
+          "label": "Equity"
+        },
+        {
+          "value": "income",
+          "label": "Income"
+        },
+        {
+          "value": "expense",
+          "label": "Expense"
+        }
       ]
     },
     "approval_state": {
       "table": "tenant_data.approval_requests",
       "values": [
-        {"value": "PENDING", "label": "Pending"},
-        {"value": "APPROVED", "label": "Approved"}
+        {
+          "value": "PENDING",
+          "label": "Pending"
+        },
+        {
+          "value": "APPROVED",
+          "label": "Approved"
+        }
       ]
     },
     "business_state": {
       "table": "tenant_data.business",
       "values": [
-        {"value": "PROVISIONING", "label": "Provisioning"},
-        {"value": "ACTIVE", "label": "Active"}
+        {
+          "value": "PROVISIONING",
+          "label": "Provisioning"
+        },
+        {
+          "value": "ACTIVE",
+          "label": "Active"
+        }
       ]
     },
     "command_state": {
       "table": "tenant_data.command_inbox",
       "values": [
-        {"value": "ACCEPTED_PENDING", "label": "Accepted, awaiting execution"},
-        {"value": "AWAITING_APPROVAL", "label": "Awaiting approval"},
-        {"value": "POSTED", "label": "Posted"},
-        {"value": "FAILED", "label": "Failed"}
+        {
+          "value": "ACCEPTED_PENDING",
+          "label": "Accepted, awaiting execution"
+        },
+        {
+          "value": "AWAITING_APPROVAL",
+          "label": "Awaiting approval"
+        },
+        {
+          "value": "POSTED",
+          "label": "Posted"
+        },
+        {
+          "value": "FAILED",
+          "label": "Failed"
+        },
+        {
+          "value": "VOIDED",
+          "label": "Voided (retained source excluded from the active ledger)"
+        }
       ]
     },
     "decision_type": {
       "table": "tenant_data.command_decisions",
       "values": [
-        {"value": "REJECTED", "label": "Rejected"},
-        {"value": "RETURNED", "label": "Returned for correction"}
+        {
+          "value": "REJECTED",
+          "label": "Rejected"
+        },
+        {
+          "value": "RETURNED",
+          "label": "Returned for correction"
+        }
       ]
     },
     "document_kind": {
       "table": "tenant_data.document_numbers",
       "values": [
-        {"value": "JRN", "label": "Journal"},
-        {"value": "STK", "label": "Stock operation"},
-        {"value": "INV", "label": "Invoice"},
-        {"value": "BILL", "label": "Bill"},
-        {"value": "PAY", "label": "Payment"}
+        {
+          "value": "JRN",
+          "label": "Journal"
+        },
+        {
+          "value": "STK",
+          "label": "Stock operation"
+        },
+        {
+          "value": "INV",
+          "label": "Invoice"
+        },
+        {
+          "value": "BILL",
+          "label": "Bill"
+        },
+        {
+          "value": "PAY",
+          "label": "Payment"
+        }
       ]
     },
     "document_status": {
       "table": "tenant_data.document_registry, tenant_data.document_revisions",
       "values": [
-        {"value": "DRAFT", "label": "Draft"},
-        {"value": "SUBMITTED", "label": "Submitted"},
-        {"value": "PENDING_APPROVAL", "label": "Pending approval"},
-        {"value": "APPROVED", "label": "Approved"},
-        {"value": "POSTED", "label": "Posted"},
-        {"value": "REJECTED", "label": "Rejected"},
-        {"value": "RETURNED", "label": "Returned for correction"},
-        {"value": "CANCELLED", "label": "Cancelled"},
-        {"value": "FAILED", "label": "Failed"}
+        {
+          "value": "DRAFT",
+          "label": "Draft"
+        },
+        {
+          "value": "SUBMITTED",
+          "label": "Submitted"
+        },
+        {
+          "value": "PENDING_APPROVAL",
+          "label": "Pending approval"
+        },
+        {
+          "value": "APPROVED",
+          "label": "Approved"
+        },
+        {
+          "value": "POSTED",
+          "label": "Posted"
+        },
+        {
+          "value": "REJECTED",
+          "label": "Rejected"
+        },
+        {
+          "value": "RETURNED",
+          "label": "Returned for correction"
+        },
+        {
+          "value": "CANCELLED",
+          "label": "Cancelled"
+        },
+        {
+          "value": "FAILED",
+          "label": "Failed"
+        }
       ]
     },
     "document_type": {
       "table": "tenant_data.document_registry, tenant_data.document_revisions",
       "values": [
-        {"value": "JOURNAL", "label": "Journal entry"},
-        {"value": "INVOICE", "label": "Sales invoice"},
-        {"value": "BILL", "label": "Purchase bill"},
-        {"value": "PAYMENT", "label": "Payment"},
-        {"value": "RECEIPT", "label": "Receipt"},
-        {"value": "CREDIT_NOTE", "label": "Credit note"},
-        {"value": "STOCK_OPERATION", "label": "Stock operation"},
-        {"value": "CORRECTION", "label": "Correction"}
+        {
+          "value": "JOURNAL",
+          "label": "Journal entry"
+        },
+        {
+          "value": "INVOICE",
+          "label": "Sales invoice"
+        },
+        {
+          "value": "BILL",
+          "label": "Purchase bill"
+        },
+        {
+          "value": "PAYMENT",
+          "label": "Payment"
+        },
+        {
+          "value": "RECEIPT",
+          "label": "Receipt"
+        },
+        {
+          "value": "CREDIT_NOTE",
+          "label": "Credit note"
+        },
+        {
+          "value": "STOCK_OPERATION",
+          "label": "Stock operation"
+        },
+        {
+          "value": "CORRECTION",
+          "label": "Correction"
+        }
       ]
     },
     "draft_state": {
       "table": "tenant_data.journal_drafts",
       "values": [
-        {"value": "DRAFT", "label": "Draft"},
-        {"value": "SUBMITTED", "label": "Submitted"},
-        {"value": "CANCELLED", "label": "Cancelled"}
+        {
+          "value": "DRAFT",
+          "label": "Draft"
+        },
+        {
+          "value": "SUBMITTED",
+          "label": "Submitted"
+        },
+        {
+          "value": "CANCELLED",
+          "label": "Cancelled"
+        }
       ]
     },
     "origin_type": {
       "table": "tenant_data.audit_event, tenant_data.document_registry, tenant_data.document_revisions",
       "values": [
-        {"value": "human", "label": "Human user"},
-        {"value": "ai", "label": "AI proposal"},
-        {"value": "integration", "label": "Integration"},
-        {"value": "system", "label": "System process"}
+        {
+          "value": "human",
+          "label": "Human user"
+        },
+        {
+          "value": "ai",
+          "label": "AI proposal"
+        },
+        {
+          "value": "integration",
+          "label": "Integration"
+        },
+        {
+          "value": "system",
+          "label": "System process"
+        }
       ]
     },
     "outbox_state": {
       "table": "tenant_data.outbox",
       "values": [
-        {"value": "READY", "label": "Ready"},
-        {"value": "DELIVERED", "label": "Delivered"},
-        {"value": "FAILED", "label": "Failed"}
+        {
+          "value": "READY",
+          "label": "Ready"
+        },
+        {
+          "value": "DELIVERED",
+          "label": "Delivered"
+        },
+        {
+          "value": "FAILED",
+          "label": "Failed"
+        }
       ]
     },
     "party_kind": {
       "table": "tenant_data.trade_parties",
       "values": [
-        {"value": "customer", "label": "Customer"},
-        {"value": "supplier", "label": "Supplier"}
+        {
+          "value": "customer",
+          "label": "Customer"
+        },
+        {
+          "value": "supplier",
+          "label": "Supplier"
+        }
       ]
     },
     "scan_state": {
       "table": "tenant_data.command_files",
       "values": [
-        {"value": "clean", "label": "Scan clean"}
+        {
+          "value": "clean",
+          "label": "Scan clean"
+        }
       ]
     },
     "stock_operation_kind": {
       "table": "tenant_data.stock_operations",
       "values": [
-        {"value": "receipt", "label": "Receipt"},
-        {"value": "issue", "label": "Issue"},
-        {"value": "transfer", "label": "Transfer"}
+        {
+          "value": "receipt",
+          "label": "Receipt"
+        },
+        {
+          "value": "issue",
+          "label": "Issue"
+        },
+        {
+          "value": "transfer",
+          "label": "Transfer"
+        }
       ]
     },
     "posting_constraint_severity": {
       "table": "tenant_data.posting_constraint (nested rule_jsonb.severity)",
       "validation": "Resolved against effective-dated tenant_data.reference_values rows when the posting_constraint row is written, and interpreted only by the registered deterministic handler named in handler_key. A new value is a reference row; it never installs executable policy, and an unknown value or handler fails closed at posting time.",
       "values": [
-        {"value": "block", "label": "Block posting"},
-        {"value": "warn", "label": "Warn and allow posting"}
+        {
+          "value": "block",
+          "label": "Block posting"
+        },
+        {
+          "value": "warn",
+          "label": "Warn and allow posting"
+        }
       ]
     },
     "tax_type": {
       "table": "tenant_data.tax_profile",
       "values": [
-        {"value": "SALES_TAX", "label": "Sales tax"},
-        {"value": "WITHHOLDING", "label": "Withholding"},
-        {"value": "INCOME_TAX", "label": "Income tax"},
-        {"value": "EXCISE", "label": "Excise"}
+        {
+          "value": "SALES_TAX",
+          "label": "Sales tax"
+        },
+        {
+          "value": "WITHHOLDING",
+          "label": "Withholding"
+        },
+        {
+          "value": "INCOME_TAX",
+          "label": "Income tax"
+        },
+        {
+          "value": "EXCISE",
+          "label": "Excise"
+        }
       ]
     },
     "trade_document_kind": {
       "table": "tenant_data.trade_documents",
       "values": [
-        {"value": "invoice", "label": "Invoice"},
-        {"value": "bill", "label": "Bill"}
+        {
+          "value": "invoice",
+          "label": "Invoice"
+        },
+        {
+          "value": "bill",
+          "label": "Bill"
+        }
       ]
     }
   },
@@ -213,8 +457,12 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "values": {"type": "object"},
-        "notes": {"type": "string"}
+        "values": {
+          "type": "object"
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     },
     "posting_constraint.rule_jsonb": {
@@ -230,7 +478,9 @@
           "maxLength": 40,
           "description": "reference domain: posting_constraint_severity. Allowed values are effective-dated tenant_data.reference_values rows; the registered handler named by handler_key interprets the value, and a new value cannot install executable policy."
         },
-        "parameters": {"type": "object"}
+        "parameters": {
+          "type": "object"
+        }
       }
     },
     "reference_values.value_jsonb": {
@@ -247,9 +497,24 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "companies": {"type": "array", "items": {"type": "string"}},
-        "branches": {"type": "array", "items": {"type": "string"}},
-        "modules": {"type": "array", "items": {"type": "string"}}
+        "companies": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "branches": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "modules": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "document_revisions.policy_snapshot": {
@@ -259,11 +524,22 @@
       "type": "object",
       "additionalProperties": true,
       "properties": {
-        "action_type": {"type": "string"},
-        "policy_key": {"type": "string"},
-        "policy_version": {"type": "integer", "minimum": 1},
-        "review_required": {"type": "boolean"},
-        "reason": {"type": "string"}
+        "action_type": {
+          "type": "string"
+        },
+        "policy_key": {
+          "type": "string"
+        },
+        "policy_version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "review_required": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     }
   }
