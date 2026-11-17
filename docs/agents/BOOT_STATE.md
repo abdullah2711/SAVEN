@@ -15,6 +15,7 @@ Last human review: 18 Nov 2026, 01:55 PKT (dispatcher prose update — refreshed
 - Engineer (w1:p4): reviews land on `codex/pivot-003-rulings`; relay pattern: `Review <delivery-path>`. Latest review head: `b677627`.
 
 ## Standing protocols
+- At every merge handoff, the worker executing the merge updates the Workers section of docs/agents/BOOT_STATE.md in the same push.
 - Merge rules: docs/test-only ACCEPTs auto-merge by worker (Rule 1); database/auth/accounting/UI ACCEPTs require a plain-English Business Merge Request and the human's APPROVED (Rule 2). Worker executes the merge; dispatcher never merges.
 - Checkpoint-and-Reload: at 85% context, worker writes `docs/contractor/state/worker-<ID>-checkpoint.md` (with failure evidence: exact error text, failing test, current hypothesis), commits, pushes, stops; dispatcher kills and relaunches the session, then sends the bootstrap: "You are WORKER-[A/B]. Read docs/agents/CONTRACTOR_ROLE.md. Then read docs/contractor/state/worker-[a/b]-checkpoint.md to resume your exact task. Do not deviate from the contract TOUCH limits. Output CHECKPOINT_RELOADED when you are ready to continue."
 - Worker map: `docs/agents/worker-map.env` is load-bearing — dispatcher updates it on every assignment, verdict and merge; the black-box script refuses to push when contract and branch disagree.
