@@ -557,14 +557,14 @@ a business before verification. Operator realms refuse selection.
 
 Cloud operators authenticate through a validated Cloudflare Access/approved IdP assertion,
 not a local operator password or TOTP. The assertion is exchanged once for an operator-realm
-session bound to an explicit local subject mapping.
+session bound to an explicit local subject mapping and revalidated on every operator use.
 
 ### Routes
 
 | Route | Method | Behaviour |
 | --- | --- | --- |
-| `/v1/auth/operator/access` | POST | Requires the operator origin and `Authorization: Bearer <Access JWT>`; validates issuer/audience/algorithm/keys/time/assurance, resolves an active subject mapping, consumes a one-time exchange nonce, and issues a host-only operator session cookie. No exchange body fields are accepted. |
-| `/v1/auth/operator/me` | GET | Returns the current operator session's local user/role/assurance and expiry metadata. No tenant context. |
+| `/v1/auth/operator/access` | POST | Requires the operator origin and `Authorization: Bearer <Access JWT>`; validates issuer/audience/algorithm/keys/time/assurance, resolves an active subject mapping, consumes a one-time exchange nonce, binds the session authority, and issues a host-only operator session cookie. No exchange body fields are accepted. |
+| `/v1/auth/operator/me` | GET | Revalidates the bound issuer/subject/audience, current mapping epoch/role/assurance, principal and source-assertion ceiling, then returns operator/session metadata. No tenant context. |
 | `/v1/auth/operator/logout` | POST | CSRF-checked revocation of the operator session and audit. |
 
 Local `/v1/auth/login`, password reset and MFA routes continue to refuse the operator realm.
@@ -573,36 +573,60 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
 
 - The validator trusts exactly one configured issuer, audience, algorithm set
   (RS256/RS384/RS512) and fixed key source. `jku`/`x5u` and any token-supplied URL are
-  ignored. Unknown keys fail closed; a fixed-source refresh may run once per cooldown.
+  ignored. Unknown keys fail closed. Fixed-source refresh is concurrency-safe: admission is
+  reserved before awaiting, simultaneous unknowns coalesce, known-good keys survive a
+  failure, and a retry cooldown applies after failure.
+- JOSE segments must be canonical base64url; noncanonical encodings of the same bytes are
+  refused. The fallback replay identity is derived from the issuer/audience/subject-scoped
+  `identity_nonce` or the canonical verified assertion digest, never raw JWT text.
 - Expiry, not-before, issue time, issuer, audience, signature and subject are checked with a
-  bounded skew. A valid signature alone is not MFA proof.
+  bounded skew at validation and again with the trusted clock at the owned admission
+  boundary. A configured maximum token age requires a finite usable `iat`.
+- Mandatory operator MFA is explicit. Only positively verified multi-factor evidence
+  (default: the RFC 8176 `mfa` AMR value) yields `access_mfa`; `otp`, `hwk`, `swk`, `pwd`
+  or their combination without `mfa` never do. A deployment may supply a reviewed
+  issuer-controlled predicate for a signed custom claim. The operator policy is fixed to
+  `access_mfa`; a configured label cannot weaken it.
 - Operator subjects are explicit rows in `operator.access_identity`: Access subject -> local
-  auth identity + operator role + assurance class + effective window. There is no wildcard or
-  universal support subject. The mapped auth role must be an active/effective
-  `auth.roles.is_operator` role; the local identity must be active.
-- The required assurance class (default `access_mfa`) must match both the verified claim
-  derived assurance and the mapping's assurance class. Missing or stale assurance is refused.
-- One-time exchange: a SHA-256 digest of `identity_nonce` (or the assertion when absent) is
-  inserted into `operator.access_exchange`; a conflict is a replay refusal. Raw assertions
-  are never stored. Ordinary unexpired bearer validation is reusable; no impossible
-  replay-proof claim is made for a captured bearer.
-- Success audit and the session/nonce transaction commit together; failures are audited
-  independently with generic reasons and never include the assertion. No local operator
-  password/TOTP secret exists.
+  auth identity + operator role + required assurance + effective window + mapping epoch.
+  There is no wildcard or universal support subject. The mapped role must be active/effective
+  `auth.roles.is_operator`; the local identity must be active.
+- Exchange and operator admission use the accepted AUTH-006 authority gate. Admission takes
+  the shared gate before mapping/role reads and locks the local principal in the accepted
+  gate -> user -> session order. Mapping writers take the same gate exclusively through
+  BEFORE STATEMENT triggers in `06-operator-identity.sql`; role changes are covered by the
+  AUTH-006 033 triggers. A plain unlocked read is never treated as authority.
+- The exact verified issuer/subject/audience, mapping epoch/role/assurance and source
+  assertion expiry are stored in `operator.access_session_binding` with the session. Every
+  current operator use (`/me` and the reusable `admitSession(session, {tx})` interface for
+  future PIVOT-007 reads) revalidates that binding against the current mapping/role/principal,
+  mapping epoch, assurance and source expiry. Revocation, reassignment, role/effective-date
+  or assurance changes, and source expiry deny further use; same-user/different-subject
+  sessions remain isolated by binding.
+- One-time exchange: a namespace-scoped SHA-256 digest is inserted into
+  `operator.access_exchange`; a conflict is a replay refusal. Raw assertions are never
+  stored. Ordinary unexpired bearer validation is reusable; no impossible replay-proof claim
+  is made for a captured bearer.
+- Success audit, nonce, session and binding commit together. An audit failure rolls the whole
+  exchange back. Failures are audited independently with generic reasons and never include
+  the assertion. No local operator password/TOTP secret exists.
 - Fully Private local administration stays independent; this module adds no Cloud-only
   dependency to the local path.
 
 ### Configuration and extension points
 
 - Issuer, audience, allowed algorithms, fixed key source/refresh, skew, maximum token age,
-  refresh cooldown and required assurance are deployment configuration. Access policy/DNS/
-  tunnel changes are outside this module.
+  refresh cooldown and the reviewed MFA-evidence predicate are deployment configuration.
+  Access policy/DNS/tunnel changes are outside this module.
 - Additional operator roles/scopes are `auth.roles`/mapping data, not new code branches.
-- Operator data reads still require the separate PIVOT-007 grants/audit; this module only
-  creates the operator session.
+- Future PIVOT-007 privileged reads must call the operator admission interface inside the
+  same transaction as the read; they must not trust a stale session role or a role label.
+- Migration `06-operator-identity.sql` depends on AUTH-006 `033` for the shared gate.
 
 ### Non-claims
 
 - No live Access policy, network key fetch, DNS/tunnel change or production credential is
   included; tests use mocked keys/assertions.
-- Complete operator-read audit and failure taxonomy remain AUTH-009/PIVOT-007 work.
+- Complete operator-read audit and failure taxonomy remain AUTH-009/PIVOT-007 work. Some
+  pre-exchange route guard failures are not audited; this is not complete durable failure
+  coverage.

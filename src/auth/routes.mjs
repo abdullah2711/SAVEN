@@ -785,7 +785,12 @@ export function createAuthRoutes({
       const response = json({
         realm: 'operator',
         csrfToken: result.csrfToken,
-        operator: {subject: result.subject, roleId: result.roleId, assurance: result.assurance},
+        operator: {
+          subject: result.subject,
+          roleId: result.roleId,
+          assurance: result.assurance,
+          sourceExpiresAt: result.sourceExpiresAt.toISOString(),
+        },
         session: {assuranceLevel: 'access_asserted'},
       });
       response.headers.set('Set-Cookie', sessionCookie({
@@ -803,19 +808,27 @@ export function createAuthRoutes({
 
   async function operatorMeRoute(request, url, realm) {
     operatorRealmGuard(realm);
+    if (!operatorAccess) throw new AuthError(503, 'OPERATOR_ACCESS_UNAVAILABLE', 'Operator Access is not configured.');
     const token = readCookies(request)[cookieName(realm, secureCookies)];
     if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-    const session = await store.readSession(token, {realm});
-    if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-    const refreshed = await store.refreshSession(session.id);
-    if (!refreshed) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    // Revalidate the bound issuer/subject/audience, current mapping epoch/role/assurance,
+    // principal and source-assertion ceiling under the shared authority gate. Session
+    // liveness alone is never sufficient for operator identity.
+    const admitted = await operatorAccess.inspectSession(token);
     return json({
-      operator: {userId: session.userId, roleId: refreshed.selectedRoleId ?? session.roleId ?? null, assuranceLevel: refreshed.assuranceLevel},
+      operator: {
+        userId: admitted.session.userId,
+        subject: admitted.binding.subject,
+        roleId: admitted.roleId,
+        assurance: admitted.assurance,
+        mappingEpoch: Number(admitted.binding.mapping_epoch),
+        sourceExpiresAt: admitted.sourceExpiresAt.toISOString(),
+      },
       session: {
-        realm: refreshed.realm,
-        assuranceLevel: refreshed.assuranceLevel,
-        idleExpiresAt: refreshed.idleExpiresAt,
-        absoluteExpiresAt: refreshed.absoluteExpiresAt,
+        realm: admitted.session.realm,
+        assuranceLevel: admitted.session.assuranceLevel,
+        idleExpiresAt: admitted.session.idleExpiresAt,
+        absoluteExpiresAt: admitted.session.absoluteExpiresAt,
       },
     });
   }
