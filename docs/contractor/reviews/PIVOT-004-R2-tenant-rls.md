@@ -1,0 +1,28 @@
+VERDICT: ACCEPT
+
+WHY: At 4debbb6, the correction closes the three findings from 577423c: failed fixture preflight no longer enters object cleanup, membership access has restrictive partners tested against the actual auth-service role, and 032 validates the dedicated owner's role paths, ownership and explicit privilege surface before and after its policy changes. Existing canonical mapping, forced tenant isolation and scoped-reference corrections remain. Acceptance covers the reviewed additive schema/fixture stack, not application tenant-context verification or deployment.
+
+Date: 16 November 2026 (Asia/Karachi).
+Delivery: `opencode/pivot-004-tenant-rls` at `4debbb6e76a7b1187d0df5720d01233d12ad0246`.
+Reviewed worktree: `/home/esc/saven/wt-rev-pivot-004-r2` (HEAD verified).
+Baseline: R1 `3769dda`; correction authority: [PIVOT-004-R1 review](PIVOT-004-R1-tenant-rls.md) at `577423c` and [43666dc rulings](PIVOT-003-technical-rulings.md).
+MERGE RISK: HIGH — RLS, privileged correction and shared database fixtures.
+ACCEPT ROUTING: queue for a human Business Merge Request; no worker auto-merge for this code/SQL delivery. The engineer performs no merge.
+
+All five delta paths match R2 TOUCH. Inspected 032, fixture cleanup/admin-hook changes, README, correction tests and appended report. Read-only Git comparison confirms delivered `00/05/10/20/30/006/021/031` bytes are unchanged. Earlier REVISE records remain historical; this verdict supersedes them for this exact SHA and the stack through 032, not 30 or 031 in isolation.
+
+Finding closure:
+
+1. The fixture sets preflightPassed only after all generated role/database names are proven absent; failed preflight performs no object drops. Existing created-object tracking remains, and the namespaced extra-owner cleanup runs only after completed preflight, including administrator-hook failure. Regression cases pre-create an owner with memberships/settings/comment, compare its state after refusal and prove no database was created; another hook creates the extra role then fails and checks both role/database removal. Namespacing and dedicated-cluster opt-in remain mandatory. These safeguards are not permission to test against an owner/shared database.
+2. 032 adds restrictive user/pair predicates for auth_service and the admission owner, preserving the permissive positive path and forced membership RLS. The corrected attack case targets the auth service that actually has membership SELECT and checks own-principal positive results plus foreign, empty and malformed denial. The policy design agrees with [PostgreSQL permissive/restrictive composition](https://www.postgresql.org/docs/18/ddl-rowsecurity.html). Tenant restrictive-policy defenses and the context-bound admission oracle remain.
+3. The administrator-applied transaction checks the non-login role attributes, direct/transitive membership paths, relation/schema/function/database/tablespace ownership, explicit schema/table/column/sequence/function/default ACLs and operator-schema exclusion. Only the reviewed ten SELECT columns and helper functions are allowed; excessive authority refuses without automatic grant repair. Eight adverse authority probes test refusal/rollback, followed by clean application and replay refusal. Offline superuser authority is an administrative trust boundary, not a runtime role membership exemption. This is catalog validation of the reviewed database and role setup, not a claim of tamper-proof cluster administration or arbitrary future cross-database safety.
+
+Worker evidence: Node `v24.19.0`, 20/20 focused cases including PIVOT-002/003 regressions, 181/181 branch-suite tests and disposable cleanup. Reviewer read these results and executed no gate, migration, cluster command or suite; no integrated CI/deployment success is inferred.
+
+Answers to R2 questions: the owner's own EXECUTE ACL on its helper is an ownership artifact and is acceptable in the reviewed allow-list; refusing excessive reused-role authority is preferable to silently revoking unrelated grants. Membership restrictive FOR ALL/WITH CHECK guards are intentional safe defaults; they grant no writes. Any later invitation/admin write path must explicitly review both its permissive authority and these restrictive bounds. A new privileged non-superuser administrator or changed owner privilege surface requires reviewed provisioning/validation changes; no permanent runtime route to the owner is authorized.
+
+Can client header/query/body values establish tenant_id/user_id authority? **No application request path is added here.** Transaction GUCs in the tests are disposable scaffolding; AUTH-006 still must bind them to a verified server session. Customer remains the sole direct tenant runtime grantee; the NOLOGIN owner is restricted helper authority. No tenant read is granted to saven_auth_service or saven_auth_definer, and no vendor operator FK or native-audit backfill is introduced.
+
+EXTENSIBILITY: no new hardcoded growing business enums; no new concrete application-module coupling; no new one-way decisions without an ADR. Explicit policy/authority inventories may evolve only through reviewed additive changes. Scoped mappings/companies and named minimum sequence access remain preserved.
+
+Human integration must retain run order through 031/032 and repeat exact combined-source checks. No serving before AUTH-006 and required immutability/audit/kernel gates; membership provisioning is currently fail-closed pending its own policy contract. SQLite remains production. No Business Merge Request was created or merge executed by the engineer; this review records the required queue routing.
