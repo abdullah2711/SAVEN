@@ -77,16 +77,19 @@ is not itself the full business policy engine.
 ## Known dependency (requested amendment)
 
 `auth.tenant_membership` carries forced RLS with SELECT policies only for the auth
-service. A row-locking `SELECT … FOR SHARE/UPDATE` therefore matches no permissive UPDATE
-policy for the runtime and cannot be used to serialize membership changes. The protocol
-row-locks the principal, factor and session, and re-reads membership/role/epoch authority
-at the admission point so committed changes fail closed. A strictly serialized membership
-lock (for the whole business transaction) needs a narrowly reviewed additive database
-interface — for example a SECURITY DEFINER lock/validation function or a reviewed locking
-policy — before any migration/grant change. Until that amendment, the residual window is a
-membership/role/epoch change that commits after the admission re-read and during handler
-execution; it is observed by the next admission. No runtime membership mutation path exists
-in this module today.
+service, so a runtime row-locking `SELECT … FOR SHARE/UPDATE` is filtered/denied and cannot
+serialize membership changes. The current protocol row-locks the principal, factor and
+session, binds the exact selected role, and re-reads the full membership/role authority
+both at admission and immediately before the business COMMIT, so a committed change fails
+closed before effects may commit. The residual window is a membership/role change that
+commits between that last check and COMMIT.
+
+A concrete bounded amendment is proposed in
+`docs/contractor/deliveries/AUTH-006-tenant-context.md` (AUTH-006-R2 section): additive
+advisory-lock triggers on `auth.tenant_membership` and `auth.roles`, plus the same
+transaction-scoped locks in admission. It requires no permissive membership UPDATE grant,
+no RLS relaxation and no BYPASSRLS. It is **not authorized or implemented** until the
+engineer issues the corresponding contract amendment.
 
 ## Extension points
 

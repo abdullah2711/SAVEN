@@ -211,3 +211,123 @@ data rather than RLS or hardcoded roles.
 ## GIT (R1)
 
 branch=opencode/auth-006-context commit=`e5eb06e`,report+checkpoint commit pushed=yes
+
+# AUTH-006-R2 revision — 17 November 2026
+
+Verdict and review: `docs/contractor/reviews/AUTH-006-R1-tenant-context.md` at `d9e2bb1`.
+Implementation `09ce585`; report + checkpoint follow. This round implements the
+within-TOUCH validation protocol and supplies the concrete bounded amendment requested by
+the review. No migration/grant/RLS/owner change was made.
+
+## Remaining HIGH correction — role provenance and final admission
+
+Status: **corrected within current TOUCH; true membership locking remains the requested
+amendment.**
+
+- `withAuthority` freezes the exact selected `roleId` from the resolved membership row.
+  Every admission check now compares the freshly read `selectedNow.role_id` with that
+  frozen role in addition to membership id/tenant/epoch/usability. A role change without an
+  epoch bump therefore fails closed with `TENANT_SELECTION_STALE` instead of leaving an
+  earlier role in the context.
+- Admission runs twice: before the handler and again immediately before the business
+  COMMIT. The second check re-reads the complete membership/role authority set, recomputes
+  MFA requirements (including newly added associations), rechecks the exact selected role
+  and time-bound assurance, and discards the business transaction if anything changed.
+  This proves a role change committed after the first admission cannot let effects commit
+  under the earlier role.
+- Tests:
+  - non-MFA role change with no epoch bump during a pause → `TENANT_SELECTION_STALE`, no
+    handler, no effect;
+  - the same role change committed **during handler execution** → pre-commit revalidation
+    rolls the inserted effect back;
+  - a newly activated MFA-requiring membership association during a pause → `MFA_REQUIRED`,
+    no handler/effect;
+  - an ineffective selected role (`auth.roles.is_active = false`) → stale, no handler.
+
+Residual: a membership/role change that commits between the final pre-commit check and
+COMMIT is not DB-serialized. True serialization requires the amendment below; this is not
+claimed as complete membership locking.
+
+## Concrete bounded amendment proposal (not authorized, not implemented)
+
+Requested from the engineer as the next contract amendment. It adds no permissive
+membership UPDATE authority to the auth-service runtime and no RLS relaxation.
+
+**Additive path:** one additive migration (e.g.
+`db/postgres/migrations/033-membership-admission-lock.sql`) plus two trigger functions and
+their triggers. No table/column change, no grant to runtime roles, no policy change.
+
+**Lock keys (transaction-scoped advisory locks):**
+
+- per user: `pg_advisory_xact_lock(hashtext('saven.auth.membership:' || user_id))`
+- global role authority: `pg_advisory_xact_lock(hashtext('saven.auth.roles'))`
+
+**Admission side:** `withAuthority`, after binding the verified principal and before reading
+memberships, takes the user key and the roles key on the auth transaction. The transaction
+stays open through the business transaction, so the locks are held until business work
+completes. Keys are derived from the verified server-side user only; no client id, session
+`SET`, or new privilege is used.
+
+**Writer side (DB-enforced):**
+
+- `auth.tenant_membership` AFTER INSERT/UPDATE/DELETE trigger takes the per-user key for
+  `NEW.user_id` and `OLD.user_id` (covering new associations and promotions).
+- `auth.roles` AFTER INSERT/UPDATE/DELETE trigger takes the global roles key (covering
+  `requires_mfa`, `is_active`, and effective-date changes).
+- Trigger functions: `SECURITY INVOKER`, `SET search_path = pg_catalog`, body only takes
+  the advisory locks (no table reads/writes). Owned by the offline migration/DDL role;
+  no runtime EXECUTE grant is required for trigger invocation.
+
+**Ordering:** admission takes user then roles; membership triggers take one user key; role
+triggers take the roles key. No writer takes roles then user, so no lock-order cycle is
+introduced.
+
+**RLS/privileges:** unchanged. Forced RLS, admission-owner authority and the
+auth-service/customer-app separation are preserved. No `BYPASSRLS`, no table ownership, no
+permissive membership UPDATE grant.
+
+**Caller/context validation:** locks are taken only inside the owned auth transaction after
+`app.current_user_id` is bound and the session/principal is verified; the key is the
+verified user, never a request value.
+
+**Affected fixture/tests (once authorized):** add `033` to the AUTH-006 fixture migration
+list; prove both orderings with real restricted roles and smallest separate auth/business
+pools: (a) a role/membership change wins before admission → no handler/effects; (b) business
+admission wins and the writer blocks until completion; (c) role change without epoch bump,
+role policy/effectiveness change, new membership/promotion affecting MFA, and revocation/
+epoch change. Preserve the existing uncertain-COMMIT semantics: the auth and business
+transactions are not a distributed atomic commit, so an auth commit failure after a
+business commit is reported as uncertain, not undone.
+
+Until authorized, the R2 validation protocol is the boundary: committed authority changes
+are detected at admission and again before COMMIT; no full membership serialization is
+claimed.
+
+## Evidence
+
+```text
+$ node scripts/check.mjs
+PASS: 166 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-006-context.test.mjs
+tests 20  pass 20  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6, accepted
+PIVOT-004/031/032 RLS stack, real non-owner auth-service and customer-app logins):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 20/20
+combined 113 tests, 113 pass, 0 fail
+```
+
+## Boundaries
+
+- The amendment above is the only open serialization dependency; it is not authorized or
+  implemented. No schema/grant/RLS change was made.
+- Findings 2 (realm/MFA) and 3 (same-tenant company composition) remain closed from R1.
+- No tenant-selection audit event (AUTH-009/reference-data), no active entry point/UI, no
+  PgBouncer instance or production load claim. SQLite remains production.
+
+## GIT (R2)
+
+branch=opencode/auth-006-context commit=`09ce585`,report+checkpoint commit pushed=yes
