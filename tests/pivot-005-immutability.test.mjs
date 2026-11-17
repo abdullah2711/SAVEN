@@ -475,7 +475,7 @@ test('PIVOT-005 approval policy is currency-matched, deterministic, exact and re
     await seed(db);
     await grantVoid(db);
     await postedEntry(db, 'policy-1');
-    await postedEntry(db, 'policy-2');
+    await postedEntry(db, 'policy-2', {debit: 500});
     await postedEntry(db, 'policy-3');
     await addReviewer(db);
 
@@ -483,17 +483,19 @@ test('PIVOT-005 approval policy is currency-matched, deterministic, exact and re
     await addPolicy(db, {key: 'a', version: 1, threshold: 100, currency: 'PKR'});
     await asUser(db, T1, U1, client => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('policy-1', {key: 'th-1'})})`), {commit: true});
 
-    // Highest version across keys wins; version 2 (threshold 1000) applies to amount 500.
+    // Independent policy keys are versioned independently. Key b version 2 does not
+    // supersede key a version 1: both current identities combine conservatively, so
+    // the lower threshold 100 still requires review for the 500 entry.
     await addPolicy(db, {key: 'b', version: 2, threshold: 1000, currency: 'PKR'});
-    await asUser(db, T1, U1, client => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('policy-2', {key: 'th-2'})})`), {commit: true});
-
-    // Two keys claiming the same maximum version are ambiguous and fail closed.
-    await addPolicy(db, {key: 'c', version: 2, threshold: 1000, currency: 'PKR'});
     await asUser(db, T1, U1, client => assert.rejects(
-      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('policy-3', {key: 'th-3'})})`),
-      /VOID_POLICY_AMBIGUOUS/,
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('policy-2', {key: 'th-2'})})`),
+      /VOID_APPROVAL_REQUIRED/,
     ));
-    await db.adminQuery(`DELETE FROM tenant_data.approval_policy WHERE tenant_id = '${T1}' AND policy_key = 'c'`);
+    const policy2Effects = (await db.adminQuery(`
+      SELECT (SELECT count(*)::int FROM tenant_data.entry_voids WHERE entry_id='policy-2') AS voids,
+             (SELECT count(*)::int FROM tenant_data.audit WHERE command_id='policy-2' AND event='ENTRY_VOIDED') AS audit
+    `)).rows[0];
+    assert.deepEqual(policy2Effects, {voids: 0, audit: 0});
 
     // A policy for another currency never applies to this entry's minor units.
     await db.adminQuery(`UPDATE tenant_data.approval_policy SET is_active = false WHERE tenant_id = '${T1}'`);
@@ -550,6 +552,105 @@ test('PIVOT-005 approval policy is currency-matched, deterministic, exact and re
       () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('policy-5', {key: 'pol-3', approval: 'void-policy-3'})})`),
       /APPROVAL_APPROVER_NOT_ACTIVE|VOID_APPROVAL_STALE/,
     ));
+  });
+});
+
+test('PIVOT-005 policy identities combine by identity, not by cross-key version priority', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await grantVoid(db);
+    await addReviewer(db);
+    await postedEntry(db, 'role-key');
+    await postedEntry(db, 'global-key');
+    await postedEntry(db, 'same-key');
+    await postedEntry(db, 'stale-key');
+
+    // Same role, independent unequal-version keys: v9 of key b must not supersede v1
+    // of key a. Both current identities combine and the zero threshold requires review.
+    await addPolicy(db, {key: 'role-a', version: 1, roleId: 'clerk', threshold: 0});
+    await addPolicy(db, {key: 'role-b', version: 9, roleId: 'clerk', threshold: 1000});
+    const roleDecision = await policyDecision(db, {actor: 'user-1', amount: 100, entry: 'role-key', digest: 'role-key'});
+    assert.equal(roleDecision.review, true);
+    assert.equal(roleDecision.policyVersion, 1);
+    assert.equal(roleDecision.policyKey, 'role-a');
+    assert.deepEqual(roleDecision.policies.map(policy => [policy.policyKey, policy.version, policy.scope]),
+      [['role-a', 1, 'ROLE'], ['role-b', 9, 'ROLE']]);
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('role-key', {key: 'role-key-1'})})`),
+      /VOID_APPROVAL_REQUIRED/,
+    ));
+    const roleEffects = (await db.adminQuery(`
+      SELECT (SELECT count(*)::int FROM tenant_data.entry_voids WHERE entry_id='role-key') AS voids,
+             (SELECT count(*)::int FROM tenant_data.audit WHERE command_id='role-key' AND event='ENTRY_VOIDED') AS audit
+    `)).rows[0];
+    assert.deepEqual(roleEffects, {voids: 0, audit: 0});
+
+    // The same identity rule applies to the global fallback, including a higher
+    // version on another key.
+    await db.adminQuery(`UPDATE tenant_data.approval_policy SET is_active = false WHERE tenant_id='${T1}'`);
+    await addPolicy(db, {key: 'global-a', version: 1, roleId: null, threshold: 0});
+    await addPolicy(db, {key: 'global-b', version: 9, roleId: null, threshold: 1000});
+    const globalDecision = await policyDecision(db, {actor: 'user-1', amount: 100, entry: 'global-key', digest: 'global-key'});
+    assert.equal(globalDecision.review, true);
+    assert.deepEqual(globalDecision.policies.map(policy => [policy.policyKey, policy.version, policy.scope]),
+      [['global-a', 1, 'GLOBAL'], ['global-b', 9, 'GLOBAL']]);
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('global-key', {key: 'global-key-1'})})`),
+      /VOID_APPROVAL_REQUIRED/,
+    ));
+    const globalEffects = (await db.adminQuery(`
+      SELECT (SELECT count(*)::int FROM tenant_data.entry_voids WHERE entry_id='global-key') AS voids,
+             (SELECT count(*)::int FROM tenant_data.audit WHERE command_id='global-key' AND event='ENTRY_VOIDED') AS audit
+    `)).rows[0];
+    assert.deepEqual(globalEffects, {voids: 0, audit: 0});
+
+    // Within one identity, the highest current version supersedes its own older rows.
+    await db.adminQuery(`UPDATE tenant_data.approval_policy SET is_active = false WHERE tenant_id='${T1}'`);
+    await addPolicy(db, {key: 'same', version: 1, roleId: null, threshold: 0});
+    await addPolicy(db, {key: 'same', version: 2, roleId: null, threshold: 1000});
+    const sameDecision = await policyDecision(db, {actor: 'user-1', amount: 100, entry: 'same-key', digest: 'same-key'});
+    assert.equal(sameDecision.review, false);
+    assert.equal(sameDecision.policyVersion, 2);
+    assert.equal(sameDecision.policies.length, 1);
+    await asUser(db, T1, U1, client => client.query(
+      `SELECT tenant_data.void_posted_entry(${voidArgs('same-key', {key: 'same-key-1'})})`), {commit: true});
+    const sameVoids = (await db.adminQuery(`SELECT count(*)::int AS n FROM tenant_data.entry_voids WHERE entry_id='same-key'`)).rows[0].n;
+    assert.equal(sameVoids, 1);
+
+    // A same-identity version change after approval still invalidates the snapshot.
+    await addPolicy(db, {key: 'same', version: 3, roleId: null, threshold: 0});
+    const stale = await registerVoidSubmission(db, {commandId: 'void-stale-key', entry: 'stale-key', key: 'stale-key-1'});
+    await requestApproval(db, {commandId: 'void-stale-key', submission: stale});
+    await approve(db, {commandId: 'void-stale-key'});
+    await addPolicy(db, {key: 'same', version: 4, roleId: null, threshold: 50});
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('stale-key', {key: 'stale-key-1', approval: 'void-stale-key'})})`),
+      /VOID_APPROVAL_STALE/,
+    ));
+    const staleEffects = (await db.adminQuery(`
+      SELECT (SELECT count(*)::int FROM tenant_data.entry_voids WHERE entry_id='stale-key') AS voids,
+             (SELECT count(*)::int FROM tenant_data.audit WHERE command_id='stale-key' AND event='ENTRY_VOIDED') AS audit
+    `)).rows[0];
+    assert.deepEqual(staleEffects, {voids: 0, audit: 0});
+
+    // Adding a different independent key after approval also invalidates the snapshot,
+    // even though the original key's threshold still controls review.
+    await db.adminQuery(`UPDATE tenant_data.approval_policy SET is_active = false WHERE tenant_id='${T1}'`);
+    await postedEntry(db, 'stale-key-b');
+    await addPolicy(db, {key: 'base', version: 1, roleId: null, threshold: 0});
+    const staleKey = await registerVoidSubmission(db, {commandId: 'void-stale-key-b', entry: 'stale-key-b', key: 'stale-key-2'});
+    await requestApproval(db, {commandId: 'void-stale-key-b', submission: staleKey});
+    await approve(db, {commandId: 'void-stale-key-b'});
+    await addPolicy(db, {key: 'extra', version: 9, roleId: null, threshold: 1000});
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('stale-key-b', {key: 'stale-key-2', approval: 'void-stale-key-b'})})`),
+      /VOID_APPROVAL_STALE/,
+    ));
+    const staleKeyEffects = (await db.adminQuery(`
+      SELECT (SELECT count(*)::int FROM tenant_data.entry_voids WHERE entry_id='stale-key-b') AS voids,
+             (SELECT count(*)::int FROM tenant_data.audit WHERE command_id='stale-key-b' AND event='ENTRY_VOIDED') AS audit
+    `)).rows[0];
+    assert.deepEqual(staleKeyEffects, {voids: 0, audit: 0});
   });
 });
 
@@ -737,11 +838,15 @@ test('PIVOT-005 approval policy applies only to matching current role identities
     assert.equal(multi.policyVersion, 1);
     assert.ok(!multi.policies.some(policy => policy.roleId === 'other-role'));
 
-    // Two global keys at the same maximum version are genuine ambiguity and fail closed.
-    await addPolicy(db, {key: 'global-policy-b', version: 5, roleId: null, threshold: 900, currency: 'PKR'});
-    await assert.rejects(
-      () => policyDecision(db, {actor: 'user-1', amount: 100, entry: 'policy-role-1', digest: 'd1'}),
-      /VOID_POLICY_AMBIGUOUS/,
+    // Multiple independent global identities combine conservatively; equal or unequal
+    // version numbers across keys are never treated as priority.
+    await addPolicy(db, {key: 'global-policy-b', version: 4, roleId: null, threshold: 900, currency: 'PKR'});
+    const combined = await policyDecision(db, {actor: 'user-1', amount: 100, entry: 'policy-role-1', digest: 'd1'});
+    assert.equal(combined.review, true);
+    assert.equal(combined.policyVersion, 1);
+    assert.deepEqual(
+      combined.policies.filter(policy => policy.roleId === 'clerk-2').map(policy => policy.policyKey),
+      ['global-policy', 'global-policy-b'],
     );
     await db.adminQuery(`DELETE FROM tenant_data.approval_policy WHERE tenant_id='${T1}' AND policy_key='global-policy-b'`);
 
@@ -1343,7 +1448,8 @@ test('PIVOT-005 static contract: lifecycle predicate, both-ended corrections, fa
   assert.match(voiding, /VOID_PERMISSION_INVALID/);
   assert.match(voiding, /approval_policy/);
   assert.match(voiding, /VOID_POLICY_CURRENCY_MISMATCH/);
-  assert.match(voiding, /VOID_POLICY_AMBIGUOUS/);
+  assert.match(voiding, /GROUP BY ap\.policy_key/);
+  assert.match(voiding, /max\(ap\.version\)/);
   assert.match(voiding, /ORDER BY r\.id/);
   assert.match(voiding, /ap\.role_id = v_policy_role/);
   assert.match(voiding, /'matchingRoleIds', to_jsonb\(v_role_ids\)/);

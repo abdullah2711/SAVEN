@@ -1,5 +1,5 @@
 CONTRACT: docs/contractor/contracts/PIVOT-005-posted-immutability.md
-STATUS: DONE (R4 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
+STATUS: DONE (R5 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
 
 ## What was delivered
 
@@ -266,6 +266,8 @@ branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b (R2 delivery 1ee
 
 ## Revision 4 — PIVOT-005 R3 corrections (verdict af333f5, review PIVOT-005-R3)
 
+> The approval-scope corrections below remain current. The policy identity/version rule in the second finding row is **superseded by Revision 5**: multiple policy keys at the same or different versions are independent identities and are combined conservatively, not failed as `VOID_POLICY_AMBIGUOUS`. Revision 5 replaces that statement with identity-first version resolution.
+
 Both remaining approval-authority corrections are implemented inside the existing TOUCH paths. 040 remains the new, never-applied payload (corrected in place); 042 remains the additive void payload (corrected in this disposable evidence environment). No applied production lineage was rewritten and no additive 043 was required.
 
 ### Finding-by-finding closure
@@ -273,7 +275,7 @@ Both remaining approval-authority corrections are implemented inside the existin
 | Review finding | Correction | New focused evidence |
 | --- | --- | --- |
 | 1. Approver resource/amount authority broader than its canonical grant; action-only fallback on unresolved resources | New `immutability_040_approval_resource()` resolves the exact company, branch, accounts and minor-unit amount from (a) the authoritative target of a terminal-void command, (b) the command's own journal rows, or (c) the immutable accepted payload's company/branch/lines for a pending command that has no journal yet. Missing, incomplete or malformed data fails closed with `APPROVAL_RESOURCE_UNRESOLVED`; there is no action-only fallback. `immutability_040_approver_authority()` now requires **one** role to satisfy `journal.approve`, company, branch, every account and `maxMinor` independently. Malformed arrays, non-numeric/non-integral/negative/out-of-bound `maxMinor`, and malformed payload line amounts fail closed. The same helper is called by the approval transition and re-run at void execution. | `approver authority applies the reviewer exact accounts and maxMinor at decision and execution` |
-| 2. Policy selection ignores role applicability and can skip required review | `immutability_042_policy_decision()` now resolves policy against the requester's matching current role ids. Precedence is explicit: a role-specific policy overrides the global policy for that role; a matching role without a specific policy falls back to global. Selected policies combine conservatively (lowest threshold controls; any `requires_different_approver` wins), so an unrelated or higher-version high-threshold policy cannot mask another applicable role's required review. Two policy keys at the same maximum version for the same role/global scope fail closed as `VOID_POLICY_AMBIGUOUS`. The decision binds ordered `matchingRoleIds` and the full selected `policies` array (role id, policy key, scope `ROLE`/`GLOBAL`, version, currency, threshold, different-approver flag), so role or policy changes invalidate the approval. Only `approval_policy.role_id` was added to the dedicated owner's exact column grant/allow-list. The minor-unit convention remains limited to `accounting.entry.void`. | `approval policy applies only to matching current role identities` |
+| 2. Policy selection ignores role applicability and can skip required review | `immutability_042_policy_decision()` now resolves policy against the requester's matching current role ids. Precedence is explicit: a role-specific policy overrides the global policy for that role; a matching role without a specific policy falls back to global. Selected policies combine conservatively (lowest threshold controls; any `requires_different_approver` wins), so an unrelated or higher-version high-threshold policy cannot mask another applicable role's required review. The same-maximum-version ambiguity rule described here was incorrect and is superseded by Revision 5. The decision binds ordered `matchingRoleIds` and the full selected `policies` array (role id, policy key, scope `ROLE`/`GLOBAL`, version, currency, threshold, different-approver flag), so role or policy changes invalidate the approval. Only `approval_policy.role_id` was added to the dedicated owner's exact column grant/allow-list. The minor-unit convention remains limited to `accounting.entry.void`. | `approval policy applies only to matching current role identities` |
 
 ### Closure accounting for af333f5
 
@@ -359,3 +361,83 @@ compliant: no business-role names or read-visibility predicates were added; appr
 ### GIT
 
 branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b (R3 delivery 09a25ac) commits=pushed with this report merged=no
+
+---
+
+## Revision 5 — PIVOT-005 R4 correction (verdict 191baeb, review PIVOT-005-R4)
+
+The remaining policy-identity correction is implemented inside the existing 042 TOUCH path. No new TOUCH was needed. 040 and the R4 approver-resource correction are unchanged.
+
+### Finding 1 — policy versions are per identity, never cross-key priority
+
+`immutability_042_policy_decision()` previously selected `max(ap.version)` across all applicable keys for a role. That was wrong: `approval_policy` versions belong to the `(tenant_id, policy_key, version)` identity, so version 9 of key B could suppress version 1 of key A. The function now:
+
+1. Filters by action, currency, effective dates and the requester's matching role ids.
+2. Applies the documented role-specific/global precedence: if a matching role has any current role-specific identity, those identities are used and global is ignored for that role; otherwise the global identities are used.
+3. Resolves the **current effective version within each `(policy_key, role scope)` identity first** (`GROUP BY ap.policy_key`, `max(ap.version)`).
+4. Conservatively combines **every applicable current identity** in the selected scope: the lowest threshold controls review and any `requires_different_approver` wins. Version numbers never rank across keys and there is no cross-key supersession.
+5. Binds every selected identity and its applicability into the decision snapshot: ordered `matchingRoleIds` plus `policies[]` with `roleId`, `policyKey`, `scope` (`ROLE`/`GLOBAL`), `version`, `currency`, `thresholdMinor` and `requiresDifferentApprover`. `policyVersion`/`policyKey` identify the controlling (lowest-threshold) identity for the real `approval_version`, while the full set remains retained in `policy_decision`.
+6. Fails closed on malformed thresholds and on a policy row that disappears between current-version resolution and the selected-row read. Multiple independent current identities are **not** treated as ambiguous; they are combined by the documented rule. `VOID_POLICY_AMBIGUOUS` is no longer raised for multiple policy keys.
+
+Same-key supersession is retained: key A version 2 supersedes key A version 1. A same-key version change after approval still makes the approval stale because the selected identity/version is in the snapshot.
+
+### Tests added/updated (R4 review)
+
+| Required case | Test |
+| --- | --- |
+| Unequal-version independent keys in the same role cannot suppress the lower threshold; customer-role void execution requires review and commits no void effects | `policy identities combine by identity, not by cross-key version priority` |
+| Unequal-version independent keys in the global fallback behave the same way; no void effects commit | same test |
+| Same-key version supersession (higher version within one identity) | same test |
+| Same-key version change after approval invalidates the approval | same test |
+| Adding a different independent key after approval also invalidates the approval; no void effects commit | same test |
+| Multiple independent global identities combine conservatively (no ambiguity error) | `approval policy applies only to matching current role identities` |
+| Independent-key combination in the currency/threshold flow | `approval policy is currency-matched, deterministic, exact and revalidated at execution` |
+
+### GATE EVIDENCE (R5)
+
+Environment: dedicated disposable PostgreSQL 18.6 cluster rebuilt for this run on loopback `127.0.0.1:55435` (`initdb --auth=trust`, local admin `esc`), no SSH/owner-server/production/shared cluster. `SAVEN_PIVOT_TEST_CLUSTER=1`; Node **v24.19.0** via `npm exec --yes --package=node@24.19.0`. No global `saven_*` role was created.
+
+```text
+$ node scripts/check.mjs
+PASS: 156 JavaScript files parsed; package manifest valid.
+
+$ node --test tests/pivot-005-immutability.test.mjs
+ℹ tests 18
+ℹ pass 18
+ℹ fail 0
+EXIT=0
+```
+
+Focused cases include both prior approval-scope tests, the new identity-combination regression, both-ended corrections, fail-closed posting, restored isolation/retention/activation/polluted-owner evidence and the static contract.
+
+Full branch suite on the same clean cluster and Node version:
+
+```text
+$ node --test tests/*.test.mjs
+ℹ tests 223
+ℹ pass 222
+ℹ fail 1
+EXIT=1
+```
+
+The single failure remains the pre-existing out-of-TOUCH PIVOT-004 test that creates a policy with the literal global role `saven_customer_app` on a namespaced pristine cluster. It is unchanged from R3/R4 and was not repaired here. No global SAVEN roles were created to mask it.
+
+### Explicit limits (R5)
+
+1. **No application integration or UI.** AUTH-006 gates verified application context; PIVOT-013 owns command/policy/adapter integration; a UI contract owns Delete/Voided pages and RBAC settings.
+2. **Approval resource support is the plain-journal/void shape.** Other command shapes fail closed until a reviewed adapter defines their canonical resource.
+3. **Auth-session admission of the approver is checked at the approval decision.** Execution revalidates tenant-local membership and current approval/resource authority; it is not a cross-principal auth-session oracle.
+4. **No fine-grained void visibility.** D-014 role-agnostic database reads remain; application RBAC owns visibility.
+5. **Denial durability is application-side.** The kernel writes `void_denials` in a separate transaction.
+6. **Operational posting/void reconciliation remains a PIVOT-013 limit.**
+7. **Locked-period voiding is refused.**
+8. **PIVOT-006** still owns generic audit payload 041.
+9. **Private packaging** must implement the same controls locally without vendor authority.
+
+### EXTENSIBILITY
+
+compliant: policy identity/version semantics are explicit and deterministic; no version number is treated as authority outside its identity; multiple current identities combine by a documented conservative rule rather than storage order; the snapshot binds all selected identities and applicability; no new hardcoded business roles, eligibility model or cross-module coupling was introduced; source/native/reference code, applied bytes, numbering and retention remain preserved.
+
+### GIT
+
+branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b (R4 delivery 3dd8d92) commits=pushed with this report merged=no

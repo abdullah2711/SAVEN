@@ -300,7 +300,8 @@ DECLARE
   v_any_policy boolean;
   v_policies jsonb := '[]'::jsonb;
   v_policy_role text;
-  v_policy_count integer;
+  v_has_specific boolean;
+  v_candidate record;
   v_candidate_version bigint;
   v_candidate_key text;
   v_candidate_scope text;
@@ -434,126 +435,78 @@ BEGIN
   END IF;
 
   FOR v_policy_role IN SELECT unnest(v_role_ids) ORDER BY 1 LOOP
-    v_candidate_version := NULL;
-    v_candidate_key := NULL;
-    v_candidate_scope := NULL;
-    v_candidate_threshold := NULL;
-    v_candidate_requires := false;
-
-    SELECT count(*) INTO v_policy_count
-    FROM tenant_data.approval_policy ap
-    WHERE ap.tenant_id = p_tenant
-      AND ap.action_type = 'accounting.entry.void'
-      AND ap.currency = v_currency
-      AND ap.role_id = v_policy_role
-      AND ap.is_active
-      AND ap.effective_from <= now()
-      AND (ap.effective_to IS NULL OR ap.effective_to > now());
-    IF v_policy_count > 0 THEN
-      v_candidate_scope := 'ROLE';
-      SELECT max(ap.version) INTO v_candidate_version
-      FROM tenant_data.approval_policy ap
+    -- Role-specific current identities replace the global fallback for this role.
+    SELECT EXISTS (
+      SELECT 1 FROM tenant_data.approval_policy ap
       WHERE ap.tenant_id = p_tenant
         AND ap.action_type = 'accounting.entry.void'
         AND ap.currency = v_currency
         AND ap.role_id = v_policy_role
         AND ap.is_active
         AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-      SELECT count(*) INTO v_policy_count
-      FROM tenant_data.approval_policy ap
-      WHERE ap.tenant_id = p_tenant
-        AND ap.action_type = 'accounting.entry.void'
-        AND ap.currency = v_currency
-        AND ap.role_id = v_policy_role
-        AND ap.version = v_candidate_version
-        AND ap.is_active
-        AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-      IF v_policy_count <> 1 THEN
-        RAISE EXCEPTION 'VOID_POLICY_AMBIGUOUS: multiple policy keys claim version % for role %', v_candidate_version, v_policy_role;
-      END IF;
-      SELECT ap.policy_key, ap.approval_threshold_amount, ap.requires_different_approver
-        INTO v_candidate_key, v_candidate_threshold, v_candidate_requires
-      FROM tenant_data.approval_policy ap
-      WHERE ap.tenant_id = p_tenant
-        AND ap.action_type = 'accounting.entry.void'
-        AND ap.currency = v_currency
-        AND ap.role_id = v_policy_role
-        AND ap.version = v_candidate_version
-        AND ap.is_active
-        AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-    ELSE
-      SELECT count(*) INTO v_policy_count
-      FROM tenant_data.approval_policy ap
-      WHERE ap.tenant_id = p_tenant
-        AND ap.action_type = 'accounting.entry.void'
-        AND ap.currency = v_currency
-        AND ap.role_id IS NULL
-        AND ap.is_active
-        AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-      IF v_policy_count = 0 THEN
-        CONTINUE;
-      END IF;
-      v_candidate_scope := 'GLOBAL';
-      SELECT max(ap.version) INTO v_candidate_version
-      FROM tenant_data.approval_policy ap
-      WHERE ap.tenant_id = p_tenant
-        AND ap.action_type = 'accounting.entry.void'
-        AND ap.currency = v_currency
-        AND ap.role_id IS NULL
-        AND ap.is_active
-        AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-      SELECT count(*) INTO v_policy_count
-      FROM tenant_data.approval_policy ap
-      WHERE ap.tenant_id = p_tenant
-        AND ap.action_type = 'accounting.entry.void'
-        AND ap.currency = v_currency
-        AND ap.role_id IS NULL
-        AND ap.version = v_candidate_version
-        AND ap.is_active
-        AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-      IF v_policy_count <> 1 THEN
-        RAISE EXCEPTION 'VOID_POLICY_AMBIGUOUS: multiple global policy keys claim version %', v_candidate_version;
-      END IF;
-      SELECT ap.policy_key, ap.approval_threshold_amount, ap.requires_different_approver
-        INTO v_candidate_key, v_candidate_threshold, v_candidate_requires
-      FROM tenant_data.approval_policy ap
-      WHERE ap.tenant_id = p_tenant
-        AND ap.action_type = 'accounting.entry.void'
-        AND ap.currency = v_currency
-        AND ap.role_id IS NULL
-        AND ap.version = v_candidate_version
-        AND ap.is_active
-        AND ap.effective_from <= now()
-        AND (ap.effective_to IS NULL OR ap.effective_to > now());
-    END IF;
+        AND (ap.effective_to IS NULL OR ap.effective_to > now())
+    ) INTO v_has_specific;
+    v_candidate_scope := CASE WHEN v_has_specific THEN 'ROLE' ELSE 'GLOBAL' END;
 
-    IF v_candidate_threshold IS NULL
-       OR v_candidate_threshold < 0
-       OR v_candidate_threshold <> trunc(v_candidate_threshold)
-       OR v_candidate_threshold > 999999999999 THEN
-      RAISE EXCEPTION 'VOID_POLICY_INVALID: threshold % for role % is not an exact non-negative minor-unit value', v_candidate_threshold, v_policy_role;
-    END IF;
+    -- Versions belong to a (policy_key, role) identity. Resolve the current version
+    -- within each identity FIRST, then combine every applicable current identity
+    -- conservatively. A version number never outranks another policy key.
+    FOR v_candidate IN
+      SELECT ap.policy_key, max(ap.version) AS version
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now())
+        AND ((v_has_specific AND ap.role_id = v_policy_role)
+             OR (NOT v_has_specific AND ap.role_id IS NULL))
+      GROUP BY ap.policy_key
+      ORDER BY ap.policy_key
+    LOOP
+      v_candidate_key := v_candidate.policy_key;
+      v_candidate_version := v_candidate.version;
 
-    v_policies := v_policies || jsonb_build_array(jsonb_build_object(
-      'roleId', v_policy_role,
-      'policyKey', v_candidate_key,
-      'scope', v_candidate_scope,
-      'version', v_candidate_version,
-      'currency', v_currency,
-      'thresholdMinor', v_candidate_threshold::bigint,
-      'requiresDifferentApprover', coalesce(v_candidate_requires, false)));
-    v_requires_approver := v_requires_approver OR coalesce(v_candidate_requires, false);
-    IF v_effective_threshold IS NULL OR v_candidate_threshold < v_effective_threshold THEN
-      v_effective_threshold := v_candidate_threshold;
-      v_controlling_version := v_candidate_version;
-      v_controlling_key := v_candidate_key;
-    END IF;
+      SELECT ap.approval_threshold_amount, ap.requires_different_approver
+        INTO v_candidate_threshold, v_candidate_requires
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.policy_key = v_candidate_key
+        AND ap.version = v_candidate_version
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now())
+        AND ((v_has_specific AND ap.role_id = v_policy_role)
+             OR (NOT v_has_specific AND ap.role_id IS NULL));
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'VOID_POLICY_INVALID: policy identity % version % is no longer resolvable', v_candidate_key, v_candidate_version;
+      END IF;
+
+      IF v_candidate_threshold IS NULL
+         OR v_candidate_threshold < 0
+         OR v_candidate_threshold <> trunc(v_candidate_threshold)
+         OR v_candidate_threshold > 999999999999 THEN
+        RAISE EXCEPTION 'VOID_POLICY_INVALID: threshold % for identity % is not an exact non-negative minor-unit value', v_candidate_threshold, v_candidate_key;
+      END IF;
+
+      v_policies := v_policies || jsonb_build_array(jsonb_build_object(
+        'roleId', v_policy_role,
+        'policyKey', v_candidate_key,
+        'scope', v_candidate_scope,
+        'version', v_candidate_version,
+        'currency', v_currency,
+        'thresholdMinor', v_candidate_threshold::bigint,
+        'requiresDifferentApprover', coalesce(v_candidate_requires, false)));
+      v_requires_approver := v_requires_approver OR coalesce(v_candidate_requires, false);
+      IF v_effective_threshold IS NULL OR v_candidate_threshold < v_effective_threshold THEN
+        v_effective_threshold := v_candidate_threshold;
+        v_controlling_version := v_candidate_version;
+        v_controlling_key := v_candidate_key;
+      END IF;
+    END LOOP;
   END LOOP;
 
   IF v_effective_threshold IS NOT NULL AND p_amount > v_effective_threshold THEN
