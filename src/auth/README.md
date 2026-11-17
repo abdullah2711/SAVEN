@@ -493,22 +493,36 @@ context.
 | `/v1/auth/tenant/select` | POST | Accepts exactly one of `tenantId` or `membershipId`, revalidates it against the principal's active memberships inside a locked session transaction and binds the selection. Non-member, revoked, suspended or stale selections are refused. |
 | `/v1/auth/tenant/clear` | POST | Clears the selection (CSRF-checked). |
 
-These routes are deliberately not in the pre-MFA allow-list, so a pending MFA session
-cannot choose a business before verification. Operator realms refuse selection.
+These routes are deliberately not in the pre-MFA allow-list, and the service applies the
+same authoritative check itself, so a pending or enrollment-only MFA session cannot choose
+a business before verification. Operator realms refuse selection.
 
 ### Invariants
 
-- `list`, `select` and `resolve` run on the auth-service connection inside an owned
-  transaction and bind `app.current_user_id` with parameterized
-  `set_config(..., true)` before reading `auth.tenant_membership`; the accepted preselection
-  RLS exposes only that principal's rows.
-- `select` locks the session row, requires the session principal to match, resolves the
-  selector against active memberships (status active, no suspension/revocation, active and
-  effective role), and writes the selection with a guarded UPDATE that refuses revoked,
-  expired, disabled or credential-stale sessions.
-- `resolve` (used by the DB boundary) re-locks the session, rechecks authority and reloads
-  the exact selected membership, requiring the same `membership_epoch`. A changed epoch,
-  revoked membership or invalid session fails closed before any business client is opened.
+- Selection and admission run on the auth-service connection inside an owned transaction
+  and bind `app.current_user_id` with parameterized `set_config(..., true)` before reading
+  `auth.tenant_membership`; the accepted preselection RLS exposes only that principal's
+  rows.
+- Only the customer realm is admitted. `readSessionById` filters the realm, so an operator
+  session cannot be used as business authority even by direct service calls.
+- MFA is part of admission, not a route-only guard: requirements are derived from
+  active/effective membership roles with `requires_mfa`. A required session must carry
+  `mfa_verified` assurance and a currently verified factor; otherwise selection and
+  business admission fail closed with `403 MFA_REQUIRED`. Unresolved authority returns
+  `503 TENANT_AUTHORITY_UNAVAILABLE`.
+- `withAuthority` is the authoritative admission protocol used by the DB boundary. It
+  row-locks the principal, factor and session, validates the selected membership and role
+  authority, re-reads membership/role/epoch state at admission, and keeps that auth
+  transaction and its locks open while the business transaction runs. A concurrent
+  revoke/rotate/credential reset/factor disable either wins before those locks or blocks
+  until business work completes; a committed membership/role/epoch change is observed by
+  the admission re-read and fails closed. Membership rows cannot be row-locked by the
+  runtime under the accepted SELECT-only RLS; a locking interface is a requested additive
+  amendment, and until then a change committed during handler execution is caught by the
+  next admission.
+- `select` resolves the selector against active memberships (status active, no
+  suspension/revocation, active and effective role), then writes the selection with a
+  guarded UPDATE that refuses revoked, expired, disabled or credential-stale sessions.
 - The session's selected fields are all-or-nothing (schema CHECK); login remains
   tenant-less and selection is a separate, explicit step.
 - Selection never changes roles, memberships, assurance or owner authority.
@@ -517,13 +531,17 @@ cannot choose a business before verification. Operator realms refuse selection.
 
 - Tenant membership roles are `auth.roles`/business reference data; the selection service
   does not encode role names.
-- Additional selection dimensions (company/branch) belong to future RLS/policy tables and
-  the DB context, not to new hardcoded selector columns.
-- The DB-facing boundary lives in `src/db/tenant-context.mjs`; it receives a resolver
-  function rather than importing this module directly.
+- Additional selection dimensions and company/branch/resource authorization belong to the
+  shared business authorization layer using versioned policy data; they are not encoded as
+  RLS rules or hardcoded selector columns.
+- The DB-facing boundary lives in `src/db/tenant-context.mjs`; it receives the admission
+  protocol function rather than importing this module directly.
 
 ### Non-claims
 
 - No UI, active entry point or business route is delivered here.
 - Listing/selection does not grant business permissions, approval authority or owner
-  protections; those remain policy and RLS concerns.
+  protections; those remain the shared business authorization layer. This module is not the
+  full business policy engine.
+- No tenant-selection audit event is emitted; the canonical `auth_event_type` domain has no
+  such value (AUTH-009/reference-data owner).

@@ -299,6 +299,7 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
       realm: row.realm,
       userId: row.user_id,
       assuranceLevel: row.assurance_level,
+      mfaVerifiedAt: row.mfa_verified_at == null ? null : iso(row.mfa_verified_at),
       selectedTenantId: row.selected_tenant_id ?? null,
       selectedMembershipId: row.selected_membership_id ?? null,
       selectedRoleId: row.selected_role_id ?? null,
@@ -378,7 +379,7 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     const tokenHash = digestToken(token);
     return withClient(async executor => {
       const result = await executor.query(
-        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.selected_tenant_id,
+        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.mfa_verified_at, s.selected_tenant_id,
                 s.selected_membership_id, s.selected_role_id, s.membership_epoch, s.credential_version, s.csrf_token_hash,
                 s.created_at, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
                 s.revoked_at, u.email, u.status AS user_status,
@@ -413,7 +414,7 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     const tokenHash = digestToken(token);
     return inTransaction(tx, async executor => {
       const result = await executor.query(
-        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.selected_tenant_id,
+        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.mfa_verified_at, s.selected_tenant_id,
                 s.selected_membership_id, s.selected_role_id, s.membership_epoch, s.credential_version, s.csrf_token_hash,
                 s.created_at, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
                 s.revoked_at, u.email, u.status AS user_status,
@@ -494,11 +495,12 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
   // Session authority by id, used by the tenant-selection resolver. The caller may hold
   // the row lock so a concurrent revoke/expiry/rotation cannot slip between validation
   // and the selection write. The same revoked/disabled/epoch/expiry predicates apply.
-  async function readSessionById(sessionId, {tx, forUpdate = true} = {}) {
+  async function readSessionById(sessionId, {tx, forUpdate = true, realm = 'customer'} = {}) {
     if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) return null;
+    if (typeof realm !== 'string' || realm.length === 0) return null;
     return inTransaction(tx, async executor => {
       const result = await executor.query(
-        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.selected_tenant_id,
+        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.mfa_verified_at, s.selected_tenant_id,
                 s.selected_membership_id, s.selected_role_id, s.membership_epoch,
                 s.credential_version, s.csrf_token_hash,
                 s.created_at, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
@@ -506,8 +508,8 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
                 u.credential_version AS current_credential_version
          FROM auth.sessions s
          JOIN auth.users u ON u.id = s.user_id
-         WHERE s.id = $1${forUpdate ? ' FOR UPDATE OF s' : ''}`,
-        [sessionId],
+         WHERE s.id = $1 AND s.realm = $2${forUpdate ? ' FOR UPDATE OF s' : ''}`,
+        [sessionId, realm],
       );
       if (result.rowCount !== 1) return null;
       const row = result.rows[0];

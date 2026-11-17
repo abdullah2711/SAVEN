@@ -6,14 +6,17 @@ PG business feature and both parity contracts must use.
 
 ## `tenant-context.mjs`
 
-`createTenantContext({connect, resolveSelection})` returns `withTenantContext(session,
+`createTenantContext({connect, resolveAuthority})` returns `withTenantContext(session,
 handler, options)`. For each call it:
 
-1. Revalidates the verified session and its selected active membership through
-   `resolveSelection` (AUTH-006 `tenant-selection.mjs`) on the auth-service connection.
-   The business role cannot read `auth.*` by design, so this authority step happens in its
-   own transaction before the business client is checked out.
-2. Checks out exactly ONE business client and opens one transaction.
+1. Enters the injected authoritative admission protocol (`tenant-selection.mjs`
+   `withAuthority`). That protocol opens ONE auth-service transaction, row-locks the
+   principal, factor and session, validates the selected membership and role authority,
+   re-reads membership/role/epoch state at admission, and keeps the transaction open for
+   the whole call. A concurrent logout/rotation/credential reset/factor change either wins
+   before those locks or blocks until the business transaction ends; a committed
+   membership/role/epoch change is observed by the admission re-read and fails closed.
+2. Checks out exactly ONE business client from a separate pool and opens one transaction.
 3. Binds context with parameterized, transaction-local calls on that same client:
 
    ```sql
@@ -21,15 +24,16 @@ handler, options)`. For each call it:
    SELECT set_config('app.current_tenant_id', $2, true);
    ```
 
-4. Verifies the bindings with `current_setting(..., true)` and calls
-   `tenant_data.session_admitted(tenant, user)`, so a membership/principal revocation that
-   happened after resolution still fails closed.
+4. Verifies the bindings with `current_setting(..., true)`, calls
+   `tenant_data.session_admitted(tenant, user)` and then re-runs the admission check
+   (`assertAdmission`) as the final linearization point before business work.
 5. Runs `handler(client, context)` on that client only.
-6. COMMITs, or ROLLBACKs on any error. A lost COMMIT acknowledgement or failed ROLLBACK
-   destroys the connection instead of returning it to the pool.
+6. COMMITs the business transaction, then the auth transaction releases its locks. A lost
+   business COMMIT acknowledgement or failed ROLLBACK destroys the business connection; an
+   auth commit/lock-release failure is reported as uncertain rather than claimed safe.
 
 The handler receives the client and a frozen context; there is no `pool.query` escape and
-no second checkout while the transaction is open.
+no second checkout from the already-owned business pool.
 
 ## Why transaction-local
 
@@ -44,32 +48,63 @@ RLS is the second line of defence, not a replacement for binding: `tenant_data` 
 carry forced RLS with a tenant predicate plus `session_admitted()` for the customer
 runtime. Missing, empty or malformed context yields zero rows/writes, not a fallback.
 
+## Relationship to business authorization
+
+Forced tenant isolation answers **which tenant's rows may be touched**. It does not
+implement company/branch/resource permissions, approval thresholds, separation of duties
+or owner protections. Those are the shared business authorization layer: application
+services evaluate configurable per-tenant policy data (`tenant_data.business_rule`,
+approval policy, assignments and denials) inside the same transaction and before writes.
+Configurable per-tenant rules must stay in versioned policy data — never encoded into RLS
+policies. This wrapper supplies the verified tenant context that layer compiles onto; it
+is not itself the full business policy engine.
+
 ## Failure modes
 
 | Condition | Result |
 | --- | --- |
 | No verified session / no selection | `401` or `409 TENANT_SELECTION_REQUIRED`; no business client is checked out |
-| Revoked, expired, disabled or credential-stale session | refused during `resolveSelection` |
-| Selection epoch changed / membership revoked or suspended | `409 TENANT_SELECTION_STALE` or `403 TENANT_ACCESS_DENIED` |
+| Revoked, expired, disabled or credential-stale session | refused while the admission transaction holds its locks |
+| Operator-realm session | refused (admission requires the customer realm) |
+| Selection epoch changed / membership revoked, suspended or role-expired | `409 TENANT_SELECTION_STALE` or `403 TENANT_ACCESS_DENIED` |
+| MFA required (active/effective role with `requires_mfa`) but session/factor not verified | `403 MFA_REQUIRED` |
+| Requirement/authority cannot be resolved | `503 TENANT_AUTHORITY_UNAVAILABLE` (fail closed) |
 | Mismatched expected tenant | `403 TENANT_ACCESS_DENIED` |
 | Context binding does not round-trip | `403 TENANT_CONTEXT_DENIED` |
 | `session_admitted` false inside the transaction | `403 TENANT_ACCESS_DENIED` |
 | COMMIT outcome unknown / ROLLBACK failed | `503 TENANT_CONTEXT_UNCERTAIN`; client destroyed |
 
+## Known dependency (requested amendment)
+
+`auth.tenant_membership` carries forced RLS with SELECT policies only for the auth
+service. A row-locking `SELECT … FOR SHARE/UPDATE` therefore matches no permissive UPDATE
+policy for the runtime and cannot be used to serialize membership changes. The protocol
+row-locks the principal, factor and session, and re-reads membership/role/epoch authority
+at the admission point so committed changes fail closed. A strictly serialized membership
+lock (for the whole business transaction) needs a narrowly reviewed additive database
+interface — for example a SECURITY DEFINER lock/validation function or a reviewed locking
+policy — before any migration/grant change. Until that amendment, the residual window is a
+membership/role/epoch change that commits after the admission re-read and during handler
+execution; it is observed by the next admission. No runtime membership mutation path exists
+in this module today.
+
 ## Extension points
 
-- Company/branch/resource restrictions belong in additional RLS policies and policy tables
-  evaluated inside the same transaction; they must not replace or bypass this boundary.
+- Company/branch/resource/approval restrictions belong to the shared business
+  authorization layer, evaluated inside the same transaction against versioned policy data.
+  They must not replace or bypass this tenant boundary, and configurable per-tenant rules
+  must not be encoded into RLS policies.
 - A different business role can be supplied through `connect`, provided it has the accepted
   tenant_data grants and no auth.* or BYPASSRLS authority.
-- `resolveSelection` is an injected function, so the module has no concrete dependency on
-  the auth service and can be driven by another verified authority in tests.
+- `resolveAuthority` is an injected admission protocol, so the module has no concrete
+  dependency on the auth service and can be driven by another verified authority in tests.
 - Operational metrics/statement timing can wrap `connect`; they must not introduce a
   second checkout or session-level state.
 
 ## Non-claims
 
 - No active entry point, HTTP server or business feature is wired here.
-- This is not a substitute for approval, company or resource policy, nor for business
-  permission and owner-protection rules.
+- This is not the business policy engine: company/branch/resource permissions, approval
+  thresholds, separation of duties and owner protections belong to the shared business
+  authorization layer evaluated inside this transaction.
 - No production load, PgBouncer instance or RLS coverage claim is made by this module.
