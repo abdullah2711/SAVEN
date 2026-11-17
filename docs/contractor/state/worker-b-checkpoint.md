@@ -1,4 +1,4 @@
-# WORKER-B checkpoint — PIVOT-006 R2 corrections delivered, awaiting review
+# WORKER-B checkpoint — PIVOT-006 R3 corrections delivered, awaiting review
 
 Date: 17 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
 directive; this file is outside any contract TOUCH.
@@ -9,10 +9,11 @@ directive; this file is outside any contract TOUCH.
   `32fef2beac91a73b2c8a5ae9c150603736993e97`; post-merge checkpoint `e671882`.
 - PIVOT-006 branch: `opencode/pivot-006-audit`.
 - Worktree: `/home/esc/saven/wt-pivot-006`, based on `32fef2b`.
-- Previously reviewed heads: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281` (initial) and
-  `8af08cc24bfd37748c2cc13d5b93acebb94daeda` (R1).
-- R2 implementation commit: `98e86de9754a267803b6bcace22b5ef7ffe7b914`
-  (`db: support parameterized numeric audit schemas and per-table inventory
+- Previously reviewed heads: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281` (initial),
+  `8af08cc24bfd37748c2cc13d5b93acebb94daeda` (R1) and
+  `4bdf44d19ae50fb4882ed2b74c8f10d9f6fa51b2` (R2).
+- R3 implementation commit: `cb81f11cc9f29c9dec5acccb16cb06c20df8337f`
+  (`db: resolve audit types by catalog identity and enforce schema inventory
   [contract:PIVOT-006]`).
 - Delivery report: `docs/contractor/deliveries/PIVOT-006-audit-triggers.md`
   (required by review `d8fe104`).
@@ -59,7 +60,7 @@ directive; this file is outside any contract TOUCH.
    quiescence. 040/042 bytes are untouched and 040/042-only compatibility remains
    honestly non-PIVOT-006 coverage.
 6. **R1 serialization/schema correction.** The serializer now classifies supported base
-   types by `pg_type.typname`, preserving exact parameterized numerics
+   types by catalog type identity, preserving exact parameterized numerics
    (`numeric(20,4)` on `approval_policy` thresholds/self-approval and `numeric(9,6)` on
    `tax_profile.rate`) without float casts/rounding. Every registered table has an exact
    reviewed schema fingerprint over ordered column names, base types and typmods; new,
@@ -70,16 +71,37 @@ directive; this file is outside any contract TOUCH.
    asserts all 42 registered table fingerprints, a new allow-listed-name column and a
    supported base-type change both fail closed. Reviewed business free text remains
    explicitly retained with the documented non-universal-secret-free limit.
+7. **R2/R3 catalog type identity and schema inventory.** 041 now resolves type identity
+   through `pg_catalog` OIDs, type kind and recursive domain-base resolution; no
+   `typname` or type-name literal comparison remains. Custom domains over text still
+   redact; custom domains over `numeric(20,4)` still write/audit exact money values.
+   Every registered table has an exact fingerprint over column names, resolved base OID
+   and effective typmod. The activation pipeline refuses a changed fingerprint or a
+   column base type outside the exact representable OID allow-list. The focused test
+   enumerates every column type actually present and fails if the reviewed type set
+   changes. The unrepresentable-type decision is explicitly fail-closed (no
+   redact-and-warn).
+
+## Hardening directive status
+
+- (i) schema-wide column-type enumeration: implemented in
+  `tests/pivot-006-audit.test.mjs` (`actualTypeOids`/`expectedTypeOids` and zero
+  unsupported columns), backed by `immutability_041_resolve_type`/`type_supported`.
+- (ii) unrepresentable-type decision: explicitly fail-closed in
+  `db/postgres/README.md` and the delivery report; no redact-and-warn.
+- (iii) pipeline alarm: implemented in the `40-triggers.sql` activation block
+  (fingerprint + resolved-base-type checks) and proven by the new-column/new-type
+  activation negatives in the focused test.
 
 ## Evidence
 
 - `node scripts/check.mjs` → PASS, 165 JavaScript files.
-- Focused `node --test tests/pivot-006-audit.test.mjs` → **11/11 pass**.
+- Focused `node --test tests/pivot-006-audit.test.mjs` → **12/12 pass**.
 - PIVOT-005 regression → **18/18 pass**.
-- Serial full suite → **308/309 pass**; the only failure is the known out-of-TOUCH
-  PIVOT-004 literal-global-role prerequisite. An earlier combined run also showed an
-  AUTH-004-R1 fixture-teardown transient, not reproduced in the final serial run. No
-  PIVOT-006 focused or PIVOT-005 test failed.
+- Serial full suite → **308/310 pass**; failures are the known out-of-TOUCH
+  PIVOT-004 literal-global-role prerequisite and the unchanged AUTH-004-R1
+  fixture-teardown transient under the combined run. No PIVOT-006 focused or PIVOT-005
+  test failed.
 - Environment: dedicated disposable PostgreSQL 18.6 on loopback `127.0.0.1:55435`,
   `SAVEN_PIVOT_TEST_CLUSTER=1`, local admin `esc`, Node v24.19.0 via
   `npm exec --yes --package=node@24.19.0`. No global `saven_*` role was created; the
@@ -99,7 +121,7 @@ PIVOT-004 fixtures/tests are untouched.
 
 ## Where I stopped
 
-R2 implementation, delivery report, focused/regression/serial full-suite evidence,
+R3 implementation, delivery report, focused/regression/serial full-suite evidence,
 commit and push are complete on `opencode/pivot-006-audit`. No review corrections have
 been started. PIVOT-006 is not merged.
 
