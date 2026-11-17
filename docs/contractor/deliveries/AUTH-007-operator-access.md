@@ -89,3 +89,84 @@ tokens stay digest-only (D-012).
 ## GIT
 
 branch=opencode/auth-007-operator-access commit=`a67feed`,report+checkpoint commit pushed=yes
+
+# AUTH-007-R1 revision — 18 November 2026
+
+Verdict: `docs/contractor/reviews/AUTH-007-operator-access.md` at `26f8263`.
+Implementation `b458b55`; report + checkpoint follow. Five corrections; no local SQLite/
+reference source or applied migration byte changed.
+
+## Findings closed
+
+1. **CRITICAL — single methods no longer satisfy MFA; policy cannot weaken it.** Status:
+   **closed.** Default assurance requires the explicit RFC 8176 `mfa` AMR value; `otp`,
+   `hwk`, `swk`, `pwd` and `pwd+otp` alone are denied. A reviewed issuer-controlled
+   `mfaEvidence` predicate may be configured for a signed custom claim. The operator policy
+   is fixed to `access_mfa`; constructing the service with any other label throws. The
+   mapping's assurance class must equal `access_mfa`. Tests cover each single method, absent/
+   malformed AMR, the explicit `mfa` positive, custom-policy positive/negative, mapping
+   `access_asserted`, and misconfigured policy.
+2. **HIGH — mapping authority reserved and bound for subsequent use.** Status: **closed.**
+   Exchange and operator admission take the accepted AUTH-006 shared authority gate before
+   mapping/role reads, then lock the local principal in gate -> user -> session order.
+   Mapping writers take the same gate exclusively through new BEFORE STATEMENT triggers in
+   06; the AUTH-006 033 auth-role triggers cover role changes. The exact verified
+   issuer/subject/audience, mapping epoch/role/assurance and source assertion expiry are
+   stored in `operator.access_session_binding`; every current operator use revalidates them.
+   Tests cover post-issuance revocation, role/effective/assurance changes, mapping epoch
+   change, same-user/different-subject isolation, source expiry, invalidation-first and
+   exchange/admission-first interleavings (writer blocks until completion), and audit/
+   nonce/session rollback. Future PIVOT-007 reads consume `admitSession(session, {tx})`.
+3. **HIGH — canonical replay identity.** Status: **closed.** JOSE segments must be canonical
+   base64url; noncanonical encodings (unused final bits/padding) are refused. The fallback
+   identity is derived from issuer/audience/subject-scoped `identity_nonce` or the canonical
+   verified assertion digest, never raw JWT text. Tests alter unused signature bits (same
+   decoded bytes), assert rejection, and run simultaneous no-nonce exchanges with at most one
+   exchange/session/binding committed.
+4. **HIGH — freshness at the owned admission boundary.** Status: **closed.** Validation
+   checks signature/time; exchange rechecks source expiry, mapping/role windows and configured
+   max age with the trusted clock sampled inside the owned transaction after the gate/user
+   lock; a configured max age requires a finite usable `iat`. Paused-checkout tests prove
+   expiry/staleness refuse with zero nonce/session/binding/success-audit commits. Operator
+   admission also enforces the bound source-expiry ceiling.
+5. **MEDIUM — concurrency-safe key refresh.** Status: **closed.** Refresh admission is
+   reserved before awaiting, in-flight refreshes coalesce, failure keeps known-good keys and
+   starts a retry cooldown. Tests cover cached keys, simultaneous unknown kids (one callback),
+   a rejected refresh with recovery after cooldown, and no token/URL-directed fetch.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 169 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-007-access.test.mjs
+tests 13  pass 13  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6 on
+`127.0.0.1:55433`, auth fixture plus AUTH-006 033 and operator 06 applied as administrator
+with namespaced roles, real non-owner auth-service login):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 27/27, AUTH-007 13/13
+combined 133 tests, 133 pass, 0 fail
+```
+
+## Boundaries
+
+- `06-operator-identity.sql` now depends on AUTH-006 migration `033`; deployment must apply
+  033 first. No applied 033 bytes were edited.
+- The authority gate is global for authority writes, including operator mapping changes;
+  rare mapping writes serialize against admitted operator work. No throughput/SLA claim.
+- A custom `mfaEvidence` predicate is reviewed deployment code; it is not client input. The
+  default AMR policy is explicit `mfa` only.
+- A captured unexpired bearer can be exchanged once by the first presenter; ordinary bearer
+  validation remains reusable. No impossible replay-proof claim.
+- No live Access policy/DNS/tunnel/network key fetch or production credential; operator
+  reads and complete audit taxonomy remain PIVOT-007/AUTH-009. SQLite remains production.
+
+## GIT (R1)
+
+branch=opencode/auth-007-operator-access commit=`b458b55`,report+checkpoint commit pushed=yes
