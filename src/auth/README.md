@@ -511,15 +511,15 @@ a business before verification. Operator realms refuse selection.
   business admission fail closed with `403 MFA_REQUIRED`. Unresolved authority returns
   `503 TENANT_AUTHORITY_UNAVAILABLE`.
 - `withAuthority` is the authoritative admission protocol used by the DB boundary. It
-  row-locks the principal, factor and session, validates the selected membership and role
-  authority, re-reads membership/role/epoch state at admission, and keeps that auth
-  transaction and its locks open while the business transaction runs. A concurrent
-  revoke/rotate/credential reset/factor disable either wins before those locks or blocks
-  until business work completes; a committed membership/role/epoch change is observed by
-  the admission re-read and fails closed. Membership rows cannot be row-locked by the
-  runtime under the accepted SELECT-only RLS; a locking interface is a requested additive
-  amendment, and until then a change committed during handler execution is caught by the
-  next admission.
+  takes the shared authority gate (migration 033), row-locks the principal, factor and
+  session, validates the selected membership and exact current role, and holds the auth
+  transaction and shared gate through the business transaction. Membership/role writers
+  take the gate exclusively, so revocation, epoch/role, `requires_mfa` and new-association
+  changes either win before admission or block until business completion. The final
+  pre-COMMIT check remains a backstop, not the serialization mechanism.
+- The gate functions are SECURITY INVOKER, fixed `search_path`, owned by the offline DDL
+  authority and grant nothing to runtime roles. If migration 033 is missing or misinstalled,
+  admission fails closed with `503 TENANT_AUTHORITY_GATE_UNAVAILABLE`.
 - `select` resolves the selector against active memberships (status active, no
   suspension/revocation, active and effective role), then writes the selection with a
   guarded UPDATE that refuses revoked, expired, disabled or credential-stale sessions.

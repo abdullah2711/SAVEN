@@ -10,12 +10,12 @@ PG business feature and both parity contracts must use.
 handler, options)`. For each call it:
 
 1. Enters the injected authoritative admission protocol (`tenant-selection.mjs`
-   `withAuthority`). That protocol opens ONE auth-service transaction, row-locks the
-   principal, factor and session, validates the selected membership and role authority,
-   re-reads membership/role/epoch state at admission, and keeps the transaction open for
-   the whole call. A concurrent logout/rotation/credential reset/factor change either wins
-   before those locks or blocks until the business transaction ends; a committed
-   membership/role/epoch change is observed by the admission re-read and fails closed.
+   `withAuthority`). That protocol takes the shared authority gate, opens ONE auth-service
+   transaction, row-locks the principal, factor and session, validates the selected
+   membership and exact current role, and keeps the transaction and the shared gate open
+   for the whole call. Membership/role writers take the gate exclusively, so a concurrent
+   authority change either wins before admission or waits until the business transaction
+   ends.
 2. Checks out exactly ONE business client from a separate pool and opens one transaction.
 3. Binds context with parameterized, transaction-local calls on that same client:
 
@@ -74,22 +74,31 @@ is not itself the full business policy engine.
 | `session_admitted` false inside the transaction | `403 TENANT_ACCESS_DENIED` |
 | COMMIT outcome unknown / ROLLBACK failed | `503 TENANT_CONTEXT_UNCERTAIN`; client destroyed |
 
-## Known dependency (requested amendment)
+## Authority gate (migration 033)
 
-`auth.tenant_membership` carries forced RLS with SELECT policies only for the auth
-service, so a runtime row-locking `SELECT … FOR SHARE/UPDATE` is filtered/denied and cannot
-serialize membership changes. The current protocol row-locks the principal, factor and
-session, binds the exact selected role, and re-reads the full membership/role authority
-both at admission and immediately before the business COMMIT, so a committed change fails
-closed before effects may commit. The residual window is a membership/role change that
-commits between that last check and COMMIT.
+`db/postgres/migrations/033-membership-admission-lock.sql` (administrator-applied,
+additive) installs one fixed transaction-scoped advisory gate:
 
-A concrete bounded amendment is proposed in
-`docs/contractor/deliveries/AUTH-006-tenant-context.md` (AUTH-006-R2 section): additive
-advisory-lock triggers on `auth.tenant_membership` and `auth.roles`, plus the same
-transaction-scoped locks in admission. It requires no permissive membership UPDATE grant,
-no RLS relaxation and no BYPASSRLS. It is **not authorized or implemented** until the
-engineer issues the corresponding contract amendment.
+- admission takes `pg_advisory_xact_lock_shared(hashtextextended('saven.auth.authority_gate', 0))`
+  on the auth transaction before reading or locking authority, and holds it until the
+  business transaction completes;
+- BEFORE STATEMENT INSERT/UPDATE/DELETE triggers on `auth.tenant_membership` and
+  `auth.roles` take the same key exclusively, before row writes.
+
+Concurrent admissions share the gate; membership/role writers (new associations,
+activations, revocations, epochs, `requires_mfa`/`is_active`/effective-date changes) wait
+for admitted business work to finish. The deliberate cost is global authority-write
+contention; a later amendment may refine per-scope keys with a reviewed order. The trigger
+functions are SECURITY INVOKER, fixed `search_path = pg_catalog`, owned by the offline DDL
+authority, and grant nothing to runtime roles. The runtime verifies the gate is installed
+and fails closed (`TENANT_AUTHORITY_GATE_UNAVAILABLE`) if 033 is omitted or misinstalled.
+
+Ordering is: authority gate -> users -> factor -> session -> membership/role reads ->
+business client/transaction. Future transactions combining authority writes with
+principal/session/factor mutations must take the gate first. Arbitrary administrative SQL
+that violates this order can still deadlock; the runtime fails closed and destroys its
+client rather than bypassing or silently retrying. The auth and business transactions are
+distinct: a late auth commit failure never implies the business commit was undone.
 
 ## Extension points
 

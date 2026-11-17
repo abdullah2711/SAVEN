@@ -331,3 +331,101 @@ combined 113 tests, 113 pass, 0 fail
 ## GIT (R2)
 
 branch=opencode/auth-006-context commit=`09ce585`,report+checkpoint commit pushed=yes
+
+# AUTH-006-R3 revision — 17 November 2026
+
+Verdict and amendment: `docs/contractor/reviews/AUTH-006-R2-tenant-context.md` at
+`3c28d89`, with the ENGINEER R2 AMENDMENT in
+`docs/contractor/contracts/AUTH-006-tenant-context.md`. Implementation `bbe9bdb`; report +
+checkpoint follow.
+
+## HIGH — true authority serialization (implemented)
+
+The remaining gap was a check-then-COMMIT race: after the final re-read, a membership/role
+writer could still commit before the business COMMIT. This is now serialized by the
+authorized additive authority gate.
+
+- **Migration `db/postgres/migrations/033-membership-admission-lock.sql`** (administrator
+  applied, additive). It installs one fixed transaction-scoped advisory key
+  `saven.auth.authority_gate`:
+  - admission takes it **shared** before any authority read or row lock and holds it until
+    the auth transaction ends after business completion;
+  - BEFORE STATEMENT INSERT/UPDATE/DELETE triggers on `auth.tenant_membership` and
+    `auth.roles` take it **exclusively**, before row writes.
+  - Trigger functions are `SECURITY INVOKER`, `SET search_path = pg_catalog`, owned by the
+    offline DDL/migration authority, PUBLIC EXECUTE revoked; no runtime EXECUTE/UPDATE
+    grant, no SECURITY DEFINER, no RLS change, no policy change, no BYPASSRLS, no dynamic
+    SQL, no business data mutation.
+  - A guard rejects pre-existing conflicting gate function/triggers instead of repairing
+    foreign authority silently.
+- **Admission** (`tenant-selection.withAuthority`) verifies the six triggers and function
+  are installed, then acquires the shared gate before the principal/factor/session locks
+  and membership/role reads. If 033 is omitted or misinstalled it fails closed with
+  `TENANT_AUTHORITY_GATE_UNAVAILABLE`; a failed acquisition returns
+  `TENANT_AUTHORITY_UNAVAILABLE` and leaves the pool usable.
+- **Ordering** is gate -> users -> factor -> session -> membership/role reads -> business
+  client/transaction. Concurrent admissions share the gate; authority writers contend
+  globally and wait for admitted business work. Mixed role+membership writer transactions
+  in either table order take the same exclusive gate at their first authority statement,
+  avoiding the earlier proposed user-key/role-key inversion.
+- Exact selected-role binding is retained and strengthened: the session's stored
+  `selectedRoleId` must match the current membership role, in addition to the frozen role
+  comparison on every admission attempt.
+- The final pre-COMMIT revalidation remains as a backstop; it is no longer the
+  serialization mechanism.
+
+## Evidence
+
+Pause-after-final-validation tests (business COMMIT paused) prove each writer class cannot
+commit until business completion: membership revocation, membership epoch change,
+`requires_mfa` change on an existing role, activation of a revoked membership, selection
+role change, and an actual new MFA-requiring membership INSERT. A mixed role+membership
+transaction blocks in both table orders. Invalidation-first cases (writer commits before
+admission) refuse the handler with no effects; admission-first cases commit the business
+effect and the writer applies afterwards. Missing/failed gate, catalog/owner/privilege
+checks, conflict guard text, and smallest separate auth/business pools (`max:1` each) are
+covered.
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 166 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-006-context.test.mjs
+tests 25  pass 25  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6, accepted
+PIVOT-004/031/032 + 033 stack, real non-owner auth-service and customer-app logins):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 25/25
+combined 118 tests, 118 pass, 0 fail
+```
+
+## Boundaries and honest limits
+
+- The authority gate is deliberately global for authority writes: concurrent admissions
+  share it, but membership/role writers serialize against all admitted business work. No
+  throughput/SLA claim is made. A later reviewed amendment may refine per-scope keys with
+  an explicit order.
+- Arbitrary administrative SQL that violates the documented gate order can still deadlock.
+  The runtime fails closed and destroys owned clients; it never bypasses the gate or
+  silently retries a committed business operation.
+- Migration 033 is administrator-applied and is not executed by this test session in
+  production. The disposable fixture registers it; an omitted/misinstalled gate is refused
+  at runtime.
+- Auth and business remain distinct transactions; a late auth commit failure does not undo
+  a committed business effect and is reported as uncertain.
+- Findings 2 (realm/MFA) and 3 (same-tenant company composition) remain closed. No active
+  entry point/UI, PgBouncer instance or production-load claim; SQLite remains production.
+
+## EXTENSIBILITY
+
+compliant — the gate key is infrastructure, not a configurable business domain; admission
+stays injected, assurance remains reference-driven, and business authorization remains in
+versioned policy data outside RLS. The trigger functions carry no business logic.
+
+## GIT (R3)
+
+branch=opencode/auth-006-context commit=`bbe9bdb`,report+checkpoint commit pushed=yes
