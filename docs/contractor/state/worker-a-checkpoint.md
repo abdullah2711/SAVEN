@@ -1,12 +1,12 @@
-# WORKER-A checkpoint — AUTH-006 delivered, awaiting verdict
+# WORKER-A checkpoint — AUTH-006-R1 delivered, awaiting verdict
 
 Date: 17 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
 directive; this file is outside any contract TOUCH.
 
 ## Context
 
-- AUTH-005-R2 was human-merged into `testing-1` at merge commit
-  `1b9ff78a1a29b994a6d77389b035f6b8cd692e76` (pushed `a81ce59..1b9ff78`).
+- AUTH-005-R2 was human-merged into `testing-1` at
+  `1b9ff78a1a29b994a6d77389b035f6b8cd692e76` (previous round).
 - AUTH-006 branch/worktree: `opencode/auth-006-context` at
   `/home/esc/saven/wt-auth-006`, based on `1b9ff78`.
 
@@ -14,78 +14,80 @@ directive; this file is outside any contract TOUCH.
 
 - Contract: `docs/contractor/contracts/AUTH-006-tenant-context.md` — bind verified
   selected membership to every PG business transaction on one checked-out client.
+- Round just delivered: **AUTH-006-R1**, correcting review
+  `docs/contractor/reviews/AUTH-006-tenant-context.md` at `dc183a2`.
 - TOUCH: `src/db/tenant-context.mjs`, `src/db/README.md`,
   `src/auth/tenant-selection.mjs`, `src/auth/routes.mjs`,
   `src/auth/session-store.mjs`, `src/auth/README.md`,
   `tests/auth-006-context.test.mjs`.
 - DONE WHEN: `node scripts/check.mjs && node --test tests/auth-006-context.test.mjs`.
-- Implementation commit: `dc690f5` (`app: bind verified tenant context to business
-  transactions [contract:AUTH-006]`).
+- Implementation commit: `e5eb06e` (`app: make tenant admission authoritative with MFA and
+  held locks [contract:AUTH-006-R1]`).
 - Report + this checkpoint are the next commit; that commit is the pushed head at
   checkpoint time.
 
 ## TOUCH used
 
-`src/db/tenant-context.mjs` (new), `src/db/README.md` (new),
-`src/auth/tenant-selection.mjs` (new), `src/auth/routes.mjs`,
-`src/auth/session-store.mjs`, `src/auth/README.md`,
-`tests/auth-006-context.test.mjs` (new), delivery report and this checkpoint. Nothing
-else changed; no schema/migration/grant/dependency/server entry point.
+`src/auth/tenant-selection.mjs`, `src/db/tenant-context.mjs`, `src/auth/session-store.mjs`,
+`src/auth/README.md`, `src/db/README.md`, `tests/auth-006-context.test.mjs`, delivery
+report and this checkpoint. `src/auth/routes.mjs` needed no R1 delta. Nothing else changed;
+no schema/migration/grant/dependency/entry point.
 
-## What was delivered
+## R1 corrections and status (review `dc183a2`)
 
-1. **Tenant selection (`tenant-selection.mjs`)** — list/select/clear/resolve against the
-   verified principal's own active memberships. All reads bind
-   `app.current_user_id` transaction-locally on the auth-service connection; `select`
-   locks the session row, validates active membership/role/epoch, and binds
-   membership/tenant/epoch to the session with a guarded UPDATE.
-2. **Session storage (`session-store.mjs`)** — `readSessionById`, `setSessionSelection`,
-   `clearSessionSelection`; public session shape exposes selection fields. All mutation
-   guards reuse revoked/expired/disabled/credential-epoch predicates.
-3. **Routes (`routes.mjs`)** — versioned `/v1/auth/tenants`, `/v1/auth/tenant/select`,
-   `/v1/auth/tenant/clear`. Not in the pre-MFA allow-list; operator realm refuses.
-   Selector input is a request only; header/query values are ignored.
-4. **DB boundary (`tenant-context.mjs`)** — one checked-out business client, `BEGIN`,
-   parameterized `set_config(...,true)` for user/tenant, round-trip verification,
-   `tenant_data.session_admitted` recheck, handler on that client, COMMIT/ROLLBACK, and
-   destroy-on-uncertainty. No `pool.query`, no nested checkout, no session `SET`.
-5. **Docs** — `src/db/README.md` (PgBouncer transaction-mode safety, failure modes,
-   extension points) and `src/auth/README.md` AUTH-006 section.
+1. **HIGH — authoritative admission boundary. Closed within current RLS/role limits,
+   amendment requested.** `withAuthority` opens one auth transaction, row-locks
+   users -> two_factor -> sessions, validates customer realm/principal/credential
+   generation/session/selected membership+tenant+epoch, and keeps locks open while the
+   business transaction runs. Revocation/rotation/credential reset/factor changes block or
+   fail closed. Membership/role/epoch authority is re-read at admission. Pause tests cover
+   blocked revoke/credential/clear, membership-epoch change winning, expiry, factor
+   disable, and BEGIN/rollback/lost-ack uncertainty. **Amendment dependency:** membership
+   rows cannot be row-locked under the accepted SELECT-only RLS; a narrowly reviewed
+   definer lock/validation interface is requested before full membership serialization.
+   Until then a change committing after the admission re-read and during handler execution
+   is caught by the next request. Documented in both READMEs and the report.
+2. **CRITICAL — realm + MFA admission. Closed.** `readSessionById` filters customer realm
+   and exposes `mfa_verified_at`. Requirements derive from active/effective roles with
+   `requires_mfa`; admission requires a verified factor + `mfa_verified` session assurance;
+   unresolved authority returns 503. Applied inside list/select/clear/withAuthority, not
+   only routes. Tests: pending/enrollment-only admin, verified admin positive, promotion,
+   factor disable, assurance downgrade, operator realm, unresolved authority.
+3. **MEDIUM — same-tenant company evidence + guidance. Closed.** README now says forced
+   RLS complements (never replaces) the shared business authorization layer; configurable
+   rules stay in versioned policy data. Same-tenant `business_rule` company allow/deny test
+   through the boundary; denied write leaves no effects. Production authorization engine
+   identified as the acceptance dependency; wrapper is not claimed as that engine.
 
 ## Evidence recorded with the delivery
 
 - Focused gate: `node scripts/check.mjs && node --test tests/auth-006-context.test.mjs`
-  → PASS, 8/8, exit 0, Node v24.19.0, disposable PostgreSQL 18.6 on
-  `127.0.0.1:55432`.
-- The tests install the accepted `20`/`021`/`30`/`031`/`032` RLS stack and use real
-  non-owner `saven_auth_service` and `saven_customer_app` logins.
+  → PASS, 16/16, exit 0, Node v24.19.0, disposable PostgreSQL 18.6 on
+  `127.0.0.1:55432`, accepted PIVOT-004/031/032 RLS stack with real non-owner
+  auth-service and customer-app logins.
 - Regressions: AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27.
-- Combined serial run (`--test-concurrency=1`): 101 tests, 101 pass, 0 fail.
-- Coverage: forged headers/query/body, tenantB nonmember, company/resource denial, pool
-  reuse after commit and rollback, stale membership/epoch, read-valid-then-revoked session,
-  credential-epoch change, max=1 business pool, uncertain COMMIT destruction.
+- Combined serial run (`--test-concurrency=1`): 109 tests, 109 pass, 0 fail.
 - Cleanup: disposable cluster stopped and deleted; `node_modules` removed; worktree clean
   at checkpoint time.
 - Merge state: AUTH-006 not merged; `testing-1` remains `1b9ff78`.
 
 ## Where I stopped
 
-Last completed step: committed `dc690f5`, then the delivery report and this checkpoint.
-No further code, tests, merges or new contracts started after that.
+Last completed step: committed `e5eb06e` (amended to include the uncertainty test), then
+the delivery report and this checkpoint. No further code, tests, merges or new contracts
+started after that.
 
 ## Exact next step
 
-1. Await the Codex verdict on AUTH-006 (expected on
+1. Await the Codex verdict on AUTH-006-R1 (expected on
    `origin/codex/pivot-003-rulings`).
 2. On **ACCEPT**: nothing further from me for AUTH-006; it queues for a human Business
    Merge Request (dispatcher issues any merge command separately).
 3. On **REVISE**: fetch the rulings branch, read the new review in full, apply exactly the
    scoped corrections inside the AUTH-006 TOUCH, re-run the focused gate plus
-   AUTH-002/003/004/005, update `docs/contractor/deliveries/AUTH-006-tenant-context.md`,
-   commit and push on `opencode/auth-006-context`, and stop without merging.
+   AUTH-002..005, update `docs/contractor/deliveries/AUTH-006-tenant-context.md`, commit and
+   push on `opencode/auth-006-context`, and stop without merging.
 
-Open items still needing the engineer (not blocking this checkpoint): close the residual
-membership-epoch window between resolution and the business transaction with an
-auth-readable definer function in a later migration contract; add a tenant-selection audit
-event vocabulary under AUTH-009/reference data; company/resource policy and business
-feature wiring remain future contracts. No load/PgBouncer-instance claim is made.
+Open items: the requested narrow membership-locking amendment; AUTH-009 tenant-selection
+audit vocabulary; the production company/resource authorization engine as an acceptance
+dependency; future business feature wiring. No load/PgBouncer-instance claim is made.
