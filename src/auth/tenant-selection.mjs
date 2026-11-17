@@ -43,6 +43,10 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
     return new TenantSelectionError(503, 'TENANT_AUTHORITY_UNAVAILABLE', 'Tenant authority could not be verified.');
   }
 
+  function gateUnavailable() {
+    return new TenantSelectionError(503, 'TENANT_AUTHORITY_GATE_UNAVAILABLE', 'Tenant authority serialization is not installed.');
+  }
+
   function mfaRequired() {
     return new TenantSelectionError(403, 'MFA_REQUIRED', 'Multi-factor verification is required before business access.');
   }
@@ -100,6 +104,60 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
     };
   }
 
+  const AUTHORITY_GATE_KEY = 'saven.auth.authority_gate';
+  const AUTHORITY_GATE_TRIGGERS = Object.freeze([
+    'tenant_membership_authority_gate_insert',
+    'tenant_membership_authority_gate_update',
+    'tenant_membership_authority_gate_delete',
+    'roles_authority_gate_insert',
+    'roles_authority_gate_update',
+    'roles_authority_gate_delete',
+  ]);
+
+  async function assertAuthorityGateInstalled(executor) {
+    let result;
+    try {
+      result = await executor.query(
+        `SELECT
+           (SELECT count(*)::int
+              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = 'auth' AND p.proname = 'lock_authority_gate') AS functions,
+           (SELECT count(*)::int
+              FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'auth'
+               AND c.relname IN ('tenant_membership', 'roles')
+               AND t.tgname = ANY($1)
+               AND NOT t.tgisinternal
+               AND t.tgenabled <> 'D') AS triggers`,
+        [AUTHORITY_GATE_TRIGGERS],
+      );
+    } catch {
+      throw gateUnavailable();
+    }
+    const row = result.rows[0];
+    if (!row || Number(row.functions) !== 1 || Number(row.triggers) !== AUTHORITY_GATE_TRIGGERS.length) {
+      throw gateUnavailable();
+    }
+  }
+
+  // SHARED admission gate, acquired before any authority read or row lock and held until
+  // the owning auth transaction ends. Membership/role writers take the same key
+  // exclusively in BEFORE STATEMENT triggers, so authority cannot change while admitted
+  // business work is in flight.
+  async function acquireAuthorityGate(executor) {
+    await assertAuthorityGateInstalled(executor);
+    try {
+      await executor.query(
+        "SELECT pg_advisory_xact_lock_shared(hashtextextended($1, 0))",
+        [AUTHORITY_GATE_KEY],
+      );
+    } catch {
+      throw authorityUnavailable();
+    }
+  }
+
   // Membership rows are read without a row lock: the accepted membership RLS exposes
   // them through SELECT policies only, so a locking SELECT would be filtered/denied for
   // the runtime. They are re-read at the admission point below, so a committed
@@ -128,6 +186,9 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
   // is re-read at admission because it cannot be row-locked by the runtime under the
   // accepted RLS.
   async function loadAuthority(executor, session) {
+    // Gate first: no authority snapshot or row lock may be taken before the shared
+    // admission gate is held. Membership/role writers serialize exclusively behind it.
+    await acquireAuthorityGate(executor);
     const initial = await store.readSessionById(session.id, {tx: executor, forUpdate: false});
     if (!initial) throw sessionRequired();
     if (initial.userId !== session.userId) throw new TenantSelectionError(403, 'TENANT_ACCESS_DENIED', 'Tenant access denied.');
@@ -232,6 +293,7 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
       if (!selected ||
           selected.tenant_id !== current.selectedTenantId ||
           Number(selected.membership_epoch) !== current.membershipEpoch ||
+          current.selectedRoleId !== selected.role_id ||
           !membershipUsable(selected, authority.at)) {
         throw new TenantSelectionError(409, 'TENANT_SELECTION_STALE', 'Your access changed. Select the business again.');
       }

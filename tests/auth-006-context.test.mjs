@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
 import pg from 'pg';
 import {withPivotDatabase} from './helpers/pg-pivot-fixture.mjs';
 import {createSessionStore} from '../src/auth/session-store.mjs';
@@ -16,6 +17,7 @@ const customerCookie = cookieName('customer', true);
 const T1 = '11111111-1111-4111-8111-111111111111';
 const T2 = '22222222-2222-4222-8222-222222222222';
 const T3 = '33333333-3333-4333-8333-333333333333';
+const T4 = '44444444-4444-4444-8444-444444444444';
 const U1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const U2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const U3 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -31,6 +33,7 @@ const schemaFiles = [
 const adminSqlFiles = [
   'db/postgres/migrations/031-rls-corrections.sql',
   'db/postgres/migrations/032-rls-hardening.sql',
+  'db/postgres/migrations/033-membership-admission-lock.sql',
 ];
 
 function connectionConfig(database, overrides = {}) {
@@ -765,7 +768,7 @@ test('AUTH-006-R1 a paused admission blocks revocation, credential reset and cle
   });
 });
 
-test('AUTH-006-R1 a membership/epoch change committed during a pause wins admission', async () => {
+test('AUTH-006-R1 a membership/epoch writer blocks until business completion (admission wins)', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
     await seed(db);
     const auth = await makeLoginPool(db, db.roles.authService, 'auth');
@@ -794,23 +797,29 @@ test('AUTH-006-R1 a membership/epoch change committed during a pause wins admiss
           "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-stale', 'main', 'Stale', true)",
           [T1],
         );
+        return 'admitted';
       });
       await gate.entered;
-      await db.adminQuery(
+      const writer = db.adminQuery(
         'UPDATE auth.tenant_membership SET membership_epoch = membership_epoch + 1 WHERE tenant_id = $1::uuid AND user_id = $2::uuid',
         [T1, U1],
       );
+      await assert.rejects(() => within(writer, 250, 'membership writer'), /timed out/, 'the authority gate blocks the writer');
       gate.release();
-      await assert.rejects(
-        () => run,
-        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
-      );
-      assert.equal(called, false, 'the handler is not invoked when membership admission fails');
+      assert.equal(await run, 'admitted');
+      assert.equal(called, true);
+      await writer;
       const effect = await db.adminQuery(
         "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-stale'",
         [T1],
       );
-      assert.equal(effect.rows[0].n, 0, 'no business effect commits');
+      assert.equal(effect.rows[0].n, 1, 'the admitted business effect commits');
+
+      const normal = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      await assert.rejects(
+        () => normal.withTenantContext(current, async () => {}),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      );
     } finally {
       await auth.close();
       await business.close();
@@ -1107,7 +1116,7 @@ async function addAuditorRole(db) {
   `);
 }
 
-test('AUTH-006-R2 a selected-role change without an epoch bump during a pause is stale', async () => {
+test('AUTH-006-R2 a selected-role writer blocks until business completion (admission wins)', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
     await seed(db);
     await addAuditorRole(db);
@@ -1137,24 +1146,29 @@ test('AUTH-006-R2 a selected-role change without an epoch bump during a pause is
           "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-role-pause', 'main', 'Role pause', true)",
           [T1],
         );
+        return 'admitted';
       });
       await gate.entered;
-      // Non-MFA role change with no epoch bump: the old resolved role must not survive.
-      await db.adminQuery(
+      const writer = db.adminQuery(
         "UPDATE auth.tenant_membership SET role_id = 'auditor' WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
         [T1, U1],
       );
+      await assert.rejects(() => within(writer, 250, 'role writer'), /timed out/, 'the authority gate blocks the role writer');
       gate.release();
-      await assert.rejects(
-        () => run,
-        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
-      );
-      assert.equal(called, false, 'the handler is not invoked with a stale role');
+      assert.equal(await run, 'admitted');
+      assert.equal(called, true);
+      await writer;
       const effect = await db.adminQuery(
         "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-role-pause'",
         [T1],
       );
-      assert.equal(effect.rows[0].n, 0, 'no business effect commits with a stale role');
+      assert.equal(effect.rows[0].n, 1, 'the admitted business effect commits');
+
+      const normal = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      await assert.rejects(
+        () => normal.withTenantContext(current, async () => {}),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      );
     } finally {
       await auth.close();
       await business.close();
@@ -1162,7 +1176,7 @@ test('AUTH-006-R2 a selected-role change without an epoch bump during a pause is
   });
 });
 
-test('AUTH-006-R2 a role change during handler execution rolls the business effects back', async () => {
+test('AUTH-006-R2 a writer cannot commit after the final validation but before business COMMIT', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
     await seed(db);
     await addAuditorRole(db);
@@ -1175,28 +1189,49 @@ test('AUTH-006-R2 a role change during handler execution rolls the business effe
       const session = await makeSession(store, U1);
       assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
       const current = await store.readSession(session.token);
-      const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
 
-      await assert.rejects(
-        () => context.withTenantContext(current, async client => {
-          await client.query(
-            "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-role-handler', 'main', 'Role handler', true)",
-            [T1],
-          );
-          // A concurrent committed authority change after admission but before commit.
-          await db.adminQuery(
-            "UPDATE auth.tenant_membership SET role_id = 'auditor' WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
-            [T1, U1],
-          );
-          return 'should-not-commit';
-        }),
-        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      const commitGate = makeGate();
+      const businessClient = await business.pool.connect();
+      const pausingClient = {
+        query: async (text, params) => {
+          const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+          if (statement === 'COMMIT') {
+            commitGate.enter();
+            await commitGate.gate;
+          }
+          return businessClient.query(text, params);
+        },
+        release: async destroy => {
+          businessClient.release?.(destroy);
+        },
+      };
+      const context = createTenantContext({connect: async () => pausingClient, resolveAuthority: selection.withAuthority});
+      const run = context.withTenantContext(current, async client => {
+        await client.query(
+          "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-role-final', 'main', 'Role final', true)",
+          [T1],
+        );
+        return 'admitted';
+      });
+      await commitGate.entered;
+      const writer = db.adminQuery(
+        "UPDATE auth.tenant_membership SET role_id = 'auditor' WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
+        [T1, U1],
       );
+      await assert.rejects(() => within(writer, 250, 'post-validation writer'), /timed out/, 'the shared gate is held through business COMMIT');
+      commitGate.release();
+      assert.equal(await run, 'admitted');
+      await writer;
       const effect = await db.adminQuery(
-        "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-role-handler'",
+        "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-role-final'",
         [T1],
       );
-      assert.equal(effect.rows[0].n, 0, 'the pre-commit revalidation discards the earlier-role effects');
+      assert.equal(effect.rows[0].n, 1, 'business admission wins and commits');
+      const normal = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      await assert.rejects(
+        () => normal.withTenantContext(current, async () => {}),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
+      );
     } finally {
       await auth.close();
       await business.close();
@@ -1204,7 +1239,7 @@ test('AUTH-006-R2 a role change during handler execution rolls the business effe
   });
 });
 
-test('AUTH-006-R2 a new MFA-requiring membership association during a pause wins admission', async () => {
+test('AUTH-006-R2 a new MFA-requiring membership INSERT blocks until business completion', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
     await seed(db);
     const auth = await makeLoginPool(db, db.roles.authService, 'auth');
@@ -1233,27 +1268,32 @@ test('AUTH-006-R2 a new MFA-requiring membership association during a pause wins
           "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', 'w-new-mfa', 'main', 'New MFA', true)",
           [T1],
         );
+        return 'admitted';
       });
       await gate.entered;
-      // Activate the previously revoked T3 membership as tenant_admin: a new association
-      // that makes MFA mandatory, without touching the selected T1 membership.
-      await db.adminQuery(
-        `UPDATE auth.tenant_membership
-         SET role_id = 'tenant_admin', status = 'active', revoked_at = NULL, accepted_at = now()
-         WHERE tenant_id = $1::uuid AND user_id = $2::uuid`,
-        [T3, U1],
+      // A genuinely new membership association (not an activation) that makes MFA
+      // mandatory. The BEFORE INSERT trigger takes the exclusive gate.
+      const writer = db.adminQuery(
+        `INSERT INTO auth.tenant_membership(tenant_id, user_id, role_id, status, invited_at, accepted_at)
+         VALUES ($1::uuid, $2::uuid, 'tenant_admin', 'active', now(), now())`,
+        [T4, U1],
       );
+      await assert.rejects(() => within(writer, 250, 'membership insert'), /timed out/, 'the gate blocks the new association');
       gate.release();
-      await assert.rejects(
-        () => run,
-        error => error instanceof TenantSelectionError && error.code === 'MFA_REQUIRED',
-      );
-      assert.equal(called, false, 'a new MFA-requiring association blocks admission');
+      assert.equal(await run, 'admitted');
+      assert.equal(called, true);
+      await writer;
       const effect = await db.adminQuery(
         "SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = 'w-new-mfa'",
         [T1],
       );
-      assert.equal(effect.rows[0].n, 0);
+      assert.equal(effect.rows[0].n, 1, 'the admitted business effect commits');
+
+      const normal = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      await assert.rejects(
+        () => normal.withTenantContext(current, async () => {}),
+        error => error instanceof TenantSelectionError && error.code === 'MFA_REQUIRED',
+      );
     } finally {
       await auth.close();
       await business.close();
@@ -1285,6 +1325,328 @@ test('AUTH-006-R2 an ineffective selected role fails admission', async () => {
         error => error instanceof TenantSelectionError && error.code === 'TENANT_SELECTION_STALE',
       );
       assert.equal(called, false);
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AUTH-006-R3: authorized authority gate, writer serialization, installation
+// and failure evidence.
+// ---------------------------------------------------------------------------
+
+async function selectedMember({db, auth, business, clock}) {
+  const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+  const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+  const session = await makeSession(store, U1);
+  assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+  const current = await store.readSession(session.token);
+  return {store, selection, handler, session, current};
+}
+
+test('AUTH-006-R3 authority writers block after final validation until business COMMIT', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await addAuditorRole(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const {selection, current} = await selectedMember({db, auth, business, clock});
+      const cases = [
+        {
+          label: 'membership revocation',
+          write: `UPDATE auth.tenant_membership SET status = 'revoked', revoked_at = now()
+                  WHERE tenant_id = '${T1}'::uuid AND user_id = '${U1}'::uuid`,
+          reset: `UPDATE auth.tenant_membership SET status = 'active', revoked_at = NULL
+                  WHERE tenant_id = '${T1}'::uuid AND user_id = '${U1}'::uuid`,
+          expected: ['TENANT_SELECTION_STALE', 'TENANT_ACCESS_DENIED'],
+        },
+        {
+          label: 'membership epoch change',
+          write: `UPDATE auth.tenant_membership SET membership_epoch = membership_epoch + 1
+                  WHERE tenant_id = '${T1}'::uuid AND user_id = '${U1}'::uuid`,
+          reset: `UPDATE auth.tenant_membership SET membership_epoch = 1
+                  WHERE tenant_id = '${T1}'::uuid AND user_id = '${U1}'::uuid`,
+          expected: ['TENANT_SELECTION_STALE'],
+        },
+        {
+          label: 'role requires_mfa change',
+          write: "UPDATE auth.roles SET requires_mfa = true WHERE role_id = 'member'",
+          reset: "UPDATE auth.roles SET requires_mfa = false WHERE role_id = 'member'",
+          expected: ['MFA_REQUIRED'],
+        },
+        {
+          label: 'activation of a revoked membership',
+          write: `UPDATE auth.tenant_membership SET status = 'active', revoked_at = NULL, accepted_at = now()
+                  WHERE tenant_id = '${T3}'::uuid AND user_id = '${U1}'::uuid`,
+          reset: `UPDATE auth.tenant_membership SET status = 'revoked', revoked_at = now()
+                  WHERE tenant_id = '${T3}'::uuid AND user_id = '${U1}'::uuid`,
+          expected: null,
+        },
+      ];
+
+      let index = 0;
+      for (const entry of cases) {
+        index += 1;
+        const commitGate = makeGate();
+        const client = await business.pool.connect();
+        const pausingClient = {
+          query: async (text, params) => {
+            const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+            if (statement === 'COMMIT') {
+              commitGate.enter();
+              await commitGate.gate;
+            }
+            return client.query(text, params);
+          },
+          release: async destroy => {
+            client.release?.(destroy);
+          },
+        };
+        const context = createTenantContext({connect: async () => pausingClient, resolveAuthority: selection.withAuthority});
+        const warehouse = `w-writer-${index}`;
+        const run = context.withTenantContext(current, async businessClient => {
+          await businessClient.query(
+            'INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, $2, $3, $4, $3, true)',
+            [T1, 'alpha', warehouse, 'main'],
+          );
+          return 'admitted';
+        });
+        await commitGate.entered;
+        const writer = db.adminQuery(entry.write);
+        await assert.rejects(
+          () => within(writer, 250, `${entry.label} writer`),
+          /timed out/,
+          `${entry.label} cannot commit after the final validation`,
+        );
+        commitGate.release();
+        assert.equal(await run, 'admitted');
+        await writer;
+        const effect = await db.adminQuery(
+          'SELECT count(*)::int AS n FROM tenant_data.warehouses WHERE tenant_id = $1::uuid AND id = $2',
+          [T1, warehouse],
+        );
+        assert.equal(effect.rows[0].n, 1, `${entry.label}: the admitted business effect commits`);
+
+        if (entry.expected) {
+          const normal = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+          await assert.rejects(
+            () => normal.withTenantContext(current, async () => {}),
+            error => error instanceof TenantSelectionError && entry.expected.includes(error.code),
+          );
+        }
+        await db.adminQuery(entry.reset);
+      }
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R3 mixed role+membership writer transactions block in both table orders', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    const adminPool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {selection, current} = await selectedMember({db, auth, business, clock});
+      const orders = [
+        [
+          "UPDATE auth.roles SET requires_mfa = requires_mfa WHERE role_id = 'member'",
+          `UPDATE auth.tenant_membership SET membership_epoch = membership_epoch
+           WHERE tenant_id = '${T1}'::uuid AND user_id = '${U1}'::uuid`,
+        ],
+        [
+          `UPDATE auth.tenant_membership SET membership_epoch = membership_epoch
+           WHERE tenant_id = '${T1}'::uuid AND user_id = '${U1}'::uuid`,
+          "UPDATE auth.roles SET requires_mfa = requires_mfa WHERE role_id = 'member'",
+        ],
+      ];
+      let index = 0;
+      for (const statements of orders) {
+        index += 1;
+        const commitGate = makeGate();
+        const client = await business.pool.connect();
+        const pausingClient = {
+          query: async (text, params) => {
+            const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+            if (statement === 'COMMIT') {
+              commitGate.enter();
+              await commitGate.gate;
+            }
+            return client.query(text, params);
+          },
+          release: async destroy => {
+            client.release?.(destroy);
+          },
+        };
+        const context = createTenantContext({connect: async () => pausingClient, resolveAuthority: selection.withAuthority});
+        const run = context.withTenantContext(current, async businessClient => {
+          await businessClient.query(
+            "INSERT INTO tenant_data.warehouses(tenant_id, company, id, branch, name, active) VALUES ($1, 'alpha', $2, 'main', $2, true)",
+            [T1, `w-order-${index}`],
+          );
+          return 'admitted';
+        });
+        await commitGate.entered;
+        const writerClient = await adminPool.connect();
+        const writer = (async () => {
+          try {
+            await writerClient.query('BEGIN');
+            for (const statement of statements) await writerClient.query(statement);
+            await writerClient.query('COMMIT');
+          } catch (error) {
+            await writerClient.query('ROLLBACK').catch(() => {});
+            throw error;
+          } finally {
+            writerClient.release();
+          }
+        })();
+        await assert.rejects(
+          () => within(writer, 250, `mixed writer order ${index}`),
+          /timed out/,
+          'the first authority statement takes the exclusive gate',
+        );
+        commitGate.release();
+        assert.equal(await run, 'admitted');
+        await writer;
+      }
+    } finally {
+      await adminPool.end().catch(() => {});
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R3 authority gate installation, privileges and conflict guard', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const functionRow = await db.adminQuery(
+      `SELECT p.prosecdef, p.proconfig, p.proowner::regrole::text AS owner,
+              has_function_privilege($1, p.oid, 'EXECUTE') AS auth_exec,
+              has_function_privilege($2, p.oid, 'EXECUTE') AS customer_exec,
+              has_function_privilege($3, p.oid, 'EXECUTE') AS operator_exec
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'auth' AND p.proname = 'lock_authority_gate'`,
+      [db.roles.authService, db.roles.customerApp, db.roles.operatorAdmin],
+    ).then(result => result.rows[0]);
+    assert.equal(functionRow.prosecdef, false, 'trigger function is SECURITY INVOKER');
+    assert.deepEqual(functionRow.proconfig, ['search_path=pg_catalog']);
+    assert.equal(functionRow.owner, db.roles.migrator);
+    assert.equal(functionRow.auth_exec, false);
+    assert.equal(functionRow.customer_exec, false);
+    assert.equal(functionRow.operator_exec, false);
+
+    const triggers = await db.adminQuery(
+      `SELECT c.relname, t.tgname, t.tgtype
+       FROM pg_trigger t
+       JOIN pg_class c ON c.oid = t.tgrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'auth' AND c.relname IN ('tenant_membership', 'roles')
+         AND NOT t.tgisinternal
+         AND t.tgname = ANY($1)
+       ORDER BY c.relname, t.tgname`,
+      [[
+        'tenant_membership_authority_gate_insert',
+        'tenant_membership_authority_gate_update',
+        'tenant_membership_authority_gate_delete',
+        'roles_authority_gate_insert',
+        'roles_authority_gate_update',
+        'roles_authority_gate_delete',
+      ]],
+    );
+    assert.equal(triggers.rowCount, 6);
+    for (const trigger of triggers.rows) {
+      assert.equal(trigger.tgtype & 1, 0, `${trigger.tgname} is a statement trigger`);
+      assert.equal(trigger.tgtype & 2, 2, `${trigger.tgname} is BEFORE`);
+      assert.ok([4, 8, 16].includes(trigger.tgtype & 28), `${trigger.tgname} targets INSERT/UPDATE/DELETE`);
+    }
+
+    const sql = await readFile(new URL('../db/postgres/migrations/033-membership-admission-lock.sql', import.meta.url), 'utf8');
+    const statements = sql.split('\n').filter(line => !line.trim().startsWith('--'));
+    assert.match(sql, /RAISE EXCEPTION 'AUTH-006 033 refuses pre-existing/);
+    assert.equal(statements.some(line => /^\s*GRANT\b/i.test(line)), false, 'no GRANT statement');
+    assert.equal(statements.some(line => /SECURITY DEFINER/i.test(line)), false);
+    assert.equal(statements.some(line => /BYPASSRLS/i.test(line)), false);
+    assert.equal(statements.some(line => /^\s*(ALTER TABLE|CREATE POLICY|DROP POLICY)\b/i.test(line)), false);
+  });
+});
+
+test('AUTH-006-R3 missing or failed gate fails closed without poisoning the pool', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, current} = await selectedMember({db, auth, business, clock});
+
+      // Failed shared-gate acquisition fails closed; the auth pool stays usable.
+      const failingStore = {...store};
+      failingStore.withTransaction = action => store.withTransaction(tx => action({
+        query: async (text, params) => {
+          if (typeof text === 'string' && /pg_advisory_xact_lock_shared/i.test(text)) throw new Error('gate unavailable');
+          return tx.query(text, params);
+        },
+      }));
+      const failingSelection = createTenantSelection({store: failingStore, clock: clock.clock});
+      await assert.rejects(
+        () => failingSelection.list(current),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_AUTHORITY_UNAVAILABLE',
+      );
+      const afterFailure = await selection.list(current);
+      assert.equal(Array.isArray(afterFailure.tenants), true, 'the auth pool is reusable after a failed gate acquisition');
+
+      // A missing/misinstalled gate is not an accepted deployment profile.
+      await db.adminQuery('DROP FUNCTION auth.lock_authority_gate() CASCADE');
+      await assert.rejects(
+        () => selection.list(current),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_AUTHORITY_GATE_UNAVAILABLE',
+      );
+      let called = false;
+      const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      await assert.rejects(
+        () => context.withTenantContext(current, async () => {
+          called = true;
+        }),
+        error => error instanceof TenantSelectionError && error.code === 'TENANT_AUTHORITY_GATE_UNAVAILABLE',
+      );
+      assert.equal(called, false);
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R3 composed boundary works on smallest separate auth/business pools', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth', {max: 1});
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business', {max: 1});
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+      const session = await makeSession(store, U1);
+      assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+      const current = await store.readSession(session.token);
+      const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      const count = await Promise.race([
+        context.withTenantContext(current, async client => (
+          await client.query('SELECT count(*)::int AS n FROM tenant_data.accounts')
+        ).rows[0].n),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('smallest-pool context timed out')), 15000)),
+      ]);
+      assert.equal(count, 2);
     } finally {
       await auth.close();
       await business.close();
