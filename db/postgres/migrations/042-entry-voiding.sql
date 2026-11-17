@@ -284,6 +284,7 @@ AS $fn$
 DECLARE
   v_denied boolean;
   v_roles jsonb := '[]'::jsonb;
+  v_role_ids text[] := ARRAY[]::text[];
   v_allowed boolean;
   v_review boolean := true;
   v_currency text;
@@ -296,11 +297,18 @@ DECLARE
   v_role_review boolean;
   v_role_matches boolean;
   v_matches integer := 0;
-  v_policy_exists boolean;
-  v_policy_version bigint;
-  v_policy_key text;
+  v_any_policy boolean;
+  v_policies jsonb := '[]'::jsonb;
+  v_policy_role text;
   v_policy_count integer;
-  v_threshold numeric;
+  v_candidate_version bigint;
+  v_candidate_key text;
+  v_candidate_scope text;
+  v_candidate_threshold numeric;
+  v_candidate_requires boolean;
+  v_effective_threshold numeric;
+  v_controlling_version bigint;
+  v_controlling_key text;
   v_requires_approver boolean := false;
   v_decision jsonb;
 BEGIN
@@ -320,9 +328,9 @@ BEGIN
       AND d.action IN ('accounting.entry.void', '*')
   ) INTO v_denied;
 
-  -- Canonical role grants, evaluated in a stable role-id order so the decision digest
-  -- and its role identities are deterministic. Malformed permission data fails closed
-  -- instead of silently granting or silently ignoring a limit.
+  -- Canonical role grants, evaluated in a stable role-id order so the decision digest,
+  -- matching role identities and policy applicability are deterministic. Malformed
+  -- permission data fails closed instead of silently granting or ignoring a limit.
   FOR v_role IN
     SELECT r.id AS role_id, r.protected, r.permissions::jsonb AS rule
     FROM tenant_data.members m
@@ -340,7 +348,8 @@ BEGIN
         RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has a malformed permission payload', v_role.role_id;
       END IF;
       v_actions := v_role.rule -> 'actions';
-      IF jsonb_typeof(v_actions) IS DISTINCT FROM 'array' THEN
+      IF jsonb_typeof(v_actions) IS DISTINCT FROM 'array'
+         OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_actions) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string') THEN
         RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has no canonical actions array', v_role.role_id;
       END IF;
       v_companies := v_role.rule -> 'companies';
@@ -348,7 +357,10 @@ BEGIN
       v_account_scope := v_role.rule -> 'accounts';
       IF jsonb_typeof(v_companies) IS DISTINCT FROM 'array'
          OR jsonb_typeof(v_branches) IS DISTINCT FROM 'array'
-         OR jsonb_typeof(v_account_scope) IS DISTINCT FROM 'array' THEN
+         OR jsonb_typeof(v_account_scope) IS DISTINCT FROM 'array'
+         OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_companies) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string')
+         OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_branches) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string')
+         OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_account_scope) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string') THEN
         RAISE EXCEPTION 'VOID_PERMISSION_INVALID: role % has malformed resource scope arrays', v_role.role_id;
       END IF;
       IF jsonb_exists(v_role.rule, 'review') AND jsonb_typeof(v_role.rule -> 'review') IS DISTINCT FROM 'boolean' THEN
@@ -381,6 +393,7 @@ BEGIN
 
     IF v_role_matches THEN
       v_matches := v_matches + 1;
+      v_role_ids := v_role_ids || v_role.role_id;
       v_review := v_review AND v_role_review;
       v_roles := v_roles || jsonb_build_array(jsonb_build_object(
         'roleId', v_role.role_id,
@@ -390,11 +403,16 @@ BEGIN
 
   v_allowed := NOT v_denied AND v_matches > 0;
 
-  -- Effective approval policy. Currency is matched explicitly; the highest version is
-  -- selected, and two different policy keys claiming the same version are ambiguous
-  -- and fail closed rather than resolving by storage order. Thresholds are defined as
-  -- exact minor units of the policy currency, so no lossy decimal-to-minor conversion
-  -- and no hardcoded currency exponent table is introduced.
+  -- Effective approval policy is resolved against the requester's matching role
+  -- identities. A policy row for an unrelated role is never applicable merely because
+  -- it has a higher version. For each matching role, a role-specific policy overrides
+  -- the global policy; a role with no specific policy falls back to the global row.
+  -- Selected policies combine conservatively: the lowest threshold controls review and
+  -- any different-approver requirement wins, so one role's higher-version high-threshold
+  -- policy cannot mask another applicable role's required review. Two policy keys
+  -- claiming the same maximum version for the same role/global scope are ambiguous and
+  -- fail closed. Thresholds are exact minor units of the policy currency for this
+  -- terminal-void action only.
   SELECT EXISTS (
     SELECT 1 FROM tenant_data.approval_policy ap
     WHERE ap.tenant_id = p_tenant
@@ -402,47 +420,144 @@ BEGIN
       AND ap.is_active
       AND ap.effective_from <= now()
       AND (ap.effective_to IS NULL OR ap.effective_to > now())
-  ) INTO v_policy_exists;
-  IF v_policy_exists THEN
-    SELECT max(ap.version) INTO v_policy_version
-    FROM tenant_data.approval_policy ap
+  ) INTO v_any_policy;
+  IF v_any_policy AND NOT EXISTS (
+    SELECT 1 FROM tenant_data.approval_policy ap
     WHERE ap.tenant_id = p_tenant
       AND ap.action_type = 'accounting.entry.void'
       AND ap.currency = v_currency
       AND ap.is_active
       AND ap.effective_from <= now()
-      AND (ap.effective_to IS NULL OR ap.effective_to > now());
-    IF v_policy_version IS NULL THEN
-      RAISE EXCEPTION 'VOID_POLICY_CURRENCY_MISMATCH: approval policies exist for this action but none applies to currency %', v_currency;
-    END IF;
+      AND (ap.effective_to IS NULL OR ap.effective_to > now())
+  ) THEN
+    RAISE EXCEPTION 'VOID_POLICY_CURRENCY_MISMATCH: approval policies exist for this action but none applies to currency %', v_currency;
+  END IF;
+
+  FOR v_policy_role IN SELECT unnest(v_role_ids) ORDER BY 1 LOOP
+    v_candidate_version := NULL;
+    v_candidate_key := NULL;
+    v_candidate_scope := NULL;
+    v_candidate_threshold := NULL;
+    v_candidate_requires := false;
+
     SELECT count(*) INTO v_policy_count
     FROM tenant_data.approval_policy ap
     WHERE ap.tenant_id = p_tenant
       AND ap.action_type = 'accounting.entry.void'
       AND ap.currency = v_currency
-      AND ap.version = v_policy_version
+      AND ap.role_id = v_policy_role
       AND ap.is_active
       AND ap.effective_from <= now()
       AND (ap.effective_to IS NULL OR ap.effective_to > now());
-    IF v_policy_count <> 1 THEN
-      RAISE EXCEPTION 'VOID_POLICY_AMBIGUOUS: multiple policy keys claim version % for currency %', v_policy_version, v_currency;
+    IF v_policy_count > 0 THEN
+      v_candidate_scope := 'ROLE';
+      SELECT max(ap.version) INTO v_candidate_version
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id = v_policy_role
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
+      SELECT count(*) INTO v_policy_count
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id = v_policy_role
+        AND ap.version = v_candidate_version
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
+      IF v_policy_count <> 1 THEN
+        RAISE EXCEPTION 'VOID_POLICY_AMBIGUOUS: multiple policy keys claim version % for role %', v_candidate_version, v_policy_role;
+      END IF;
+      SELECT ap.policy_key, ap.approval_threshold_amount, ap.requires_different_approver
+        INTO v_candidate_key, v_candidate_threshold, v_candidate_requires
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id = v_policy_role
+        AND ap.version = v_candidate_version
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
+    ELSE
+      SELECT count(*) INTO v_policy_count
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id IS NULL
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
+      IF v_policy_count = 0 THEN
+        CONTINUE;
+      END IF;
+      v_candidate_scope := 'GLOBAL';
+      SELECT max(ap.version) INTO v_candidate_version
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id IS NULL
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
+      SELECT count(*) INTO v_policy_count
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id IS NULL
+        AND ap.version = v_candidate_version
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
+      IF v_policy_count <> 1 THEN
+        RAISE EXCEPTION 'VOID_POLICY_AMBIGUOUS: multiple global policy keys claim version %', v_candidate_version;
+      END IF;
+      SELECT ap.policy_key, ap.approval_threshold_amount, ap.requires_different_approver
+        INTO v_candidate_key, v_candidate_threshold, v_candidate_requires
+      FROM tenant_data.approval_policy ap
+      WHERE ap.tenant_id = p_tenant
+        AND ap.action_type = 'accounting.entry.void'
+        AND ap.currency = v_currency
+        AND ap.role_id IS NULL
+        AND ap.version = v_candidate_version
+        AND ap.is_active
+        AND ap.effective_from <= now()
+        AND (ap.effective_to IS NULL OR ap.effective_to > now());
     END IF;
-    SELECT ap.policy_key, ap.approval_threshold_amount, ap.requires_different_approver
-      INTO v_policy_key, v_threshold, v_requires_approver
-    FROM tenant_data.approval_policy ap
-    WHERE ap.tenant_id = p_tenant
-      AND ap.action_type = 'accounting.entry.void'
-      AND ap.currency = v_currency
-      AND ap.version = v_policy_version
-      AND ap.is_active
-      AND ap.effective_from <= now()
-      AND (ap.effective_to IS NULL OR ap.effective_to > now());
-    IF v_threshold IS NULL OR v_threshold < 0 OR v_threshold <> trunc(v_threshold) OR v_threshold > 999999999999 THEN
-      RAISE EXCEPTION 'VOID_POLICY_INVALID: threshold % is not an exact non-negative minor-unit value', v_threshold;
+
+    IF v_candidate_threshold IS NULL
+       OR v_candidate_threshold < 0
+       OR v_candidate_threshold <> trunc(v_candidate_threshold)
+       OR v_candidate_threshold > 999999999999 THEN
+      RAISE EXCEPTION 'VOID_POLICY_INVALID: threshold % for role % is not an exact non-negative minor-unit value', v_candidate_threshold, v_policy_role;
     END IF;
-    IF p_amount > v_threshold THEN
-      v_review := true;
+
+    v_policies := v_policies || jsonb_build_array(jsonb_build_object(
+      'roleId', v_policy_role,
+      'policyKey', v_candidate_key,
+      'scope', v_candidate_scope,
+      'version', v_candidate_version,
+      'currency', v_currency,
+      'thresholdMinor', v_candidate_threshold::bigint,
+      'requiresDifferentApprover', coalesce(v_candidate_requires, false)));
+    v_requires_approver := v_requires_approver OR coalesce(v_candidate_requires, false);
+    IF v_effective_threshold IS NULL OR v_candidate_threshold < v_effective_threshold THEN
+      v_effective_threshold := v_candidate_threshold;
+      v_controlling_version := v_candidate_version;
+      v_controlling_key := v_candidate_key;
     END IF;
+  END LOOP;
+
+  IF v_effective_threshold IS NOT NULL AND p_amount > v_effective_threshold THEN
+    v_review := true;
   END IF;
 
   v_decision := jsonb_build_object(
@@ -450,10 +565,12 @@ BEGIN
     'denied', v_denied,
     'review', CASE WHEN v_allowed THEN v_review ELSE true END,
     'requiresDifferentApprover', coalesce(v_requires_approver, false),
-    'policyVersion', v_policy_version,
-    'policyKey', v_policy_key,
+    'policyVersion', v_controlling_version,
+    'policyKey', v_controlling_key,
+    'policies', v_policies,
+    'matchingRoleIds', to_jsonb(v_role_ids),
     'currency', v_currency,
-    'thresholdMinor', CASE WHEN v_policy_version IS NULL THEN NULL ELSE v_threshold::bigint END,
+    'thresholdMinor', CASE WHEN v_effective_threshold IS NULL THEN NULL ELSE v_effective_threshold::bigint END,
     'amount', p_amount,
     'company', p_company,
     'branch', p_branch,
@@ -466,7 +583,7 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[], text, text) IS
-  'PIVOT-005: canonical decision over the role permission contract (actions, company/branch/account scope, maxMinor, review), explicit denials and the currency-matched effective approval policy. Thresholds are exact minor units; malformed limits, ambiguous policy keys and currency mismatches fail closed. Roles carry their ids and are ordered for a stable digest.';
+  'PIVOT-005: canonical decision over the role permission contract (actions, company/branch/account scope, maxMinor, review), explicit denials and role-applicable currency-matched approval policy. Role-specific policy overrides global for that role; selected policies combine conservatively (lowest threshold, any different-approver requirement) and bind matching role ids, policy identities and versions into the decision. Malformed limits, same-role/global version ambiguity and currency mismatches fail closed. Thresholds are exact minor units for this action.';
 
 CREATE FUNCTION tenant_data.immutability_042_decision_digest(p_decision jsonb) RETURNS text
 LANGUAGE sql IMMUTABLE
@@ -958,7 +1075,7 @@ GRANT SELECT (tenant_id, user_id, role_id) ON tenant_data.assignments TO saven_v
 GRANT SELECT (tenant_id, user_id, action) ON tenant_data.denials TO saven_void_definer;
 GRANT SELECT (tenant_id, company, start_date, end_date, locked) ON tenant_data.periods TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id, payload_digest, policy_snapshot, state, decided_by) ON tenant_data.approval_requests TO saven_void_definer;
-GRANT SELECT (tenant_id, action_type, policy_key, version, approval_threshold_amount, currency, requires_different_approver, is_active, effective_from, effective_to) ON tenant_data.approval_policy TO saven_void_definer;
+GRANT SELECT (tenant_id, action_type, policy_key, version, role_id, approval_threshold_amount, currency, requires_different_approver, is_active, effective_from, effective_to) ON tenant_data.approval_policy TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id) ON tenant_data.trade_operations TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id) ON tenant_data.command_decisions TO saven_void_definer;
 GRANT SELECT (tenant_id, command_id) ON tenant_data.stock_operations TO saven_void_definer;
@@ -985,6 +1102,7 @@ GRANT INSERT (tenant_id, id, event, state, attempts)
 
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) TO saven_void_definer;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_approval_resource(uuid, text) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_policy_decision(uuid, text, bigint, text, text, text[], text, text) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_042_decision_digest(jsonb) TO saven_void_definer;
 GRANT EXECUTE ON FUNCTION tenant_data.current_tenant_id() TO saven_void_definer;
@@ -1055,6 +1173,7 @@ DECLARE
     'tenant_data.approval_requests.state:SELECT','tenant_data.approval_requests.decided_by:SELECT',
     'tenant_data.approval_policy.tenant_id:SELECT','tenant_data.approval_policy.action_type:SELECT',
     'tenant_data.approval_policy.policy_key:SELECT','tenant_data.approval_policy.version:SELECT',
+    'tenant_data.approval_policy.role_id:SELECT',
     'tenant_data.approval_policy.approval_threshold_amount:SELECT',
     'tenant_data.approval_policy.currency:SELECT',
     'tenant_data.approval_policy.requires_different_approver:SELECT',
@@ -1082,6 +1201,7 @@ DECLARE
     'tenant_data.current_tenant_id:EXECUTE','tenant_data.current_user_id:EXECUTE',
     'tenant_data.session_admitted:EXECUTE','tenant_data.immutability_040_lock_key:EXECUTE',
     'tenant_data.immutability_040_approver_authority:EXECUTE',
+    'tenant_data.immutability_040_approval_resource:EXECUTE',
     'tenant_data.immutability_042_policy_decision:EXECUTE','tenant_data.immutability_042_decision_digest:EXECUTE'
   ];
   actual text[];

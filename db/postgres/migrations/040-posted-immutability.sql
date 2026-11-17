@@ -475,11 +475,138 @@ COMMENT ON FUNCTION tenant_data.immutability_040_correction_committed() IS
 -- approval_requests: decided digest and policy snapshot are immutable
 -- =====================================================================
 
--- Verify that a proposed approver is a current, admitted, independent member with
--- approval/resource authority for this exact command. This is the single canonical
--- authority check used both by the approval transition guard and by the void
--- primitive at execution time, so a revocation or an authority change between
--- approval and execution fails closed. It does not trust decided_by as metadata.
+-- Resolve the exact canonical approval resource from the command's authoritative
+-- target or from its immutable accepted payload. A pending command normally has no
+-- journal yet, so the accepted payload's company/branch/lines are used. Anything
+-- incomplete or malformed fails closed; unavailable resource data is never treated as
+-- unrestricted.
+CREATE FUNCTION tenant_data.immutability_040_approval_resource(
+  p_tenant uuid,
+  p_command text
+) RETURNS jsonb
+LANGUAGE plpgsql STABLE
+SET search_path = pg_catalog, tenant_data
+AS $fn$
+DECLARE
+  v_payload jsonb;
+  v_kind text;
+  v_entry text;
+  v_company text;
+  v_branch text;
+  v_accounts text[];
+  v_line_count integer;
+  v_debit numeric;
+  v_credit numeric;
+  v_lines jsonb;
+  v_line jsonb;
+  v_line_debit numeric;
+  v_line_credit numeric;
+  v_sum_debit numeric := 0;
+  v_sum_credit numeric := 0;
+BEGIN
+  SELECT c.payload::jsonb INTO v_payload
+  FROM tenant_data.command_inbox c
+  WHERE c.tenant_id = p_tenant AND c.id = p_command;
+  IF v_payload IS NULL OR jsonb_typeof(v_payload) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % has no complete accepted payload', p_command;
+  END IF;
+  v_kind := coalesce(v_payload ->> 'kind', '');
+
+  -- A terminal-void command resolves its authoritative target entry.
+  IF v_kind = 'ENTRY_VOID' THEN
+    v_entry := v_payload ->> 'entry';
+    IF v_entry IS NULL OR length(btrim(v_entry)) = 0 THEN
+      RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: void command % names no target entry', p_command;
+    END IF;
+    SELECT j.company, j.branch INTO v_company, v_branch
+    FROM tenant_data.journals j
+    WHERE j.tenant_id = p_tenant AND j.id = v_entry;
+    IF v_company IS NULL THEN
+      RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: void target % has no authoritative journal', v_entry;
+    END IF;
+    SELECT count(*), coalesce(sum(l.debit), 0), coalesce(sum(l.credit), 0),
+           array_agg(l.account ORDER BY l.line_no)
+      INTO v_line_count, v_debit, v_credit, v_accounts
+    FROM tenant_data.journal_lines l
+    WHERE l.tenant_id = p_tenant AND l.journal_id = v_entry;
+    IF v_line_count < 2 OR v_debit <> v_credit OR v_debit <= 0 THEN
+      RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: void target % is not a complete balanced entry', v_entry;
+    END IF;
+    RETURN jsonb_build_object(
+      'kind', 'ENTRY_VOID', 'entry', v_entry, 'company', v_company, 'branch', v_branch,
+      'accounts', to_jsonb(v_accounts), 'amountMinor', v_debit::bigint);
+  END IF;
+
+  -- A command that already has an authoritative journal uses its exact rows.
+  SELECT j.company, j.branch INTO v_company, v_branch
+  FROM tenant_data.journals j
+  WHERE j.tenant_id = p_tenant AND j.id = p_command;
+  IF v_company IS NOT NULL THEN
+    SELECT count(*), coalesce(sum(l.debit), 0), coalesce(sum(l.credit), 0),
+           array_agg(l.account ORDER BY l.line_no)
+      INTO v_line_count, v_debit, v_credit, v_accounts
+    FROM tenant_data.journal_lines l
+    WHERE l.tenant_id = p_tenant AND l.journal_id = p_command;
+    IF v_line_count < 2 OR v_debit <> v_credit OR v_debit <= 0 THEN
+      RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % journal is not complete and balanced', p_command;
+    END IF;
+    RETURN jsonb_build_object(
+      'kind', coalesce(nullif(v_kind, ''), 'JOURNAL'), 'company', v_company, 'branch', v_branch,
+      'accounts', to_jsonb(v_accounts), 'amountMinor', v_debit::bigint);
+  END IF;
+
+  -- Pending accepted command: use the immutable accepted payload's complete shape.
+  v_company := v_payload ->> 'company';
+  v_branch := v_payload ->> 'branch';
+  v_lines := v_payload -> 'lines';
+  IF v_company IS NULL OR length(btrim(v_company)) = 0
+     OR v_branch IS NULL OR length(btrim(v_branch)) = 0
+     OR jsonb_typeof(v_lines) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % has no complete company/branch/lines resource', p_command;
+  END IF;
+  IF jsonb_array_length(v_lines) < 2 THEN
+    RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % has fewer than two accepted lines', p_command;
+  END IF;
+
+  v_accounts := ARRAY[]::text[];
+  FOR v_line IN SELECT value FROM jsonb_array_elements(v_lines) LOOP
+    IF jsonb_typeof(v_line) IS DISTINCT FROM 'object'
+       OR (v_line ->> 'account') IS NULL OR length(btrim(v_line ->> 'account')) = 0
+       OR jsonb_typeof(v_line -> 'debit') IS DISTINCT FROM 'number'
+       OR jsonb_typeof(v_line -> 'credit') IS DISTINCT FROM 'number' THEN
+      RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % has a malformed accepted line', p_command;
+    END IF;
+    v_line_debit := (v_line ->> 'debit')::numeric;
+    v_line_credit := (v_line ->> 'credit')::numeric;
+    IF v_line_debit < 0 OR v_line_credit < 0
+       OR v_line_debit <> trunc(v_line_debit) OR v_line_credit <> trunc(v_line_credit)
+       OR v_line_debit > 999999999999 OR v_line_credit > 999999999999
+       OR (v_line_debit > 0 AND v_line_credit > 0)
+       OR (v_line_debit = 0 AND v_line_credit = 0) THEN
+      RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % has an invalid accepted line amount', p_command;
+    END IF;
+    v_sum_debit := v_sum_debit + v_line_debit;
+    v_sum_credit := v_sum_credit + v_line_credit;
+    v_accounts := v_accounts || (v_line ->> 'account');
+  END LOOP;
+
+  IF v_sum_debit <> v_sum_credit OR v_sum_debit <= 0 OR v_sum_debit > 999999999999 THEN
+    RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: command % accepted lines are not balanced within bounds', p_command;
+  END IF;
+  RETURN jsonb_build_object(
+    'kind', coalesce(nullif(v_kind, ''), 'JOURNAL'), 'company', v_company, 'branch', v_branch,
+    'accounts', to_jsonb(v_accounts), 'amountMinor', v_sum_debit::bigint);
+END;
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_040_approval_resource(uuid, text) IS
+  'PIVOT-005 payload 040: resolves the exact approval resource (company, branch, accounts, amount in minor units) from the authoritative void target, the command journal, or the immutable accepted payload. Incomplete, malformed or unresolved resources fail closed.';
+
+-- Verify that a proposed approver is a current, independent member with complete
+-- approval/resource authority for this exact command. Account scope and maxMinor are
+-- applied from one matching role, exactly as native permission evaluation does, so
+-- unrelated roles cannot be combined into a broader grant. This is the single helper
+-- used by both the approval transition and the void execution recheck.
 CREATE FUNCTION tenant_data.immutability_040_approver_authority(
   p_tenant uuid,
   p_command text,
@@ -492,14 +619,17 @@ DECLARE
   v_approver_uuid uuid;
   v_requester text;
   v_requester_uuid uuid;
+  v_resource jsonb;
   v_company text;
   v_branch text;
-  v_entry text;
-  v_payload jsonb;
+  v_amount bigint;
+  v_accounts text[];
   v_role record;
   v_actions jsonb;
   v_companies jsonb;
   v_branches jsonb;
+  v_account_scope jsonb;
+  v_max numeric;
   v_matches integer := 0;
 BEGIN
   IF p_approver IS NULL OR length(btrim(p_approver)) = 0 THEN
@@ -513,7 +643,7 @@ BEGIN
     RAISE EXCEPTION 'APPROVAL_APPROVER_NOT_ACTIVE: the approver is not a current tenant member';
   END IF;
 
-  SELECT c.actor, c.payload::jsonb INTO v_requester, v_payload
+  SELECT c.actor INTO v_requester
   FROM tenant_data.command_inbox c
   WHERE c.tenant_id = p_tenant AND c.id = p_command;
   IF v_requester IS NULL THEN
@@ -529,17 +659,15 @@ BEGIN
     RAISE EXCEPTION 'APPROVAL_SELF_FORBIDDEN: an independent approver is required';
   END IF;
 
-  -- Resource scope comes from the command's own journal, or from the target entry of
-  -- a void command. When neither resolves, only the action grant is required; the
-  -- void primitive always resolves the target entry before authorising execution.
-  SELECT j.company, j.branch INTO v_company, v_branch
-  FROM tenant_data.journals j
-  WHERE j.tenant_id = p_tenant AND j.id = p_command;
-  IF v_company IS NULL AND coalesce(v_payload ->> 'kind', '') = 'ENTRY_VOID' THEN
-    v_entry := v_payload ->> 'entry';
-    SELECT j.company, j.branch INTO v_company, v_branch
-    FROM tenant_data.journals j
-    WHERE j.tenant_id = p_tenant AND j.id = v_entry;
+  -- A complete known resource is mandatory. There is no action-only fallback.
+  v_resource := tenant_data.immutability_040_approval_resource(p_tenant, p_command);
+  v_company := v_resource ->> 'company';
+  v_branch := v_resource ->> 'branch';
+  v_amount := (v_resource ->> 'amountMinor')::bigint;
+  v_accounts := ARRAY(SELECT jsonb_array_elements_text(v_resource -> 'accounts'));
+  IF v_company IS NULL OR v_branch IS NULL OR v_amount IS NULL OR v_amount <= 0
+     OR cardinality(v_accounts) < 2 THEN
+    RAISE EXCEPTION 'APPROVAL_RESOURCE_UNRESOLVED: the command resource is incomplete';
   END IF;
 
   IF EXISTS (
@@ -565,36 +693,64 @@ BEGIN
       RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has a malformed permission payload', v_role.id;
     END IF;
     v_actions := v_role.p -> 'actions';
-    IF jsonb_typeof(v_actions) IS DISTINCT FROM 'array' THEN
+    IF jsonb_typeof(v_actions) IS DISTINCT FROM 'array'
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_actions) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string') THEN
       RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has no canonical actions array', v_role.id;
     END IF;
     IF NOT (jsonb_exists(v_actions, 'journal.approve') OR jsonb_exists(v_actions, '*')) THEN
       CONTINUE;
     END IF;
+
     v_companies := v_role.p -> 'companies';
     v_branches := v_role.p -> 'branches';
+    v_account_scope := v_role.p -> 'accounts';
     IF jsonb_typeof(v_companies) IS DISTINCT FROM 'array'
-       OR jsonb_typeof(v_branches) IS DISTINCT FROM 'array' THEN
+       OR jsonb_typeof(v_branches) IS DISTINCT FROM 'array'
+       OR jsonb_typeof(v_account_scope) IS DISTINCT FROM 'array'
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_companies) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string')
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_branches) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string')
+       OR EXISTS (SELECT 1 FROM jsonb_array_elements(v_account_scope) e WHERE jsonb_typeof(e) IS DISTINCT FROM 'string') THEN
       RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has malformed scope arrays', v_role.id;
     END IF;
-    IF v_company IS NOT NULL AND NOT (jsonb_exists(v_companies, '*') OR jsonb_exists(v_companies, v_company)) THEN
+    IF jsonb_exists(v_role.p, 'maxMinor') THEN
+      IF jsonb_typeof(v_role.p -> 'maxMinor') IS DISTINCT FROM 'number' THEN
+        RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has a non-numeric maxMinor; an unknown limit fails closed', v_role.id;
+      END IF;
+      v_max := (v_role.p ->> 'maxMinor')::numeric;
+      IF v_max < 0 OR v_max <> trunc(v_max) OR v_max > 999999999999 THEN
+        RAISE EXCEPTION 'APPROVAL_PERMISSION_INVALID: role % has an invalid maxMinor', v_role.id;
+      END IF;
+    ELSE
+      v_max := NULL;
+    END IF;
+
+    IF NOT (jsonb_exists(v_companies, '*') OR jsonb_exists(v_companies, v_company)) THEN
       CONTINUE;
     END IF;
-    IF v_branch IS NOT NULL AND NOT (jsonb_exists(v_branches, '*') OR jsonb_exists(v_branches, v_branch)) THEN
+    IF NOT (jsonb_exists(v_branches, '*') OR jsonb_exists(v_branches, v_branch)) THEN
+      CONTINUE;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM unnest(v_accounts) AS acc(code)
+      WHERE NOT (jsonb_exists(v_account_scope, '*') OR jsonb_exists(v_account_scope, acc.code))
+    ) THEN
+      CONTINUE;
+    END IF;
+    IF v_max IS NOT NULL AND v_amount > v_max::bigint THEN
       CONTINUE;
     END IF;
     v_matches := v_matches + 1;
   END LOOP;
 
   IF v_matches = 0 THEN
-    RAISE EXCEPTION 'APPROVAL_AUTHORITY_REQUIRED: the approver holds no current approval grant for this command';
+    RAISE EXCEPTION 'APPROVAL_AUTHORITY_REQUIRED: the approver holds no complete current approval grant for this command resource';
   END IF;
   RETURN v_approver_uuid;
 END;
 $fn$;
 
 COMMENT ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) IS
-  'PIVOT-005 payload 040: canonical approver verification. Requires a current active tenant member (not the requester) with an active journal.approve (or protected owner) grant scoped to the command resource, and no explicit denial. The approval transition guard additionally requires the verified session context; the void primitive re-runs this check at execution so a revoked or authority-changed approver fails closed.';
+  'PIVOT-005 payload 040: canonical approver verification. Requires a current active independent tenant member with one role granting journal.approve (or protected owner) for the complete resolved company/branch/account/amount resource, including maxMinor, and no explicit denial. No action-only fallback. The approval transition guard additionally requires verified session context; the void primitive re-runs this helper at execution.';
 
 CREATE FUNCTION tenant_data.immutability_040_approval_guard()
 RETURNS trigger
@@ -794,6 +950,7 @@ REVOKE ALL ON FUNCTION tenant_data.immutability_040_command_state(uuid, text) FR
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_040_approval_resource(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_command_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_journal_guard() FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_040_journal_line_guard() FROM PUBLIC;
@@ -809,6 +966,7 @@ REVOKE ALL ON FUNCTION tenant_data.immutability_040_revision_guard() FROM PUBLIC
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_assert_posted_effects(uuid, text) TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_lock_key(uuid, text) TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_approver_authority(uuid, text, text) TO saven_customer_app;
+GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_approval_resource(uuid, text) TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_command_guard() TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_journal_guard() TO saven_customer_app;
 GRANT EXECUTE ON FUNCTION tenant_data.immutability_040_journal_line_guard() TO saven_customer_app;

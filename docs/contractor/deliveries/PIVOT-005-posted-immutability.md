@@ -1,5 +1,5 @@
 CONTRACT: docs/contractor/contracts/PIVOT-005-posted-immutability.md
-STATUS: DONE (R3 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
+STATUS: DONE (R4 revision: database contract and mechanism evidence; application route/page/RBAC limits recorded below)
 
 ## What was delivered
 
@@ -155,6 +155,8 @@ Remaining limits: no application route/page/RBAC (AUTH-006, PIVOT-013, UI contra
 
 ## Revision 3 — PIVOT-005 R2 corrections (verdict 63a25a, review PIVOT-005-R2)
 
+> Historical section. Its test names, counts and results are superseded by Revision 4 below. Its `15/15` focused and `219/220` full-suite numbers remain accurate for that revision but do not cover the R3 review's approval-scope/policy-applicability cases.
+
 All four required corrections are implemented inside the contract TOUCH paths. 040 is still the new, never-applied payload, so its correction is in-place; no actually applied payload bytes were rewritten and no additive 043 was needed. 042 remains additive and re-applied in this disposable evidence environment.
 
 ### Finding-by-finding closure
@@ -259,3 +261,101 @@ compliant: no new hardcoded business-role or eligibility rule; policy/role ident
 ### GIT
 
 branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b (R2 delivery 1ee28b9) commits=pushed with this report merged=no
+
+---
+
+## Revision 4 — PIVOT-005 R3 corrections (verdict af333f5, review PIVOT-005-R3)
+
+Both remaining approval-authority corrections are implemented inside the existing TOUCH paths. 040 remains the new, never-applied payload (corrected in place); 042 remains the additive void payload (corrected in this disposable evidence environment). No applied production lineage was rewritten and no additive 043 was required.
+
+### Finding-by-finding closure
+
+| Review finding | Correction | New focused evidence |
+| --- | --- | --- |
+| 1. Approver resource/amount authority broader than its canonical grant; action-only fallback on unresolved resources | New `immutability_040_approval_resource()` resolves the exact company, branch, accounts and minor-unit amount from (a) the authoritative target of a terminal-void command, (b) the command's own journal rows, or (c) the immutable accepted payload's company/branch/lines for a pending command that has no journal yet. Missing, incomplete or malformed data fails closed with `APPROVAL_RESOURCE_UNRESOLVED`; there is no action-only fallback. `immutability_040_approver_authority()` now requires **one** role to satisfy `journal.approve`, company, branch, every account and `maxMinor` independently. Malformed arrays, non-numeric/non-integral/negative/out-of-bound `maxMinor`, and malformed payload line amounts fail closed. The same helper is called by the approval transition and re-run at void execution. | `approver authority applies the reviewer exact accounts and maxMinor at decision and execution` |
+| 2. Policy selection ignores role applicability and can skip required review | `immutability_042_policy_decision()` now resolves policy against the requester's matching current role ids. Precedence is explicit: a role-specific policy overrides the global policy for that role; a matching role without a specific policy falls back to global. Selected policies combine conservatively (lowest threshold controls; any `requires_different_approver` wins), so an unrelated or higher-version high-threshold policy cannot mask another applicable role's required review. Two policy keys at the same maximum version for the same role/global scope fail closed as `VOID_POLICY_AMBIGUOUS`. The decision binds ordered `matchingRoleIds` and the full selected `policies` array (role id, policy key, scope `ROLE`/`GLOBAL`, version, currency, threshold, different-approver flag), so role or policy changes invalidate the approval. Only `approval_policy.role_id` was added to the dedicated owner's exact column grant/allow-list. The minor-unit convention remains limited to `accounting.entry.void`. | `approval policy applies only to matching current role identities` |
+
+### Closure accounting for af333f5
+
+- Finding 2 (both-ended correction protection) remains closed; no change was needed in R4.
+- Finding 3 remains closed by the permitted fail-closed posting scope; no operational reconciliation is claimed.
+- Finding 4 remains materially closed. The R4 report does **not** claim a concurrent reverse-arrival correction race: the late-link-to-voided-reversal and void-versus-post checks are controlled sequential assertions, while the correction-first/void-original-second case is the concurrent two-connection proof. Administrator queries remain used for seeding, policy setup and catalog/retention probes; runtime `SET ROLE customerApp` remains used for posting, approval transitions, void execution, isolation and concurrency.
+
+### Acceptance matrix additions (R4)
+
+| Required case | Test |
+| --- | --- |
+| Valid scoped reviewer with exact account scope and `maxMinor` boundary; approval transition + void execution | `approver authority applies the reviewer exact accounts and maxMinor...` |
+| Reviewer account mismatch refuses approval | same test |
+| `maxMinor` excess refuses approval; malformed `maxMinor` fails closed | same test |
+| Pending accepted command resolves payload company/branch/lines; out-of-company reviewer refused; valid reviewer passes | same test |
+| Missing/malformed accepted resource fails closed (no action-only fallback) | same test |
+| Reviewer narrowed by account or amount after approval cannot execute | same test |
+| Unrelated higher-version role policy does not apply or mask a required review | `approval policy applies only to matching current role identities` |
+| Multi-role global + role-specific precedence and conservative combination | same test |
+| Same-role/global maximum-version policy ambiguity fails closed | same test |
+| Role change between approval and execution invalidates the approval | same test |
+
+### GATE EVIDENCE (R4)
+
+Environment: dedicated disposable PostgreSQL 18.6 cluster recreated for this run on loopback `127.0.0.1:55435` (`initdb --auth=trust`, local admin `esc`), no SSH/owner-server/production/shared cluster. `SAVEN_PIVOT_TEST_CLUSTER=1`; Node **v24.19.0** via `npm exec --yes --package=node@24.19.0`. No global `saven_*` role was created; the fixture namespaced and removed every object.
+
+```text
+$ node scripts/check.mjs
+PASS: 156 JavaScript files parsed; package manifest valid.
+
+$ node --test tests/pivot-005-immutability.test.mjs
+✔ PIVOT-005 active GL follows the POSTED lifecycle, retains source bytes and exposes a filterable voided projection
+✔ PIVOT-005 void authority uses canonical permissions, explicit denials, scope, locked periods and maxMinor
+✔ PIVOT-005 rejects fabricated, self, unauthorised, wrong-submission and stale approvals
+✔ PIVOT-005 approval policy is currency-matched, deterministic, exact and revalidated at execution
+✔ PIVOT-005 approver authority applies the reviewer exact accounts and maxMinor at decision and execution
+✔ PIVOT-005 approval policy applies only to matching current role identities
+✔ PIVOT-005 runtime posting is exact for a plain journal and refuses unreconciled trade/stock shapes
+✔ PIVOT-005 void is terminal under runtime and administrative roles, and a failing effect leaves no trace
+✔ PIVOT-005 correction links protect both ends, require link-before-post and refuse late links
+✔ PIVOT-005 correction and void writers serialize on both ends
+✔ PIVOT-005 replay, duplicate and same-key/different-entry races follow the idempotency contract
+✔ PIVOT-005 refuses voiding retained operational dependencies without partial effects
+✔ PIVOT-005 tenant isolation, missing/spoofed context and permissive-widening resistance hold
+✔ PIVOT-005 denial log is durable, append-only and bound to verified context
+✔ PIVOT-005 activation is fail-closed, atomic and repeatable
+✔ PIVOT-005 refuses every polluted pre-existing void owner class without repairing it
+✔ PIVOT-005 static contract: lifecycle predicate, both-ended corrections, fail-closed posting, role-agnostic activation
+ℹ tests 17
+ℹ pass 17
+ℹ fail 0
+EXIT=0
+```
+
+Full branch suite on the same clean cluster and Node version:
+
+```text
+$ node --test tests/*.test.mjs
+ℹ tests 222
+ℹ pass 221
+ℹ fail 1
+EXIT=1
+```
+
+The single failure remains the pre-existing out-of-TOUCH PIVOT-004 test that creates a policy with the literal global role `saven_customer_app` on a namespaced pristine cluster. It is unchanged from R3 and was not repaired here. No global SAVEN roles were created to mask it.
+
+### Explicit limits (R4)
+
+1. **No application integration or UI.** AUTH-006 gates verified application context; PIVOT-013 owns command/policy/adapter integration; a UI contract owns Delete/Voided pages and RBAC settings.
+2. **Approval resource support is the plain-journal/void shape.** The resolver deliberately fails closed on other command shapes until a later reviewed adapter defines their canonical resource; it does not infer authority from the action alone.
+3. **Auth-session admission of the approver is checked at the approval decision.** Execution revalidates the tenant-local membership and current approval/resource authority without becoming a cross-principal auth-session oracle. AUTH-006 owns server-side session identity.
+4. **No fine-grained void visibility.** D-014 role-agnostic database reads remain; application RBAC owns visibility.
+5. **Denial durability is application-side.** PostgreSQL has no autonomous transaction; the kernel writes `void_denials` in a separate transaction.
+6. **Operational posting/void reconciliation remains a PIVOT-013 limit.** The plain-journal boundary is explicit, not parity.
+7. **Locked-period voiding is refused.** A future authorized exception requires its own evidence.
+8. **PIVOT-006** still owns generic audit payload 041; 042 protects only its own void audit rows.
+9. **Private packaging** must implement the same controls locally without vendor authority.
+
+### EXTENSIBILITY
+
+compliant: no business-role names or read-visibility predicates were added; approver authority and policy applicability are data-driven, versioned and fail closed on malformed/ambiguous configuration; the selected policy identities and matching role ids are bound into the snapshot rather than inferred later; the dedicated owner received only the exact `approval_policy.role_id` column grant; source/native/reference code, applied bytes, numbering and audit retention remain preserved. The plain-journal approval/resource boundary is an explicit extension point for a later reviewed adapter.
+
+### GIT
+
+branch=opencode/pivot-005-immutability base=testing-1 @ 70dde6b (R3 delivery 09a25ac) commits=pushed with this report merged=no

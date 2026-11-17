@@ -188,15 +188,23 @@ async function approve(db, {tenant = T1, user = U2, legacy = 'user-2', commandId
   `, [legacy, tenant, commandId]), {commit: true});
 }
 
-async function addReviewer(db, {tenant = T1, user = U2, legacy = 'user-2', email = 'u2@example.test', roleId = 'reviewer', denial = false} = {}) {
+async function addReviewer(db, {
+  tenant = T1,
+  user = U2,
+  legacy = 'user-2',
+  email = 'u2@example.test',
+  roleId = 'reviewer',
+  denial = false,
+  companies = ['*'],
+  branches = ['*'],
+  accounts = ['*'],
+  maxMinor,
+} = {}) {
   await addIdentity(db, {tenant, user, legacy, email});
   if (!denial) {
-    await addTenantRole(db, {
-      tenant,
-      legacy,
-      roleId,
-      permissions: {actions: ['journal.approve'], companies: ['*'], branches: ['*'], accounts: ['*'], review: false},
-    });
+    const permissions = {actions: ['journal.approve'], companies, branches, accounts, review: false};
+    if (maxMinor !== undefined) permissions.maxMinor = maxMinor;
+    await addTenantRole(db, {tenant, legacy, roleId, permissions});
   }
 }
 
@@ -208,13 +216,14 @@ async function addPolicy(db, {
   threshold = 100,
   requiresDifferent = true,
   active = true,
+  roleId = null,
 } = {}) {
   await db.adminQuery(`
     INSERT INTO tenant_data.approval_policy
-      (tenant_id, policy_key, version, action_type, approval_threshold_amount, currency,
+      (tenant_id, policy_key, version, action_type, role_id, approval_threshold_amount, currency,
        requires_different_approver, is_active, effective_from)
-    VALUES ($1::uuid, $2, $3, 'accounting.entry.void', $4, $5, $6, $7, now())
-  `, [tenant, key, version, threshold, currency, requiresDifferent, active]);
+    VALUES ($1::uuid, $2, $3, 'accounting.entry.void', $4, $5, $6, $7, $8, now())
+  `, [tenant, key, version, roleId, threshold, currency, requiresDifferent, active]);
 }
 
 const voidArgs = (entry, {tenant = T1, actor = 'user-1', key = 'idem-1', reason = 'duplicate', approval = null} = {}) =>
@@ -547,6 +556,208 @@ test('PIVOT-005 approval policy is currency-matched, deterministic, exact and re
 // ---------------------------------------------------------------------------
 // Posting boundary: supported plain journal only, unsupported shapes fail closed
 // ---------------------------------------------------------------------------
+
+async function pendingCommandApproval(db, {commandId, payload, digest = 'd'}) {
+  await db.adminQuery(`
+    INSERT INTO tenant_data.command_inbox(tenant_id, id, actor, digest, payload, state, created_at)
+      VALUES ($1::uuid, $2, 'user-1', $3, $4, 'ACCEPTED_PENDING', 0)
+  `, [T1, commandId, digest, JSON.stringify(payload)]);
+  await db.adminQuery(`
+    INSERT INTO tenant_data.approval_requests(tenant_id, command_id, payload_digest, policy_snapshot, state)
+      VALUES ($1::uuid, $2, $3, '{}', 'PENDING')
+  `, [T1, commandId, digest]);
+}
+
+test('PIVOT-005 approver authority applies the reviewer exact accounts and maxMinor at decision and execution', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await grantVoid(db, {review: true});
+    await addReviewer(db, {user: U2, legacy: 'user-2', email: 'u2@example.test', roleId: 'reviewer-valid',
+      accounts: ['1000', '4000'], maxMinor: 100});
+    await addReviewer(db, {user: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', legacy: 'user-4', email: 'u4@example.test',
+      roleId: 'reviewer-account', accounts: ['1000'], maxMinor: 100});
+    await addReviewer(db, {user: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', legacy: 'user-5', email: 'u5@example.test',
+      roleId: 'reviewer-low', accounts: ['*'], maxMinor: 99});
+    await addReviewer(db, {user: 'ffffffff-ffff-4fff-8fff-ffffffffffff', legacy: 'user-6', email: 'u6@example.test',
+      roleId: 'reviewer-malformed', accounts: ['*'], maxMinor: '100'});
+    await addReviewer(db, {user: '99999999-9999-4999-8999-999999999999', legacy: 'user-7', email: 'u7@example.test',
+      roleId: 'reviewer-company', companies: ['other'], accounts: ['*'], maxMinor: 100});
+    await addReviewer(db, {user: U3, legacy: 'user-3', email: 'u3@example.test', roleId: 'reviewer-wild'});
+
+    const entries = ['entry-valid', 'entry-account', 'entry-low', 'entry-malformed', 'entry-company', 'entry-exec'];
+    for (const entry of entries) await postedEntry(db, entry);
+
+    const prepare = async (entry, commandId, key) => {
+      const submission = await registerVoidSubmission(db, {commandId, entry, key});
+      await requestApproval(db, {commandId, submission});
+      return submission;
+    };
+
+    // Valid scoped reviewer: both accounts and the exact maxMinor boundary pass,
+    // and the same helper is re-run successfully at void execution.
+    await prepare('entry-valid', 'void-valid', 'valid-1');
+    await approve(db, {commandId: 'void-valid', user: U2, legacy: 'user-2'});
+    await asUser(db, T1, U1, client => client.query(
+      `SELECT tenant_data.void_posted_entry(${voidArgs('entry-valid', {key: 'valid-1', approval: 'void-valid'})})`), {commit: true});
+
+    // Reviewer scoped to only one of the two target accounts cannot approve.
+    await prepare('entry-account', 'void-account', 'account-1');
+    await asUser(db, T1, 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-4'
+        WHERE tenant_id='${T1}' AND command_id='void-account'`),
+      /APPROVAL_AUTHORITY_REQUIRED/,
+    ));
+
+    // maxMinor is an exact ceiling; 99 cannot approve 100.
+    await prepare('entry-low', 'void-low', 'low-1');
+    await asUser(db, T1, 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-5'
+        WHERE tenant_id='${T1}' AND command_id='void-low'`),
+      /APPROVAL_AUTHORITY_REQUIRED/,
+    ));
+
+    // A malformed present maxMinor fails closed rather than becoming unlimited.
+    await prepare('entry-malformed', 'void-malformed', 'malformed-1');
+    await asUser(db, T1, 'ffffffff-ffff-4fff-8fff-ffffffffffff', client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-6'
+        WHERE tenant_id='${T1}' AND command_id='void-malformed'`),
+      /APPROVAL_PERMISSION_INVALID/,
+    ));
+
+    // Out-of-scope company cannot approve.
+    await prepare('entry-company', 'void-company', 'company-1');
+    await asUser(db, T1, '99999999-9999-4999-8999-999999999999', client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-7'
+        WHERE tenant_id='${T1}' AND command_id='void-company'`),
+      /APPROVAL_AUTHORITY_REQUIRED/,
+    ));
+
+    // A pending accepted command resolves the immutable payload's company/branch/lines.
+    const pendingPayload = {
+      company: 'alpha', branch: 'main', date: '2026-11-16', narrative: 'pending',
+      lines: [{account: '1000', debit: 100, credit: 0}, {account: '4000', debit: 0, credit: 100}],
+    };
+    await pendingCommandApproval(db, {commandId: 'pending-company', payload: pendingPayload});
+    await asUser(db, T1, '99999999-9999-4999-8999-999999999999', client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-7'
+        WHERE tenant_id='${T1}' AND command_id='pending-company'`),
+      /APPROVAL_AUTHORITY_REQUIRED/,
+    ));
+    await pendingCommandApproval(db, {commandId: 'pending-good', payload: pendingPayload});
+    await asUser(db, T1, U3, client => client.query(
+      `UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-3'
+        WHERE tenant_id='${T1}' AND command_id='pending-good'`), {commit: true});
+
+    // Missing or malformed accepted resource data fails closed; it is never
+    // treated as an unrestricted action-only grant.
+    await pendingCommandApproval(db, {commandId: 'pending-missing', payload: {}});
+    await asUser(db, T1, U3, client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-3'
+        WHERE tenant_id='${T1}' AND command_id='pending-missing'`),
+      /APPROVAL_RESOURCE_UNRESOLVED/,
+    ));
+    await pendingCommandApproval(db, {
+      commandId: 'pending-malformed',
+      payload: {company: 'alpha', branch: 'main', lines: [
+        {account: '1000', debit: '100', credit: 0}, {account: '4000', debit: 0, credit: 100},
+      ]},
+    });
+    await asUser(db, T1, U3, client => assert.rejects(
+      () => client.query(`UPDATE tenant_data.approval_requests SET state='APPROVED', decided_by='user-3'
+        WHERE tenant_id='${T1}' AND command_id='pending-malformed'`),
+      /APPROVAL_RESOURCE_UNRESOLVED/,
+    ));
+
+    // Authority is rechecked at execution: an approver narrowed after approval
+    // cannot execute a void that its current role no longer covers by account or amount.
+    await postedEntry(db, 'entry-exec-limit');
+    await prepare('entry-exec', 'void-exec', 'exec-1');
+    await prepare('entry-exec-limit', 'void-exec-limit', 'exec-2');
+    await approve(db, {commandId: 'void-exec', user: U3, legacy: 'user-3'});
+    await approve(db, {commandId: 'void-exec-limit', user: U3, legacy: 'user-3'});
+    await db.adminQuery(`
+      UPDATE tenant_data.roles
+         SET permissions = '{"actions":["journal.approve"],"companies":["*"],"branches":["*"],"accounts":["1000"],"review":false}'
+       WHERE tenant_id = '${T1}' AND id = 'reviewer-wild'
+    `);
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('entry-exec', {key: 'exec-1', approval: 'void-exec'})})`),
+      /APPROVAL_AUTHORITY_REQUIRED/,
+    ));
+    await db.adminQuery(`
+      UPDATE tenant_data.roles
+         SET permissions = '{"actions":["journal.approve"],"companies":["*"],"branches":["*"],"accounts":["*"],"review":false,"maxMinor":50}'
+       WHERE tenant_id = '${T1}' AND id = 'reviewer-wild'
+    `);
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('entry-exec-limit', {key: 'exec-2', approval: 'void-exec-limit'})})`),
+      /APPROVAL_AUTHORITY_REQUIRED/,
+    ));
+    const partial = (await db.adminQuery(`SELECT count(*)::int AS n FROM tenant_data.entry_voids WHERE entry_id IN ('entry-exec','entry-exec-limit')`)).rows[0].n;
+    assert.equal(partial, 0);
+  });
+});
+
+test('PIVOT-005 approval policy applies only to matching current role identities', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await grantVoid(db);
+    await addReviewer(db);
+
+    // An unrelated role has a much higher-version high-threshold policy. It must not
+    // apply to the requester and must not mask the clerk-specific zero threshold.
+    await db.adminQuery(`
+      INSERT INTO tenant_data.roles(tenant_id, id, name, protected, permissions)
+        VALUES ('${T1}', 'other-role', 'Other', false, '{"actions":["accounting.entry.void"],"companies":["*"],"branches":["*"],"accounts":["*"],"review":false}')
+    `);
+    await addPolicy(db, {key: 'other-role-policy', version: 9, roleId: 'other-role', threshold: 1000, currency: 'PKR'});
+    await addPolicy(db, {key: 'global-policy', version: 5, roleId: null, threshold: 1000, currency: 'PKR'});
+    await addPolicy(db, {key: 'clerk-policy', version: 1, roleId: 'clerk', threshold: 0, currency: 'PKR'});
+
+    const single = await policyDecision(db, {actor: 'user-1', amount: 100, entry: 'policy-role-1', digest: 'd1'});
+    assert.deepEqual(single.matchingRoleIds, ['clerk']);
+    assert.equal(single.review, true);
+    assert.equal(single.policyVersion, 1);
+    assert.equal(single.policyKey, 'clerk-policy');
+    assert.equal(single.policies.length, 1);
+    assert.deepEqual(single.policies[0], {
+      roleId: 'clerk', policyKey: 'clerk-policy', scope: 'ROLE', version: 1, currency: 'PKR',
+      thresholdMinor: 0, requiresDifferentApprover: true,
+    });
+    assert.ok(!single.policies.some(policy => policy.roleId === 'other-role'));
+
+    // A second matching role without a specific policy falls back to the global one.
+    // The combined result remains conservative: the zero threshold still controls.
+    await addTenantRole(db, {tenant: T1, legacy: 'user-1', roleId: 'clerk-2', permissions: voidPermissions()});
+    const multi = await policyDecision(db, {actor: 'user-1', amount: 100, entry: 'policy-role-1', digest: 'd1'});
+    assert.deepEqual(multi.matchingRoleIds, ['clerk', 'clerk-2']);
+    assert.deepEqual(multi.policies.map(policy => [policy.roleId, policy.scope, policy.version]),
+      [['clerk', 'ROLE', 1], ['clerk-2', 'GLOBAL', 5]]);
+    assert.equal(multi.review, true);
+    assert.equal(multi.policyVersion, 1);
+    assert.ok(!multi.policies.some(policy => policy.roleId === 'other-role'));
+
+    // Two global keys at the same maximum version are genuine ambiguity and fail closed.
+    await addPolicy(db, {key: 'global-policy-b', version: 5, roleId: null, threshold: 900, currency: 'PKR'});
+    await assert.rejects(
+      () => policyDecision(db, {actor: 'user-1', amount: 100, entry: 'policy-role-1', digest: 'd1'}),
+      /VOID_POLICY_AMBIGUOUS/,
+    );
+    await db.adminQuery(`DELETE FROM tenant_data.approval_policy WHERE tenant_id='${T1}' AND policy_key='global-policy-b'`);
+
+    // The approval snapshot binds applicability. Removing a matching role after approval
+    // changes the decision and invalidates the approval at execution.
+    await postedEntry(db, 'policy-role-1');
+    const submission = await registerVoidSubmission(db, {commandId: 'void-role-1', entry: 'policy-role-1', key: 'role-1'});
+    await requestApproval(db, {commandId: 'void-role-1', submission});
+    await approve(db, {commandId: 'void-role-1'});
+    await db.adminQuery(`DELETE FROM tenant_data.assignments WHERE tenant_id='${T1}' AND role_id='clerk-2'`);
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`SELECT tenant_data.void_posted_entry(${voidArgs('policy-role-1', {key: 'role-1', approval: 'void-role-1'})})`),
+      /VOID_APPROVAL_STALE/,
+    ));
+  });
+});
 
 test('PIVOT-005 runtime posting is exact for a plain journal and refuses unreconciled trade/stock shapes', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
@@ -1134,10 +1345,24 @@ test('PIVOT-005 static contract: lifecycle predicate, both-ended corrections, fa
   assert.match(voiding, /VOID_POLICY_CURRENCY_MISMATCH/);
   assert.match(voiding, /VOID_POLICY_AMBIGUOUS/);
   assert.match(voiding, /ORDER BY r\.id/);
+  assert.match(voiding, /ap\.role_id = v_policy_role/);
+  assert.match(voiding, /'matchingRoleIds', to_jsonb\(v_role_ids\)/);
+  assert.match(voiding, /'policies', v_policies/);
+  assert.match(voiding, /'scope', v_candidate_scope/);
+  assert.match(voiding, /candidate_threshold < v_effective_threshold/);
   assert.match(voiding, /VOID_PERIOD_LOCKED/);
   assert.match(voiding, /VOID_APPROVAL_STALE/);
   assert.match(voiding, /immutability_040_approver_authority/);
+  assert.match(voiding, /approval_policy\.role_id:SELECT/);
   assert.doesNotMatch(voiding, /permissions::jsonb -> 'accounting\.entry\.void'/);
+
+  // Approver authority resolves a complete resource and applies one role's
+  // account/maxMinor grant at both decision and execution.
+  assert.match(payload, /immutability_040_approval_resource/);
+  assert.match(payload, /APPROVAL_RESOURCE_UNRESOLVED/);
+  assert.match(payload, /v_account_scope/);
+  assert.match(payload, /v_amount > v_max::bigint/);
+  assert.match(payload, /APPROVAL_AUTHORITY_REQUIRED/);
 
   // Both ends of a correction are locked and checked, before and after posting.
   assert.match(payload, /v_lock_original := tenant_data\.immutability_040_lock_key/);
