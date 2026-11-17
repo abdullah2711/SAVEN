@@ -90,6 +90,79 @@ $fn$;
 COMMENT ON FUNCTION tenant_data.immutability_041_row_key(regclass, jsonb) IS
   'PIVOT-006 payload 041: canonical JSON target identity built from the table primary key columns. Catalog-driven; no per-table hardcoded key list.';
 
+-- Exact reviewed schema fingerprint (serialization contract version 1). The
+-- fingerprint covers every registered table's ordered column names, base type names and
+-- typmods, so a new/renamed/retyped column cannot inherit raw retention silently. The
+-- expected values are the per-schema review records for the registered table inventory.
+CREATE FUNCTION tenant_data.immutability_041_schema_fingerprint(p_table regclass)
+RETURNS text
+LANGUAGE sql STABLE
+SET search_path = pg_catalog
+AS $fn$
+  SELECT encode(sha256(convert_to(
+    string_agg(a.attname || ':' || t.typname || ':' || a.atttypmod, ',' ORDER BY a.attnum),
+    'UTF8')), 'hex')
+  FROM pg_attribute a
+  JOIN pg_type t ON t.oid = a.atttypid
+  WHERE a.attrelid = p_table AND a.attnum > 0 AND NOT a.attisdropped
+$fn$;
+
+CREATE FUNCTION tenant_data.immutability_041_expected_fingerprint(p_table regclass)
+RETURNS text
+LANGUAGE sql IMMUTABLE
+SET search_path = pg_catalog
+AS $fn$
+  SELECT CASE p_table::text
+    WHEN 'tenant_data.account_profiles' THEN '180d26137c69e3dbc211d423c7f7b4d8e2ee10f767957a4ce24dc93e76485738'
+    WHEN 'tenant_data.accounts' THEN 'b9c9953a8dacbf9c02421c61b160fa02f6fb72e50da2fdb543560bc5dac11339'
+    WHEN 'tenant_data.approval_policy' THEN '1802db30499fb7941ed9d0dfd9303eb393c6143f0edc313b0a7934b6a5ef8a68'
+    WHEN 'tenant_data.approval_requests' THEN 'e5bce7fcaf994a14c4a12a3e5138a9b2bc6ad233e425245b7772ca1e0bb7de56'
+    WHEN 'tenant_data.assignments' THEN '3feb3c05cfc38e3ffadd5eee6713cfaffabccbbcecaa61c1e403755310cf57af'
+    WHEN 'tenant_data.business' THEN 'a052fd48e1b8b3855746fefc830194288db36376e7d7451d74b836d9ea4865bd'
+    WHEN 'tenant_data.business_rule' THEN '8b292c992d82925c7062b4935b0cad3b480055c7ddc4b245c0648611237e2d70'
+    WHEN 'tenant_data.command_decisions' THEN '7a78993e1b2d00aef0f64ac96ef52a756e5711c1f915b931dd67b3baaf89e41b'
+    WHEN 'tenant_data.command_files' THEN '9ddcff6d30893cd8766fb1694c1de0e6e3619bcc08c1970149600368413adbfa'
+    WHEN 'tenant_data.company_profiles' THEN 'abed9c8c70fdc327351bdc933f1d270e4a61fae57d858bc2cd4b89516b5ec438'
+    WHEN 'tenant_data.company_settings' THEN '5e6b03f5b71d20d14f764e9bc86375fa8cd07636781f09ce8d7375a4a3375e5b'
+    WHEN 'tenant_data.denials' THEN 'dc72f0e5ffd64f8a0d6e69b6f5da8c88e9ad9c192fc7322b48dd99c4602c6f4b'
+    WHEN 'tenant_data.document_numbers' THEN 'c82a4b5b3b500b1d915075bc71ecf9ce27d57a47f7ce795b1b49011c619173d8'
+    WHEN 'tenant_data.document_registry' THEN 'c66762675da6ddf3e26f1a228fa57a6e89e28a034617ea8e4659a979d38c605b'
+    WHEN 'tenant_data.document_revisions' THEN 'fb82b76e639577ea7f6ac2a3eab3bf456216eed28f332c1c079cfe76ea6ec5e4'
+    WHEN 'tenant_data.document_sequences' THEN '354b421aab37914ea073327fdcce5e7c00b5951b4f2e4a2f96867230529e369c'
+    WHEN 'tenant_data.inventory_controls' THEN '5b2b6dd46ce764a4071c2f364b9a8a6b3c27d72201b90056eba4b8a8689c55f0'
+    WHEN 'tenant_data.journal_corrections' THEN '3d2d2295274de99ac2a65202df2cd8e83a0505d68fa52ae32358ea4a02c87d08'
+    WHEN 'tenant_data.journal_drafts' THEN '5b1cadf4530750fd05a23ddb7a4c42d722f34157dde9bcdb9b186f73942b8949'
+    WHEN 'tenant_data.journal_lines' THEN 'd2dfe225e478095f7a8d63ddb52ffb3e8eaa3299da9fd2b110db374dace319d5'
+    WHEN 'tenant_data.journals' THEN '6c1ddc15ecfa58b8c4e611fe74c469064362ad5ee50a860b1e416d2e4b2d3715'
+    WHEN 'tenant_data.members' THEN '3d0b59fb56c762935f148a7852981ad531f2eaa03f8b6082eeafcdded8fc665c'
+    WHEN 'tenant_data.periods' THEN '1417a27b40c5dbe009b9a02b4e91a892e54b5e9e4dc996c3efe092a542d4ad81'
+    WHEN 'tenant_data.posting_constraint' THEN '3a2f51ebf39769949825c1cc2f390ca87e70000b4d46adc56d8cb8f09f560b45'
+    WHEN 'tenant_data.reference_values' THEN 'a44a45020dd6d97d58cc81cce47c2cb13228fbea125797e73987d8ceca52324b'
+    WHEN 'tenant_data.roles' THEN 'f6d07c4129a008c1309460413a063145dbf8295c07b6aca370dcef909ca5a98b'
+    WHEN 'tenant_data.stock_balances' THEN '4f8245ee8b7734b63a56f254802be2a41cc1b82de393fb9e79a3a33bd5535003'
+    WHEN 'tenant_data.stock_items' THEN '6913bb217f44388df1d0ebbc09684e7c55ad87ec90ac8c34d840480d3afaa804'
+    WHEN 'tenant_data.stock_movements' THEN '39003a6156c3ca12eeacc93372c65e3231c42e670eba4058eaa57c17b60b2093'
+    WHEN 'tenant_data.stock_operations' THEN '8f9dea0e00e5b0a9da7921cfbacf379bd9866445306148fe760643e5a6823acb'
+    WHEN 'tenant_data.support_grants' THEN 'bd78dc94a1341f2f69cd911998582854b4f5956b81b9441655364a6a76c82201'
+    WHEN 'tenant_data.tax_profile' THEN 'd514cef534d9d078a51ea6d7da3ee7c58977ea263ea78ea471b8c7ee6e8cce92'
+    WHEN 'tenant_data.trade_allocations' THEN 'cb99415e7df1a46cf35d4378d037cdaaaca4bc71749292f143f831088e6d905b'
+    WHEN 'tenant_data.trade_controls' THEN 'fec35f2f0947331c4957ed8a7e360bacb06c2e890d80ffd68c124d32245edb64'
+    WHEN 'tenant_data.trade_credit_lines' THEN '8609e512a1ba085033469368c5b54f6a21480f5757948be608fa5e9bfe80b18e'
+    WHEN 'tenant_data.trade_credits' THEN '50de39ddcf1646f69bf725537c35470a91b4779813c8418d3561167861f9a322'
+    WHEN 'tenant_data.trade_documents' THEN '7063fd368dd80a4d395e7067010585aef268132893f6deb6ad97e193671ded04'
+    WHEN 'tenant_data.trade_lines' THEN 'd263ecfd5cdd3f13d3692f6ca4d4412129b9f18316052da1472812dd13969606'
+    WHEN 'tenant_data.trade_operations' THEN 'b3423d16511215fe6ee4c0e12dec32ccdf290f13c1caa58690fed14ab7a17d9e'
+    WHEN 'tenant_data.trade_parties' THEN '527946b6ee579a1b1c7d656f37acdb377dd060aa769e39f3a32fed47357e1cf4'
+    WHEN 'tenant_data.verified_entitlement' THEN 'bb1fba9f3a33e748f2ce80b7fb2712c5176dfafef4598f750315ff1910cf6acb'
+    WHEN 'tenant_data.warehouses' THEN '74c0e5b2519adb6e031460b20cf46e1de04a379a4d3066085b45f3c556b51887'
+  END
+$fn$;
+
+COMMENT ON FUNCTION tenant_data.immutability_041_schema_fingerprint(regclass) IS
+  'PIVOT-006 payload 041 version 1: exact ordered column-name/base-type/typmod fingerprint of one registered table.';
+COMMENT ON FUNCTION tenant_data.immutability_041_expected_fingerprint(regclass) IS
+  'PIVOT-006 payload 041 version 1: reviewed per-table schema fingerprints for the explicit registered audit inventory, including parameterized numeric shapes.';
+
 -- Versioned serialization contract (version 1). JSONB and unreviewed text are replaced
 -- with a digest/redaction marker; reviewed business text and structured scalar columns
 -- are retained; an unreviewed column type fails closed rather than raw-logging it.
@@ -103,6 +176,8 @@ DECLARE
   v_redacted text[] := ARRAY[]::text[];
   v_col record;
   v_value jsonb;
+  v_actual_fp text;
+  v_expected_fp text;
   v_safe_text text[] := ARRAY[
     'id','code','company','branch','account','journal_id','command_id','actor','user_id',
     'role_id','name','title','kind','reference','party_id','warehouse','item','uom',
@@ -120,9 +195,16 @@ DECLARE
     'print_footer','project','valuation_method','allocation_policy'
   ];
 BEGIN
+  v_actual_fp := tenant_data.immutability_041_schema_fingerprint(p_table);
+  v_expected_fp := tenant_data.immutability_041_expected_fingerprint(p_table);
+  IF v_expected_fp IS NULL OR v_actual_fp IS DISTINCT FROM v_expected_fp THEN
+    RAISE EXCEPTION 'AUDIT_SERIALIZATION_SCHEMA_CHANGED: table % does not match the reviewed serialization inventory', p_table;
+  END IF;
+
   FOR v_col IN
-    SELECT a.attname, format_type(a.atttypid, a.atttypmod) AS typ
+    SELECT a.attname, t.typname AS typ
     FROM pg_attribute a
+    JOIN pg_type t ON t.oid = a.atttypid
     WHERE a.attrelid = p_table AND a.attnum > 0 AND NOT a.attisdropped
     ORDER BY a.attnum
   LOOP
@@ -135,7 +217,7 @@ BEGIN
         'type', v_col.typ,
         'sha256', encode(sha256(convert_to(v_value::text, 'UTF8')), 'hex')));
       v_redacted := array_append(v_redacted, v_col.attname);
-    ELSIF v_col.typ IN ('text', 'character varying', 'character') THEN
+    ELSIF v_col.typ IN ('text', 'varchar', 'bpchar') THEN
       IF v_col.attname = ANY(v_safe_text) THEN
         v_row := v_row || jsonb_build_object(v_col.attname, v_value);
       ELSE
@@ -145,10 +227,10 @@ BEGIN
           'sha256', encode(sha256(convert_to(v_value::text, 'UTF8')), 'hex')));
         v_redacted := array_append(v_redacted, v_col.attname);
       END IF;
-    ELSIF v_col.typ IN (
-      'bigint','integer','smallint','numeric','boolean','uuid',
-      'timestamp with time zone','timestamp without time zone','date',
-      'double precision','real') THEN
+    ELSIF v_col.typ IN ('int8','int4','int2','numeric','bool','uuid',
+                        'timestamptz','timestamp','date') THEN
+      -- Catalog base type identity. Parameterized numerics (for example
+      -- numeric(20,4) and numeric(9,6)) keep their exact JSON numeric value.
       v_row := v_row || jsonb_build_object(v_col.attname, v_value);
     ELSE
       RAISE EXCEPTION 'AUDIT_SERIALIZATION_UNSUPPORTED: column %.% has unreviewed type %', p_table, v_col.attname, v_col.typ;
@@ -411,6 +493,10 @@ COMMENT ON FUNCTION tenant_data.immutability_041_audit_truncate_guard() IS
 
 ALTER FUNCTION tenant_data.immutability_041_row_key(regclass, jsonb)
   OWNER TO saven_audit_definer;
+ALTER FUNCTION tenant_data.immutability_041_schema_fingerprint(regclass)
+  OWNER TO saven_audit_definer;
+ALTER FUNCTION tenant_data.immutability_041_expected_fingerprint(regclass)
+  OWNER TO saven_audit_definer;
 ALTER FUNCTION tenant_data.immutability_041_serialize(regclass, jsonb)
   OWNER TO saven_audit_definer;
 ALTER FUNCTION tenant_data.immutability_041_audit_origin(uuid, text, jsonb, text)
@@ -426,6 +512,8 @@ ALTER FUNCTION tenant_data.immutability_041_audit_truncate_guard()
   OWNER TO saven_migrator;
 
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_row_key(regclass, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_041_schema_fingerprint(regclass) FROM PUBLIC;
+REVOKE ALL ON FUNCTION tenant_data.immutability_041_expected_fingerprint(regclass) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_serialize(regclass, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_audit_origin(uuid, text, jsonb, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION tenant_data.immutability_041_audit_row() FROM PUBLIC;
@@ -484,8 +572,10 @@ DECLARE
     'tenant_data.session_admitted:EXECUTE'
   ];
   owned_functions text[] := ARRAY[
-    'immutability_041_row_key','immutability_041_serialize','immutability_041_audit_origin',
-    'immutability_041_audit_row','immutability_041_audit_native_guard'
+    'immutability_041_row_key','immutability_041_schema_fingerprint',
+    'immutability_041_expected_fingerprint','immutability_041_serialize',
+    'immutability_041_audit_origin','immutability_041_audit_row',
+    'immutability_041_audit_native_guard'
   ];
 BEGIN
   IF v_owner IS NULL THEN RAISE EXCEPTION 'AUDIT-OWNER: audit owner role is missing'; END IF;
@@ -523,7 +613,7 @@ BEGIN
   SELECT count(*) INTO v_count
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE p.proowner = v_owner AND n.nspname = 'tenant_data' AND p.proname = ANY (owned_functions);
-  IF v_count <> 5 THEN RAISE EXCEPTION 'AUDIT-OWNER: expected five owned audit functions, found %', v_count; END IF;
+  IF v_count <> 7 THEN RAISE EXCEPTION 'AUDIT-OWNER: expected seven owned audit functions, found %', v_count; END IF;
 
   SELECT string_agg(datname, ', ') INTO v_bad FROM pg_database WHERE datdba = v_owner;
   IF v_bad IS NOT NULL THEN RAISE EXCEPTION 'AUDIT-OWNER: owns databases: %', v_bad; END IF;
@@ -593,7 +683,8 @@ BEGIN
   FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
   WHERE p.proowner = v_owner AND n.nspname = 'tenant_data'
     AND NOT (
-      (p.proname IN ('immutability_041_row_key','immutability_041_serialize')
+      (p.proname IN ('immutability_041_row_key','immutability_041_serialize',
+                     'immutability_041_schema_fingerprint','immutability_041_expected_fingerprint')
         AND NOT p.prosecdef AND p.proconfig = ARRAY['search_path=pg_catalog'])
       OR (p.proname = 'immutability_041_audit_origin'
         AND NOT p.prosecdef AND p.proconfig = ARRAY['search_path=pg_catalog, tenant_data'])

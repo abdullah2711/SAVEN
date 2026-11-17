@@ -369,8 +369,12 @@ test('PIVOT-006 static contract: immutable payload, explicit registration and no
   assert.match(audit, /immutability_041_audit_native_guard/);
   assert.match(audit, /AUDIT_ACTOR_MISMATCH/);
   assert.match(audit, /immutability_041_serialize/);
+  assert.match(audit, /immutability_041_schema_fingerprint/);
+  assert.match(audit, /immutability_041_expected_fingerprint/);
+  assert.match(audit, /AUDIT_SERIALIZATION_SCHEMA_CHANGED/);
   assert.match(audit, /serializationVersion/);
   assert.match(audit, /AUDIT_SERIALIZATION_UNSUPPORTED/);
+  assert.match(audit, /numeric/);
   assert.match(audit, /immutability_041_audit_origin/);
   assert.match(audit, /AUDIT_PROVENANCE_INVALID/);
   assert.match(audit, /reference_values/);
@@ -398,6 +402,9 @@ test('PIVOT-006 static contract: immutable payload, explicit registration and no
   assert.match(readme, /PIVOT-006/);
   assert.match(readme, /saven_audit_definer/);
   assert.match(readme, /serialization/i);
+  assert.match(readme, /fingerprint/i);
+  assert.match(readme, /numeric\(20,4\)/);
+  assert.match(readme, /numeric\(9,6\)/);
   assert.match(readme, /provenance/i);
   assert.match(readme, /quiesc/i);
   assert.match(readme, /append-only actor-bound tenant change audit/i);
@@ -444,9 +451,11 @@ test('PIVOT-006 dedicated audit owner has only the reviewed authority and refuse
       WHERE r.rolname = $1 AND p.proname LIKE 'immutability_041_%'
       ORDER BY p.proname
     `, [role])).rows;
-    assert.equal(owned.length, 5);
+    assert.equal(owned.length, 7);
     const config = Object.fromEntries(owned.map(row => [row.proname, [row.prosecdef, row.proconfig]]));
     assert.deepEqual(config.immutability_041_row_key, [false, ['search_path=pg_catalog']]);
+    assert.deepEqual(config.immutability_041_schema_fingerprint, [false, ['search_path=pg_catalog']]);
+    assert.deepEqual(config.immutability_041_expected_fingerprint, [false, ['search_path=pg_catalog']]);
     assert.deepEqual(config.immutability_041_serialize, [false, ['search_path=pg_catalog']]);
     assert.deepEqual(config.immutability_041_audit_origin, [false, ['search_path=pg_catalog, tenant_data']]);
     assert.deepEqual(config.immutability_041_audit_row, [true, ['search_path=pg_catalog, tenant_data']]);
@@ -666,7 +675,7 @@ test('PIVOT-006 serialization redacts extensible payloads and validates provenan
     await db.adminQuery('ALTER TABLE tenant_data.accounts ADD COLUMN p006_blob bytea');
     await asUser(db, T1, U1, client => assert.rejects(
       () => client.query(`INSERT INTO tenant_data.accounts(tenant_id, code, title) VALUES ('${T1}', '9997', 'Unsupported')`),
-      /AUDIT_SERIALIZATION_UNSUPPORTED/,
+      /AUDIT_SERIALIZATION_(SCHEMA_CHANGED|UNSUPPORTED)/,
     ));
     await db.adminQuery('ALTER TABLE tenant_data.accounts DROP COLUMN p006_blob');
     const unsupported = (await db.adminQuery(`
@@ -851,5 +860,157 @@ test('PIVOT-006 activation is atomic and the 041-without-dispatcher window is ex
     const owner = (await db.adminQuery('SELECT count(*)::int AS n FROM pg_roles WHERE rolname = $1', [db.extraRoles.auditDefiner])).rows[0].n;
     const functions = (await db.adminQuery("SELECT count(*)::int AS n FROM pg_proc WHERE proname LIKE 'immutability_041_%'")).rows[0].n;
     assert.deepEqual({owner, functions}, {owner: 0, functions: 0});
+  });
+});
+
+test('PIVOT-006 serializes parameterized numeric schemas exactly and covers every registered table', async () => {
+  const auditedTables = [
+    'account_profiles','accounts','approval_policy','approval_requests','assignments',
+    'business','business_rule','command_decisions','command_files','company_profiles',
+    'company_settings','denials','document_numbers','document_registry','document_revisions',
+    'document_sequences','inventory_controls','journal_corrections','journal_drafts',
+    'journal_lines','journals','members','periods','posting_constraint','reference_values',
+    'roles','stock_balances','stock_items','stock_movements','stock_operations','support_grants',
+    'tax_profile','trade_allocations','trade_controls','trade_credit_lines','trade_credits',
+    'trade_documents','trade_lines','trade_operations','trade_parties','verified_entitlement',
+    'warehouses',
+  ];
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    await activate(db);
+
+    const fingerprints = (await db.adminQuery(`
+      SELECT c.relname,
+             tenant_data.immutability_041_schema_fingerprint(c.oid) AS actual,
+             tenant_data.immutability_041_expected_fingerprint(c.oid) AS expected
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'tenant_data' AND c.relname = ANY($1)
+      ORDER BY c.relname
+    `, [auditedTables])).rows;
+    assert.equal(fingerprints.length, auditedTables.length);
+    for (const row of fingerprints) {
+      assert.equal(row.actual, row.expected, `${row.relname} fingerprint must match the reviewed inventory`);
+    }
+
+    const numericShapes = (await db.adminQuery(`
+      SELECT c.relname, a.attname, format_type(a.atttypid, a.atttypmod) AS formatted
+      FROM pg_attribute a
+      JOIN pg_class c ON c.oid = a.attrelid
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = 'tenant_data'
+        AND c.relname IN ('approval_policy','tax_profile')
+        AND a.attname IN ('max_self_approval_amount','approval_threshold_amount','rate')
+      ORDER BY c.relname, a.attname
+    `)).rows;
+    assert.deepEqual(numericShapes, [
+      {relname: 'approval_policy', attname: 'approval_threshold_amount', formatted: 'numeric(20,4)'},
+      {relname: 'approval_policy', attname: 'max_self_approval_amount', formatted: 'numeric(20,4)'},
+      {relname: 'tax_profile', attname: 'rate', formatted: 'numeric(9,6)'},
+    ]);
+
+    // Real customer-role INSERT/UPDATE on the exact registered numeric shapes.
+    await asUser(db, T1, U1, client => client.query(`
+      INSERT INTO tenant_data.approval_policy(tenant_id, policy_key, version, action_type, role_id,
+        max_self_approval_amount, approval_threshold_amount, currency, requires_different_approver, is_active)
+        VALUES ('${T1}', 'p006-numeric', 1, 'accounting.entry.void', NULL, 123.4567, 987.6543, 'PKR', false, true)
+    `), {commit: true});
+    const insertedPolicy = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'approval_policy' AND event = 'TENANT_CHANGE_INSERT'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(insertedPolicy.after.row.max_self_approval_amount, 123.4567);
+    assert.equal(insertedPolicy.after.row.approval_threshold_amount, 987.6543);
+
+    await asUser(db, T1, U1, client => client.query(`
+      UPDATE tenant_data.approval_policy
+         SET max_self_approval_amount = 0.0001, approval_threshold_amount = 1000000.0000
+       WHERE tenant_id = '${T1}' AND policy_key = 'p006-numeric' AND version = 1
+    `), {commit: true});
+    const updatedPolicy = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'approval_policy' AND event = 'TENANT_CHANGE_UPDATE'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(updatedPolicy.before.row.approval_threshold_amount, 987.6543);
+    assert.equal(updatedPolicy.after.row.max_self_approval_amount, 0.0001);
+    assert.equal(updatedPolicy.after.row.approval_threshold_amount, 1000000);
+
+    await asUser(db, T1, U1, client => client.query(`
+      INSERT INTO tenant_data.tax_profile(tenant_id, tax_code, version, jurisdiction, tax_type, rate, currency, is_active)
+        VALUES ('${T1}', 'P006-TAX', 1, 'PK', 'sales_tax', 0.075000, 'PKR', true)
+    `), {commit: true});
+    const insertedTax = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'tax_profile' AND event = 'TENANT_CHANGE_INSERT'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(insertedTax.after.row.rate, 0.075);
+
+    await asUser(db, T1, U1, client => client.query(`
+      UPDATE tenant_data.tax_profile SET rate = 0.125000
+       WHERE tenant_id = '${T1}' AND tax_code = 'P006-TAX' AND version = 1
+    `), {commit: true});
+    const updatedTax = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'tax_profile' AND event = 'TENANT_CHANGE_UPDATE'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(updatedTax.before.row.rate, 0.075);
+    assert.equal(updatedTax.after.row.rate, 0.125);
+
+    // Rollback path: a rolled-back decimal write leaves neither source nor audit row.
+    await asUser(db, T1, U1, client => client.query(`
+      INSERT INTO tenant_data.approval_policy(tenant_id, policy_key, version, action_type, role_id,
+        max_self_approval_amount, approval_threshold_amount, currency, requires_different_approver, is_active)
+        VALUES ('${T1}', 'p006-rollback', 1, 'accounting.entry.void', NULL, 1.2345, 2.3456, 'PKR', false, true)
+    `), {commit: false});
+    const rollback = (await db.adminQuery(`
+      SELECT (SELECT count(*)::int FROM tenant_data.approval_policy WHERE policy_key = 'p006-rollback') AS policies,
+             (SELECT count(*)::int FROM tenant_data.audit_event
+               WHERE entity_type = 'approval_policy'
+                 AND detail_jsonb -> 'after' -> 'row' ->> 'policy_key' = 'p006-rollback') AS audits
+    `)).rows[0];
+    assert.deepEqual(rollback, {policies: 0, audits: 0});
+
+    // DELETE path on a decimal-bearing table under explicit tenant context, then roll back.
+    await db.adminQuery('BEGIN');
+    await db.adminQuery("SELECT set_config('app.current_tenant_id', $1, true), set_config('app.current_user_id', $2, true)", [T1, U1]);
+    await db.adminQuery(`DELETE FROM tenant_data.approval_policy
+      WHERE tenant_id = '${T1}' AND policy_key = 'p006-numeric' AND version = 1`);
+    const deletedPolicy = (await db.adminQuery(`
+      SELECT detail_jsonb FROM tenant_data.audit_event
+      WHERE entity_type = 'approval_policy' AND event = 'TENANT_CHANGE_DELETE'
+      ORDER BY id DESC LIMIT 1
+    `)).rows[0].detail_jsonb;
+    assert.equal(deletedPolicy.before.row.max_self_approval_amount, 0.0001);
+    assert.equal(deletedPolicy.before.row.approval_threshold_amount, 1000000);
+    await db.adminQuery('ROLLBACK');
+    const afterRollback = (await db.adminQuery(`
+      SELECT count(*)::int AS n FROM tenant_data.approval_policy
+      WHERE tenant_id = '${T1}' AND policy_key = 'p006-numeric' AND version = 1
+    `)).rows[0].n;
+    assert.equal(afterRollback, 1);
+
+    // A new column whose name is allow-listed elsewhere must not inherit raw retention.
+    await db.adminQuery('ALTER TABLE tenant_data.accounts ADD COLUMN origin_model text');
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`INSERT INTO tenant_data.accounts(tenant_id, code, title) VALUES ('${T1}', '8888', 'New column')`),
+      /AUDIT_SERIALIZATION_SCHEMA_CHANGED/,
+    ));
+    await db.adminQuery('ALTER TABLE tenant_data.accounts DROP COLUMN origin_model');
+
+    // A supported base-type change is also a reviewed-schema change and fails closed.
+    await db.adminQuery('ALTER TABLE tenant_data.accounts ALTER COLUMN title TYPE varchar(400)');
+    await asUser(db, T1, U1, client => assert.rejects(
+      () => client.query(`INSERT INTO tenant_data.accounts(tenant_id, code, title) VALUES ('${T1}', '8889', 'Type change')`),
+      /AUDIT_SERIALIZATION_SCHEMA_CHANGED/,
+    ));
+    await db.adminQuery('ALTER TABLE tenant_data.accounts ALTER COLUMN title TYPE text');
+    const restored = (await db.adminQuery(`
+      SELECT tenant_data.immutability_041_schema_fingerprint('tenant_data.accounts'::regclass) =
+             tenant_data.immutability_041_expected_fingerprint('tenant_data.accounts'::regclass) AS ok
+    `)).rows[0].ok;
+    assert.equal(restored, true);
   });
 });
