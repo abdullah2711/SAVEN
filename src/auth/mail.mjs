@@ -80,3 +80,111 @@ export function createMailAdapter({transport, from = MAIL_DEFAULTS.from, baseUrl
     },
   };
 }
+
+export const MAIL_DISPATCH_DEFAULTS = Object.freeze({
+  concurrency: 1,
+  maxQueue: 256,
+});
+
+// Controlled, bounded delivery handoff.
+//
+// The public response never waits for an external provider. Callers submit a job to this
+// in-process queue, which owns the token only in memory until it is delivered or fails.
+// The queue is bounded, drainable (`flush`) and closable (`close`); composition owns its
+// lifecycle and should drain it on shutdown. There is no unmanaged fire-and-forget: the
+// worker is started by the queue itself and every failure is counted and handed to the
+// optional `onFailure` callback (used to invalidate an undelivered challenge).
+//
+// `onFailure` is best-effort. If it fails, the challenge can remain live until its expiry;
+// that residual boundary is deliberate and reported, not hidden.
+export function createMailDispatcher({
+  mailer,
+  concurrency = MAIL_DISPATCH_DEFAULTS.concurrency,
+  maxQueue = MAIL_DISPATCH_DEFAULTS.maxQueue,
+  onFailure = null,
+} = {}) {
+  if (!mailer || typeof mailer.sendPasswordReset !== 'function' || typeof mailer.sendVerification !== 'function') {
+    throw new MailConfigurationError('A mail dispatcher requires a mail adapter with both message kinds.');
+  }
+  if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 8) {
+    throw new MailConfigurationError('Mail dispatcher concurrency must be between 1 and 8.');
+  }
+  if (!Number.isInteger(maxQueue) || maxQueue < 1 || maxQueue > 10000) {
+    throw new MailConfigurationError('The mail queue bound must be between 1 and 10000.');
+  }
+  const queue = [];
+  let active = 0;
+  let closed = false;
+  let idleWaiters = [];
+  const failures = [];
+
+  function settle() {
+    if (active === 0 && queue.length === 0) {
+      const waiters = idleWaiters;
+      idleWaiters = [];
+      for (const resolve of waiters) resolve();
+    }
+  }
+
+  async function deliver(job) {
+    try {
+      if (job.kind === 'password_reset') {
+        await mailer.sendPasswordReset({to: job.to, token: job.token, expiresAt: job.expiresAt});
+      } else if (job.kind === 'email_verification') {
+        await mailer.sendVerification({to: job.to, token: job.token, expiresAt: job.expiresAt});
+      } else {
+        throw new MailDeliveryError('Unknown delivery kind.');
+      }
+    } catch (error) {
+      failures.push({kind: job.kind, code: error?.code ?? 'MAIL_DELIVERY_FAILED'});
+      if (onFailure) {
+        try {
+          await onFailure(job, error);
+        } catch {
+          // Deliberate residual boundary: the challenge may remain live until expiry.
+        }
+      }
+    }
+  }
+
+  function run() {
+    while (active < concurrency && queue.length > 0) {
+      const job = queue.shift();
+      active += 1;
+      deliver(job).finally(() => {
+        active -= 1;
+        run();
+        settle();
+      });
+    }
+    settle();
+  }
+
+  function submit(job) {
+    if (closed) return {accepted: false, reason: 'closed'};
+    if (active + queue.length >= maxQueue) return {accepted: false, reason: 'queue_full'};
+    queue.push(job);
+    Promise.resolve().then(run);
+    return {accepted: true};
+  }
+
+  async function flush() {
+    if (active === 0 && queue.length === 0) return;
+    await new Promise(resolve => idleWaiters.push(resolve));
+  }
+
+  async function close() {
+    closed = true;
+    // Drain everything already accepted; no new job is taken after close.
+    run();
+    await flush();
+  }
+
+  return {
+    submit,
+    flush,
+    close,
+    failures,
+    pending: () => active + queue.length,
+  };
+}

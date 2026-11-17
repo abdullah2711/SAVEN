@@ -8,7 +8,7 @@ import {createAuthRoutes, cookieName} from '../src/auth/routes.mjs';
 import {createAuditWriter} from '../src/auth/server.mjs';
 import {createPasswordPolicy} from '../src/auth/password-policy.mjs';
 import {createRecoveryService, digestRecoveryToken, validateRecoveryConfig} from '../src/auth/recovery.mjs';
-import {createMailAdapter, MailConfigurationError, MailDeliveryError} from '../src/auth/mail.mjs';
+import {createMailAdapter, createMailDispatcher, MailConfigurationError, MailDeliveryError} from '../src/auth/mail.mjs';
 
 const {Pool} = pg;
 const origins = {customer: 'https://app.saven.test', operator: 'https://ops.saven.test'};
@@ -83,20 +83,111 @@ function makeFindUser(pool) {
   };
 }
 
-function buildRoutes({pool, clock, mail = null, recoveryConfig = {}, rateLimitPolicy = {}}) {
-  const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+function buildRoutes({pool, clock, mail = null, recoveryConfig = {}, rateLimitPolicy = {}, wrapStore = null, mailQueueLimit = 256, passwordPolicy = null, audit = null}) {
+  const baseStore = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+  const store = wrapStore ? wrapStore(baseStore) : baseStore;
   const handler = createAuthRoutes({
     store,
     findUserByEmail: makeFindUser(pool),
-    audit: createAuditWriter(pool),
+    audit: audit ?? createAuditWriter(pool),
     origins,
     secureCookies: true,
     clock: clock.clock,
     rateLimitPolicy,
     mail,
     recoveryConfig,
+    mailQueueLimit,
+    passwordPolicy,
   });
   return {store, handler};
+}
+
+function spyPolicy(counter) {
+  const base = createPasswordPolicy();
+  return {
+    hash: (...args) => {
+      counter.hash += 1;
+      return base.hash(...args);
+    },
+    verify: (...args) => {
+      counter.verify += 1;
+      return base.verify(...args);
+    },
+  };
+}
+
+function deferred() {
+  let resolve;
+  const promise = new Promise(settle => {
+    resolve = settle;
+  });
+  return {promise, resolve};
+}
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+function within(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms)),
+  ]);
+}
+
+// Mutates session/principal state after the non-transactional readSession but before the
+// route opens its owned transaction, reproducing the read-valid-then-stale window.
+function interceptingStore(hookRef) {
+  return baseStore => {
+    const wrapped = {...baseStore};
+    wrapped.readSession = async (token, options) => {
+      const session = await baseStore.readSession(token, options);
+      if (session && hookRef.current) {
+        const hook = hookRef.current;
+        hookRef.current = null;
+        await hook(session);
+      }
+      return session;
+    };
+    return wrapped;
+  };
+}
+
+// Fails the COMMIT of the transaction that updates the credential, so the reset
+// transaction's unknown-commit outcome can be exercised without a real network fault.
+function hookedResetPool(basePool) {
+  const releases = [];
+  let injected = false;
+  return {
+    releases,
+    get injected() { return injected; },
+    pool: {
+      query: (...args) => basePool.query(...args),
+      async connect() {
+        const client = await basePool.connect();
+        const originalQuery = client.query.bind(client);
+        const originalRelease = client.release.bind(client);
+        let resetTransaction = false;
+        client.query = async (text, params) => {
+          const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+          if (statement === 'BEGIN') resetTransaction = false;
+          if (statement.includes('SET PASSWORD_HASH')) resetTransaction = true;
+          if (statement === 'COMMIT' && resetTransaction && !injected) {
+            injected = true;
+            throw new Error('commit acknowledgement lost');
+          }
+          return originalQuery(text, params);
+        };
+        client.release = destroy => {
+          releases.push(destroy === true);
+          return originalRelease(destroy);
+        };
+        return client;
+      },
+    },
+  };
+}
+
+async function flushMail(handler) {
+  if (handler.mailDelivery) await handler.mailDelivery.flush();
 }
 
 function request(url, {method = 'GET', cookie, headers = {}, body} = {}) {
@@ -165,7 +256,7 @@ function failingMail() {
 }
 
 function tokenFromMessage(message) {
-  const match = /[?&]token=([A-Za-z0-9_-]+)/.exec(message.text);
+  const match = /[?&]token=([A-Za-z0-9_.-]+)/.exec(message.text);
   assert.ok(match, 'the captured message must carry a token link');
   return decodeURIComponent(match[1]);
 }
@@ -192,6 +283,7 @@ test('AUTH-005 reset request stores only a digest and sends through the capture 
       const response = await handler(forgotRequest({email: 'reset-request@example.com'}));
       assert.equal(response.status, 202);
       assert.deepEqual(await response.json(), {accepted: true});
+      await flushMail(handler);
       assert.equal(messages.length, 1, 'one message is handed to the capture adapter');
       assert.equal(messages[0].to, 'reset-request@example.com');
 
@@ -246,6 +338,7 @@ test('AUTH-005 reset is single-use, changes the credential and revokes every ses
       );
 
       assert.equal((await handler(forgotRequest({email: 'reset-consume@example.com'}))).status, 202);
+      await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
 
       const reset = await handler(resetRequest({token, password: 'new-correct-horse-battery'}));
@@ -321,6 +414,7 @@ test('AUTH-005 invalid and expired reset tokens are refused without a credential
       assert.equal((await invalid.json()).error.code, 'RESET_TOKEN_INVALID');
 
       assert.equal((await handler(forgotRequest({email: 'reset-expiry@example.com'}))).status, 202);
+      await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
       clock.advance(RESET_TTL_MS + 60 * 1000);
       const expired = await handler(resetRequest({token, password: 'new-correct-horse-battery'}));
@@ -344,6 +438,7 @@ test('AUTH-005 two concurrent consumers of one reset token yield exactly one suc
       const {handler} = buildRoutes({pool, clock, mail});
       const user = await insertUser(db, 'reset-race@example.com', 'correct-horse-battery');
       assert.equal((await handler(forgotRequest({email: 'reset-race@example.com'}))).status, 202);
+      await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
 
       const [a, b] = await Promise.all([
@@ -373,34 +468,37 @@ test('AUTH-005 two concurrent consumers of one reset token yield exactly one suc
   });
 });
 
-test('AUTH-005 a reset token issued before a credential change is stale', async () => {
+test('AUTH-005 a reset token from an older credential generation is stale', async () => {
   await withAuthDatabase(async db => {
     const pool = new Pool(connectionConfig(db.database));
     try {
       const clock = testClock();
       const {messages, mail} = captureMail();
-      const {handler} = buildRoutes({pool, clock, mail});
+      const counter = {hash: 0, verify: 0};
+      const {handler} = buildRoutes({pool, clock, mail, passwordPolicy: spyPolicy(counter)});
       const user = await insertUser(db, 'reset-stale@example.com', 'correct-horse-battery');
       const session = await login(handler, 'reset-stale@example.com', 'correct-horse-battery');
       assert.ok(session.token);
 
       assert.equal((await handler(forgotRequest({email: 'reset-stale@example.com'}))).status, 202);
+      await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
 
-      // A later credential change (authenticated password change or a prior reset) moves
-      // the stored credential forward after the token was issued.
+      // A credential change advances the immutable generation after the token was issued.
       const interim = await createPasswordPolicy().hash('interim-correct-horse');
       await db.adminQuery(
         `UPDATE auth.users
-         SET password_hash = $2, password_scheme = $3, password_updated_at = now() + interval '1 second',
+         SET password_hash = $2, password_scheme = $3, password_updated_at = now(),
              credential_version = credential_version + 1
          WHERE id = $1::uuid`,
         [user.id, interim.hash, interim.scheme],
       );
 
+      counter.hash = 0;
       const stale = await handler(resetRequest({token, password: 'attacker-correct-horse'}));
       assert.equal(stale.status, 400);
-      assert.equal((await stale.json()).error.code, 'RESET_TOKEN_STALE');
+      assert.equal((await stale.json()).error.code, 'RESET_TOKEN_INVALID', 'a stale generation is refused by the cheap probe');
+      assert.equal(counter.hash, 0, 'a stale token never starts a password KDF');
 
       const policy = createPasswordPolicy();
       const stored = await db.adminQuery('SELECT password_hash FROM auth.users WHERE id = $1::uuid', [user.id]);
@@ -430,16 +528,18 @@ test('AUTH-005 mail failure stays generic for reset and leaves no live token', a
       assert.equal(unknown.status, 202);
       assert.equal(await unknown.text(), body, 'known and unknown addresses are indistinguishable');
 
+      await flushMail(handler);
       const rows = await verificationRows(db, 'password_reset');
       assert.equal(rows.length, 1, 'only the known account has a challenge row');
-      assert.ok(rows[0].consumed_at instanceof Date, 'an undelivered challenge is invalidated');
+      assert.ok(rows[0].consumed_at instanceof Date, 'an undelivered challenge is invalidated when cleanup succeeds');
 
-      // The authenticated verification-request path may report configuration/delivery
-      // failure directly because the identity is already known.
+      // The authenticated verification-request path also hands delivery to the queue; the
+      // outward 202 does not depend on the provider, and a failed delivery invalidates the
+      // challenge through the dispatcher's failure callback.
       const session = await login(handler, 'mail-failure@example.com', 'correct-horse-battery');
       const verification = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
-      assert.equal(verification.status, 503);
-      assert.equal((await verification.json()).error.code, 'MAIL_UNAVAILABLE');
+      assert.equal(verification.status, 202);
+      await flushMail(handler);
       const verifyRows = await verificationRows(db, 'email_verification');
       assert.equal(verifyRows.length, 1);
       assert.ok(verifyRows[0].consumed_at instanceof Date, 'the undelivered verification challenge is invalidated');
@@ -462,6 +562,7 @@ test('AUTH-005 email verification is session-requested, single-use and expiring'
       assert.equal(session.response.status, 200);
       const requested = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
       assert.equal(requested.status, 202);
+      await flushMail(handler);
       assert.equal(messages.length, 1);
       assert.equal(messages[0].to, 'verify-email@example.com');
       const token = tokenFromMessage(messages[0]);
@@ -484,6 +585,7 @@ test('AUTH-005 email verification is session-requested, single-use and expiring'
       assert.equal((await replay.json()).error.code, 'RECOVERY_TOKEN_INVALID');
 
       assert.equal((await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {})).status, 202);
+      await flushMail(handler);
       const expiredToken = tokenFromMessage(messages[1]);
       clock.advance(VERIFY_TTL_MS + 60 * 1000);
       const expired = await handler(emailVerifyRequest({token: expiredToken}));
@@ -507,6 +609,7 @@ test('AUTH-005 two concurrent verification consumers yield exactly one success',
       await insertUser(db, 'verify-race@example.com', 'correct-horse-battery', {verified: false});
       const session = await login(handler, 'verify-race@example.com', 'correct-horse-battery');
       assert.equal((await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {})).status, 202);
+      await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
 
       const [a, b] = await Promise.all([
@@ -551,6 +654,7 @@ test('AUTH-005 keeps the AUTH-003 non-enumerating throttle boundary and no-adapt
         assert.equal(response.status, 202);
         bodies.push(await response.text());
       }
+      await flushMail(handler);
       assert.equal(new Set(bodies).size, 1);
       assert.equal(messages.length, 2);
       const before = (await verificationRows(db, 'password_reset')).length;
@@ -585,6 +689,7 @@ test('AUTH-005 runs the reset lifecycle under the real auth-service role', async
       assert.equal(session.response.status, 200);
 
       assert.equal((await handler(forgotRequest({email: 'real-role-reset@example.com'}))).status, 202);
+      await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
       const reset = await handler(resetRequest({token, password: 'rotated-correct-horse'}));
       assert.equal(reset.status, 200, 'the restricted service role can consume and rotate');
@@ -642,7 +747,7 @@ test('AUTH-005 mail adapter requires an injected transport and never leaks the t
 // Creates a real non-owner login that is a member of the fixture's namespaced
 // auth-service role. Setup and observation stay on the fixture's administrative
 // connection; the exercised service only has the production grants.
-async function withAuthServicePool(db, action) {
+async function withAuthServicePool(db, action, {max = 8} = {}) {
   const suffix = randomBytes(4).toString('hex');
   const login = `saven_auth_${suffix}_service_login`;
   const password = randomBytes(24).toString('base64url');
@@ -653,7 +758,7 @@ async function withAuthServicePool(db, action) {
     'NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOBYPASSRLS NOREPLICATION',
   );
   await db.adminQuery(`GRANT ${quote(db.roles.authService)} TO ${quote(login)}`);
-  const pool = new Pool(connectionConfig(db.database, {user: login, password}));
+  const pool = new Pool(connectionConfig(db.database, {user: login, password, max}));
   try {
     return await action(pool, login);
   } finally {
@@ -661,3 +766,662 @@ async function withAuthServicePool(db, action) {
     await db.adminQuery(`DROP ROLE IF EXISTS ${quote(login)}`).catch(() => {});
   }
 }
+
+// ---------------------------------------------------------------------------
+// AUTH-005-R2: immutable address/generation binding, admission, pool and mail
+// response boundaries.
+// ---------------------------------------------------------------------------
+
+test('AUTH-005-R2 an old-address verification token cannot verify a new address', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      const user = await insertUser(db, 'old-address-verify@example.com', 'correct-horse-battery', {verified: false});
+      const session = await login(handler, 'old-address-verify@example.com', 'correct-horse-battery');
+      assert.equal((await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {})).status, 202);
+      await flushMail(handler);
+      const token = tokenFromMessage(messages[0]);
+
+      // The account moves to a different, still-unverified address after issuance.
+      await db.adminQuery(
+        "UPDATE auth.users SET email = $2, email_verified = false, email_verified_at = NULL WHERE id = $1::uuid",
+        [user.id, 'new-address-verify@example.com'],
+      );
+
+      const response = await handler(emailVerifyRequest({token}));
+      assert.equal(response.status, 400, 'the old-address token must not verify the new address');
+      const row = await db.adminQuery(
+        'SELECT email, email_verified, email_verified_at FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.equal(row.rows[0].email, 'new-address-verify@example.com');
+      assert.equal(row.rows[0].email_verified, false, 'no wrong-address verification occurred');
+      assert.equal(row.rows[0].email_verified_at, null);
+      const challenge = await db.adminQuery(
+        `SELECT consumed_at FROM auth.verification WHERE purpose = 'email_verification' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(challenge.rows[0].consumed_at, null, 'the refused challenge is not partially consumed');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 an old-address reset token cannot reset a new address', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      const user = await insertUser(db, 'old-address-reset@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'old-address-reset@example.com'}))).status, 202);
+      await flushMail(handler);
+      const token = tokenFromMessage(messages[0]);
+      const before = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+
+      await db.adminQuery(
+        "UPDATE auth.users SET email = $2 WHERE id = $1::uuid",
+        [user.id, 'relocated-reset@example.com'],
+      );
+
+      const response = await handler(resetRequest({token, password: 'attacker-correct-horse'}));
+      assert.equal(response.status, 400, 'the old-address reset token is refused');
+      const after = await db.adminQuery(
+        'SELECT email, password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.equal(after.rows[0].email, 'relocated-reset@example.com');
+      assert.equal(after.rows[0].password_hash, before.rows[0].password_hash);
+      assert.equal(after.rows[0].credential_version, before.rows[0].credential_version);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 issuance resolves the current account address, not a caller snapshot', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      const user = await insertUser(db, 'address-before@example.com', 'correct-horse-battery');
+      await db.adminQuery(
+        "UPDATE auth.users SET email = $2 WHERE id = $1::uuid",
+        [user.id, 'address-after@example.com'],
+      );
+
+      const current = await handler(forgotRequest({email: 'address-after@example.com'}));
+      assert.equal(current.status, 202);
+      await flushMail(handler);
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0].to, 'address-after@example.com', 'mail goes to the current stored address');
+      const rows = await db.adminQuery(
+        `SELECT identifier FROM auth.verification WHERE purpose = 'password_reset' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(rows.rows[0].identifier, 'address-after@example.com');
+
+      const oldAddress = await handler(forgotRequest({email: 'address-before@example.com'}));
+      assert.equal(oldAddress.status, 202);
+      await flushMail(handler);
+      assert.equal(messages.length, 1, 'the replaced address no longer resolves to the account');
+      assert.equal((await verificationRows(db, 'password_reset')).length, 1);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 two reset links for one credential generation: the first change invalidates the second', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      const user = await insertUser(db, 'two-links@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'two-links@example.com'}))).status, 202);
+      assert.equal((await handler(forgotRequest({email: 'two-links@example.com'}))).status, 202);
+      await flushMail(handler);
+      assert.equal(messages.length, 2);
+      const [first, second] = messages.map(tokenFromMessage);
+
+      assert.equal((await handler(resetRequest({token: first, password: 'first-winner-password'}))).status, 200);
+      const secondAttempt = await handler(resetRequest({token: second, password: 'second-loser-password'}));
+      assert.equal(secondAttempt.status, 400);
+      assert.equal((await secondAttempt.json()).error.code, 'RESET_TOKEN_INVALID');
+
+      const policy = createPasswordPolicy();
+      const stored = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.equal((await policy.verify('first-winner-password', stored.rows[0].password_hash)).valid, true);
+      assert.equal((await policy.verify('second-loser-password', stored.rows[0].password_hash)).valid, false);
+      assert.equal(Number(stored.rows[0].credential_version), user.credentialVersion + 1, 'exactly one credential change');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 a credential change that starts earlier and commits later still invalidates the link', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    const holder = await pool.connect();
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      const user = await insertUser(db, 'older-start@example.com', 'correct-horse-battery');
+      const session = await login(handler, 'older-start@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'older-start@example.com'}))).status, 202);
+      await flushMail(handler);
+      const token = tokenFromMessage(messages[0]);
+
+      const interim = await createPasswordPolicy().hash('interim-credential-password');
+      await holder.query('BEGIN');
+      await holder.query(
+        `UPDATE auth.users
+         SET password_hash = $2, password_scheme = $3, password_updated_at = now(),
+             credential_version = credential_version + 1
+         WHERE id = $1::uuid`,
+        [user.id, interim.hash, interim.scheme],
+      );
+
+      const resetPromise = handler(resetRequest({token, password: 'reset-attempt-password'}));
+      await sleep(250);
+      await holder.query('COMMIT');
+
+      const reset = await resetPromise;
+      assert.equal(reset.status, 400, 'the older-start/later-commit credential wins');
+      const body = await reset.json();
+      assert.ok(['RESET_TOKEN_STALE', 'RESET_TOKEN_INVALID'].includes(body.error.code));
+
+      const policy = createPasswordPolicy();
+      const stored = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.equal((await policy.verify('interim-credential-password', stored.rows[0].password_hash)).valid, true);
+      assert.equal((await policy.verify('reset-attempt-password', stored.rows[0].password_hash)).valid, false);
+      assert.equal((await policy.verify('correct-horse-battery', stored.rows[0].password_hash)).valid, false);
+      assert.equal(Number(stored.rows[0].credential_version), user.credentialVersion + 1);
+      const challenge = await db.adminQuery(
+        'SELECT consumed_at FROM auth.verification WHERE purpose = $1 AND user_id = $2::uuid',
+        ['password_reset', user.id],
+      );
+      assert.equal(challenge.rows[0].consumed_at, null, 'the refused link is not consumed');
+      const live = await db.adminQuery('SELECT revoked_at FROM auth.sessions WHERE user_id = $1::uuid', [user.id]);
+      assert.ok(live.rows.every(row => row.revoked_at === null), 'a refused reset does not revoke sessions');
+    } finally {
+      await holder.query('ROLLBACK').catch(() => {});
+      holder.release();
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 reset and an authenticated credential change serialize to exactly one accepted change', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      const user = await insertUser(db, 'credential-race@example.com', 'correct-horse-battery');
+      const session = await login(handler, 'credential-race@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'credential-race@example.com'}))).status, 202);
+      assert.equal((await handler(forgotRequest({email: 'credential-race@example.com'}))).status, 202);
+      await flushMail(handler);
+      const [first, second] = messages.map(tokenFromMessage);
+
+      const changeHash = await createPasswordPolicy().hash('authenticated-change-password');
+      const change = (async () => {
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          const result = await client.query(
+            `UPDATE auth.users
+             SET password_hash = $2, password_scheme = $3, password_updated_at = now(),
+                 credential_version = credential_version + 1
+             WHERE id = $1::uuid AND credential_version = $4
+             RETURNING id`,
+            [user.id, changeHash.hash, changeHash.scheme, user.credentialVersion],
+          );
+          await client.query('COMMIT');
+          return result.rowCount === 1;
+        } catch (error) {
+          await client.query('ROLLBACK').catch(() => {});
+          throw error;
+        } finally {
+          client.release();
+        }
+      })();
+
+      const [reset, changed] = await Promise.all([
+        handler(resetRequest({token: first, password: 'reset-winner-password'})),
+        change,
+      ]);
+      const accepted = (reset.status === 200 ? 1 : 0) + (changed ? 1 : 0);
+      assert.equal(accepted, 1, 'exactly one credential change is accepted');
+
+      const loser = await handler(resetRequest({token: second, password: 'second-link-password'}));
+      assert.equal(loser.status, 400, 'the second old link is invalid in either outcome');
+
+      const policy = createPasswordPolicy();
+      const stored = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.equal(Number(stored.rows[0].credential_version), user.credentialVersion + 1);
+      const resetWon = (await policy.verify('reset-winner-password', stored.rows[0].password_hash)).valid;
+      const changeWon = (await policy.verify('authenticated-change-password', stored.rows[0].password_hash)).valid;
+      assert.equal([resetWon, changeWon].filter(Boolean).length, 1, 'only one new credential is stored');
+      if (resetWon) {
+        const live = await db.adminQuery('SELECT revoked_at FROM auth.sessions WHERE user_id = $1::uuid', [user.id]);
+        assert.ok(live.rows.every(row => row.revoked_at instanceof Date), 'a winning reset revokes sessions');
+      } else {
+        const live = await db.adminQuery('SELECT revoked_at FROM auth.sessions WHERE user_id = $1::uuid', [user.id]);
+        assert.ok(live.rows.every(row => row.revoked_at === null), 'a refused reset does not revoke sessions');
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 an audit failure rolls the whole reset back', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const writer = createAuditWriter(pool);
+      const audit = async (event, options) => {
+        if (event.eventType === 'password_reset_completed') throw new Error('audit unavailable');
+        return writer(event, options);
+      };
+      const {handler} = buildRoutes({pool, clock, mail, audit});
+      const user = await insertUser(db, 'audit-failure@example.com', 'correct-horse-battery');
+      const session = await login(handler, 'audit-failure@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'audit-failure@example.com'}))).status, 202);
+      await flushMail(handler);
+      const token = tokenFromMessage(messages[0]);
+      const before = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+
+      const response = await handler(resetRequest({token, password: 'should-be-rolled-back'}));
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+
+      const after = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.deepEqual(after.rows, before.rows, 'the credential change is rolled back');
+      const challenge = await db.adminQuery(
+        `SELECT consumed_at FROM auth.verification WHERE purpose = 'password_reset' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(challenge.rows[0].consumed_at, null, 'the token is not consumed on rollback');
+      const live = await db.adminQuery('SELECT revoked_at FROM auth.sessions WHERE user_id = $1::uuid', [user.id]);
+      assert.ok(live.rows.every(row => row.revoked_at === null), 'sessions are not revoked on rollback');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 a revocation failure rolls the whole reset back', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const wrapStore = store => {
+        const wrapped = {...store};
+        wrapped.revokeAllSessions = async () => {
+          throw new Error('revocation unavailable');
+        };
+        return wrapped;
+      };
+      const {handler} = buildRoutes({pool, clock, mail, wrapStore});
+      const user = await insertUser(db, 'revoke-failure@example.com', 'correct-horse-battery');
+      await login(handler, 'revoke-failure@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'revoke-failure@example.com'}))).status, 202);
+      await flushMail(handler);
+      const token = tokenFromMessage(messages[0]);
+      const before = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+
+      const response = await handler(resetRequest({token, password: 'should-be-rolled-back'}));
+      assert.equal(response.status, 503);
+      const after = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.deepEqual(after.rows, before.rows);
+      const challenge = await db.adminQuery(
+        `SELECT consumed_at FROM auth.verification WHERE purpose = 'password_reset' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(challenge.rows[0].consumed_at, null);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 an unknown reset COMMIT publishes nothing and destroys the client', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const hooked = hookedResetPool(pool);
+      const {handler} = buildRoutes({pool: hooked.pool, clock, mail});
+      const user = await insertUser(db, 'uncertain-commit@example.com', 'correct-horse-battery');
+      assert.equal((await handler(forgotRequest({email: 'uncertain-commit@example.com'}))).status, 202);
+      await flushMail(handler);
+      const token = tokenFromMessage(messages[0]);
+      const before = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+
+      const response = await handler(resetRequest({token, password: 'uncertain-commit-password'}));
+      const clone = response.clone();
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).error.code, 'SESSION_TRANSACTION_UNCERTAIN');
+      assert.ok(hooked.injected, 'the reset transaction COMMIT was the injected boundary');
+      assert.ok(hooked.releases.includes(true), 'the uncertain client is destroyed');
+      const text = await clone.text();
+      assert.equal(text.includes(token), false, 'no token is published on an uncertain commit');
+
+      // The injected failure occurs before COMMIT is sent, so this run rolls back; the
+      // response itself still reports an unknown outcome and never publishes a credential.
+      const after = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.deepEqual(after.rows, before.rows);
+      const challenge = await db.adminQuery(
+        `SELECT consumed_at FROM auth.verification WHERE purpose = 'password_reset' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(challenge.rows[0].consumed_at, null);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 forgot-password completes on a size-one real-role pool', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await withAuthServicePool(db, async pool => {
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      await insertUser(db, 'max-one-known@example.com', 'correct-horse-battery');
+
+      const known = await within(handler(forgotRequest({email: 'max-one-known@example.com'})), 15000, 'known reset request');
+      assert.equal(known.status, 202);
+      await flushMail(handler);
+      assert.equal(messages.length, 1, 'the known request delivers through the bounded queue');
+
+      const unknown = await within(handler(forgotRequest({email: 'max-one-unknown@example.com'})), 15000, 'unknown reset request');
+      assert.equal(unknown.status, 202);
+      await flushMail(handler);
+      assert.equal(messages.length, 1, 'the unknown request sends no mail');
+    }, {max: 1});
+  });
+});
+
+test('AUTH-005-R2 concurrent reset requests complete on a saturated small pool', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    await withAuthServicePool(db, async pool => {
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({pool, clock, mail});
+      await insertUser(db, 'saturated@example.com', 'correct-horse-battery');
+      const responses = await within(Promise.all([
+        handler(forgotRequest({email: 'saturated@example.com'})),
+        handler(forgotRequest({email: 'saturated@example.com'})),
+      ]), 20000, 'saturated reset requests');
+      assert.deepEqual(responses.map(response => response.status), [202, 202]);
+      await flushMail(handler);
+      assert.equal(messages.length, 2);
+    }, {max: 2});
+  });
+});
+
+test('AUTH-005-R2 verification requests use a durable admission budget and recover after the window', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({
+        pool,
+        clock,
+        mail,
+        recoveryConfig: {verificationRequestLimit: 2, verificationRequestWindowMs: 60 * 1000},
+      });
+      const user = await insertUser(db, 'verify-budget@example.com', 'correct-horse-battery', {verified: false});
+      const session = await login(handler, 'verify-budget@example.com', 'correct-horse-battery');
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const response = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
+        assert.equal(response.status, 202);
+      }
+      await flushMail(handler);
+      assert.equal(messages.length, 2);
+      const issued = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.verification WHERE purpose = 'email_verification' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(issued.rows[0].n, 2);
+
+      const denied = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
+      assert.equal(denied.status, 429);
+      assert.equal((await denied.json()).error.code, 'MAIL_THROTTLED');
+      assert.ok(Number(denied.headers.get('retry-after')) >= 1);
+      await flushMail(handler);
+      assert.equal(messages.length, 2, 'a denied request creates and sends nothing');
+      const afterDenied = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.verification WHERE purpose = 'email_verification' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(afterDenied.rows[0].n, 2);
+
+      clock.advance(61 * 1000);
+      const afterWindow = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
+      assert.equal(afterWindow.status, 202, 'the window admits requests again');
+      await flushMail(handler);
+      assert.equal(messages.length, 3);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 concurrent verification requests admit exactly the configured budget', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const {handler} = buildRoutes({
+        pool,
+        clock,
+        mail,
+        recoveryConfig: {verificationRequestLimit: 1, verificationRequestWindowMs: 60 * 1000},
+      });
+      const user = await insertUser(db, 'verify-concurrent@example.com', 'correct-horse-battery', {verified: false});
+      const session = await login(handler, 'verify-concurrent@example.com', 'correct-horse-battery');
+
+      const responses = await Promise.all([
+        authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {}),
+        authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {}),
+      ]);
+      assert.deepEqual(responses.map(response => response.status).sort(), [202, 429]);
+      await flushMail(handler);
+      assert.equal(messages.length, 1);
+      const issued = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.verification WHERE purpose = 'email_verification' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(issued.rows[0].n, 1);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 slow and failing transports do not control the reset response boundary', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const slow = deferred();
+      const messages = [];
+      const slowMail = createMailAdapter({
+        transport: async message => {
+          await slow.promise;
+          messages.push(message);
+        },
+        baseUrl: 'https://app.saven.test',
+      });
+      const {handler} = buildRoutes({pool, clock, mail: slowMail});
+      await insertUser(db, 'slow-known@example.com', 'correct-horse-battery');
+      const inactive = await insertUser(db, 'slow-inactive@example.com', 'correct-horse-battery');
+      await db.adminQuery("UPDATE auth.users SET status = 'suspended' WHERE id = $1::uuid", [inactive.id]);
+
+      for (const email of ['slow-known@example.com', 'slow-inactive@example.com', 'slow-unknown@example.com']) {
+        const response = await within(handler(forgotRequest({email})), 2000, `${email} response`);
+        assert.equal(response.status, 202, 'the public response never waits for the provider');
+        assert.deepEqual(await response.json(), {accepted: true});
+      }
+      assert.equal(messages.length, 0, 'delivery is still pending when the responses returned');
+
+      slow.resolve();
+      await flushMail(handler);
+      assert.equal(messages.length, 1, 'only the active account produced a message');
+      assert.equal(messages[0].to, 'slow-known@example.com');
+
+      // Cleanup is best effort: a failing invalidation does not make the dispatcher hang,
+      // and the residual challenge can remain live until expiry. That boundary is tested.
+      const failingDispatcher = createMailDispatcher({
+        mailer: failingMail(),
+        onFailure: async () => {
+          throw new Error('cleanup unavailable');
+        },
+      });
+      const submitted = failingDispatcher.submit({
+        kind: 'password_reset',
+        to: 'cleanup@example.com',
+        token: 'TOKENVALUE0123456789.1',
+        expiresAt: new Date(clock.now().getTime() + RESET_TTL_MS),
+        challengeId: '00000000-0000-4000-8000-000000000000',
+      });
+      assert.equal(submitted.accepted, true);
+      await within(failingDispatcher.flush(), 2000, 'failing cleanup flush');
+      assert.equal(failingDispatcher.failures.length, 1);
+      assert.equal(failingDispatcher.pending(), 0);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 verification requests refuse a read-valid-then-stale session', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      const modes = {
+        revoked: session => db.adminQuery('UPDATE auth.sessions SET revoked_at = now() WHERE id = $1::uuid', [session.id]),
+        expired: session => db.adminQuery(
+          'UPDATE auth.sessions SET idle_expires_at = $2::timestamptz WHERE id = $1::uuid',
+          [session.id, new Date(clock.now().getTime() - 1000).toISOString()],
+        ),
+        disabled: session => db.adminQuery("UPDATE auth.users SET status = 'disabled' WHERE id = $1::uuid", [session.userId]),
+        credential: session => db.adminQuery(
+          'UPDATE auth.users SET credential_version = credential_version + 1 WHERE id = $1::uuid',
+          [session.userId],
+        ),
+      };
+      let index = 0;
+      for (const [mode, mutate] of Object.entries(modes)) {
+        index += 1;
+        const email = `verify-stale-${mode}-${index}@example.com`;
+        const user = await insertUser(db, email, 'correct-horse-battery', {verified: false});
+        const hookRef = {current: null};
+        const {handler} = buildRoutes({pool, clock, mail, wrapStore: interceptingStore(hookRef)});
+        const session = await login(handler, email, 'correct-horse-battery');
+        hookRef.current = mutate;
+        const response = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
+        assert.equal(response.status, 401, `${mode} is refused`);
+        await flushMail(handler);
+        const rows = await db.adminQuery(
+          `SELECT count(*)::int AS n FROM auth.verification WHERE purpose = 'email_verification' AND user_id = $1::uuid`,
+          [user.id],
+        );
+        assert.equal(rows.rows[0].n, 0, `${mode}: no challenge is created`);
+      }
+      assert.equal(messages.length, 0, 'no unauthorized mail is sent');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-005-R2 a verification admission store failure creates no challenge or mail', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {messages, mail} = captureMail();
+      let fail = false;
+      const wrapStore = store => {
+        const wrapped = {...store};
+        wrapped.withTransaction = async (...args) => {
+          if (fail) throw new Error('store unavailable');
+          return store.withTransaction(...args);
+        };
+        return wrapped;
+      };
+      const {handler} = buildRoutes({pool, clock, mail, wrapStore});
+      const user = await insertUser(db, 'verify-store-failure@example.com', 'correct-horse-battery', {verified: false});
+      const session = await login(handler, 'verify-store-failure@example.com', 'correct-horse-battery');
+      fail = true;
+      const response = await authedPost(handler, '/v1/auth/email/verification/request', session.token, session.csrf, {});
+      assert.equal(response.status, 503);
+      await flushMail(handler);
+      assert.equal(messages.length, 0);
+      const rows = await db.adminQuery(
+        `SELECT count(*)::int AS n FROM auth.verification WHERE purpose = 'email_verification' AND user_id = $1::uuid`,
+        [user.id],
+      );
+      assert.equal(rows.rows[0].n, 0);
+    } finally {
+      await pool.end();
+    }
+  });
+});

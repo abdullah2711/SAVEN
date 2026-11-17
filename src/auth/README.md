@@ -385,70 +385,94 @@ instead of issuing a session. Non-required identities are unaffected.
 ## Password reset and email verification (AUTH-005)
 
 Password reset and email verification use single-use challenges in `auth.verification`.
-Only a SHA-256 digest of a 32–64 byte random token is stored; the plaintext token exists
-only long enough to be placed in a message by the injected mail adapter. Nothing here is
-wired into an active entry point, and the frozen composition root does not yet supply a
-mail transport.
+Only a SHA-256 digest of a 32–64 byte random token is stored. A reset token is
+`<random>.<credential-generation>`: the generation is covered by the digest and is
+rechecked against the principal row under lock at consumption, so staleness never depends
+on wall-clock ordering. The plaintext token exists only long enough to be handed to the
+bounded delivery queue. Nothing here is wired into an active entry point.
 
 ### Routes
 
 | Route | Method | Behaviour |
 | --- | --- | --- |
 | `/v1/auth/forgot-password` | POST | Retained AUTH-003 route. Always answers `202 {accepted:true}` with the shared throttle. With a mail adapter, an active known account gets a single-use reset link; unknown and inactive accounts get the identical response and no token. |
-| `/v1/auth/reset-password` | POST | Consumes `{token, password}`. One atomic consume; sets a new Argon2id (or retained scrypt) verifier, advances `credential_version` and revokes every live session as `password_reset` in one transaction. Returns `{ok:true, userId}` and no session. |
-| `/v1/auth/email/verification/request` | POST | Session-authenticated and CSRF-checked, empty body. Issues and mails a verification link to the session's own stored address; no address can be supplied by the request. |
-| `/v1/auth/email/verify` | POST | Public `{token}` consumption. Marks the account `email_verified`/`email_verified_at`. |
+| `/v1/auth/reset-password` | POST | Consumes `{token, password}`. A cheap authoritative probe rejects invalid/stale tokens before any KDF; consumption then rechecks purpose, current address and credential generation under the principal lock, sets the new verifier, advances `credential_version` and revokes every live session as `password_reset` in one transaction. Returns `{ok:true, userId}` and no session. |
+| `/v1/auth/email/verification/request` | POST | Session-authenticated and CSRF-checked. Revalidates the session/principal inside the owned transaction (revocation, expiry, status, credential epoch), applies a durable purpose/account/network issuance budget, then issues for the account's own current stored address. |
+| `/v1/auth/email/verify` | POST | Public `{token}` consumption. Marks the account `email_verified`/`email_verified_at` only if the challenge's address still equals the account's current address. |
 
 ### Invariants
 
-- Challenge rows are account- and purpose-bound (`user_id`, normalised `identifier`,
-  `purpose`, `expires_at`). Purposes are validated against the `token_purpose` reference
-  domain, so a purpose is usable only while its row is active and effective.
+- Challenge rows are account-, purpose-, address- and expiry-bound. Issuance resolves the
+  current active account and normalized email on its owned transaction under a principal
+  lock; a caller's earlier snapshot is never trusted. Purposes are validated against the
+  `token_purpose` reference domain both at issuance and again at consumption.
+- Address binding is immutable: an old-address verification or reset challenge can never
+  authorize a different current address. `consumeVerification` and `consumeReset` compare
+  the stored identifier with the locked account's current normalized email before any
+  mutation.
+- Reset generation binding: the token carries the `auth.users.credential_version` in
+  effect at issuance, covered by the stored digest. Consumption compares it with the
+  generation under the principal row lock. A credential change that began earlier but
+  committed later, an equal-time change, or any other generation advance invalidates the
+  link; timestamps are never used to decide staleness.
 - Consumption locks the row (`SELECT … FOR UPDATE`), re-checks `consumed_at IS NULL` and
-  `expires_at > now`, then performs one conditional `UPDATE … WHERE consumed_at IS NULL`.
-  Two concurrent consumers of one token yield exactly one success; a replay, an expired
-  token and an unknown token are refused with a generic invalid-link response.
-- The reset transaction is all-or-nothing: consume, verifier replacement, credential-epoch
-  increment and revocation of every live session commit together. A failure leaves the
-  credential and sessions unchanged. Roles, memberships and owner authority are never
-  reassigned by these routes.
-- Stale credentials: a reset token issued before a later `password_updated_at` (an
-  authenticated password change or an earlier reset) is refused rather than overwriting
-  that newer credential.
-- Non-enumeration is preserved from AUTH-003: the forgot-password reservation, shared
-  login/reset throttle ledger and generic response are unchanged. A throttled request
-  sends no mail and creates no token. A delivery failure is indistinguishable from success
-  to the caller and invalidates the undelivered challenge so no live token remains.
+  expiry, then conditionally consumes. Two concurrent consumers of one token yield exactly
+  one success; a replay, expired or unknown token is refused generically.
+- The reset transaction is all-or-nothing: consume, verifier replacement, credential-
+  generation increment and revocation of every live session commit together. Audit or
+  revocation failure rolls the whole change back, leaving the credential, token and
+  sessions unchanged. Reset never changes roles, membership or owner authority and never
+  grants MFA assurance.
+- Non-enumeration: the forgot-password reservation and shared throttle ledger are
+  retained. Known, unknown and inactive addresses return the same `202` body. Delivery is
+  handed to a bounded in-process queue, so the public response and the throttle lease are
+  never held for provider latency. A throttled or denied request sends no mail and creates
+  no challenge.
+- The delivery queue is bounded, drainable (`handler.mailDelivery.flush()`) and closable
+  (`close()`); composition owns its lifecycle. There is no unmanaged fire-and-forget: the
+  queue worker owns the in-memory token until delivery, counts failures and calls an
+  invalidation callback. Cleanup is best effort — if invalidation fails, the challenge can
+  remain live until its own expiry. That residual boundary is reported, not claimed as a
+  guarantee.
+- Verification mail admission is durable and purpose/account/network scoped: challenge
+  rows are the budget, transaction-scoped advisory locks serialize concurrent requests,
+  and denial returns `429 MAIL_THROTTLED` with `Retry-After`. Denied requests create no
+  challenge and send no mail.
+- Reset completion never starts a KDF for an invalid, expired, stale-address or
+  stale-generation token: the authoritative probe runs first, and the consume rechecks
+  the same conditions under lock.
 - Mail is only possible through an explicitly injected transport. The adapter composes the
-  links, never logs, and never surfaces a provider error (which could echo the token). With
-  no adapter the forgot-password route keeps the AUTH-003 `deferred_to_auth_005` no-delivery
-  behaviour instead of inventing an ad-hoc channel.
-- A cheap usability probe runs before `password.hash`, so an invalid or expired token
-  cannot start a KDF. Password length/entropy and the bounded KDF admission come from the
-  AUTH-003 policy; a busy KDF returns `429 PASSWORD_BUSY`.
-- Audit rows are append-only and never contain a token or password: `password_reset_requested`
-  (reservation, `delivery: mail_adapter|deferred_to_auth_005`) and
-  `password_reset_completed` (user id, purpose, revoked-session count, credential version).
+  links, never logs, and never surfaces a provider error (which could echo the token).
+  With no adapter the forgot-password route keeps the AUTH-003 `deferred_to_auth_005`
+  no-delivery behaviour instead of inventing an ad-hoc channel.
+- Audit rows are append-only and never contain a token or password:
+  `password_reset_requested` (reservation) and `password_reset_completed` (user id,
+  purpose, revoked-session count, credential generation).
 
 ### Configuration and limits
 
 `verificationTtlMs` (24 h) and `resetTtlMs` (30 min) are validated between one minute and
-seven days, and `tokenBytes` between 32 and 64. These are fixture/bootstrap values, not
-approved production policy.
+seven days; `tokenBytes` between 32 and 64; verification request admission defaults to five
+issuances per hour per account and per network scope, bounded between one minute and 24
+hours. These remain fixture/bootstrap values, not approved production policy.
 
 ### Extension points
 
 - New challenge purposes are `auth.reference_value` rows plus a typed caller; they are not
   edits to a growing enum.
 - Mail transports (SMTP, provider API, capture collector) are injected behind the adapter;
-  no provider is hardcoded and a new one is a configuration/composition change.
+  no provider is hardcoded. The dispatcher can be replaced with another bounded,
+  drainable delivery owner without changing the routes.
 - Delivery retry, metrics and notification policy are future operations contracts; the
-  durable challenge and audit rows are the stable interface.
+  durable challenge and audit rows and the bounded queue are the stable interface.
 
 ### Non-claims
 
 - No SMTP/provider client, template system, UI or active entry-point wiring is delivered;
-  the deployment must inject a reviewed transport and base URL.
+  deployment must inject a reviewed transport and base URL and own dispatcher shutdown.
 - The canonical reference domain has no email-verification audit event, so this module
   does not invent one; adding it is a reference-data/migration change owned by AUTH-009.
+  Challenge metadata is mutable operational state, not append-only event history.
+- Cleanup of an undelivered challenge is best effort; a failed invalidation can leave a
+  token live until expiry. No unconditional no-live-token guarantee is claimed.
 - No session is issued by reset and no email address is changed by verification.
