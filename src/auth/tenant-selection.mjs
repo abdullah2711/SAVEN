@@ -105,40 +105,95 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
   }
 
   const AUTHORITY_GATE_KEY = 'saven.auth.authority_gate';
-  const AUTHORITY_GATE_TRIGGERS = Object.freeze([
-    'tenant_membership_authority_gate_insert',
-    'tenant_membership_authority_gate_update',
-    'tenant_membership_authority_gate_delete',
-    'roles_authority_gate_insert',
-    'roles_authority_gate_update',
-    'roles_authority_gate_delete',
+  const AUTHORITY_GATE_BINDINGS = Object.freeze([
+    {table: 'tenant_membership', name: 'tenant_membership_authority_gate_insert', event: 4},
+    {table: 'tenant_membership', name: 'tenant_membership_authority_gate_update', event: 16},
+    {table: 'tenant_membership', name: 'tenant_membership_authority_gate_delete', event: 8},
+    {table: 'roles', name: 'roles_authority_gate_insert', event: 4},
+    {table: 'roles', name: 'roles_authority_gate_update', event: 16},
+    {table: 'roles', name: 'roles_authority_gate_delete', event: 8},
   ]);
+  const AUTHORITY_GATE_TRIGGERS = Object.freeze(AUTHORITY_GATE_BINDINGS.map(binding => binding.name));
 
+  // Validates the reviewed gate contract, not merely object counts:
+  //   * exactly one zero-argument trigger function in auth, plpgsql, SECURITY INVOKER,
+  //     fixed search_path=pg_catalog, owned by the authority-table owner;
+  //   * each required trigger bound to the exact table, event, BEFORE STATEMENT timing,
+  //     that function OID, no WHEN predicate/arguments/constraint/deferral/column list;
+  //   * firing mode origin or always (replica-only/disabled is refused).
+  // Privileged function-body tampering by the owning DDL authority is outside what names
+  // and catalog flags can prove; that trust boundary is documented in the module README.
   async function assertAuthorityGateInstalled(executor) {
-    let result;
+    let functionResult;
+    let triggerResult;
     try {
-      result = await executor.query(
-        `SELECT
-           (SELECT count(*)::int
-              FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-             WHERE n.nspname = 'auth' AND p.proname = 'lock_authority_gate') AS functions,
-           (SELECT count(*)::int
-              FROM pg_trigger t
-              JOIN pg_class c ON c.oid = t.tgrelid
-              JOIN pg_namespace n ON n.oid = c.relnamespace
-             WHERE n.nspname = 'auth'
-               AND c.relname IN ('tenant_membership', 'roles')
-               AND t.tgname = ANY($1)
-               AND NOT t.tgisinternal
-               AND t.tgenabled <> 'D') AS triggers`,
+      functionResult = await executor.query(
+        `SELECT p.oid AS oid,
+                p.pronargs,
+                p.prorettype = 'trigger'::regtype AS returns_trigger,
+                p.prosecdef,
+                p.proconfig,
+                p.prolang = (SELECT oid FROM pg_language WHERE lanname = 'plpgsql') AS is_plpgsql,
+                r.rolcanlogin AS owner_login,
+                r.rolsuper AS owner_super,
+                r.rolbypassrls AS owner_bypass,
+                pg_has_role(current_user, p.proowner, 'MEMBER') AS owner_reachable
+         FROM pg_proc p
+         JOIN pg_namespace n ON n.oid = p.pronamespace
+         JOIN pg_roles r ON r.oid = p.proowner
+         WHERE n.nspname = 'auth' AND p.proname = 'lock_authority_gate'`,
+      );
+      triggerResult = await executor.query(
+        `SELECT c.relname AS table_name, t.tgname, t.tgtype, t.tgenabled, t.tgfoid,
+                (t.tgqual IS NULL) AS unconditional,
+                t.tgnargs, t.tgconstraint, t.tgdeferrable, t.tginitdeferred,
+                t.tgattr::text AS columns
+         FROM pg_trigger t
+         JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'auth'
+           AND c.relname IN ('tenant_membership', 'roles')
+           AND NOT t.tgisinternal
+           AND t.tgname = ANY($1)`,
         [AUTHORITY_GATE_TRIGGERS],
       );
     } catch {
       throw gateUnavailable();
     }
-    const row = result.rows[0];
-    if (!row || Number(row.functions) !== 1 || Number(row.triggers) !== AUTHORITY_GATE_TRIGGERS.length) {
+
+    if (functionResult.rowCount !== 1) throw gateUnavailable();
+    const fn = functionResult.rows[0];
+    if (Number(fn.pronargs) !== 0 ||
+        fn.returns_trigger !== true ||
+        fn.prosecdef !== false ||
+        fn.is_plpgsql !== true ||
+        fn.owner_login !== false ||
+        fn.owner_super !== false ||
+        fn.owner_bypass !== false ||
+        fn.owner_reachable !== false ||
+        !Array.isArray(fn.proconfig) ||
+        fn.proconfig.length !== 1 ||
+        fn.proconfig[0] !== 'search_path=pg_catalog') {
       throw gateUnavailable();
+    }
+
+    if (triggerResult.rowCount !== AUTHORITY_GATE_BINDINGS.length) throw gateUnavailable();
+    for (const expected of AUTHORITY_GATE_BINDINGS) {
+      const matches = triggerResult.rows.filter(row => row.table_name === expected.table && row.tgname === expected.name);
+      if (matches.length !== 1) throw gateUnavailable();
+      const trigger = matches[0];
+      // BEFORE = 2, statement-level = no row bit, exactly one event bit.
+      if (Number(trigger.tgtype) !== (2 | expected.event)) throw gateUnavailable();
+      if (trigger.tgenabled !== 'O' && trigger.tgenabled !== 'A') throw gateUnavailable();
+      if (Number(trigger.tgfoid) !== Number(fn.oid)) throw gateUnavailable();
+      if (trigger.unconditional !== true ||
+          Number(trigger.tgnargs) !== 0 ||
+          Number(trigger.tgconstraint) !== 0 ||
+          trigger.tgdeferrable !== false ||
+          trigger.tginitdeferred !== false ||
+          trigger.columns !== '') {
+        throw gateUnavailable();
+      }
     }
   }
 

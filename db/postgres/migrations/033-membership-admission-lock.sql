@@ -23,6 +23,14 @@
 -- Additive only: no table/column change, no RLS change, no runtime EXECUTE/UPDATE grant,
 -- no SECURITY DEFINER, no BYPASSRLS, no dynamic SQL, no business data mutation.
 
+-- APPLICATION: administrator-applied with autocommit/no ambient transaction. The payload
+-- owns BEGIN/COMMIT so a statement-by-statement runner is atomic; do not pre-wrap it in
+-- another transaction. Preflight runs before any persistent mutation; conflicting
+-- pre-existing gate objects are refused, interrupted installation rolls back, and a clean
+-- retry succeeds.
+
+BEGIN;
+
 DO $guard$
 DECLARE
   conflicting text;
@@ -97,3 +105,5 @@ COMMENT ON TRIGGER roles_authority_gate_update ON auth.roles IS
   'AUTH-006-R3: requires_mfa/is_active/effective-date changes serialize against admitted business work.';
 COMMENT ON TRIGGER roles_authority_gate_delete ON auth.roles IS
   'AUTH-006-R3: role removal serializes against admitted business work.';
+
+COMMIT;

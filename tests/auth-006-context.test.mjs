@@ -10,7 +10,7 @@ import {createAuditWriter} from '../src/auth/server.mjs';
 import {createTenantSelection, TenantSelectionError} from '../src/auth/tenant-selection.mjs';
 import {createTenantContext, TenantContextError} from '../src/db/tenant-context.mjs';
 
-const {Pool} = pg;
+const {Pool, Client} = pg;
 const origins = {customer: 'https://app.saven.test', operator: 'https://ops.saven.test'};
 const customerCookie = cookieName('customer', true);
 
@@ -77,6 +77,78 @@ function within(promise, ms, label) {
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), ms)),
   ]);
+}
+
+// Splits a migration payload into executable statements while respecting dollar-quoted
+// function/DO bodies and line comments. Used only to prove statement-by-statement atomic
+// application in the disposable test database.
+function splitSqlStatements(sql) {
+  const statements = [];
+  let buffer = '';
+  let index = 0;
+  let dollar = null;
+  let lineComment = false;
+  let single = false;
+  while (index < sql.length) {
+    const char = sql[index];
+    if (lineComment) {
+      buffer += char;
+      if (char === '\n') lineComment = false;
+      index += 1;
+      continue;
+    }
+    if (single) {
+      buffer += char;
+      if (char === "'") {
+        if (sql[index + 1] === "'") {
+          buffer += "'";
+          index += 2;
+          continue;
+        }
+        single = false;
+      }
+      index += 1;
+      continue;
+    }
+    if (!dollar && char === '-' && sql[index + 1] === '-') {
+      lineComment = true;
+      buffer += '--';
+      index += 2;
+      continue;
+    }
+    if (!dollar && char === "'") {
+      single = true;
+      buffer += char;
+      index += 1;
+      continue;
+    }
+    if (!dollar && char === '$') {
+      const match = /^\$[A-Za-z_]*\$/.exec(sql.slice(index));
+      if (match) {
+        dollar = match[0];
+        buffer += dollar;
+        index += dollar.length;
+        continue;
+      }
+    } else if (dollar && sql.startsWith(dollar, index)) {
+      buffer += dollar;
+      index += dollar.length;
+      dollar = null;
+      continue;
+    }
+    if (!dollar && char === ';') {
+      const statement = buffer.trim();
+      if (statement) statements.push(statement);
+      buffer = '';
+      index += 1;
+      continue;
+    }
+    buffer += char;
+    index += 1;
+  }
+  const tail = buffer.trim();
+  if (tail) statements.push(tail);
+  return statements;
 }
 
 async function makeLoginPool(db, roleName, label, {max = 4} = {}) {
@@ -1646,6 +1718,222 @@ test('AUTH-006-R3 composed boundary works on smallest separate auth/business poo
         ).rows[0].n),
         new Promise((_, reject) => setTimeout(() => reject(new Error('smallest-pool context timed out')), 15000)),
       ]);
+      assert.equal(count, 2);
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AUTH-006-R4: exact gate-contract negatives and atomic 033 installation.
+// ---------------------------------------------------------------------------
+
+test('AUTH-006-R4 wrong gate bindings are refused and a valid profile recovers', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seed(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const {selection, current} = await selectedMember({db, auth, business, clock});
+
+      const gateTriggers = {
+        tenant_membership_authority_gate_insert: {table: 'auth.tenant_membership', event: 'INSERT'},
+        tenant_membership_authority_gate_update: {table: 'auth.tenant_membership', event: 'UPDATE'},
+        tenant_membership_authority_gate_delete: {table: 'auth.tenant_membership', event: 'DELETE'},
+        roles_authority_gate_insert: {table: 'auth.roles', event: 'INSERT'},
+        roles_authority_gate_update: {table: 'auth.roles', event: 'UPDATE'},
+        roles_authority_gate_delete: {table: 'auth.roles', event: 'DELETE'},
+      };
+      const dropTrigger = async name => {
+        const def = gateTriggers[name];
+        await db.adminQuery(`DROP TRIGGER IF EXISTS ${name} ON ${def.table}`);
+      };
+      const createTrigger = async (name, {table, event, row = false, when = null, fn = 'auth.lock_authority_gate'}) => {
+        const filter = when === null ? '' : `WHEN (${when}) `;
+        await db.adminQuery(
+          `CREATE TRIGGER ${name} BEFORE ${event} ON ${table} FOR EACH ${row ? 'ROW' : 'STATEMENT'} ${filter}EXECUTE FUNCTION ${fn}()`,
+        );
+      };
+      const restoreTrigger = async name => {
+        const def = gateTriggers[name];
+        await dropTrigger(name);
+        await createTrigger(name, def);
+      };
+      const expectRefused = async label => {
+        await assert.rejects(
+          () => selection.list(current),
+          error => error instanceof TenantSelectionError && error.code === 'TENANT_AUTHORITY_GATE_UNAVAILABLE',
+          label,
+        );
+        let called = false;
+        const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+        await assert.rejects(
+          () => context.withTenantContext(current, async () => {
+            called = true;
+          }),
+          error => error instanceof TenantSelectionError && error.code === 'TENANT_AUTHORITY_GATE_UNAVAILABLE',
+          label,
+        );
+        assert.equal(called, false, `${label}: no handler/effects`);
+      };
+      const expectRecovered = async label => {
+        const listed = await selection.list(current);
+        assert.equal(listed.tenants.length, 2, `${label}: valid profile recovers`);
+      };
+
+      // Replica-only firing mode: present by name/count, but does not fire in origin.
+      await db.adminQuery(
+        'ALTER TABLE auth.tenant_membership ENABLE REPLICA TRIGGER tenant_membership_authority_gate_insert',
+      );
+      await expectRefused('replica-only trigger');
+      await db.adminQuery(
+        'ALTER TABLE auth.tenant_membership ENABLE TRIGGER tenant_membership_authority_gate_insert',
+      );
+      await expectRecovered('replica-only trigger');
+
+      // Same name/count but bound to a no-op function.
+      await db.adminQuery(
+        `CREATE FUNCTION auth.noop_gate() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog
+         AS $fn$ BEGIN RETURN NULL; END; $fn$`,
+      );
+      await dropTrigger('roles_authority_gate_update');
+      await createTrigger('roles_authority_gate_update', {
+        table: 'auth.roles', event: 'UPDATE', fn: 'auth.noop_gate',
+      });
+      await expectRefused('wrong trigger function');
+      await restoreTrigger('roles_authority_gate_update');
+      await db.adminQuery('DROP FUNCTION auth.noop_gate()');
+      await expectRecovered('wrong trigger function');
+
+      // Same name/count but on the wrong table.
+      await dropTrigger('roles_authority_gate_delete');
+      await createTrigger('roles_authority_gate_delete', {table: 'auth.tenant_membership', event: 'DELETE'});
+      await expectRefused('wrong trigger table');
+      await db.adminQuery('DROP TRIGGER roles_authority_gate_delete ON auth.tenant_membership');
+      await restoreTrigger('roles_authority_gate_delete');
+      await expectRecovered('wrong trigger table');
+
+      // Same name/count but on the wrong event.
+      await dropTrigger('tenant_membership_authority_gate_insert');
+      await createTrigger('tenant_membership_authority_gate_insert', {table: 'auth.tenant_membership', event: 'UPDATE'});
+      await expectRefused('wrong trigger event');
+      await restoreTrigger('tenant_membership_authority_gate_insert');
+      await expectRecovered('wrong trigger event');
+
+      // Row-level conditional binding instead of BEFORE STATEMENT.
+      await dropTrigger('tenant_membership_authority_gate_update');
+      await createTrigger('tenant_membership_authority_gate_update', {
+        table: 'auth.tenant_membership', event: 'UPDATE', row: true, when: 'false',
+      });
+      await expectRefused('row-level conditional trigger');
+      await restoreTrigger('tenant_membership_authority_gate_update');
+      await expectRecovered('row-level conditional trigger');
+
+      // Reviewed function configuration is part of the contract.
+      await db.adminQuery('ALTER FUNCTION auth.lock_authority_gate() SECURITY DEFINER');
+      await expectRefused('SECURITY DEFINER function');
+      await db.adminQuery('ALTER FUNCTION auth.lock_authority_gate() SECURITY INVOKER');
+      await expectRecovered('SECURITY DEFINER function');
+
+      await db.adminQuery('ALTER FUNCTION auth.lock_authority_gate() SET search_path = public');
+      await expectRefused('wrong search_path');
+      await db.adminQuery('ALTER FUNCTION auth.lock_authority_gate() SET search_path = pg_catalog');
+      await expectRecovered('wrong search_path');
+    } finally {
+      await auth.close();
+      await business.close();
+    }
+  });
+});
+
+test('AUTH-006-R4 migration 033 is atomic, refuses foreign conflicts and retries cleanly', async () => {
+  await withPivotDatabase({
+    sqlFiles: schemaFiles,
+    adminSqlFiles: adminSqlFiles.filter(file => !file.includes('033-')),
+  }, async db => {
+    await seed(db);
+    const raw = await readFile(new URL('../db/postgres/migrations/033-membership-admission-lock.sql', import.meta.url), 'utf8');
+    const sql = raw.replaceAll('saven_migrator', db.roles.migrator);
+    const statements = splitSqlStatements(sql);
+    assert.ok(statements.length >= 12);
+    assert.match(statements[0], /BEGIN/);
+
+    const gateObjects = async () => db.adminQuery(
+      `SELECT
+         (SELECT count(*)::int FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'auth' AND p.proname = 'lock_authority_gate') AS functions,
+         (SELECT count(*)::int FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+           JOIN pg_namespace n ON n.oid = c.relnamespace
+           WHERE n.nspname = 'auth' AND c.relname IN ('tenant_membership', 'roles')
+             AND NOT t.tgisinternal AND t.tgname LIKE '%authority_gate%') AS triggers`,
+    ).then(result => result.rows[0]);
+
+    // Pre-existing foreign authority-gate-like objects are refused, not repaired.
+    await db.adminQuery(
+      `CREATE FUNCTION auth.noop_gate() RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog
+       AS $fn$ BEGIN RETURN NULL; END; $fn$`,
+    );
+    await db.adminQuery(
+      'CREATE TRIGGER tenant_membership_authority_gate_insert BEFORE INSERT ON auth.tenant_membership FOR EACH STATEMENT EXECUTE FUNCTION auth.noop_gate()',
+    );
+    const conflictClient = new Client(connectionConfig(db.database));
+    await conflictClient.connect();
+    try {
+      await assert.rejects(async () => {
+        for (const statement of statements) await conflictClient.query(statement);
+      }, /AUTH-006 033 refuses pre-existing/);
+      await conflictClient.query('ROLLBACK').catch(() => {});
+    } finally {
+      await conflictClient.end().catch(() => {});
+    }
+    assert.deepEqual(await gateObjects(), {functions: 0, triggers: 1}, 'only the foreign trigger remains');
+    await db.adminQuery('DROP TRIGGER tenant_membership_authority_gate_insert ON auth.tenant_membership');
+    await db.adminQuery('DROP FUNCTION auth.noop_gate()');
+
+    // Interrupted statement-by-statement installation rolls back all gate objects.
+    const interrupted = new Client(connectionConfig(db.database));
+    await interrupted.connect();
+    try {
+      await assert.rejects(async () => {
+        for (const statement of statements) {
+          await interrupted.query(statement);
+          if (statement.includes('ALTER FUNCTION') && statement.includes('OWNER TO')) {
+            throw new Error('injected interruption after DDL');
+          }
+        }
+      }, /injected interruption/);
+      await interrupted.query('ROLLBACK').catch(() => {});
+    } finally {
+      await interrupted.end().catch(() => {});
+    }
+    assert.deepEqual(await gateObjects(), {functions: 0, triggers: 0}, 'interrupted installation left no gate objects');
+
+    // A clean retry succeeds and the installed protocol composes with admission.
+    const installClient = new Client(connectionConfig(db.database));
+    await installClient.connect();
+    try {
+      for (const statement of statements) await installClient.query(statement);
+    } finally {
+      await installClient.end().catch(() => {});
+    }
+    assert.deepEqual(await gateObjects(), {functions: 1, triggers: 6});
+
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    const business = await makeLoginPool(db, db.roles.customerApp, 'business');
+    try {
+      const clock = testClock();
+      const store = createSessionStore({connect: () => auth.pool.connect(), clock: clock.clock});
+      const {selection, handler} = makeSelectionAndRoutes({store, authPool: auth.pool, clock});
+      const session = await makeSession(store, U1);
+      assert.equal((await selectTenant(handler, session.token, session.csrf, {tenantId: T1})).status, 200);
+      const current = await store.readSession(session.token);
+      const context = createTenantContext({connect: () => business.pool.connect(), resolveAuthority: selection.withAuthority});
+      const count = await context.withTenantContext(current, async client => (
+        await client.query('SELECT count(*)::int AS n FROM tenant_data.accounts')
+      ).rows[0].n);
       assert.equal(count, 2);
     } finally {
       await auth.close();
