@@ -476,3 +476,54 @@ hours. These remain fixture/bootstrap values, not approved production policy.
 - Cleanup of an undelivered challenge is best effort; a failed invalidation can leave a
   token live until expiry. No unconditional no-live-token guarantee is claimed.
 - No session is issued by reset and no email address is changed by verification.
+
+## Tenant selection (AUTH-006)
+
+Selection is a request, never authority. The client may ask for a tenant or membership;
+the service resolves it against the verified session principal's own active canonical
+memberships and binds the resolved membership id, tenant id and membership epoch to the
+session row. No `tenant_id`/`user_id` from headers, query or body is copied into a database
+context.
+
+### Routes
+
+| Route | Method | Behaviour |
+| --- | --- | --- |
+| `/v1/auth/tenants` | GET | Lists only the verified principal's selectable active memberships and the current selection. |
+| `/v1/auth/tenant/select` | POST | Accepts exactly one of `tenantId` or `membershipId`, revalidates it against the principal's active memberships inside a locked session transaction and binds the selection. Non-member, revoked, suspended or stale selections are refused. |
+| `/v1/auth/tenant/clear` | POST | Clears the selection (CSRF-checked). |
+
+These routes are deliberately not in the pre-MFA allow-list, so a pending MFA session
+cannot choose a business before verification. Operator realms refuse selection.
+
+### Invariants
+
+- `list`, `select` and `resolve` run on the auth-service connection inside an owned
+  transaction and bind `app.current_user_id` with parameterized
+  `set_config(..., true)` before reading `auth.tenant_membership`; the accepted preselection
+  RLS exposes only that principal's rows.
+- `select` locks the session row, requires the session principal to match, resolves the
+  selector against active memberships (status active, no suspension/revocation, active and
+  effective role), and writes the selection with a guarded UPDATE that refuses revoked,
+  expired, disabled or credential-stale sessions.
+- `resolve` (used by the DB boundary) re-locks the session, rechecks authority and reloads
+  the exact selected membership, requiring the same `membership_epoch`. A changed epoch,
+  revoked membership or invalid session fails closed before any business client is opened.
+- The session's selected fields are all-or-nothing (schema CHECK); login remains
+  tenant-less and selection is a separate, explicit step.
+- Selection never changes roles, memberships, assurance or owner authority.
+
+### Extension points
+
+- Tenant membership roles are `auth.roles`/business reference data; the selection service
+  does not encode role names.
+- Additional selection dimensions (company/branch) belong to future RLS/policy tables and
+  the DB context, not to new hardcoded selector columns.
+- The DB-facing boundary lives in `src/db/tenant-context.mjs`; it receives a resolver
+  function rather than importing this module directly.
+
+### Non-claims
+
+- No UI, active entry point or business route is delivered here.
+- Listing/selection does not grant business permissions, approval authority or owner
+  protections; those remain policy and RLS concerns.

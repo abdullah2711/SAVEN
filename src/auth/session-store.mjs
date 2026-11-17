@@ -300,6 +300,9 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
       userId: row.user_id,
       assuranceLevel: row.assurance_level,
       selectedTenantId: row.selected_tenant_id ?? null,
+      selectedMembershipId: row.selected_membership_id ?? null,
+      selectedRoleId: row.selected_role_id ?? null,
+      membershipEpoch: row.membership_epoch == null ? null : Number(row.membership_epoch),
       idleExpiresAt: iso(row.idle_expires_at),
       absoluteExpiresAt: iso(row.absolute_expires_at),
       lastSeenAt: iso(row.last_seen_at),
@@ -376,7 +379,7 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     return withClient(async executor => {
       const result = await executor.query(
         `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.selected_tenant_id,
-                s.selected_membership_id, s.membership_epoch, s.credential_version, s.csrf_token_hash,
+                s.selected_membership_id, s.selected_role_id, s.membership_epoch, s.credential_version, s.csrf_token_hash,
                 s.created_at, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
                 s.revoked_at, u.email, u.status AS user_status,
                 u.credential_version AS current_credential_version
@@ -399,8 +402,6 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
         csrfTokenHash: row.csrf_token_hash,
         email: row.email,
         roleId: row.role_id,
-        selectedMembershipId: row.selected_membership_id,
-        membershipEpoch: row.membership_epoch,
       };
     });
   }
@@ -413,7 +414,7 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
     return inTransaction(tx, async executor => {
       const result = await executor.query(
         `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.selected_tenant_id,
-                s.selected_membership_id, s.membership_epoch, s.credential_version, s.csrf_token_hash,
+                s.selected_membership_id, s.selected_role_id, s.membership_epoch, s.credential_version, s.csrf_token_hash,
                 s.created_at, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
                 s.revoked_at, u.email, u.status AS user_status,
                 u.credential_version AS current_credential_version
@@ -436,8 +437,6 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
         csrfTokenHash: row.csrf_token_hash,
         email: row.email,
         roleId: row.role_id,
-        selectedMembershipId: row.selected_membership_id,
-        membershipEpoch: row.membership_epoch,
       };
     });
   }
@@ -489,6 +488,107 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
       return result.rowCount === 1
         ? {id: result.rows[0].id, assuranceLevel: result.rows[0].assurance_level, mfaVerifiedAt: result.rows[0].mfa_verified_at}
         : null;
+    });
+  }
+
+  // Session authority by id, used by the tenant-selection resolver. The caller may hold
+  // the row lock so a concurrent revoke/expiry/rotation cannot slip between validation
+  // and the selection write. The same revoked/disabled/epoch/expiry predicates apply.
+  async function readSessionById(sessionId, {tx, forUpdate = true} = {}) {
+    if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) return null;
+    return inTransaction(tx, async executor => {
+      const result = await executor.query(
+        `SELECT s.id, s.user_id, s.realm, s.role_id, s.assurance_level, s.selected_tenant_id,
+                s.selected_membership_id, s.selected_role_id, s.membership_epoch,
+                s.credential_version, s.csrf_token_hash,
+                s.created_at, s.last_seen_at, s.idle_expires_at, s.absolute_expires_at,
+                s.revoked_at, u.email, u.status AS user_status,
+                u.credential_version AS current_credential_version
+         FROM auth.sessions s
+         JOIN auth.users u ON u.id = s.user_id
+         WHERE s.id = $1${forUpdate ? ' FOR UPDATE OF s' : ''}`,
+        [sessionId],
+      );
+      if (result.rowCount !== 1) return null;
+      const row = result.rows[0];
+      if (row.revoked_at !== null) return null;
+      if (row.user_status !== 'active') return null;
+      if (row.credential_version !== row.current_credential_version) return null;
+      const at = now().getTime();
+      if (row.absolute_expires_at.getTime() <= at || row.idle_expires_at.getTime() <= at) return null;
+      return {
+        ...publicSession(row),
+        tokenHash: null,
+        csrfTokenHash: row.csrf_token_hash,
+        email: row.email,
+        roleId: row.role_id,
+      };
+    });
+  }
+
+  // Binds a server-resolved selection to a live session. The guard clauses are repeated
+  // in the UPDATE so a revoked, expired, disabled or credential-stale session can never
+  // acquire or change a tenant selection.
+  async function setSessionSelection(sessionId, {membershipId, tenantId, membershipEpoch, roleId = null}, {tx} = {}) {
+    if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) {
+      throw new AuthError(400, 'SESSION_INVALID', 'A verified session is required.');
+    }
+    if (typeof membershipId !== 'string' || !/^[0-9a-f-]{36}$/i.test(membershipId) ||
+        typeof tenantId !== 'string' || !/^[0-9a-f-]{36}$/i.test(tenantId)) {
+      throw new AuthError(400, 'SESSION_SELECTION_INVALID', 'A resolved membership is required.');
+    }
+    if (!Number.isSafeInteger(membershipEpoch) || membershipEpoch < 1) {
+      throw new AuthError(400, 'SESSION_SELECTION_INVALID', 'A resolved membership epoch is required.');
+    }
+    const moment = iso(now());
+    return run(tx, async executor => {
+      const result = await executor.query(
+        `UPDATE auth.sessions s
+         SET selected_membership_id = $2, selected_tenant_id = $3,
+             selected_role_id = $4, membership_epoch = $5, updated_at = now()
+         FROM auth.users u
+         WHERE s.id = $1 AND u.id = s.user_id
+           AND s.revoked_at IS NULL
+           AND s.absolute_expires_at > $6::timestamptz
+           AND s.idle_expires_at > $6::timestamptz
+           AND u.status = 'active'
+           AND u.credential_version = s.credential_version
+         RETURNING s.id, s.selected_membership_id, s.selected_tenant_id,
+                   s.selected_role_id, s.membership_epoch`,
+        [sessionId, membershipId, tenantId, roleId, membershipEpoch, moment],
+      );
+      if (result.rowCount !== 1) return null;
+      const row = result.rows[0];
+      return {
+        selectedMembershipId: row.selected_membership_id,
+        selectedTenantId: row.selected_tenant_id,
+        selectedRoleId: row.selected_role_id,
+        membershipEpoch: Number(row.membership_epoch),
+      };
+    });
+  }
+
+  async function clearSessionSelection(sessionId, {tx} = {}) {
+    if (typeof sessionId !== 'string' || !/^[0-9a-f-]{36}$/i.test(sessionId)) {
+      throw new AuthError(400, 'SESSION_INVALID', 'A verified session is required.');
+    }
+    const moment = iso(now());
+    return run(tx, async executor => {
+      const result = await executor.query(
+        `UPDATE auth.sessions s
+         SET selected_membership_id = NULL, selected_tenant_id = NULL,
+             selected_role_id = NULL, membership_epoch = NULL, updated_at = now()
+         FROM auth.users u
+         WHERE s.id = $1 AND u.id = s.user_id
+           AND s.revoked_at IS NULL
+           AND s.absolute_expires_at > $2::timestamptz
+           AND s.idle_expires_at > $2::timestamptz
+           AND u.status = 'active'
+           AND u.credential_version = s.credential_version
+         RETURNING s.id`,
+        [sessionId, moment],
+      );
+      return result.rowCount === 1;
     });
   }
 
@@ -592,9 +692,12 @@ export function createSessionStore({connect, clock = () => new Date(), config = 
   return {
     createSession,
     readSession,
+    readSessionById,
     lockSession,
     refreshSession,
     setSessionAssurance,
+    setSessionSelection,
+    clearSessionSelection,
     rotateSession,
     revokeSession,
     revokeAllSessions,
