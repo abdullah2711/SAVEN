@@ -93,24 +93,81 @@ COMMENT ON TABLE operator.access_session_binding IS
 ALTER TABLE operator.access_session_binding
   ADD COLUMN IF NOT EXISTS binding_scheme text;
 
--- Advance-only allocator reconciliation. Never reseed below the sequence high-water or a
--- generation retained by a session binding after its mapping row was deleted. setval is not
--- rolled back with a transaction, so every adjustment only moves forward; a failed or
--- interrupted reapplication cannot cause a previously issued generation to be reused.
+-- Advance-only allocator reconciliation with a validated supported profile.
+--
+-- Supported allocator profile: bigint, START 1, INCREMENT 1, MINVALUE 1,
+-- MAXVALUE 9223372036854775807, CACHE 1, NO CYCLE, owned by the authority-table owner.
+-- Cached or cycling/negative-increment sequences are refused rather than treated as
+-- equivalent; an installation failure must never silently normalize an issued allocator
+-- backward. The installer takes the exclusive AUTH-006 authority gate for the duration of
+-- the transaction, serializing reconciliation with admissions and installed mapping
+-- writers. Run installation while no external allocator writer is active.
+--
+-- Never reseed below the sequence high-water or a generation retained by a session binding
+-- after its mapping row was deleted. setval is not rolled back with a transaction, so every
+-- adjustment only moves forward; a failed or interrupted reapplication cannot cause a
+-- previously issued generation to be reused.
 DO $allocator$
 DECLARE
+  seq record;
+  table_owner oid;
+  needed_floor numeric;
   needed bigint;
-  current_next bigint;
+  current_next numeric;
   last_value bigint;
   is_called boolean;
 BEGIN
-  SELECT COALESCE(max(mapping_epoch), 0) INTO needed FROM operator.access_identity;
-  SELECT GREATEST(needed, COALESCE(max(mapping_epoch), 0)) INTO needed FROM operator.access_session_binding;
-  needed := needed + 1;
-  SELECT seq.last_value, seq.is_called INTO last_value, is_called
-    FROM operator.access_identity_generation_seq AS seq;
-  current_next := last_value + CASE WHEN is_called THEN 1 ELSE 0 END;
-  IF current_next < needed THEN
+  PERFORM pg_advisory_xact_lock(hashtextextended('saven.auth.authority_gate', 0));
+
+  SELECT s.seqtypid, s.seqincrement, s.seqmin, s.seqmax, s.seqstart, s.seqcache,
+         s.seqcycle, c.relowner
+    INTO seq
+  FROM pg_sequence s
+  JOIN pg_class c ON c.oid = s.seqrelid
+  WHERE s.seqrelid = 'operator.access_identity_generation_seq'::regclass;
+  SELECT relowner INTO table_owner FROM pg_class WHERE oid = 'operator.access_identity'::regclass;
+
+  IF seq.seqtypid IS NULL THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: sequence is missing';
+  END IF;
+  IF seq.seqtypid <> 'bigint'::regtype THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: type must be bigint';
+  END IF;
+  IF seq.seqincrement <> 1 THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: increment must be 1';
+  END IF;
+  IF seq.seqmin <> 1 THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: minvalue must be 1';
+  END IF;
+  IF seq.seqmax <> 9223372036854775807 THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: maxvalue must be bigint maximum';
+  END IF;
+  IF seq.seqstart <> 1 THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: start must be 1';
+  END IF;
+  IF seq.seqcache <> 1 THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: cache must be 1';
+  END IF;
+  IF seq.seqcycle THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: cycling is not supported';
+  END IF;
+  IF seq.relowner <> table_owner THEN
+    RAISE EXCEPTION 'AUTH-007 allocator profile invalid: sequence owner must match the authority-table owner';
+  END IF;
+
+  SELECT GREATEST(
+    COALESCE((SELECT max(mapping_epoch)::numeric FROM operator.access_identity), 0),
+    COALESCE((SELECT max(mapping_epoch)::numeric FROM operator.access_session_binding), 0)
+  ) + 1 INTO needed_floor;
+  IF needed_floor > 9223372036854775807 THEN
+    RAISE EXCEPTION 'AUTH-007 allocator exhausted: generation floor exceeds bigint maximum';
+  END IF;
+  needed := needed_floor::bigint;
+
+  SELECT s.last_value, s.is_called INTO last_value, is_called
+    FROM operator.access_identity_generation_seq AS s;
+  current_next := last_value::numeric + CASE WHEN is_called THEN 1 ELSE 0 END;
+  IF current_next < needed_floor THEN
     PERFORM setval('operator.access_identity_generation_seq', needed, false);
   END IF;
 END

@@ -1326,11 +1326,12 @@ async function sequenceState(db) {
   const row = await db.adminQuery(
     'SELECT last_value, is_called FROM operator.access_identity_generation_seq',
   ).then(result => result.rows[0]);
-  const last = Number(row.last_value);
-  return {last, called: row.is_called === true, next: last + (row.is_called === true ? 1 : 0)};
+  const last = BigInt(String(row.last_value));
+  const called = row.is_called === true;
+  return {last, called, next: last + (called ? 1n : 0n)};
 }
 
-test('AUTH-007-R3 allocator never reseeds issued generations on reapplication or interruption', async () => {
+test('AUTH-007-R3 allocator reapplication advances binding-only evidence and interruption cannot regress it', async () => {
   await withOperatorDatabase(async db => {
     await seedMapping(db);
     const auth = await makeLoginPool(db, db.roles.authService, 'auth');
@@ -1339,62 +1340,159 @@ test('AUTH-007-R3 allocator never reseeds issued generations on reapplication or
       const key = makeKeys();
       const harness = buildHarness({pool: auth.pool, clock, keys: [key]});
       const first = await exchangeCookie(harness.handler, assertion({key}));
-      const issued = await db.adminQuery(
+      const issued = BigInt(await db.adminQuery(
         'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
         [SUBJECT],
-      ).then(result => Number(result.rows[0].mapping_epoch));
+      ).then(result => result.rows[0].mapping_epoch));
 
-      // Delete the live mapping while its issued generation remains in the session binding.
-      await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
-      const beforeReapply = await sequenceState(db);
-
-      // Reapplying 06 must never move the allocator backward.
+      // Supported already-ahead state: normal reapplication does not move backward.
+      const ahead = await sequenceState(db);
       await db.adminQuery(await operatorSql('db/postgres/06-operator-identity.sql', db));
-      const afterReapply = await sequenceState(db);
-      assert.ok(afterReapply.next >= beforeReapply.next, 'reapplication does not regress the allocator');
-      assert.ok(afterReapply.next > issued, 'the retained generation remains below the high-water');
+      const afterAhead = await sequenceState(db);
+      assert.ok(afterAhead.next >= ahead.next, 'ahead allocator does not regress');
+      assert.ok(afterAhead.next > issued);
+
+      // Binding-only evidence repairs a behind allocator. The test-only setval below is a
+      // disposable-fixture mutation, not a production counter-reset path. The old live-only
+      // reseed would compute floor 1 here and leave the retained generation reusable.
+      await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
+      await db.adminQuery("SELECT setval('operator.access_identity_generation_seq', 1, false)");
+      const behind = await sequenceState(db);
+      assert.equal(behind.next, 1n);
+      assert.ok(issued + 1n > 1n, 'old live-only reseed would leave the retained generation reusable');
+      await db.adminQuery(await operatorSql('db/postgres/06-operator-identity.sql', db));
+      const repaired = await sequenceState(db);
+      assert.ok(repaired.next > issued, 'binding-only reconciliation advances strictly beyond issued evidence');
+      const oldAfterRepair = await operatorMe(harness.handler, first.cookie);
+      assert.equal(oldAfterRepair.status, 403);
+      assert.equal((await oldAfterRepair.json()).error.code, 'OPERATOR_ACCESS_DENIED');
 
       await seedMapping(db);
       clock.advance(2000);
-      const recreated = await db.adminQuery(
+      const recreated = BigInt(await db.adminQuery(
         'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
         [SUBJECT],
-      ).then(result => Number(result.rows[0].mapping_epoch));
-      assert.ok(recreated > issued, 'the recreated mapping cannot reuse the deleted generation');
-      assert.equal((await operatorMe(harness.handler, first.cookie)).status, 403, 'the old binding stays denied');
+      ).then(result => result.rows[0].mapping_epoch));
+      assert.ok(recreated > issued, 'recreated mapping uses a fresh generation');
+      assert.equal((await operatorMe(harness.handler, first.cookie)).status, 403);
       const fresh = await exchangeCookie(harness.handler, assertion({key}));
-      assert.equal((await operatorMe(harness.handler, fresh.cookie)).status, 200);
 
-      // Interrupted statement-by-statement reapplication: the non-transactional allocator
-      // may advance but must never move backward; rollback leaves issued generations safe.
+      // Interrupted installation, immediately after confirmed allocator execution and
+      // before COMMIT. Arrange binding evidence above the allocator first.
+      const freshGeneration = BigInt(await db.adminQuery(
+        'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
+        [SUBJECT],
+      ).then(result => result.rows[0].mapping_epoch));
       await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
+      await db.adminQuery("SELECT setval('operator.access_identity_generation_seq', 1, false)");
       const beforeInterrupt = await sequenceState(db);
       const statements = splitSqlStatements(await operatorSql('db/postgres/06-operator-identity.sql', db));
       const client = new Client(connectionConfig(db.database));
       await client.connect();
+      let allocatorRan = false;
       try {
         await assert.rejects(async () => {
           for (const statement of statements) {
             await client.query(statement);
-            if (statement.includes('ALTER COLUMN mapping_epoch SET DEFAULT')) {
-              throw new Error('injected interruption after allocator reconciliation');
+            if (statement.includes('$allocator$')) {
+              allocatorRan = true;
+              throw new Error('injected interruption immediately after allocator reconciliation');
             }
           }
         }, /injected interruption/);
+        assert.equal(allocatorRan, true, 'the allocator block actually executed before interruption');
         await client.query('ROLLBACK').catch(() => {});
       } finally {
         await client.end().catch(() => {});
       }
       const afterInterrupt = await sequenceState(db);
-      assert.ok(afterInterrupt.next >= beforeInterrupt.next, 'interrupted installation does not regress the allocator');
-      assert.ok(afterInterrupt.next > issued, 'issued generation is never reusable after interruption');
-
+      assert.ok(afterInterrupt.next >= beforeInterrupt.next, 'interruption does not regress the allocator');
+      assert.ok(afterInterrupt.next > freshGeneration, 'nontransactional advancement survives the failure');
+      const interruptedOld = await operatorMe(harness.handler, fresh.cookie);
+      assert.equal(interruptedOld.status, 403);
+      assert.equal((await interruptedOld.json()).error.code, 'OPERATOR_ACCESS_DENIED');
       await seedMapping(db);
-      const afterInterruptRecreate = await db.adminQuery(
+      clock.advance(2000);
+      const afterInterruptRecreate = BigInt(await db.adminQuery(
         'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
         [SUBJECT],
-      ).then(result => Number(result.rows[0].mapping_epoch));
-      assert.ok(afterInterruptRecreate > issued, 'recovery uses a fresh generation');
+      ).then(result => result.rows[0].mapping_epoch));
+      assert.ok(afterInterruptRecreate > freshGeneration, 'recovery uses a fresh generation');
+      const afterInterruptFresh = await exchangeCookie(harness.handler, assertion({key}));
+      assert.equal((await operatorMe(harness.handler, afterInterruptFresh.cookie)).status, 200);
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R4 allocator profile validation refuses incompatible configuration and exhaustion', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const harness = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const exchanged = await exchangeCookie(harness.handler, assertion({key}));
+      const session = await harness.store.readSession(exchanged.cookie, {realm: 'operator'});
+      const originalBinding = await db.adminQuery(
+        'SELECT mapping_epoch::text AS epoch FROM operator.access_session_binding WHERE session_id = $1::uuid',
+        [session.id],
+      ).then(result => result.rows[0].epoch);
+
+      const profiles = [
+        ['INCREMENT BY -1', 'INCREMENT BY 1'],
+        ['CYCLE', 'NO CYCLE'],
+        ['CACHE 2', 'CACHE 1'],
+        ['MINVALUE 0', 'MINVALUE 1'],
+        ['MAXVALUE 9223372036854775806', 'MAXVALUE 9223372036854775807'],
+        ['START WITH 2', 'START WITH 1'],
+      ];
+      const sql06 = await operatorSql('db/postgres/06-operator-identity.sql', db);
+      for (const [bad, good] of profiles) {
+        await db.adminQuery(`ALTER SEQUENCE operator.access_identity_generation_seq ${bad}`);
+        const before = await sequenceState(db);
+        await assert.rejects(
+          () => db.adminQuery(sql06),
+          /AUTH-007 allocator profile invalid/,
+          bad,
+        );
+        await db.adminQuery('ROLLBACK').catch(() => {});
+        const after = await sequenceState(db);
+        assert.equal(after.next, before.next, `${bad}: high-water unchanged`);
+        await db.adminQuery(`ALTER SEQUENCE operator.access_identity_generation_seq ${good}`);
+      }
+
+      await db.adminQuery(`ALTER SEQUENCE operator.access_identity_generation_seq OWNER TO "${db.roles.authService}"`);
+      const beforeOwner = await sequenceState(db);
+      await assert.rejects(
+        () => db.adminQuery(sql06),
+        /AUTH-007 allocator profile invalid/,
+      );
+      await db.adminQuery('ROLLBACK').catch(() => {});
+      assert.equal((await sequenceState(db)).next, beforeOwner.next, 'owner mismatch leaves high-water unchanged');
+      await db.adminQuery(`ALTER SEQUENCE operator.access_identity_generation_seq OWNER TO "${db.roles.migrator}"`);
+
+      // Exhaustion: retained binding evidence at bigint maximum must fail before mutation.
+      await db.adminQuery(
+        'UPDATE operator.access_session_binding SET mapping_epoch = 9223372036854775807 WHERE session_id = $1::uuid',
+        [session.id],
+      );
+      const beforeOverflow = await sequenceState(db);
+      await assert.rejects(
+        () => db.adminQuery(sql06),
+        /AUTH-007 allocator exhausted/,
+      );
+      await db.adminQuery('ROLLBACK').catch(() => {});
+      assert.equal((await sequenceState(db)).next, beforeOverflow.next, 'exhaustion leaves high-water unchanged');
+      await db.adminQuery(
+        'UPDATE operator.access_session_binding SET mapping_epoch = $2::bigint WHERE session_id = $1::uuid',
+        [session.id, originalBinding],
+      );
+
+      await db.adminQuery(sql06);
+      assert.equal((await sequenceState(db)).next >= beforeOverflow.next, true, 'supported profile reinstalls');
     } finally {
       await auth.close();
     }
