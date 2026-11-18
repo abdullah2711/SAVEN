@@ -435,7 +435,7 @@ test('AUTH-007 mandatory MFA requires explicit multi-factor evidence, never a si
 
       assert.throws(
         () => createOperatorAccess({
-          validator: {validate: async () => ({}), assertFresh: () => {}},
+          validator: {validate: async () => ({}), assertFresh: () => {}, assertSourceFresh: () => {}},
           store: {withTransaction: async () => {}, createSession: async () => {}},
           policy: {requiredAssurance: 'access_asserted'},
         }),
@@ -999,4 +999,248 @@ test('AUTH-007-R1 audit failure rolls back nonce, binding and session; size-one 
       await auth.close();
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// AUTH-007-R2: accepted admission lock order, mapping incarnation, max-age on
+// subsequent use and synchronous refresh recovery.
+// ---------------------------------------------------------------------------
+
+async function holdUserLock(auth) {
+  const client = await auth.pool.connect();
+  await client.query('BEGIN');
+  await client.query('SELECT id FROM auth.users WHERE id = $1::uuid FOR UPDATE', [OP_USER]);
+  return {
+    async release() {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    },
+  };
+}
+
+async function holdSessionLock(auth, sessionId) {
+  const client = await auth.pool.connect();
+  await client.query('BEGIN');
+  await client.query('SELECT id FROM auth.sessions WHERE id = $1::uuid FOR UPDATE', [sessionId]);
+  return {
+    async release() {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    },
+  };
+}
+
+test('AUTH-007-R2 subsequent admission uses gate->user->session and serializes credential changes', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const normal = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const {cookie} = await exchangeCookie(normal.handler, assertion({key}));
+
+      // Admission-first: pause after the user lock; a credential update blocks behind it.
+      const gate = makeGate();
+      let paused = false;
+      const pauseAfterUserLock = store => {
+        const wrapped = {...store};
+        wrapped.withTransaction = action => store.withTransaction(async tx => {
+          const proxy = {
+            query: async (text, params) => {
+              const result = await tx.query(text, params);
+              if (!paused && typeof text === 'string' && text.includes('FROM auth.users WHERE id = $1 FOR SHARE')) {
+                paused = true;
+                gate.enter();
+                await gate.gate;
+              }
+              return result;
+            },
+          };
+          return action(proxy);
+        });
+        return wrapped;
+      };
+      const pausedHarness = buildHarness({pool: auth.pool, clock, keys: [key], wrapStore: pauseAfterUserLock});
+      const admitted = pausedHarness.operatorAccess.inspectSession(cookie);
+      await gate.entered;
+      const update = db.adminQuery('UPDATE auth.users SET credential_version = credential_version + 1 WHERE id = $1::uuid', [OP_USER]);
+      await assert.rejects(
+        () => Promise.race([update, new Promise((_, reject) => setTimeout(() => reject(new Error('blocked')), 250))]),
+        /blocked/,
+        'credential update blocks behind the held principal lock',
+      );
+      gate.release();
+      const context = await admitted;
+      assert.equal(context.roleId, 'operator_admin');
+      await update;
+      assert.equal((await operatorMe(normal.handler, cookie)).status, 401, 'the next admission sees the new generation');
+
+      // Invalidation-first: revoke before admission; identity is refused.
+      const fresh = await exchangeCookie(normal.handler, assertion({key}));
+      await db.adminQuery("UPDATE auth.sessions SET revoked_at = now() WHERE id = (SELECT id FROM auth.sessions WHERE token_hash = $1)", [createHash('sha256').update(fresh.cookie, 'utf8').digest('hex')]);
+      const refused = await operatorMe(normal.handler, fresh.cookie);
+      assert.equal(refused.status, 401);
+      assert.equal((await refused.json()).error.code, 'SESSION_REQUIRED');
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R2 user-lock wait samples trusted time after locks and refuses an expired source', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const harness = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const expSoon = assertion({key, claims: {exp: Math.floor(clock.now().getTime() / 1000) + 5}});
+      const {cookie} = await exchangeCookie(harness.handler, expSoon);
+
+      const holder = await holdUserLock(auth);
+      const admission = harness.operatorAccess.inspectSession(cookie);
+      let settled = false;
+      admission.then(() => { settled = true; }, () => { settled = true; });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      assert.equal(settled, false, 'admission waits on the principal lock');
+      clock.advance(40 * 1000);
+      await holder.release();
+      await assert.rejects(
+        () => admission,
+        error => error instanceof AccessError && error.code === 'OPERATOR_ACCESS_EXPIRED',
+      );
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R2 session-lock wait samples trusted time after locks and refuses an expired source', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const harness = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const expSoon = assertion({key, claims: {exp: Math.floor(clock.now().getTime() / 1000) + 5}});
+      const exchanged = await exchangeCookie(harness.handler, expSoon);
+      const session = await harness.store.readSession(exchanged.cookie, {realm: 'operator'});
+      const holder = await holdSessionLock(auth, session.id);
+      const admission = harness.operatorAccess.inspectSession(exchanged.cookie);
+      let settled = false;
+      admission.then(() => { settled = true; }, () => { settled = true; });
+      await new Promise(resolve => setTimeout(resolve, 200));
+      assert.equal(settled, false, 'admission waits on the session lock after the user lock');
+      clock.advance(40 * 1000);
+      await holder.release();
+      await assert.rejects(
+        () => admission,
+        error => error instanceof AccessError && error.code === 'OPERATOR_ACCESS_EXPIRED',
+      );
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R2 mapping delete/recreate and reassignment-return cannot revive old sessions', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const harness = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const old = await exchangeCookie(harness.handler, assertion({key}));
+      const oldEpoch = await db.adminQuery(
+        'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
+        [SUBJECT],
+      ).then(result => Number(result.rows[0].mapping_epoch));
+
+      await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
+      assert.equal((await operatorMe(harness.handler, old.cookie)).status, 403);
+      await seedMapping(db);
+      const recreated = await db.adminQuery(
+        'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
+        [SUBJECT],
+      ).then(result => Number(result.rows[0].mapping_epoch));
+      assert.ok(recreated > oldEpoch, 'the recreated mapping has a new non-reusable generation');
+      assert.equal((await operatorMe(harness.handler, old.cookie)).status, 403, 'the old binding cannot revive');
+
+      clock.advance(2000); // observe the recreated mapping's effective_from
+      const fresh = await exchangeCookie(harness.handler, assertion({key}));
+      assert.equal((await operatorMe(harness.handler, fresh.cookie)).status, 200);
+
+      await db.adminQuery("UPDATE operator.access_identity SET operator_role_id = 'member' WHERE subject = $1", [SUBJECT]);
+      assert.equal((await operatorMe(harness.handler, fresh.cookie)).status, 403);
+      await db.adminQuery("UPDATE operator.access_identity SET operator_role_id = 'operator_admin' WHERE subject = $1", [SUBJECT]);
+      assert.equal((await operatorMe(harness.handler, fresh.cookie)).status, 403, 'reassignment-return also advances the generation');
+      const latest = await exchangeCookie(harness.handler, assertion({key}));
+      assert.equal((await operatorMe(harness.handler, latest.cookie)).status, 200);
+
+      // Legacy/null binding scheme fails closed.
+      const session = await harness.store.readSession(latest.cookie, {realm: 'operator'});
+      await db.adminQuery('UPDATE operator.access_session_binding SET binding_scheme = NULL WHERE session_id = $1::uuid', [session.id]);
+      assert.equal((await operatorMe(harness.handler, latest.cookie)).status, 403);
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R2 max-age policy bounds source-issued-at on subsequent admission', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const harness = buildHarness({pool: auth.pool, clock, keys: [key], maxTokenAgeSeconds: 60});
+      const token = assertion({key, claims: {iat: Math.floor(clock.now().getTime() / 1000) - 30}});
+      const {cookie} = await exchangeCookie(harness.handler, token);
+      assert.equal((await operatorMe(harness.handler, cookie)).status, 200);
+      clock.advance(100 * 1000);
+      const stale = await operatorMe(harness.handler, cookie);
+      assert.equal(stale.status, 401);
+      assert.equal((await stale.json()).error.code, 'OPERATOR_ACCESS_STALE');
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R2 a synchronous throw-once refresh callback recovers after cooldown', async () => {
+  const clock = testClock();
+  const key1 = makeKeys('key-1');
+  const key2 = makeKeys('key-2');
+  let calls = 0;
+  const validator = createAccessValidator({
+    issuer: ISSUER,
+    audience: AUDIENCE,
+    keys: [key1],
+    clock: clock.clock,
+    refreshCooldownMs: 1000,
+    refreshKeys: () => {
+      calls += 1;
+      if (calls === 1) throw new Error('synchronous refresh failure');
+      return [key1, key2];
+    },
+  });
+  const unknown = assertion({key: key2});
+  await assert.rejects(
+    () => validator.validate(unknown),
+    error => error instanceof AccessError && error.code === 'OPERATOR_ACCESS_INVALID',
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    () => validator.validate(unknown),
+    error => error instanceof AccessError && error.code === 'OPERATOR_ACCESS_INVALID',
+  );
+  assert.equal(calls, 1, 'immediate retry respects the failure cooldown');
+  clock.advance(1100);
+  assert.equal((await validator.validate(unknown)).subject, SUBJECT, 'later retry invokes the source and recovers');
+  assert.equal(calls, 2);
 });

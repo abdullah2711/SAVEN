@@ -575,34 +575,43 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
   (RS256/RS384/RS512) and fixed key source. `jku`/`x5u` and any token-supplied URL are
   ignored. Unknown keys fail closed. Fixed-source refresh is concurrency-safe: admission is
   reserved before awaiting, simultaneous unknowns coalesce, known-good keys survive a
-  failure, and a retry cooldown applies after failure.
+  failure, and a retry cooldown applies after failure. The flight is published before the
+  callback runs and cleared after settlement, so a synchronous throw-once callback cannot
+  latch a settled promise.
 - JOSE segments must be canonical base64url; noncanonical encodings of the same bytes are
   refused. The fallback replay identity is derived from the issuer/audience/subject-scoped
   `identity_nonce` or the canonical verified assertion digest, never raw JWT text.
 - Expiry, not-before, issue time, issuer, audience, signature and subject are checked with a
   bounded skew at validation and again with the trusted clock at the owned admission
-  boundary. A configured maximum token age requires a finite usable `iat`.
+  boundary. A configured maximum token age requires a finite usable `iat`; subsequent
+  operator admission also bounds the stored source-issued-at evidence by that ceiling.
 - Mandatory operator MFA is explicit. Only positively verified multi-factor evidence
   (default: the RFC 8176 `mfa` AMR value) yields `access_mfa`; `otp`, `hwk`, `swk`, `pwd`
   or their combination without `mfa` never do. A deployment may supply a reviewed
   issuer-controlled predicate for a signed custom claim. The operator policy is fixed to
   `access_mfa`; a configured label cannot weaken it.
 - Operator subjects are explicit rows in `operator.access_identity`: Access subject -> local
-  auth identity + operator role + required assurance + effective window + mapping epoch.
-  There is no wildcard or universal support subject. The mapped role must be active/effective
+  auth identity + operator role + required assurance + effective window + a non-reusable
+  mapping generation. The generation comes from a sequence on every INSERT/UPDATE, so a
+  delete/recreate or reassignment-return cannot revive an earlier binding. There is no
+  wildcard or universal support subject. The mapped role must be active/effective
   `auth.roles.is_operator`; the local identity must be active.
-- Exchange and operator admission use the accepted AUTH-006 authority gate. Admission takes
-  the shared gate before mapping/role reads and locks the local principal in the accepted
-  gate -> user -> session order. Mapping writers take the same gate exclusively through
-  BEFORE STATEMENT triggers in `06-operator-identity.sql`; role changes are covered by the
-  AUTH-006 033 triggers. A plain unlocked read is never treated as authority.
+- Exchange and operator admission use the accepted AUTH-006 authority gate. Subsequent
+  admission resolves identity from the pre-read session, locks the principal first, then
+  re-reads the exact session under lock and revalidates revocation, both expiries, status
+  and credential generation. Trusted time is sampled only after those blocking
+  acquisitions. The order is gate -> user -> session, matching the reset/lifecycle order.
+  Mapping writers take the same gate exclusively through BEFORE STATEMENT triggers in
+  `06-operator-identity.sql`; role changes are covered by the AUTH-006 033 triggers. A plain
+  unlocked read is never treated as authority.
 - The exact verified issuer/subject/audience, mapping epoch/role/assurance and source
-  assertion expiry are stored in `operator.access_session_binding` with the session. Every
-  current operator use (`/me` and the reusable `admitSession(session, {tx})` interface for
-  future PIVOT-007 reads) revalidates that binding against the current mapping/role/principal,
-  mapping epoch, assurance and source expiry. Revocation, reassignment, role/effective-date
-  or assurance changes, and source expiry deny further use; same-user/different-subject
-  sessions remain isolated by binding.
+  assertion expiry are stored in `operator.access_session_binding` with the session, using
+  the `generation-v1` scheme. Every current operator use (`/me` and the reusable
+  `admitSession(session, {tx})` interface for future PIVOT-007 reads) revalidates that
+  binding against the current mapping/role/principal, mapping generation, assurance, source
+  expiry and configured source age. Revocation, delete/recreate, reassignment-return,
+  role/effective-date or assurance changes, source expiry and legacy/null binding schemes
+  deny further use; same-user/different-subject sessions remain isolated by binding.
 - One-time exchange: a namespace-scoped SHA-256 digest is inserted into
   `operator.access_exchange`; a conflict is a replay refusal. Raw assertions are never
   stored. Ordinary unexpired bearer validation is reusable; no impossible replay-proof claim
@@ -621,7 +630,9 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
 - Additional operator roles/scopes are `auth.roles`/mapping data, not new code branches.
 - Future PIVOT-007 privileged reads must call the operator admission interface inside the
   same transaction as the read; they must not trust a stale session role or a role label.
-- Migration `06-operator-identity.sql` depends on AUTH-006 `033` for the shared gate.
+- Migration `06-operator-identity.sql` depends on AUTH-006 `033` for the shared gate. Its
+  mapping generation sequence is non-reusable; legacy bindings without the generation-v1
+  scheme fail closed.
 
 ### Non-claims
 

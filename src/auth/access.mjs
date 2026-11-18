@@ -156,27 +156,35 @@ export function createAccessValidator({
     return trustedKeys.get(kid) ?? null;
   }
 
-  // Concurrency-safe fixed-source refresh: reserve before awaiting, coalesce in-flight
-  // callers, retain known-good keys on failure, and apply a retry cooldown after failure.
+  // Concurrency-safe fixed-source refresh: publish the flight before invoking, coalesce
+  // callers, retain known-good keys on failure, and apply a retry cooldown. The flight is
+  // a deliberately settled-on-completion promise; a synchronous throw in the callback
+  // cannot overwrite it with a settled promise after the fact.
   async function refreshOnce() {
     if (refreshInFlight) return refreshInFlight;
     const at = now().getTime();
     if (at - lastRefreshAt < refreshCooldownMs) return false;
     if (at - lastRefreshFailureAt < refreshCooldownMs) return false;
-    refreshInFlight = (async () => {
+    let release;
+    const flight = new Promise(resolve => {
+      release = resolve;
+    });
+    refreshInFlight = flight;
+    (async () => {
       try {
         const refreshed = await refreshKeys();
         trustedKeys = normalizeKeys(refreshed);
         lastRefreshAt = now().getTime();
-        return true;
       } catch {
         lastRefreshFailureAt = now().getTime();
-        return false;
       } finally {
+        // Clear only this flight. Assignment above happens before the callback runs, so a
+        // synchronous throw cannot leave a settled promise latched here.
         refreshInFlight = null;
+        release(true);
       }
     })();
-    return refreshInFlight;
+    return flight;
   }
 
   function assertFresh(claims, at = now()) {
@@ -200,6 +208,17 @@ export function createAccessValidator({
       }
     } else if (maxTokenAgeSeconds !== null) {
       throw invalid('The operator assertion issue time is required.');
+    }
+  }
+
+  function assertSourceFresh(issuedAt, at = now()) {
+    if (maxTokenAgeSeconds === null) return;
+    if (!(issuedAt instanceof Date) || Number.isNaN(issuedAt.getTime())) {
+      throw new AccessError(401, 'OPERATOR_ACCESS_STALE', 'Operator assertion age cannot be established.');
+    }
+    const age = at.getTime() / 1000 - issuedAt.getTime() / 1000;
+    if (age > maxTokenAgeSeconds + skewSeconds || age < -skewSeconds) {
+      throw new AccessError(401, 'OPERATOR_ACCESS_STALE', 'The operator assertion is too old.');
     }
   }
 
@@ -270,6 +289,7 @@ export function createAccessValidator({
   return {
     validate,
     assertFresh,
+    assertSourceFresh,
     algorithms: Object.freeze([...allowedAlgorithms]),
     issuer,
     audience,
@@ -289,7 +309,8 @@ function normalizeNonce(claims) {
 // this path; a session is created only from a validated assertion plus an active mapping to
 // an active operator role and an active local identity.
 export function createOperatorAccess({validator, store, clock = () => new Date(), policy = {}} = {}) {
-  if (!validator || typeof validator.validate !== 'function' || typeof validator.assertFresh !== 'function') {
+  if (!validator || typeof validator.validate !== 'function' ||
+      typeof validator.assertFresh !== 'function' || typeof validator.assertSourceFresh !== 'function') {
     throw new Error('createOperatorAccess requires an Access validator with freshness checks.');
   }
   if (!store || typeof store.withTransaction !== 'function' || typeof store.createSession !== 'function') {
@@ -463,9 +484,9 @@ export function createOperatorAccess({validator, store, clock = () => new Date()
       }, {tx});
       await tx.query(
         `INSERT INTO operator.access_session_binding(
-           session_id, subject, issuer, audience, mapping_epoch, operator_role_id,
-           assurance_class, source_issued_at, source_expires_at, admitted_at)
-         VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8::timestamptz, $9::timestamptz, $10::timestamptz)`,
+           session_id, subject, issuer, audience, mapping_epoch, binding_scheme,
+           operator_role_id, assurance_class, source_issued_at, source_expires_at, admitted_at)
+         VALUES ($1::uuid, $2, $3, $4, $5, 'generation-v1', $6, $7, $8::timestamptz, $9::timestamptz, $10::timestamptz)`,
         [
           created.session.id,
           finalMapping.subject,
@@ -499,34 +520,54 @@ export function createOperatorAccess({validator, store, clock = () => new Date()
   // expiry and local session liveness under the shared authority gate.
   async function admitSession(session, {tx} = {}) {
     if (!tx) throw new Error('Operator admission requires an owned transaction client.');
-    if (!session || typeof session.id !== 'string') throw new AccessError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    if (!session || typeof session.id !== 'string' || typeof session.userId !== 'string') {
+      throw new AccessError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    }
     await acquireGate(tx);
-    const at = now();
-    const current = await store.readSessionById(session.id, {tx, forUpdate: true, realm: 'operator'});
-    if (!current) throw new AccessError(401, 'SESSION_REQUIRED', 'Sign in required.');
-    if (current.userId !== session.userId) throw new AccessError(403, 'OPERATOR_ACCESS_DENIED', 'Operator access is not authorized.');
+
+    // Resolve identity from the pre-read session object, but do NOT lock the session first.
+    // Accepted order: gate -> principal/lifecycle -> session. This avoids the
+    // reset lifecycle's users -> sessions order deadlocking with admission.
     const user = await tx.query(
       'SELECT id, status, credential_version FROM auth.users WHERE id = $1 FOR SHARE',
-      [current.userId],
+      [session.userId],
     );
     if (user.rowCount !== 1 || user.rows[0].status !== 'active') {
       throw new AccessError(401, 'SESSION_REQUIRED', 'Sign in required.');
     }
+
+    // Re-read the exact session under lock after the principal lock. readSessionById
+    // revalidates revocation, both expiries, status and credential generation against the
+    // locked principal, so a reset/credential update that won before this point fails
+    // closed; one that arrives after blocks on the user lock.
+    const current = await store.readSessionById(session.id, {tx, forUpdate: true, realm: 'operator'});
+    if (!current) throw new AccessError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    if (current.userId !== session.userId) throw new AccessError(403, 'OPERATOR_ACCESS_DENIED', 'Operator access is not authorized.');
+
+    // Trusted time is sampled only after all blocking authority acquisitions.
+    const at = now();
+
     const bindingResult = await tx.query(
-      `SELECT session_id, subject, issuer, audience, mapping_epoch, operator_role_id,
-              assurance_class, source_issued_at, source_expires_at, admitted_at
+      `SELECT session_id, subject, issuer, audience, mapping_epoch, binding_scheme,
+              operator_role_id, assurance_class, source_issued_at, source_expires_at, admitted_at
        FROM operator.access_session_binding WHERE session_id = $1::uuid`,
       [current.id],
     );
     if (bindingResult.rowCount !== 1) throw new AccessError(403, 'OPERATOR_ACCESS_DENIED', 'Operator access is not authorized.');
     const binding = bindingResult.rows[0];
-    if (binding.issuer !== validator.issuer || binding.audience !== validator.audience ||
+    if (binding.binding_scheme !== 'generation-v1' ||
+        binding.issuer !== validator.issuer ||
+        binding.audience !== validator.audience ||
         binding.assurance_class !== REQUIRED_OPERATOR_ASSURANCE) {
       throw new AccessError(403, 'OPERATOR_ACCESS_DENIED', 'Operator access is not authorized.');
     }
     if (new Date(binding.source_expires_at).getTime() <= at.getTime()) {
       throw new AccessError(401, 'OPERATOR_ACCESS_EXPIRED', 'The operator assertion has expired.');
     }
+    validator.assertSourceFresh(
+      binding.source_issued_at === null ? null : new Date(binding.source_issued_at),
+      at,
+    );
     const mapping = await loadMapping(tx, binding.subject, at);
     if (!mapping ||
         String(mapping.user_id) !== String(current.userId) ||

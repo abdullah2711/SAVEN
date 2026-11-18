@@ -16,6 +16,10 @@ BEGIN;
 
 SET LOCAL ROLE saven_migrator;
 
+-- Non-reusable mapping generation. The sequence is never reset or reused, so a deleted and
+-- recreated subject cannot resurrect a binding made for an earlier incarnation.
+CREATE SEQUENCE IF NOT EXISTS operator.access_identity_generation_seq AS bigint START WITH 1;
+
 CREATE TABLE IF NOT EXISTS operator.access_identity (
   subject text PRIMARY KEY,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
@@ -24,7 +28,7 @@ CREATE TABLE IF NOT EXISTS operator.access_identity (
   operator_role_id text NOT NULL REFERENCES auth.roles(role_id) ON DELETE RESTRICT,
   assurance_class text NOT NULL,
   status text NOT NULL DEFAULT 'active',
-  mapping_epoch bigint NOT NULL DEFAULT 1,
+  mapping_epoch bigint NOT NULL DEFAULT nextval('operator.access_identity_generation_seq'),
   effective_from timestamptz NOT NULL DEFAULT now(),
   effective_to timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -51,12 +55,24 @@ COMMENT ON COLUMN operator.access_identity.assurance_class IS
 COMMENT ON COLUMN operator.access_identity.mapping_epoch IS
   'AUTH-007 authority generation. A row update bumps it; sessions bound to an older epoch fail operator admission.';
 
+SELECT setval(
+  'operator.access_identity_generation_seq',
+  COALESCE((SELECT max(mapping_epoch) FROM operator.access_identity), 0) + 1,
+  false
+);
+
+-- Preserve any installed lineage: existing rows keep their epoch, new inserts/updates take
+-- fresh sequence values.
+ALTER TABLE operator.access_identity
+  ALTER COLUMN mapping_epoch SET DEFAULT nextval('operator.access_identity_generation_seq');
+
 CREATE TABLE IF NOT EXISTS operator.access_session_binding (
   session_id uuid PRIMARY KEY REFERENCES auth.sessions(id) ON DELETE CASCADE,
   subject text NOT NULL,
   issuer text NOT NULL,
   audience text NOT NULL,
   mapping_epoch bigint NOT NULL,
+  binding_scheme text,
   operator_role_id text NOT NULL,
   assurance_class text NOT NULL,
   source_issued_at timestamptz,
@@ -67,13 +83,19 @@ CREATE TABLE IF NOT EXISTS operator.access_session_binding (
   CHECK (length(btrim(issuer)) BETWEEN 1 AND 320),
   CHECK (length(btrim(audience)) BETWEEN 1 AND 320),
   CHECK (mapping_epoch > 0),
+  CHECK (binding_scheme IS NULL OR binding_scheme = 'generation-v1'),
   CHECK (length(btrim(operator_role_id)) BETWEEN 1 AND 80),
   CHECK (length(btrim(assurance_class)) BETWEEN 1 AND 80),
   CHECK (source_expires_at > created_at)
 );
 
 COMMENT ON TABLE operator.access_session_binding IS
-  'AUTH-007 operator session provenance. Binds the local session to the verified issuer/subject/audience, mapping epoch/role/assurance and source-assertion validity. Operator admission revalidates current mapping/role authority and this ceiling.';
+  'AUTH-007 operator session provenance. Binds the local session to the verified issuer/subject/audience, mapping generation/role/assurance and source-assertion validity. binding_scheme is generation-v1 for new bindings; legacy/null bindings fail closed. Operator admission revalidates current mapping/role authority and this ceiling.';
+
+-- Existing lineage may lack the new scheme column; null means a legacy binding and fails
+-- closed at admission.
+ALTER TABLE operator.access_session_binding
+  ADD COLUMN IF NOT EXISTS binding_scheme text;
 
 CREATE TABLE IF NOT EXISTS operator.access_exchange (
   nonce_hash text PRIMARY KEY,
@@ -108,25 +130,26 @@ GRANT SELECT, INSERT ON operator.access_exchange TO saven_auth_service;
 GRANT SELECT ON operator.access_identity, operator.access_session_binding, operator.access_exchange
   TO saven_operator_read, saven_operator_admin;
 
--- Mapping authority generation: every row update advances the epoch so bound sessions
--- cannot silently retain an earlier role/assurance/scope.
-CREATE FUNCTION operator.bump_access_identity_epoch() RETURNS trigger
+-- Mapping authority generation: every INSERT and UPDATE takes a fresh sequence value, so
+-- delete/recreate, reassignment-return and any other mutation cannot reuse an earlier
+-- incarnation. Bound sessions with an older generation fail closed.
+CREATE FUNCTION operator.assign_access_identity_generation() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = pg_catalog
 AS $fn$
 BEGIN
-  NEW.mapping_epoch := OLD.mapping_epoch + 1;
+  NEW.mapping_epoch := nextval('operator.access_identity_generation_seq');
   RETURN NEW;
 END;
 $fn$;
 
-ALTER FUNCTION operator.bump_access_identity_epoch() OWNER TO saven_migrator;
-REVOKE ALL ON FUNCTION operator.bump_access_identity_epoch() FROM PUBLIC;
+ALTER FUNCTION operator.assign_access_identity_generation() OWNER TO saven_migrator;
+REVOKE ALL ON FUNCTION operator.assign_access_identity_generation() FROM PUBLIC;
 
-CREATE TRIGGER access_identity_bump_epoch
-  BEFORE UPDATE ON operator.access_identity
-  FOR EACH ROW EXECUTE FUNCTION operator.bump_access_identity_epoch();
+CREATE TRIGGER access_identity_assign_generation
+  BEFORE INSERT OR UPDATE ON operator.access_identity
+  FOR EACH ROW EXECUTE FUNCTION operator.assign_access_identity_generation();
 
 -- The mapping table is an authority writer. Reuse the accepted AUTH-006 shared gate so a
 -- mapping change cannot commit while exchange/operator admission is in flight.
