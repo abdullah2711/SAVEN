@@ -16,6 +16,13 @@ BEGIN;
 
 SET LOCAL ROLE saven_migrator;
 
+-- Installation authority fence: take the exclusive AUTH-006 gate before ANY table or
+-- sequence DDL. Ordinary operator admissions hold the shared gate; if the installer took
+-- table locks first, a paused admission and the installer could deadlock. This gate is held
+-- until COMMIT, and installation must still run while no external allocator writer is
+-- active.
+SELECT pg_advisory_xact_lock(hashtextextended('saven.auth.authority_gate', 0));
+
 -- Non-reusable mapping generation. The sequence is never reset or reused, so a deleted and
 -- recreated subject cannot resurrect a binding made for an earlier incarnation.
 CREATE SEQUENCE IF NOT EXISTS operator.access_identity_generation_seq AS bigint START WITH 1;
@@ -99,9 +106,9 @@ ALTER TABLE operator.access_session_binding
 -- MAXVALUE 9223372036854775807, CACHE 1, NO CYCLE, owned by the authority-table owner.
 -- Cached or cycling/negative-increment sequences are refused rather than treated as
 -- equivalent; an installation failure must never silently normalize an issued allocator
--- backward. The installer takes the exclusive AUTH-006 authority gate for the duration of
--- the transaction, serializing reconciliation with admissions and installed mapping
--- writers. Run installation while no external allocator writer is active.
+-- backward. The installer already took the exclusive AUTH-006 gate at transaction start,
+-- before any table/sequence DDL, so reconciliation is serialized with admissions and
+-- installed mapping writers.
 --
 -- Never reseed below the sequence high-water or a generation retained by a session binding
 -- after its mapping row was deleted. setval is not rolled back with a transaction, so every
@@ -117,8 +124,6 @@ DECLARE
   last_value bigint;
   is_called boolean;
 BEGIN
-  PERFORM pg_advisory_xact_lock(hashtextextended('saven.auth.authority_gate', 0));
-
   SELECT s.seqtypid, s.seqincrement, s.seqmin, s.seqmax, s.seqstart, s.seqcache,
          s.seqcycle, c.relowner
     INTO seq

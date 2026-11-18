@@ -1331,6 +1331,28 @@ async function sequenceState(db) {
   return {last, called, next: last + (called ? 1n : 0n)};
 }
 
+async function interruptAfterAllocator(db, sql) {
+  const statements = splitSqlStatements(sql);
+  const client = new Client(connectionConfig(db.database));
+  await client.connect();
+  let allocatorRan = false;
+  try {
+    await assert.rejects(async () => {
+      for (const statement of statements) {
+        await client.query(statement);
+        if (statement.includes('$allocator$')) {
+          allocatorRan = true;
+          throw new Error('injected interruption immediately after allocator reconciliation');
+        }
+      }
+    }, /injected interruption/);
+    await client.query('ROLLBACK').catch(() => {});
+  } finally {
+    await client.end().catch(() => {});
+  }
+  return allocatorRan;
+}
+
 test('AUTH-007-R3 allocator reapplication advances binding-only evidence and interruption cannot regress it', async () => {
   await withOperatorDatabase(async db => {
     await seedMapping(db);
@@ -1374,8 +1396,18 @@ test('AUTH-007-R3 allocator reapplication advances binding-only evidence and int
         [SUBJECT],
       ).then(result => result.rows[0].mapping_epoch));
       assert.ok(recreated > issued, 'recreated mapping uses a fresh generation');
-      assert.equal((await operatorMe(harness.handler, first.cookie)).status, 403);
+      const oldAfterRecreate = await operatorMe(harness.handler, first.cookie);
+      assert.equal(oldAfterRecreate.status, 403, 'old credential is tested against the recreated mapping');
+      assert.equal((await oldAfterRecreate.json()).error.code, 'OPERATOR_ACCESS_DENIED');
       const fresh = await exchangeCookie(harness.handler, assertion({key}));
+
+      // Interrupted already-ahead installation: allocator runs but does not need to move;
+      // rollback leaves it ahead.
+      const aheadAgain = await sequenceState(db);
+      assert.equal(await interruptAfterAllocator(db, await operatorSql('db/postgres/06-operator-identity.sql', db)), true,
+        'the allocator block actually executed before interruption (ahead case)');
+      const afterAheadInterrupt = await sequenceState(db);
+      assert.ok(afterAheadInterrupt.next >= aheadAgain.next, 'ahead allocator survives interruption without regression');
 
       // Interrupted installation, immediately after confirmed allocator execution and
       // before COMMIT. Arrange binding evidence above the allocator first.
@@ -1386,25 +1418,8 @@ test('AUTH-007-R3 allocator reapplication advances binding-only evidence and int
       await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
       await db.adminQuery("SELECT setval('operator.access_identity_generation_seq', 1, false)");
       const beforeInterrupt = await sequenceState(db);
-      const statements = splitSqlStatements(await operatorSql('db/postgres/06-operator-identity.sql', db));
-      const client = new Client(connectionConfig(db.database));
-      await client.connect();
-      let allocatorRan = false;
-      try {
-        await assert.rejects(async () => {
-          for (const statement of statements) {
-            await client.query(statement);
-            if (statement.includes('$allocator$')) {
-              allocatorRan = true;
-              throw new Error('injected interruption immediately after allocator reconciliation');
-            }
-          }
-        }, /injected interruption/);
-        assert.equal(allocatorRan, true, 'the allocator block actually executed before interruption');
-        await client.query('ROLLBACK').catch(() => {});
-      } finally {
-        await client.end().catch(() => {});
-      }
+      const allocatorRan = await interruptAfterAllocator(db, await operatorSql('db/postgres/06-operator-identity.sql', db));
+      assert.equal(allocatorRan, true, 'the allocator block actually executed before interruption');
       const afterInterrupt = await sequenceState(db);
       assert.ok(afterInterrupt.next >= beforeInterrupt.next, 'interruption does not regress the allocator');
       assert.ok(afterInterrupt.next > freshGeneration, 'nontransactional advancement survives the failure');
@@ -1418,6 +1433,9 @@ test('AUTH-007-R3 allocator reapplication advances binding-only evidence and int
         [SUBJECT],
       ).then(result => result.rows[0].mapping_epoch));
       assert.ok(afterInterruptRecreate > freshGeneration, 'recovery uses a fresh generation');
+      const interruptedOldAfterRecreate = await operatorMe(harness.handler, fresh.cookie);
+      assert.equal(interruptedOldAfterRecreate.status, 403, 'old credential is tested against the recreated mapping');
+      assert.equal((await interruptedOldAfterRecreate.json()).error.code, 'OPERATOR_ACCESS_DENIED');
       const afterInterruptFresh = await exchangeCookie(harness.handler, assertion({key}));
       assert.equal((await operatorMe(harness.handler, afterInterruptFresh.cookie)).status, 200);
     } finally {
@@ -1493,6 +1511,60 @@ test('AUTH-007-R4 allocator profile validation refuses incompatible configuratio
 
       await db.adminQuery(sql06);
       assert.equal((await sequenceState(db)).next >= beforeOverflow.next, true, 'supported profile reinstalls');
+    } finally {
+      await auth.close();
+    }
+  });
+});
+
+test('AUTH-007-R5 installer gate precedes table DDL and avoids admission deadlock', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const normal = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const exchanged = await exchangeCookie(normal.handler, assertion({key}));
+
+      const gate = makeGate();
+      let paused = false;
+      const pauseBeforeBinding = store => {
+        const wrapped = {...store};
+        wrapped.withTransaction = action => store.withTransaction(async tx => {
+          const proxy = {
+            query: async (text, params) => {
+              if (!paused && typeof text === 'string' && text.includes('FROM operator.access_session_binding')) {
+                paused = true;
+                gate.enter();
+                await gate.gate;
+              }
+              return tx.query(text, params);
+            },
+          };
+          return action(proxy);
+        });
+        return wrapped;
+      };
+      const admissionHarness = buildHarness({pool: auth.pool, clock, keys: [key], wrapStore: pauseBeforeBinding});
+      const admission = admissionHarness.operatorAccess.inspectSession(exchanged.cookie);
+      await gate.entered;
+
+      const beforeInstall = await sequenceState(db);
+      const reapply = db.adminQuery(await operatorSql('db/postgres/06-operator-identity.sql', db));
+      await assert.rejects(
+        () => Promise.race([reapply, new Promise((_, reject) => setTimeout(() => reject(new Error('blocked')), 300))]),
+        /blocked/,
+        'reapplication waits on the installation gate before table DDL',
+      );
+
+      gate.release();
+      const context = await admission;
+      assert.equal(context.roleId, 'operator_admin');
+      await reapply;
+      const afterInstall = await sequenceState(db);
+      assert.ok(afterInstall.next >= beforeInstall.next, 'installer does not regress the allocator');
+      assert.equal((await operatorMe(normal.handler, exchanged.cookie)).status, 200);
     } finally {
       await auth.close();
     }

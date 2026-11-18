@@ -635,11 +635,12 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
   bigint, start 1, increment 1, min 1, max bigint, cache 1, no cycle, owned by the
   authority-table owner. Incompatible pre-existing allocator configuration is refused with a
   specific installation error and no high-water change. Reapplication is idempotent and
-  reconciles the allocator advance-only under the exclusive authority gate, so it never
-  reseeds below the sequence high-water or a generation retained by a session binding after
-  mapping deletion. Legacy bindings without the generation-v1 scheme fail closed; an
-  interrupted install can only leave the allocator advanced, never regressed. Run
-  installation while no external allocator writer is active.
+  takes the exclusive authority gate at the start of the installer transaction, before any
+  table or sequence DDL, then reconciles the allocator advance-only, so it never reseeds
+  below the sequence high-water or a generation retained by a session binding after mapping
+  deletion. Legacy bindings without the generation-v1 scheme fail closed; an interrupted
+  install can only leave the allocator advanced, never regressed. Run installation while no
+  external allocator writer is active.
 
 ### Non-claims
 
