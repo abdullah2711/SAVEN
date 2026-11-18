@@ -5,14 +5,14 @@ DISPATCHER FIRST ACTION ON BOOT: (1) read this file; if present, also read the m
 Last human review: 18 Nov 2026, 01:55 PKT (dispatcher prose update — refreshed after AUTH-006 merge and black-box v3.2 repair).
 
 ## Integration state
-- `testing-1` @ `0df990a`: accepted and integrated contract IDs, explicitly: PIVOT-002 (with increments 002b, 002c, 002d), PIVOT-003, PIVOT-004, PIVOT-005, AUTH-001, AUTH-002, AUTH-003, AUTH-004, AUTH-005, AUTH-006, AUTH-008. (AUTH-007 delivered, in review; PIVOT-006 round 3 in flight.)
-- Merge queue: empty; no pending ACCEPTs awaiting the human except in-review work.
+- `testing-1`: accepted and integrated contract IDs, explicitly: PIVOT-002 (with increments 002b, 002c, 002d), PIVOT-003, PIVOT-004, PIVOT-005, PIVOT-006 (merged `bdf9f80`), AUTH-001, AUTH-002, AUTH-003, AUTH-004, AUTH-005, AUTH-006, AUTH-008. (AUTH-007 delivered, in review.)
+- Merge queue: docs/agents/merge-queue.md is the single source of truth.
 - AUTH-chain progress: 7 of 10 AUTH contracts merged (AUTH-001..006, 008). AUTH-007 delivered, in review. After AUTH-007 merges: AUTH-009 (auth audit) runs BEFORE the vertical slice; AUTH-010 (security docs) runs AFTER the slice passes. The auth chain is NOT complete until 009 and 010 are merged.
 - Sequencing per Principal directive: after PIVOT-006 merges → AUTH-007 → AUTH-009 → vertical slice (one tenant, one chart of accounts, one posted entry, one void, audit read-back) → AUTH-010 → then UI. UI contracts stay HELD until the vertical slice passes.
 
 ## Workers
 - worker-a (w1:p2): contract AUTH-007 (operator access), branch `opencode/auth-007-operator-access`, worktree `/home/esc/saven/wt-auth-007`, based on `0df990a`. AUTH-006 merged at `0df990a`.
-- worker-b (w1:p3): contract PIVOT-006 (audit triggers) round 3, branch `opencode/pivot-006-audit`, worktree `/home/esc/saven/wt-pivot-006`, based on `32fef2b`. Fixing review `5ddb603` (+ Principal Part 1: catalog type identity, domain tests, three hardening items).
+- worker-b (w1:p3): PIVOT-006 (audit triggers) merged into `testing-1` at `bdf9f80`; worker idle. Next assignment = vertical slice (to be authored by Codex; worker-b awaits dispatcher dispatch).
 - Engineer (w1:p4): reviews land on `codex/pivot-003-rulings`; relay pattern: `Review <delivery-path>`. Latest review head: `b677627`.
 
 ## Standing protocols
