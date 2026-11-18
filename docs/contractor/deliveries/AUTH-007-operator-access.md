@@ -308,3 +308,72 @@ combined 140 tests, 140 pass, 0 fail
 ## GIT (R3)
 
 branch=opencode/auth-007-operator-access commit=`2821117`,report+checkpoint commit pushed=yes
+
+# AUTH-007-R4 revision — 18 November 2026
+
+Verdict: `docs/contractor/reviews/AUTH-007-R3-operator-access.md` at `f1bf221`.
+Implementation `d09018e`; report + checkpoint follow. Two remaining HIGH allocator
+installation corrections.
+
+## Findings closed
+
+1. **HIGH — validate the allocator profile before relying on reconciliation. Closed.**
+   The allocator DO block now validates the documented supported profile before any
+   mutation: bigint type, start 1, increment 1, min 1, max bigint maximum, cache 1, no
+   cycle, and sequence owner equal to the authority-table owner. It takes the exclusive
+   AUTH-006 authority gate for the installation transaction and documents the
+   no-external-allocator-writer installation fence. Incompatible negative-increment,
+   cycling, cached, altered-bound/start and mis-owned sequences are refused with specific
+   `AUTH-007 allocator profile invalid` errors and unchanged high-water evidence. Generation
+   floor is computed in numeric and checked against bigint maximum; exhaustion raises
+   `AUTH-007 allocator exhausted` before `setval`. A supported already-ahead profile
+   reinstalls cleanly.
+2. **HIGH — the interruption proof now exercises the allocator it claims. Closed.**
+   The test no longer injects at the earlier default-column statement. It splits the real
+   06 payload, executes the allocator statement, records that it ran, and injects failure
+   immediately after it and before COMMIT. In a disposable recovery fixture the allocator is
+   deliberately set behind retained binding evidence (test-only, not a production reset
+   path). Successful reapplication advances strictly beyond that evidence; the interrupted
+   attempt advances non-transactionally and ROLLBACK cannot reduce it. The old session is
+   denied with `OPERATOR_ACCESS_DENIED` after recreation, and a fresh authorized exchange
+   succeeds. A separate ahead-of-all-evidence case proves successful and interrupted
+   reapplication leave the allocator ahead. Comparisons use BigInt. The test comment records
+   that the old live-only reseed would leave the retained generation reusable.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 169 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-007-access.test.mjs
+tests 21  pass 21  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6 on
+`127.0.0.1:55433`, auth fixture + AUTH-006 033 + operator 06 applied as administrator with
+namespaced roles, real non-owner auth-service login):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 27/27, AUTH-007 21/21
+combined 141 tests, 141 pass, 0 fail
+```
+
+## Boundaries
+
+- `06-operator-identity.sql` still depends on AUTH-006 `033`; apply 033 first. No applied 033
+  bytes, native source or production profile changed.
+- Allocator validation/reconciliation is administrator-applied under the exclusive authority
+  gate and an installation fence. It does not promise rollback of sequence state; it
+  promises profile refusal, non-regression, non-reuse and exact overflow failure.
+- This is AUTH-007 allocator evidence; it is not a claim of codebase-wide D-016 compliance or
+  point-in-time recovery completeness. External retained high-water evidence reconciliation
+  remains a recovery procedure requirement.
+- Earlier MFA/realm, canonical replay, admission order/freshness, mapping generation and
+  refresh-flight corrections remain closed. No live Access policy/DNS/tunnel/network fetch;
+  operator reads and full audit remain PIVOT-007/AUTH-009; SQLite remains production.
+
+## GIT (R4)
+
+branch=opencode/auth-007-operator-access commit=`d09018e`,report+checkpoint commit pushed=yes
