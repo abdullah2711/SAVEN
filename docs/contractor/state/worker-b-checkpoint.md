@@ -257,3 +257,97 @@ PIVOT-006 was merged into `testing-1` at `bdf9f80` before this file was updated,
 checkpoint commit sits on `opencode/pivot-006-audit` **after** the merge and is therefore
 **not** on `testing-1` or `main`. It needs a follow-up merge (or a docs-only cherry-pick)
 if the dispatcher wants the inventory on the integration branch. Nothing else was changed.
+
+---
+
+## RESTORE INVENTORY FOLLOW-UPS (Principal questions, same read-only sweep)
+
+### (1) The native number allocator, named — **dedicated counter row, NOT max-plus-one**
+
+**Allocator:** `src/local/documents.mjs:10-17` (`allocateNumber`), the single writer of
+numbers in the native build.
+
+- Counter row: `src/local/document-schema.mjs:2`
+  (`document_sequences(company, kind, next_number, PRIMARY KEY(company, kind))`) — a
+  dedicated counter row per company+kind inside the per-tenant file.
+- Advance: `src/local/documents.mjs:14` —
+  `UPDATE document_sequences SET next_number = next_number + 1 WHERE company=? AND kind=?
+  RETURNING next_number - 1 AS n`. One atomic statement; the returned `n` is the old
+  value, so allocation is "read-and-advance" in a single write, not a read-then-compute.
+- Lock: every call site runs inside `transaction(db, …)`, which is **`BEGIN IMMEDIATE`**
+  (`src/local/sqlite.mjs:7`) — SQLite's database-level reserved write lock is taken at
+  transaction open, so concurrent writers cannot interleave a read of `next_number`.
+  Call sites: `src/local/engine.mjs:24` (command accept), `src/local/documents.mjs:49`
+  (draft save), `src/local/documents.mjs:81` (correction replacement),
+  `src/local/inventory.mjs:23` (stock accept).
+- Format only: `src/local/documents.mjs:15` (`kind + '-' + padStart(6,'0')`) — pure
+  derivation from the counter value, no independent state.
+- Number record: `src/local/documents.mjs:16` — the single `INSERT INTO document_numbers`
+  in the repository (`grep` confirms one writer).
+- Idempotent replay: `src/local/documents.mjs:11-12` returns the existing number when the
+  document id is already numbered, instead of re-allocating.
+
+**Verdict: it is NOT a `MAX`/rowid derivation at write time.** There is no `SELECT max(...)`
+in any numbering path (`src/local/` `max(` occurrences are only `max(version)` on
+`schema_migrations` at `sqlite.mjs:8,9` and `max(max_seen_at, …)` at `licence.mjs:13`).
+`document_numbers.sequence` is written from the counter's returned value, never from the
+table's own maximum, and the rowid-derived `INTEGER PRIMARY KEY` columns are on unrelated
+tables (`src/local/schema.mjs:27,56,59` — audit/migration/commercial, listed as B10/B11).
+
+**Therefore R3 is NOT reclassified.** The Principal's conditional does not trigger:
+allocation at source is a counter-row advance under an exclusive write lock, so the
+"in-file SAFE" half of R3 stands on its original justification. R3 remains
+**HAZARDOUS** overall for the cross-copy reason only — absence of any numbering
+reconciliation in `scripts/native-restore.mjs` (0 references to `next_number` /
+`document_numbers`) — and B12 (`documents.mjs:13`, seed-at-1) remains the sole
+regression vector inside the file.
+
+### (2) STATED LIMITATION — an older restored file cannot know what it never saw
+
+> **STATED LIMITATION — NOT A SOLVED CASE.**
+>
+> A restored older native store cannot detect document numbers issued **after that file
+> was copied**, because that evidence is not in the file: the counter, the number rows and
+> the audit trail all roll back together. Byte-exact restore plus `integrity_check`,
+> `foreign_key_check`, journal balance and stock reconciliation
+> (`scripts/native-restore.mjs:13-15`) prove the file is *internally* consistent — never
+> that it is the newest state. `sqlite_sequence` does not exist (no `AUTOINCREMENT` in
+> production; only `scripts/sqlite-bi-spike.mjs:5`), so there is no engine-side high-water
+> to consult either.
+>
+> **The remedy requires an EXTERNAL record of the high-water mark** — a value held outside
+> the file that can be compared on restore. Two carriers are identified, neither
+> implemented:
+>
+> 1. **The licence/entitlement channel** — the natural carrier, because a signed,
+>    periodically exchanged artefact already leaves the device and returns
+>    (`src/local/licence.mjs:10,12` install; `:13` state; `sequence` monotonicity and
+>    `max_seen_at` already exist as external-facing state). Embedding the highest issued
+>    number (or a per-kind vector) in the renewal envelope would give a comparable
+>    high-water after any restore.
+>    **Caveat, to be recorded with the decision:** that artefact is vendor-visible, so it
+>    **discloses business volume** (documents issued per kind per period) to the licensor.
+>    That is a privacy/commercial disclosure the owner must accept explicitly; it cannot be
+>    adopted as an incidental side effect of a numbering fix.
+> 2. **An off-device audit copy** — an append-only, device-external record (off-site audit
+>    sink or sealed export) that holds the last known high-water per `(company, kind)` and
+>    is consulted at restore time. Avoids volume disclosure to the vendor but requires a
+>    separate trusted destination and its own retention/consistency story.
+>
+> Until one of these exists, native restore must be treated as an **unverified rollback**
+> and the operator must reconcile externally by hand. No code, schema or runbook step
+> implements either carrier today; this is a stated limitation, **not** a mitigated or
+> solved case.
+
+### (3) LOGGED FUTURE ITEM — per-tenant logical export ("give me my data")
+
+> **FUTURE ITEM (logged only — no action taken).**
+>
+> A per-tenant logical export will be the first client request of its kind and will need
+> **the same numbering semantics as the PG logical-dump case (R2)**: the export must carry
+> `document_sequences.next_number` together with `document_numbers` so a receiving system
+> can verify `next_number - 1 = max(sequence)` and the duplicate-number census; an export
+> that ships only the issued rows re-imports into a store whose counter is behind and will
+> reissue (B-class hazard), and one that ships only the counter loses the audit chain.
+> The R2 §10.3-style check is the required acceptance test for any such export/import pair.
+> Scoped to a future contract; nothing is designed or implemented here.
