@@ -170,3 +170,74 @@ combined 133 tests, 133 pass, 0 fail
 ## GIT (R1)
 
 branch=opencode/auth-007-operator-access commit=`b458b55`,report+checkpoint commit pushed=yes
+
+# AUTH-007-R2 revision — 18 November 2026
+
+Verdict: `docs/contractor/reviews/AUTH-007-R1-operator-access.md` at `828401b`.
+Implementation `9208e60`; report + checkpoint follow. Three bounded corrections; MFA
+evidence and canonical replay remain closed from R1.
+
+## Findings closed
+
+1. **HIGH — accepted admission lock order and fresh authority after waits.** Status:
+   **closed.** `admitSession` now resolves identity from the pre-read session, takes the
+   shared gate, locks `auth.users` first, then re-reads the exact operator session under
+   lock and revalidates revocation, both local expiries, status and credential generation.
+   Trusted time is sampled only after the user/session locks; source expiry, mapping/role
+   effective windows, assurance and the configured source-age ceiling are checked with that
+   time. The same gate/principal order keeps reset/lifecycle serialization compatible. Tests
+   cover admission-first blocking of a credential update, invalidation-first session
+   revocation, a user-lock wait and a session-lock wait with source expiry advanced during
+   the wait (both refuse), and clean next-request denial.
+2. **HIGH — mapping incarnation cannot be reused.** Status: **closed.**
+   `operator.access_identity` now takes a non-reusable sequence generation on every INSERT
+   and UPDATE; update-in-place no longer just increments from the old value. Session bindings
+   store the generation and a `generation-v1` scheme; legacy/null-scheme bindings fail
+   closed. Tests delete/recreate the same subject/user and return after a role reassignment:
+   old sessions stay denied, a fresh exchange succeeds, and unrelated subjects are isolated.
+3. **MEDIUM — synchronous refresh failure cannot poison single-flight.** Status: **closed.**
+   The refresh flight is published before the callback runs and cleared after settlement, so
+   a non-async throw is caught without overwriting the flight with a settled promise.
+   Failure cooldown, known-good key retention, coalescing and recovery remain. A non-async
+   throw-once test with an injected clock proves immediate retry is cooldown-bound and a
+   later retry invokes the source and succeeds.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 169 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-007-access.test.mjs
+tests 19  pass 19  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6 on
+`127.0.0.1:55433`, auth fixture + AUTH-006 033 + operator 06 applied as administrator with
+namespaced roles, real non-owner auth-service login):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 27/27, AUTH-007 19/19
+combined 139 tests, 139 pass, 0 fail
+```
+
+One combined attempt hit the known disposable-fixture teardown transient in an unchanged
+AUTH-004 case; the immediate serial rerun was 139/139.
+
+## Boundaries
+
+- `06-operator-identity.sql` depends on AUTH-006 `033`; apply 033 first. No applied 033
+  bytes, native source or production profile changed.
+- The authority gate remains global for authority writes; no throughput/SLA claim.
+- Mapping generation is data/infrastructure, not a business-role domain. Existing installed
+  06 lineage, if any, gets the sequence/default and a nullable scheme column; legacy
+  bindings fail closed and require re-exchange.
+- A custom MFA predicate remains reviewed deployment code, not client input. Captured bearer
+  exchange remains first-presenter-wins. No live Access policy/DNS/tunnel/network fetch.
+- Operator reads and full audit taxonomy remain PIVOT-007/AUTH-009; some pre-exchange guard
+  failures are not audited. SQLite remains production.
+
+## GIT (R2)
+
+branch=opencode/auth-007-operator-access commit=`9208e60`,report+checkpoint commit pushed=yes
