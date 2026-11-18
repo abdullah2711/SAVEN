@@ -377,3 +377,82 @@ combined 141 tests, 141 pass, 0 fail
 ## GIT (R4)
 
 branch=opencode/auth-007-operator-access commit=`d09018e`,report+checkpoint commit pushed=yes
+
+# AUTH-007-R5 revision — 18 November 2026
+
+Verdict: `docs/contractor/reviews/AUTH-007-R4-operator-access.md` at `6924727`.
+Implementation `cfc54ac`; report + checkpoint follow. Two remaining allocator installation
+corrections.
+
+## Findings closed
+
+1. **HIGH — installer gate precedes table DDL. Closed.** `06-operator-identity.sql` now
+   takes the exclusive AUTH-006 authority gate immediately after `SET LOCAL ROLE`, before
+   any table/sequence DDL. It is held until COMMIT. The allocator block no longer acquires
+   the gate after table alterations. A deadlock-triangle test pauses admission before its
+   binding/mapping SELECT (holding the shared gate plus principal/session locks), starts
+   reapplication, proves reapplication waits at the gate before table DDL, resumes admission
+   to completion, and then completes reapplication — no participant abort, allocator not
+   regressed, operator session still usable.
+2. **MEDIUM — regression evidence completed and claims corrected. Closed.**
+   - Interrupted **already-ahead** case added: allocator executes, no advance is needed,
+     rollback leaves it ahead.
+   - Binding-only interrupted case remains: allocator is placed behind retained binding
+     evidence, executes, advances strictly beyond it, and rollback cannot reduce it.
+   - Old-credential assertions now explicitly execute **after** mapping recreation and
+     assert `OPERATOR_ACCESS_DENIED` (the generation-mismatch authority error), not merely
+     during the mapping-absent interval. Interrupted recovery does the same.
+   - **True mutation proof performed.** The allocator floor was temporarily mutated to the
+     old live-only expression
+     (`max(access_identity.mapping_epoch)+1`), the focused reapplication test failed at
+     `binding-only reconciliation advances strictly beyond issued evidence`
+     (`ERR_ASSERTION actual false`). Restoring the binding-aware floor made the same test pass
+     (1/1). The mutation was not committed.
+   - Delivery wording now distinguishes executed allocator statements from earlier
+     pre-allocator injection claims.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 169 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-007-access.test.mjs
+tests 22  pass 22  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6 on
+`127.0.0.1:55433`, auth fixture + AUTH-006 033 + operator 06 applied as administrator with
+namespaced roles, real non-owner auth-service login):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 27/27, AUTH-007 22/22
+combined 142 tests, 142 pass, 0 fail
+```
+
+Mutation proof transcript (summarized):
+
+```text
+# live-only floor mutation
+✖ AUTH-007-R3 allocator reapplication advances binding-only evidence and interruption cannot regress it
+  AssertionError: binding-only reconciliation advances strictly beyond issued evidence
+# restored binding-aware floor
+✔ AUTH-007-R3 allocator reapplication advances binding-only evidence and interruption cannot regress it
+```
+
+## Boundaries
+
+- `06-operator-identity.sql` still depends on AUTH-006 `033`; apply 033 first. Installation
+  must run with no external allocator writer active; the gate is held before DDL.
+- Allocator reconciliation is advance-only and does not promise rollback of sequence state,
+  only profile refusal, non-regression, non-reuse and exact overflow failure.
+- This is AUTH-007 allocator evidence, not codebase-wide D-016 or point-in-time recovery
+  completeness; external retained high-water reconciliation remains a recovery procedure.
+- Earlier MFA/realm, canonical replay, admission order/freshness, mapping generation and
+  refresh-flight corrections remain closed. No live Access policy/DNS/tunnel/network fetch;
+  operator reads and complete audit remain PIVOT-007/AUTH-009; SQLite remains production.
+
+## GIT (R5)
+
+branch=opencode/auth-007-operator-access commit=`cfc54ac`,report+checkpoint commit pushed=yes
