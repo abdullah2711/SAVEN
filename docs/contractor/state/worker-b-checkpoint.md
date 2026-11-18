@@ -142,3 +142,118 @@ work or merge action is in progress.
    dispatcher's explicit instruction. PIVOT-006 remains a human merge-queue item.
 3. PIVOT-006 application acceptance remains gated by AUTH-006; failed-attempt durability
    and operational parity remain separate PIVOT-013/PIVOT-009/010 work.
+
+---
+
+# ALLOCATOR INVENTORY — standing D-016 base (read-only sweep)
+
+Captured 18 November 2026 under the Principal's read-only directive. **No code was
+changed and no allocator was fixed**; this section records findings only.
+
+- Tree swept: `testing-1` @ `d4c2c6b` (PIVOT-006 merged at `bdf9f80`).
+- Scope: every allocator site — sequence seed/creation, setval/nextval, generation
+  counter, `MAX(...)+1` / `max(id)+1` pattern, high-water mark, plus both restore paths.
+
+## Method notes and citation discrepancies (reported honestly)
+
+1. **`db/postgres/06-operator-identity.sql:58` does not exist in the tree.** `db/postgres/`
+   contains only `00-roles`, `05-auth-schema`, `10-operator-schema`, `20-tenant-schema`,
+   `30-rls-policies`, `40-triggers`, and `migrations/` (006, 021, 031, 032, 033, 040, 041,
+   042). The cited file layout appears to be from an older/D1-era tree.
+2. **There is no `setval`, no `nextval`, and no `CREATE SEQUENCE` anywhere in the
+   repository** (SQL, JS, JSON, scripts). Every sequence is implicit `bigserial` /
+   `GENERATED … AS IDENTITY`; allocation happens in the engine, never via explicit setval.
+3. `033-membership-admission-lock.sql` allocates nothing; it serializes epoch/role changes
+   (`auth.lock_authority_gate`, 033:90-99). `041-audit.sql` only grants **USAGE** on
+   `tenant_data.audit_event_id_seq` (041:601) and allow-lists that privilege (041:717).
+4. **Legacy/pivot split (correction to an earlier note).** `scripts/setup-postgres.sh:14`,
+   `scripts/rehearse-recovery.sh:15`, `scripts/postgres.mjs:49` and
+   `scripts/verify-postgres.mjs:19-21` all bind the **legacy** `postgresql/00X_*.sql`
+   schema (`schema_version`, `public`, `saven_app`). The `db/postgres/` pivot tree
+   (`tenant_data`, `saven_customer_app`) has **no application wiring and no backup or
+   restore script at all**. Consequently the dump/restore paths in `scripts/` do not
+   cover `tenant_data`.
+5. Sanctioned PG path: `scripts/backup-postgres.sh:18,20` uses `pg_dump --format=custom`
+   (carries sequence state), `scripts/rehearse-recovery.sh:14` restores a full dump.
+   Schema files use `CREATE TABLE IF NOT EXISTS`, so plain reapplication does not reset
+   sequences. The hazard is data-only / partial / fresh-schema restore, which has no
+   reconciliation.
+
+## A. ADVANCE-ONLY
+
+| # | file:line | Allocates | Justification |
+|---|---|---|---|
+| A1 | `db/postgres/20-tenant-schema.sql:372` | document-number high-water (`document_sequences.next_number`, `CHECK > 0` at :378) | Monotonic by guard + atomic same-row increment; `IF NOT EXISTS` means reapply cannot reset it. |
+| A2 | `db/postgres/migrations/040-posted-immutability.sql:916` | rejects `NEW.next_number < OLD.next_number` | `DOCUMENT_SEQUENCE_REGRESSION` raised → the column can never move backwards, by any writer. |
+| A3 | `db/postgres/migrations/040-posted-immutability.sql:908` | blocks deletion of a sequence row | `DOCUMENT_SEQUENCE_RETAINED`; a missing row cannot be re-seeded by ordinary operation. |
+| A4 | `db/postgres/migrations/040-posted-immutability.sql:913` | blocks change of `(tenant,company,kind)` identity | `DOCUMENT_SEQUENCE_IDENTITY_IMMUTABLE`; the sequence identity cannot be re-pointed. |
+| A5 | `src/local/document-schema.mjs:3,4` | SQLite mirror of A2/A3 (`sequence_only_increases`, `sequence_retained`) | Same monotonic/retention guards on the local store. |
+| A6 | `db/postgres/20-tenant-schema.sql:387` (+ `040:897`, uniques `:398,:399`) | issued document numbers | `DOCUMENT_NUMBER_IMMUTABLE` + `UNIQUE(company,kind,sequence)` + `UNIQUE(company,number)` make reissue impossible, not merely discouraged. |
+| A7 | `src/local/documents.mjs:14` | one document number per call (`next_number+1 RETURNING …-1`) | Single statement inside the caller's transaction; a rollback loses the number (gap) but cannot re-emit an issued one. |
+| A8 | `src/local/documents.mjs:15` | number text (`kind-000001`) | Pure derivation from A7; no independent state. |
+| A9 | `src/local/document-schema.mjs:6,7` | local number immutability | Blocks UPDATE/DELETE on `document_numbers`. |
+| A10 | `src/local/sqlite.mjs:8` | `schema_migrations.version` (= array index + 1) | Refuses a newer schema, refuses checksum drift, applies only unapplied migrations → reinstall cannot re-run a migration. |
+| A11 | `db/postgres/10-operator-schema.sql:281` | `pg_schema_migrations.version` (+ `CHECK > 0`, :289) | Migration ledger monotonic by construction; no code path decrements it. |
+| A12 | `src/auth/recovery.mjs:312` | `auth.users.credential_version` (`… + 1`) | Only advancement is under `FOR UPDATE` principal lock in the reset transaction. *Application-enforced only — no DB trigger/CHECK prevents a privileged decrement.* |
+| A13 | `src/local/licence.mjs:10,12` | entitlement certificate `sequence` | Install rejects `sequence <= old.sequence`; single-row table pinned by `CHECK(id=1)` → cannot regress. |
+| A14 | `src/local/licence.mjs:10,13` | `private_licence_state.max_seen_at` | Written as `max(max_seen_at, now)` — a true high-water mark; clock rollback cannot lower it. |
+| A15 | `src/commands.mjs:119`, `:205`, `:252`; `src/local/documents.mjs:47`; `src/local/inventory.mjs:12` | row `revision`/`version` optimistic tags | Per-row monotone counters with compare-and-set predicates; no silent reset in live operation. |
+| A16 | `src/local/engine.mjs:26` | `journal_lines.line_no` = `i+1` | Positional within an append-only posted journal; no shared state to regress. |
+| A17 | `src/local/schema.mjs:27` + `:35` | local `audit.id` (`INTEGER PRIMARY KEY` = rowid) | Rowid *would* be reuse-prone, but `audit_no_delete` blocks the only reuse path. |
+| A18 | `src/local/schema.mjs:29-33` | posted journal/line immutability | Prevents deletion that could otherwise expose rowid/id reuse. |
+
+## B. HAZARDOUS
+
+| # | file:line | Allocates | Justification |
+|---|---|---|---|
+| B1 | `db/postgres/05-auth-schema.sql:400` | `auth.auth_audit.id bigserial` | Starts at 1 per schema; no guard/reconciliation, so a data-only or fresh-schema restore reissues ids — and this table is the auth evidence trail (`src/auth/rate-limit.mjs:161` reads it for ordering). |
+| B2 | `db/postgres/20-tenant-schema.sql:334` | `tenant_data.audit.id` IDENTITY | Append-only business audit with no sequence guard; reinstall/restore resets to 1 → duplicate ids across archives. |
+| B3 | `db/postgres/20-tenant-schema.sql:1017` | `tenant_data.audit_event.id` IDENTITY | Same class; 041 grants USAGE (041:601) and verify allow-lists it (041:717) but nothing pins the value. |
+| B4 | `db/postgres/migrations/042-entry-voiding.sql:149` | `tenant_data.void_denials.id` IDENTITY | Same class; a reissued denial id collides with retained refusal evidence. |
+| B5 | `db/postgres/10-operator-schema.sql:115` | `operator.entitlement.id bigserial` (+ `version` at :117, `UNIQUE(tenant_id,version)` :131) | Commercial entitlement identity and version both reset on reinstall; no allocator for `version`. |
+| B6 | `db/postgres/10-operator-schema.sql:145` | `operator.operator_audit.id bigserial` | Operator privilege evidence; resequenced on reinstall → duplicate audit ids. |
+| B7 | `db/postgres/10-operator-schema.sql:164` | `operator.feature_flag.id bigserial` | Config identity; reissue silently re-targets retained references. |
+| B8 | `db/postgres/10-operator-schema.sql:248` | `operator.migration_events.id bigserial` | Migration-history evidence; reissued ids corrupt ledger ordering after restore. |
+| B9 | `db/postgres/10-operator-schema.sql:265` | `operator.source_store_migrations.id bigserial` | Same class (import provenance). |
+| B10 | `src/local/schema.mjs:56` | local `migration_events.id INTEGER PRIMARY KEY` | SQLite rowid alias = `max(rowid)+1` and **no delete guard exists on this table** → deleting the newest row reissues its id in normal operation. |
+| B11 | `src/local/schema.mjs:59` | local `commercial_audit.id INTEGER PRIMARY KEY` | Same as B10: no `BEFORE DELETE` trigger → rowid reuse reissues a commercial audit id. |
+| B12 | `src/local/documents.mjs:13` | seeds `document_sequences = 1` on first use (`ON CONFLICT DO NOTHING`) | Regresses to 1 when the sequence row is absent while numbers exist; the UNIQUE backstops turn that into a hard failure rather than a silent reissue — fail-closed but not reconciled. |
+| B13 | `src/local/runtime.mjs:29` | `auth_limits.attempts` (windowed) | Resets to 1 when the 15-minute window expires — regression by design; no identity risk. |
+| B14 | `src/auth/factors.mjs:203` | `two_factor.failed_attempts` | Resets on success/re-enrolment (`factors.mjs:361,382`) — intentional window counter. |
+
+## C. Declared counters with NO allocator site (they never move)
+
+| # | file:line | Declares | Finding |
+|---|---|---|---|
+| C1 | `db/postgres/05-auth-schema.sql:236` | `auth.tenant_membership.membership_epoch DEFAULT 1` | **No increment site anywhere** (reads only: `tenant-selection.mjs:224`, `session-store.mjs:550`). The documented role/status-change invalidation has no implementation. |
+| C2 | `10-operator-schema.sql:191`; local mirror `src/local/schema.mjs:7` | `tenant_placement.generation` | Never written by any code path; the writable-owner fence never advances. |
+| C3 | `src/local/schema.mjs:6` | `entitlements.version` | `tenant_id` is the PK, so only `version = 1` (`engine.mjs:19`) ever exists; no renewal/advance path. |
+| C4 | `10-operator-schema.sql:208`, `20-tenant-schema.sql:356`; `src/local/schema.mjs:8` | `jobs.attempts`, `outbox.attempts` | Default 0 with no increment site in active code. |
+| C5 | — | document numbering on PostgreSQL | **No production PG allocator exists.** `document_sequences` is guarded (A1-A6) but only `src/local/documents.mjs` allocates; `engine.mjs:33`, `trade.mjs:100,105`, `runtime.mjs:71,106` only read. |
+
+## R. RESTORE PATHS (per store)
+
+| # | file:line | Behavior | Verdict | Justification |
+|---|---|---|---|---|
+| R1 | `docs/pivot-notes/06-backup-restore-runbook.md:417` + `:633-650` (§10.3), `:138` format, `:397-401` (§6.9) | all PG identity sequences + `document_sequences` under PITR | **SAFE** | Sequences travel in WAL with the data; §10.3 compares `max(document_numbers.sequence)` to `document_sequences.next_number - 1` per `(tenant,company,kind)`, rejects duplicates, and the `next_number > 1 AND n.id IS NULL` query must return zero rows; line 417 states the no-renumber/no-reuse/no-rollback gate. **Limit:** §10.3 proves internal consistency only; reuse of numbers issued in the *abandoned* timeline is an operator obligation at line 417, not a mechanical check. |
+| R2 | `scripts/backup-postgres.sh:18,20`; `scripts/rehearse-recovery.sh:13-15,31` | logical dump/restore sequence state | **HAZARDOUS** (and **UNKNOWN** for `tenant_data`) | Custom-format dump carries sequence values as of dump time; **no path in the repo advances allocators before serving writes** (no setval, no repair step). The rehearsal is legacy-only (`schema_version`, `saven_app`, `companies`, `stored_files`) and contains no numbering reconciliation; no dump/restore path exists for the pivot `tenant_data` schema at all. |
+| R3 | `scripts/native-restore.mjs:13-15,21` (+ `scripts/native-backup.mjs:11-12`) | SQLite rowids + `document_sequences`/`document_numbers` | **HAZARDOUS** (in-file **SAFE**, offline **UNKNOWN**) | Restore validates a throwaway copy (`integrity_check`, `foreign_key_check`, unbalanced journals, stock vs movements) then copies stores **byte-exact** into a must-not-exist directory and re-verifies SHA-256. `sqlite_sequence` does not exist (no `AUTOINCREMENT` in production; only the spike `scripts/sqlite-bi-spike.mjs:5`), so there is no sequence object to reset — counters and numbers stay mutually consistent in-file. But restore performs **no** numbering reconciliation (0 references to `next_number`/`document_numbers`), so an older copy or diverged/offline device can reissue numbers undetected. |
+
+## D-016 net position
+
+- The only genuinely protected allocator is **document numbering** (high-water guard plus
+  issued-number uniqueness, in both PG and SQLite), and on PostgreSQL it has **no
+  production allocator implementation yet** (C5).
+- Every identity sequence in both stores is **unguarded and un-reconciled** (B1-B9).
+- Two local tables (`migration_events`, `commercial_audit`) can reissue ids **without any
+  restore** (B10, B11).
+- PITR is the only restore path with a numbering check; the logical and native restore
+  paths have none.
+- Two declared fences never advance (`membership_epoch`, `generation`) — see C1, C2.
+
+## Branch placement note
+
+PIVOT-006 was merged into `testing-1` at `bdf9f80` before this file was updated, so this
+checkpoint commit sits on `opencode/pivot-006-audit` **after** the merge and is therefore
+**not** on `testing-1` or `main`. It needs a follow-up merge (or a docs-only cherry-pick)
+if the dispatcher wants the inventory on the integration branch. Nothing else was changed.
