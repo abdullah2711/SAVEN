@@ -9,7 +9,7 @@ import {createAuthRoutes, cookieName} from '../src/auth/routes.mjs';
 import {createAuditWriter} from '../src/auth/server.mjs';
 import {createAccessValidator, createOperatorAccess, AccessError} from '../src/auth/access.mjs';
 
-const {Pool} = pg;
+const {Pool, Client} = pg;
 const origins = {customer: 'https://app.saven.test', operator: 'https://ops.saven.test'};
 const operatorCookie = cookieName('operator', true);
 const ISSUER = 'https://saven.cloudflareaccess.com';
@@ -23,21 +23,94 @@ const authSqlFiles = [
   'db/postgres/migrations/006-auth-schema-corrections.sql',
 ];
 
-async function applyOperatorStack(db) {
+async function operatorSql(file, db) {
   const roleMap = {
     saven_auth_service: db.roles.authService,
     saven_operator_read: db.roles.operatorRead,
     saven_operator_admin: db.roles.operatorAdmin,
     saven_migrator: db.roles.migrator,
   };
+  let sql = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
+  for (const [fixed, name] of Object.entries(roleMap)) sql = sql.replaceAll(fixed, name);
+  return sql;
+}
+
+async function applyOperatorStack(db) {
   for (const file of [
     'db/postgres/migrations/033-membership-admission-lock.sql',
     'db/postgres/06-operator-identity.sql',
   ]) {
-    let sql = await readFile(new URL(`../${file}`, import.meta.url), 'utf8');
-    for (const [fixed, name] of Object.entries(roleMap)) sql = sql.replaceAll(fixed, name);
-    await db.adminQuery(sql);
+    await db.adminQuery(await operatorSql(file, db));
   }
+}
+
+function splitSqlStatements(sql) {
+  const statements = [];
+  let buffer = '';
+  let index = 0;
+  let dollar = null;
+  let lineComment = false;
+  let single = false;
+  while (index < sql.length) {
+    const char = sql[index];
+    if (lineComment) {
+      buffer += char;
+      if (char === '\n') lineComment = false;
+      index += 1;
+      continue;
+    }
+    if (single) {
+      buffer += char;
+      if (char === "'") {
+        if (sql[index + 1] === "'") {
+          buffer += "'";
+          index += 2;
+          continue;
+        }
+        single = false;
+      }
+      index += 1;
+      continue;
+    }
+    if (!dollar && char === '-' && sql[index + 1] === '-') {
+      lineComment = true;
+      buffer += '--';
+      index += 2;
+      continue;
+    }
+    if (!dollar && char === "'") {
+      single = true;
+      buffer += char;
+      index += 1;
+      continue;
+    }
+    if (!dollar && char === '$') {
+      const match = /^\$[A-Za-z_]*\$/.exec(sql.slice(index));
+      if (match) {
+        dollar = match[0];
+        buffer += dollar;
+        index += dollar.length;
+        continue;
+      }
+    } else if (dollar && sql.startsWith(dollar, index)) {
+      buffer += dollar;
+      index += dollar.length;
+      dollar = null;
+      continue;
+    }
+    if (!dollar && char === ';') {
+      const statement = buffer.trim();
+      if (statement) statements.push(statement);
+      buffer = '';
+      index += 1;
+      continue;
+    }
+    buffer += char;
+    index += 1;
+  }
+  const tail = buffer.trim();
+  if (tail) statements.push(tail);
+  return statements;
 }
 
 async function withOperatorDatabase(run) {
@@ -1243,4 +1316,87 @@ test('AUTH-007-R2 a synchronous throw-once refresh callback recovers after coold
   clock.advance(1100);
   assert.equal((await validator.validate(unknown)).subject, SUBJECT, 'later retry invokes the source and recovers');
   assert.equal(calls, 2);
+});
+
+// ---------------------------------------------------------------------------
+// AUTH-007-R3: allocator reapplication and interrupted-install safety.
+// ---------------------------------------------------------------------------
+
+async function sequenceState(db) {
+  const row = await db.adminQuery(
+    'SELECT last_value, is_called FROM operator.access_identity_generation_seq',
+  ).then(result => result.rows[0]);
+  const last = Number(row.last_value);
+  return {last, called: row.is_called === true, next: last + (row.is_called === true ? 1 : 0)};
+}
+
+test('AUTH-007-R3 allocator never reseeds issued generations on reapplication or interruption', async () => {
+  await withOperatorDatabase(async db => {
+    await seedMapping(db);
+    const auth = await makeLoginPool(db, db.roles.authService, 'auth');
+    try {
+      const clock = testClock();
+      const key = makeKeys();
+      const harness = buildHarness({pool: auth.pool, clock, keys: [key]});
+      const first = await exchangeCookie(harness.handler, assertion({key}));
+      const issued = await db.adminQuery(
+        'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
+        [SUBJECT],
+      ).then(result => Number(result.rows[0].mapping_epoch));
+
+      // Delete the live mapping while its issued generation remains in the session binding.
+      await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
+      const beforeReapply = await sequenceState(db);
+
+      // Reapplying 06 must never move the allocator backward.
+      await db.adminQuery(await operatorSql('db/postgres/06-operator-identity.sql', db));
+      const afterReapply = await sequenceState(db);
+      assert.ok(afterReapply.next >= beforeReapply.next, 'reapplication does not regress the allocator');
+      assert.ok(afterReapply.next > issued, 'the retained generation remains below the high-water');
+
+      await seedMapping(db);
+      clock.advance(2000);
+      const recreated = await db.adminQuery(
+        'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
+        [SUBJECT],
+      ).then(result => Number(result.rows[0].mapping_epoch));
+      assert.ok(recreated > issued, 'the recreated mapping cannot reuse the deleted generation');
+      assert.equal((await operatorMe(harness.handler, first.cookie)).status, 403, 'the old binding stays denied');
+      const fresh = await exchangeCookie(harness.handler, assertion({key}));
+      assert.equal((await operatorMe(harness.handler, fresh.cookie)).status, 200);
+
+      // Interrupted statement-by-statement reapplication: the non-transactional allocator
+      // may advance but must never move backward; rollback leaves issued generations safe.
+      await db.adminQuery('DELETE FROM operator.access_identity WHERE subject = $1', [SUBJECT]);
+      const beforeInterrupt = await sequenceState(db);
+      const statements = splitSqlStatements(await operatorSql('db/postgres/06-operator-identity.sql', db));
+      const client = new Client(connectionConfig(db.database));
+      await client.connect();
+      try {
+        await assert.rejects(async () => {
+          for (const statement of statements) {
+            await client.query(statement);
+            if (statement.includes('ALTER COLUMN mapping_epoch SET DEFAULT')) {
+              throw new Error('injected interruption after allocator reconciliation');
+            }
+          }
+        }, /injected interruption/);
+        await client.query('ROLLBACK').catch(() => {});
+      } finally {
+        await client.end().catch(() => {});
+      }
+      const afterInterrupt = await sequenceState(db);
+      assert.ok(afterInterrupt.next >= beforeInterrupt.next, 'interrupted installation does not regress the allocator');
+      assert.ok(afterInterrupt.next > issued, 'issued generation is never reusable after interruption');
+
+      await seedMapping(db);
+      const afterInterruptRecreate = await db.adminQuery(
+        'SELECT mapping_epoch FROM operator.access_identity WHERE subject = $1',
+        [SUBJECT],
+      ).then(result => Number(result.rows[0].mapping_epoch));
+      assert.ok(afterInterruptRecreate > issued, 'recovery uses a fresh generation');
+    } finally {
+      await auth.close();
+    }
+  });
 });

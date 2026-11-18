@@ -55,11 +55,7 @@ COMMENT ON COLUMN operator.access_identity.assurance_class IS
 COMMENT ON COLUMN operator.access_identity.mapping_epoch IS
   'AUTH-007 authority generation. A row update bumps it; sessions bound to an older epoch fail operator admission.';
 
-SELECT setval(
-  'operator.access_identity_generation_seq',
-  COALESCE((SELECT max(mapping_epoch) FROM operator.access_identity), 0) + 1,
-  false
-);
+
 
 -- Preserve any installed lineage: existing rows keep their epoch, new inserts/updates take
 -- fresh sequence values.
@@ -97,6 +93,29 @@ COMMENT ON TABLE operator.access_session_binding IS
 ALTER TABLE operator.access_session_binding
   ADD COLUMN IF NOT EXISTS binding_scheme text;
 
+-- Advance-only allocator reconciliation. Never reseed below the sequence high-water or a
+-- generation retained by a session binding after its mapping row was deleted. setval is not
+-- rolled back with a transaction, so every adjustment only moves forward; a failed or
+-- interrupted reapplication cannot cause a previously issued generation to be reused.
+DO $allocator$
+DECLARE
+  needed bigint;
+  current_next bigint;
+  last_value bigint;
+  is_called boolean;
+BEGIN
+  SELECT COALESCE(max(mapping_epoch), 0) INTO needed FROM operator.access_identity;
+  SELECT GREATEST(needed, COALESCE(max(mapping_epoch), 0)) INTO needed FROM operator.access_session_binding;
+  needed := needed + 1;
+  SELECT seq.last_value, seq.is_called INTO last_value, is_called
+    FROM operator.access_identity_generation_seq AS seq;
+  current_next := last_value + CASE WHEN is_called THEN 1 ELSE 0 END;
+  IF current_next < needed THEN
+    PERFORM setval('operator.access_identity_generation_seq', needed, false);
+  END IF;
+END
+$allocator$;
+
 CREATE TABLE IF NOT EXISTS operator.access_exchange (
   nonce_hash text PRIMARY KEY,
   subject text NOT NULL,
@@ -133,7 +152,7 @@ GRANT SELECT ON operator.access_identity, operator.access_session_binding, opera
 -- Mapping authority generation: every INSERT and UPDATE takes a fresh sequence value, so
 -- delete/recreate, reassignment-return and any other mutation cannot reuse an earlier
 -- incarnation. Bound sessions with an older generation fail closed.
-CREATE FUNCTION operator.assign_access_identity_generation() RETURNS trigger
+CREATE OR REPLACE FUNCTION operator.assign_access_identity_generation() RETURNS trigger
 LANGUAGE plpgsql
 SECURITY INVOKER
 SET search_path = pg_catalog
@@ -147,18 +166,22 @@ $fn$;
 ALTER FUNCTION operator.assign_access_identity_generation() OWNER TO saven_migrator;
 REVOKE ALL ON FUNCTION operator.assign_access_identity_generation() FROM PUBLIC;
 
+DROP TRIGGER IF EXISTS access_identity_assign_generation ON operator.access_identity;
 CREATE TRIGGER access_identity_assign_generation
   BEFORE INSERT OR UPDATE ON operator.access_identity
   FOR EACH ROW EXECUTE FUNCTION operator.assign_access_identity_generation();
 
 -- The mapping table is an authority writer. Reuse the accepted AUTH-006 shared gate so a
 -- mapping change cannot commit while exchange/operator admission is in flight.
+DROP TRIGGER IF EXISTS access_identity_authority_gate_insert ON operator.access_identity;
 CREATE TRIGGER access_identity_authority_gate_insert
   BEFORE INSERT ON operator.access_identity
   FOR EACH STATEMENT EXECUTE FUNCTION auth.lock_authority_gate();
+DROP TRIGGER IF EXISTS access_identity_authority_gate_update ON operator.access_identity;
 CREATE TRIGGER access_identity_authority_gate_update
   BEFORE UPDATE ON operator.access_identity
   FOR EACH STATEMENT EXECUTE FUNCTION auth.lock_authority_gate();
+DROP TRIGGER IF EXISTS access_identity_authority_gate_delete ON operator.access_identity;
 CREATE TRIGGER access_identity_authority_gate_delete
   BEFORE DELETE ON operator.access_identity
   FOR EACH STATEMENT EXECUTE FUNCTION auth.lock_authority_gate();

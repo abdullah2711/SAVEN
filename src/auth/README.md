@@ -631,8 +631,11 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
 - Future PIVOT-007 privileged reads must call the operator admission interface inside the
   same transaction as the read; they must not trust a stale session role or a role label.
 - Migration `06-operator-identity.sql` depends on AUTH-006 `033` for the shared gate. Its
-  mapping generation sequence is non-reusable; legacy bindings without the generation-v1
-  scheme fail closed.
+  mapping generation sequence is non-reusable; reapplication is idempotent and reconciles
+  the allocator advance-only, so it never reseeds below the sequence high-water or a
+  generation retained by a session binding after mapping deletion. Legacy bindings without
+  the generation-v1 scheme fail closed; an interrupted install can only leave the allocator
+  advanced, never regressed.
 
 ### Non-claims
 
