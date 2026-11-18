@@ -1,20 +1,22 @@
--- PIVOT-005: explicit dispatcher for the versioned immutability payloads.
+-- PIVOT-005/PIVOT-006: explicit dispatcher for the versioned immutability and audit
+-- payloads.
 --
--- Attaches triggers; contains no immutability logic. Every payload is a separate
+-- Attaches triggers; contains no immutability/audit logic. Every payload is a separate
 -- immutable migration:
 --   * 040-posted-immutability.sql  — retained posted sources, numbering, drafts/review
+--   * 041-audit.sql                — append-only actor-bound tenant change audit
 --   * 042-entry-voiding.sql        — terminal void receipts and denials
---   * 041 (PIVOT-006, later)       — audit coverage
 --
 -- Registration is explicit. Every installed payload must contribute at least one
 -- attached trigger; the dispatcher refuses if a payload is installed but unregistered,
 -- so loading only the numerically newest payload is impossible. Each requirement picks
 -- the highest installed payload version that defines its guard function, which lets a
--- later payload supersede one guard without editing earlier payload bytes.
+-- later payload supersede one guard without editing earlier payload bytes. PIVOT-006
+-- registers payload 041 alongside 040/042 and retains both prior bindings.
 --
 -- Safe to re-run (triggers are dropped and recreated transactionally) and refuses when
--- a required payload is missing. Apply after 00, 05, 10, 20, 021, 30, 040 and 042 with
--- a connection that is a member of saven_migrator.
+-- a required payload is missing. Apply after 00, 05, 10, 20, 021, 30, 040, 041 (when
+-- adopting PIVOT-006 audit) and 042 with a connection that is a member of saven_migrator.
 
 BEGIN;
 
@@ -26,6 +28,18 @@ DECLARE
   v_missing text[] := ARRAY[]::text[];
   v_attached_versions text[] := ARRAY[]::text[];
   v_unregistered text;
+  v_audit_table text;
+  v_audit_tables text[] := ARRAY[
+    'account_profiles','accounts','approval_policy','approval_requests','assignments',
+    'business','business_rule','command_decisions','command_files','company_profiles',
+    'company_settings','denials','document_numbers','document_registry','document_revisions',
+    'document_sequences','inventory_controls','journal_corrections','journal_drafts',
+    'journal_lines','journals','members','periods','posting_constraint','reference_values',
+    'roles','stock_balances','stock_items','stock_movements','stock_operations','support_grants',
+    'tax_profile','trade_allocations','trade_controls','trade_credit_lines','trade_credits',
+    'trade_documents','trade_lines','trade_operations','trade_parties','verified_entitlement',
+    'warehouses'
+  ];
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'saven_migrator') THEN
     RAISE EXCEPTION 'Run 00-roles.sql before 40-triggers.sql';
@@ -109,8 +123,69 @@ BEGIN
       'COMMENT ON TRIGGER %I ON tenant_data.%I IS %L',
       req.trigger_name, req.table_name,
       format('PIVOT-005 dispatcher: immutability payload %s.', v_version));
-    v_attached_versions := v_attached_versions || v_version;
+    v_attached_versions := array_append(v_attached_versions, v_version);
   END LOOP;
+
+  -- PIVOT-006: when payload 041 is installed, attach the audit writer to the reviewed
+  -- business table list and the append/TRUNCATE guards to audit storage. The writer is
+  -- registered explicitly (no dynamic catalog sweep). A 040/042-only installation stays
+  -- runnable for PIVOT-005 but does not claim PIVOT-006 audit coverage; a partially
+  -- installed 041 payload fails closed.
+  IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NOT NULL
+     OR to_regprocedure('tenant_data.immutability_041_audit_append_guard()') IS NOT NULL
+     OR to_regprocedure('tenant_data.immutability_041_audit_truncate_guard()') IS NOT NULL
+     OR to_regprocedure('tenant_data.immutability_041_audit_native_guard()') IS NOT NULL THEN
+    IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NULL
+       OR to_regprocedure('tenant_data.immutability_041_audit_append_guard()') IS NULL
+       OR to_regprocedure('tenant_data.immutability_041_audit_truncate_guard()') IS NULL
+       OR to_regprocedure('tenant_data.immutability_041_audit_native_guard()') IS NULL THEN
+      v_missing := v_missing || 'incomplete PIVOT-006 audit payload 041';
+    ELSE
+      FOREACH v_audit_table IN ARRAY v_audit_tables LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON tenant_data.%I',
+          'saven_p006_audit_' || v_audit_table, v_audit_table);
+        EXECUTE format(
+          'CREATE TRIGGER %I AFTER INSERT OR UPDATE OR DELETE ON tenant_data.%I '
+          'FOR EACH ROW EXECUTE FUNCTION tenant_data.immutability_041_audit_row()',
+          'saven_p006_audit_' || v_audit_table, v_audit_table);
+        EXECUTE format('COMMENT ON TRIGGER %I ON tenant_data.%I IS %L',
+          'saven_p006_audit_' || v_audit_table, v_audit_table,
+          'PIVOT-006 dispatcher: audit payload 041 actor-bound tenant change audit.');
+      END LOOP;
+
+      DROP TRIGGER IF EXISTS saven_p006_audit_native_insert ON tenant_data.audit;
+      CREATE TRIGGER saven_p006_audit_native_insert BEFORE INSERT ON tenant_data.audit
+        FOR EACH ROW EXECUTE FUNCTION tenant_data.immutability_041_audit_native_guard();
+      COMMENT ON TRIGGER saven_p006_audit_native_insert ON tenant_data.audit IS
+        'PIVOT-006 dispatcher: audit payload 041 native-audit actor/tenant binding.';
+
+      DROP TRIGGER IF EXISTS saven_p006_audit_append ON tenant_data.audit;
+      CREATE TRIGGER saven_p006_audit_append BEFORE UPDATE OR DELETE ON tenant_data.audit
+        FOR EACH ROW EXECUTE FUNCTION tenant_data.immutability_041_audit_append_guard();
+      COMMENT ON TRIGGER saven_p006_audit_append ON tenant_data.audit IS
+        'PIVOT-006 dispatcher: audit payload 041 append-only guard.';
+
+      DROP TRIGGER IF EXISTS saven_p006_audit_event_append ON tenant_data.audit_event;
+      CREATE TRIGGER saven_p006_audit_event_append BEFORE UPDATE OR DELETE ON tenant_data.audit_event
+        FOR EACH ROW EXECUTE FUNCTION tenant_data.immutability_041_audit_append_guard();
+      COMMENT ON TRIGGER saven_p006_audit_event_append ON tenant_data.audit_event IS
+        'PIVOT-006 dispatcher: audit payload 041 append-only guard.';
+
+      DROP TRIGGER IF EXISTS saven_p006_audit_truncate_audit ON tenant_data.audit;
+      CREATE TRIGGER saven_p006_audit_truncate_audit BEFORE TRUNCATE ON tenant_data.audit
+        FOR EACH STATEMENT EXECUTE FUNCTION tenant_data.immutability_041_audit_truncate_guard();
+      COMMENT ON TRIGGER saven_p006_audit_truncate_audit ON tenant_data.audit IS
+        'PIVOT-006 dispatcher: audit payload 041 append-only TRUNCATE refusal.';
+
+      DROP TRIGGER IF EXISTS saven_p006_audit_truncate_audit_event ON tenant_data.audit_event;
+      CREATE TRIGGER saven_p006_audit_truncate_audit_event BEFORE TRUNCATE ON tenant_data.audit_event
+        FOR EACH STATEMENT EXECUTE FUNCTION tenant_data.immutability_041_audit_truncate_guard();
+      COMMENT ON TRIGGER saven_p006_audit_truncate_audit_event ON tenant_data.audit_event IS
+        'PIVOT-006 dispatcher: audit payload 041 append-only TRUNCATE refusal.';
+
+      v_attached_versions := array_append(v_attached_versions, '041');
+    END IF;
+  END IF;
 
   IF cardinality(v_missing) > 0 THEN
     RAISE EXCEPTION 'PIVOT-005: required payload guard(s) missing: %', array_to_string(v_missing, ', ');
@@ -165,6 +240,75 @@ BEGIN
   END IF;
 END $$;
 
+-- PIVOT-006 fail-closed audit coverage validation.
+DO $$
+DECLARE
+  v_bad text;
+  v_audit_table text;
+  v_audit_tables text[] := ARRAY[
+    'account_profiles','accounts','approval_policy','approval_requests','assignments',
+    'business','business_rule','command_decisions','command_files','company_profiles',
+    'company_settings','denials','document_numbers','document_registry','document_revisions',
+    'document_sequences','inventory_controls','journal_corrections','journal_drafts',
+    'journal_lines','journals','members','periods','posting_constraint','reference_values',
+    'roles','stock_balances','stock_items','stock_movements','stock_operations','support_grants',
+    'tax_profile','trade_allocations','trade_controls','trade_credit_lines','trade_credits',
+    'trade_documents','trade_lines','trade_operations','trade_parties','verified_entitlement',
+    'warehouses'
+  ];
+BEGIN
+  IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NULL THEN
+    RETURN;
+  END IF;
+
+  SELECT string_agg(audited.table_name, ', ' ORDER BY audited.table_name) INTO v_bad
+  FROM unnest(v_audit_tables) AS audited(table_name)
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger tg
+    JOIN pg_class c ON c.oid = tg.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'tenant_data' AND c.relname = audited.table_name
+      AND tg.tgname = 'saven_p006_audit_' || audited.table_name
+      AND NOT tg.tgisinternal
+  );
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'PIVOT-006: missing audit trigger(s): %', v_bad;
+  END IF;
+
+  SELECT string_agg(expected, ', ' ORDER BY expected) INTO v_bad
+  FROM unnest(ARRAY[
+    'audit.saven_p006_audit_native_insert',
+    'audit.saven_p006_audit_append',
+    'audit_event.saven_p006_audit_event_append',
+    'audit.saven_p006_audit_truncate_audit',
+    'audit_event.saven_p006_audit_truncate_audit_event'
+  ]) AS expected
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM pg_trigger tg
+    JOIN pg_class c ON c.oid = tg.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'tenant_data'
+      AND c.relname || '.' || tg.tgname = expected
+      AND NOT tg.tgisinternal
+  );
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'PIVOT-006: missing append-only audit guard(s): %', v_bad;
+  END IF;
+
+  SELECT string_agg(c.relname || '.' || tg.tgname, ', ') INTO v_bad
+  FROM pg_trigger tg
+  JOIN pg_class c ON c.oid = tg.tgrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  LEFT JOIN pg_proc p ON p.oid = tg.tgfoid
+  WHERE n.nspname = 'tenant_data' AND tg.tgname LIKE 'saven\_p006\_%'
+    AND (p.oid IS NULL OR p.proname NOT LIKE 'immutability\_041\_%');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'PIVOT-006: dispatcher trigger(s) not bound to audit payload 041: %', v_bad;
+  END IF;
+END $$;
+
 -- =====================================================================
 -- Activation: expose the runtime interface only after every guard above is attached
 -- and validated. A partial install (payloads applied, dispatcher not run) therefore
@@ -213,6 +357,106 @@ BEGIN
   IF NOT has_table_privilege('saven_customer_app', 'tenant_data.active_general_ledger', 'SELECT')
      OR NOT has_table_privilege('saven_customer_app', 'tenant_data.voided_entries', 'SELECT') THEN
     RAISE EXCEPTION 'PIVOT-005: activation did not grant the canonical projections';
+  END IF;
+END $$;
+
+-- PIVOT-006 activation validation: the audit writer is installed, bound to the
+-- reviewed tables, owned by the narrow DDL role with a fixed search_path, and the
+-- runtime cannot mutate audit storage directly.
+DO $$
+DECLARE
+  v_bad text;
+  v_audit_table text;
+  v_table_oid regclass;
+BEGIN
+  -- 041 is optional for a PIVOT-005-only installation; when present it must be fully
+  -- valid. PIVOT-006 acceptance requires the 041 payload and this block to pass.
+  IF to_regprocedure('tenant_data.immutability_041_audit_row()') IS NOT NULL THEN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_roles r
+    WHERE r.rolname = 'saven_audit_definer'
+      AND r.rolcanlogin = false AND r.rolsuper = false AND r.rolcreatedb = false
+      AND r.rolcreaterole = false AND r.rolinherit = false AND r.rolbypassrls = false
+      AND r.rolreplication = false
+  ) THEN
+    RAISE EXCEPTION 'PIVOT-006: dedicated constrained audit owner is missing or has excess attributes';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN pg_roles r ON r.oid = p.proowner
+    WHERE n.nspname = 'tenant_data'
+      AND p.proname = 'immutability_041_audit_row'
+      AND p.prosecdef
+      AND r.rolname = 'saven_audit_definer'
+      AND p.proconfig = ARRAY['search_path=pg_catalog, tenant_data']
+  ) OR NOT EXISTS (
+    SELECT 1
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    JOIN pg_roles r ON r.oid = p.proowner
+    WHERE n.nspname = 'tenant_data'
+      AND p.proname = 'immutability_041_audit_native_guard'
+      AND p.prosecdef
+      AND r.rolname = 'saven_audit_definer'
+      AND p.proconfig = ARRAY['search_path=pg_catalog, tenant_data']
+  ) THEN
+    RAISE EXCEPTION 'PIVOT-006: audit writer/actor-binding functions must be SECURITY DEFINER owned by saven_audit_definer with the exact fixed search_path';
+  END IF;
+
+  -- Pipeline alarm: every table actually attached to the audit writer must still match
+  -- its reviewed schema fingerprint, and every column base type (domains resolved) must
+  -- be in the exact representable-type allow-list. A new column/type without a recorded
+  -- serialization decision refuses activation rather than silently inheriting raw
+  -- retention or failing later on a business write.
+  FOR v_audit_table IN
+    SELECT c.relname
+    FROM pg_trigger tg
+    JOIN pg_class c ON c.oid = tg.tgrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_proc p ON p.oid = tg.tgfoid
+    WHERE n.nspname = 'tenant_data'
+      AND p.proname = 'immutability_041_audit_row'
+      AND NOT tg.tgisinternal
+    ORDER BY c.relname
+  LOOP
+    v_table_oid := format('tenant_data.%I', v_audit_table)::regclass;
+    IF tenant_data.immutability_041_schema_fingerprint(v_table_oid)
+       IS DISTINCT FROM tenant_data.immutability_041_expected_fingerprint(v_table_oid) THEN
+      RAISE EXCEPTION 'PIVOT-006: unreviewed schema change on audit table %', v_audit_table;
+    END IF;
+    SELECT string_agg(a.attname, ', ' ORDER BY a.attnum) INTO v_bad
+    FROM pg_attribute a
+    CROSS JOIN LATERAL tenant_data.immutability_041_resolve_type(a.atttypid, a.atttypmod) r
+    WHERE a.attrelid = v_table_oid AND a.attnum > 0 AND NOT a.attisdropped
+      AND NOT tenant_data.immutability_041_type_supported(r.base_oid);
+    IF v_bad IS NOT NULL THEN
+      RAISE EXCEPTION 'PIVOT-006: unreviewed column type on audit table %: %', v_audit_table, v_bad;
+    END IF;
+  END LOOP;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_accounts' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_journals' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_native_insert' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_append' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_truncate_audit' AND NOT tg.tgisinternal)
+     OR NOT EXISTS (SELECT 1 FROM pg_trigger tg WHERE tg.tgname = 'saven_p006_audit_truncate_audit_event' AND NOT tg.tgisinternal) THEN
+    RAISE EXCEPTION 'PIVOT-006: activation refused because required audit triggers are missing';
+  END IF;
+
+  IF has_table_privilege('saven_customer_app', 'tenant_data.audit_event', 'INSERT')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.audit_event', 'UPDATE')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.audit_event', 'DELETE')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.audit_event', 'TRUNCATE')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.audit', 'UPDATE')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.audit', 'DELETE')
+     OR has_table_privilege('saven_customer_app', 'tenant_data.audit', 'TRUNCATE') THEN
+    RAISE EXCEPTION 'PIVOT-006: the runtime must not mutate audit storage directly';
+  END IF;
+  IF has_function_privilege('saven_customer_app', 'tenant_data.immutability_041_audit_row()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'PIVOT-006: the audit writer must not be directly executable by the runtime';
+  END IF;
   END IF;
 END $$;
 

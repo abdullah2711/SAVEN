@@ -31,11 +31,12 @@ export const switchableRoleKeys = Object.freeze([...runtimeRoleKeys, 'migrator']
 // definer) through an explicitly opted-in administrator step. It is namespaced,
 // preflighted and cleaned up like the other fixture roles, but it is not a runtime
 // principal and is never added to the default seven-role bootstrap.
-export const extraRoleKeys = Object.freeze(['tenantAdmissionDefiner', 'voidDefiner']);
+export const extraRoleKeys = Object.freeze(['tenantAdmissionDefiner', 'voidDefiner', 'auditDefiner']);
 
 const extraRoleSuffixes = Object.freeze({
   tenantAdmissionDefiner: 'tenant_admission_definer',
   voidDefiner: 'void_definer',
+  auditDefiner: 'audit_definer',
 });
 
 const roleSuffixes = Object.freeze({
