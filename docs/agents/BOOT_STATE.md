@@ -20,10 +20,10 @@ MERGED (14):
 - AUTH-004
 - AUTH-005
 - AUTH-006
+- AUTH-007
 - AUTH-008
 
-REMAINING (10):
-- AUTH-007
+REMAINING (9):
 - AUTH-009
 - AUTH-010
 - PIVOT-007
@@ -37,13 +37,13 @@ REMAINING (10):
 PIVOT-002c resolution: executed under the PIVOT-002b review directive; no standalone contract file; not a missing file. Counts enumerate the 24 standalone contract files, not an additional 002c contract.
 
 - Merge queue: docs/agents/merge-queue.md is the single source of truth.
-- AUTH-chain progress: 7 of 10 AUTH contracts merged (AUTH-001..006, 008). AUTH-007 delivered, in review. After AUTH-007 merges: AUTH-009 (auth audit) runs BEFORE the vertical slice; AUTH-010 (security docs) runs AFTER the slice passes. The auth chain is NOT complete until 009 and 010 are merged.
-- Live sequencing per Principal directive: AUTH-007 merge → AUTH-009 (worker-a) → vertical slice (worker-b) → AUTH-010 → UI. PIVOT-006 is merged at `bdf9f80` and is no longer a predecessor awaiting merge. UI contracts stay HELD until the vertical slice passes.
+- AUTH-chain progress: 8 of 10 AUTH contracts merged (AUTH-001..006, 007, 008). AUTH-009 (auth audit) runs next BEFORE the vertical slice; AUTH-010 (security docs) runs AFTER the slice passes. The auth chain is NOT complete until 009 and 010 are merged.
+- Live sequencing per Principal directive: AUTH-007 merged at `9b9d47f` → AUTH-009 (worker-a) → vertical slice (worker-b) → AUTH-010 → UI. PIVOT-006 is merged at `bdf9f80` and is no longer a predecessor awaiting merge. UI contracts stay HELD until the vertical slice passes.
 
 ## Workers
-- worker-a (w1:p2): contract AUTH-007 (operator access), branch `opencode/auth-007-operator-access`, worktree `/home/esc/saven/wt-auth-007`, based on `0df990a`. AUTH-006 merged at `0df990a`.
+- worker-a (w1:p2): AUTH-007 (operator access) merged into `testing-1` at `9b9d47f`. Next assignment = AUTH-009 (auth audit) per the Principal sequencing; not yet dispatched — awaiting dispatcher dispatch after reload.
 - worker-b (w1:p3): PIVOT-006 (audit triggers) merged into `testing-1` at `bdf9f80`; worker idle. Next assignment = vertical slice (to be authored by Codex; worker-b awaits dispatcher dispatch).
-- Engineer (w1:p4): reviews land on `codex/pivot-003-rulings`; relay pattern: `Review <delivery-path>`. Latest review head: `26f8263`.
+- Engineer (w1:p4): reviews land on `codex/pivot-003-rulings`; relay pattern: `Review <delivery-path>`. Latest review head: `bbcccc2` (AUTH-007-R5 ACCEPT).
 
 ## Standing protocols
 - At every merge handoff, the worker executing the merge updates the Workers section of docs/agents/BOOT_STATE.md in the same push.
