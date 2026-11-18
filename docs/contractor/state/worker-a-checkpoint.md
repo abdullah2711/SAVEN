@@ -1,90 +1,62 @@
-# WORKER-A checkpoint — AUTH-007-R5 delivered, awaiting verdict
+# WORKER-A checkpoint — AUTH-009 delivered, awaiting review
 
-Date: 18 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
+Date: 19 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
 directive; this file is outside any contract TOUCH.
-
-## Context
-
-- AUTH-006 merged at `0df990a73c883b67e22dbfacfcb4f90162eef910`; AUTH-007 opened from that
-  `testing-1` head.
-- AUTH-007 branch/worktree: `opencode/auth-007-operator-access` at
-  `/home/esc/saven/wt-auth-007`.
-- Round just delivered: **AUTH-007-R5**, correcting
-  `docs/contractor/reviews/AUTH-007-R4-operator-access.md` at `6924727`.
 
 ## Exact contract
 
-- Contract: `docs/contractor/contracts/AUTH-007-operator-access.md` — Cloud operator Access
-  JWT validation and scoped local subject mapping without local Cloud operator passwords.
-- TOUCH: `src/auth/access.mjs`, `src/auth/routes.mjs`, `src/auth/README.md`,
-  `db/postgres/06-operator-identity.sql`, `tests/auth-007-access.test.mjs`.
-- DONE WHEN: `node scripts/check.mjs && node --test tests/auth-007-access.test.mjs`.
-- Implementation commit: `cfc54ac` (`app: take installer authority gate before DDL and prove
-  allocator mutation [contract:AUTH-007-R5]`).
-- Report + this checkpoint are the next commit; that commit is the pushed head at
-  checkpoint time.
+- Contract: `docs/contractor/contracts/AUTH-009-auth-audit.md` — complete append-only auth
+  event instrumentation with correct failed-event durability and redaction.
+- TOUCH: `src/auth/audit.mjs`; `src/auth/routes.mjs`; `src/auth/server.mjs`;
+  `src/auth/session-store.mjs`; `src/auth/password-policy.mjs`; `src/auth/rate-limit.mjs`;
+  `src/auth/factors.mjs`; `src/auth/recovery.mjs`; `src/auth/tenant-selection.mjs`;
+  `src/auth/access.mjs`; `src/auth/README.md`; `tests/auth-009-audit.test.mjs`.
+- DONE WHEN: `node scripts/check.mjs && node --test tests/auth-009-audit.test.mjs`.
+- Depends on AUTH-002..007 (all merged; AUTH-007 at `9b9d47f`). Base `testing-1`: `c543ef7`.
+
+## Round delivered
+
+- Branch `opencode/auth-009-audit`, worktree `/home/esc/saven/wt-auth-009`.
+- Implementation commit: `857324cb902c1b64f951207fbd481d893515b645`
+  (`app: centralize append-only auth audit with durable failure recording
+  [contract:AUTH-009]`).
+- Delivery report: `docs/contractor/deliveries/AUTH-009-auth-audit.md` (this commit).
+- Status: **delivered, not merged**. No review verdict exists yet.
 
 ## TOUCH used
 
-`db/postgres/06-operator-identity.sql`, `src/auth/README.md`,
-`tests/auth-007-access.test.mjs`, delivery report and this checkpoint. No access/routes
-delta this round; no other path, applied 033 byte or production credential.
+`src/auth/audit.mjs` (new), `src/auth/routes.mjs`, `src/auth/server.mjs`,
+`src/auth/tenant-selection.mjs`, `src/auth/README.md`,
+`tests/auth-009-audit.test.mjs` (new), plus this checkpoint/report as protocol artifacts.
+Allowed-but-unused: `session-store.mjs`, `password-policy.mjs`, `rate-limit.mjs`,
+`factors.mjs`, `recovery.mjs`, `access.mjs`.
 
-## R5 corrections and status (review `6924727`)
+## Failure evidence
 
-1. **HIGH — installer gate before table DDL. Closed.** 06 now takes the exclusive AUTH-006
-   authority gate immediately after `SET LOCAL ROLE`, before any table/sequence DDL, and
-   holds it to COMMIT. The allocator block no longer acquires it after table alterations.
-   A deadlock-triangle test pauses admission before its binding/mapping SELECT (holding the
-   shared gate and principal/session locks), starts reapplication, proves reapplication
-   waits at the gate before DDL, resumes admission to completion, then completes
-   reapplication — no participant abort, allocator not regressed, operator session usable.
-2. **MEDIUM — regression evidence completed and claims corrected. Closed.**
-   - Interrupted already-ahead case added: allocator executes, no advance needed, rollback
-     leaves it ahead.
-   - Binding-only interrupted case retained and reaches the allocator.
-   - Old-credential assertions now run after mapping recreation and assert
-     `OPERATOR_ACCESS_DENIED` (generation mismatch), not only while mapping is absent.
-   - True mutation proof performed and documented: live-only floor mutation makes the
-     focused reapplication test fail on “binding-only reconciliation advances strictly
-     beyond issued evidence”; restoring the binding-aware floor makes it pass. Mutation not
-     committed.
-   - Delivery claims distinguish executed allocator statements from the earlier
-     pre-allocator injection.
+- Active failures: **none**. Gate exit 0.
+- Exact gate output (Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster port 55439,
+  `SAVEN_AUTH_TEST_CLUSTER=1`):
+  `PASS: 172 JavaScript files parsed; package manifest valid.` then AUTH-009
+  `tests 13 / pass 13 / fail 0`.
+- Regression: AUTH-002 18/18, 003 27/27, 004 21/21, 005 27/27, 006 27/27, 007 22/22
+  (combined auth chain 155/155).
+- Environment caveat: host default Node was v22.23.5; Node v24.19.0 was fetched to
+  `/tmp/auth009-node` for the gate. PostgreSQL ran from a disposable cluster at
+  `/tmp/auth009-pg` (port 55439), not the system cluster.
 
-## Evidence recorded with the delivery
+## Known limits carried to review
 
-- Focused gate: `node scripts/check.mjs && node --test tests/auth-007-access.test.mjs`
-  → PASS, 22/22, exit 0, Node v24.19.0, disposable PostgreSQL 18.6 on
-  `127.0.0.1:55433` (55432 occupied), auth fixture + AUTH-006 033 + operator 06 applied as
-  administrator with namespaced roles, real non-owner auth-service login.
-- Regressions: AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27,
-  AUTH-006 27/27.
-- Combined serial run (`--test-concurrency=1`): 142 tests, 142 pass, 0 fail.
-- Mutation proof: live-only floor → focused reapplication test fails at the binding-only
-  assertion; restored binding-aware floor → 1/1 pass. Mutation not committed.
-- Cleanup: disposable cluster stopped and deleted; `node_modules` removed; worktree clean
-  at checkpoint time.
-- Merge state: AUTH-007 not merged.
-
-## Where I stopped
-
-Last completed step: committed `cfc54ac`, then the delivery report and this checkpoint.
-No further code, tests, merges or new contracts started.
+- `password_changed`, `role_changed`, `membership_invited`, `membership_accepted` have no
+  producing flow; catalogued with `producer: null`, no synthetic rows, listed in README,
+  report and tests.
+- `email_verification_failed` is instrumented but untested in this round.
+- MFA success atomicity uses the same in-transaction writer; only login/reset fault matrices
+  were injected.
+- Failure durability is best-effort under a total ledger outage (counted, not delivered).
 
 ## Exact next step
 
-1. Await the Codex verdict on AUTH-007-R5.
-2. On **ACCEPT**: nothing further from me for AUTH-007; it queues for a human Business
-   Merge Request (dispatcher issues any merge command separately).
-3. On **REVISE within TOUCH**: fetch the rulings branch, apply only scoped corrections,
-   re-run focused plus AUTH-002..006, update the report, commit/push on
-   `opencode/auth-007-operator-access`, and stop without merging.
-
-Open items/limits: `06-operator-identity.sql` depends on AUTH-006 `033`; installation must
-run with no external allocator writer; allocator is advance-only with profile refusal,
-non-regression, non-reuse and exact overflow failure, no sequence rollback promise. This is
-AUTH-007 allocator evidence, not codebase-wide D016 or PITR completeness. Earlier MFA/realm,
-canonical replay, admission order/freshness, mapping generation and refresh-flight
-corrections remain closed. No live Access policy/DNS/tunnel/network fetch; operator reads and
-complete audit remain PIVOT-007/AUTH-009; SQLite remains production.
+1. Await Codex review of `857324c` against `docs/contractor/reviews/`.
+2. On REVISE: fix finding-by-finding in this worktree, re-run the gate, update the delivery
+   report and this checkpoint, commit, push.
+3. Never merge; the dispatcher relays the human-approved merge command.
