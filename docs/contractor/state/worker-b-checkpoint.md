@@ -1,6 +1,6 @@
-# WORKER-B checkpoint — PIVOT-006 R3 corrections delivered, awaiting review
+# WORKER-B checkpoint — PIVOT-006 R3 delivered, ACCEPTED, awaiting human merge
 
-Date: 17 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
+Date: 18 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
 directive; this file is outside any contract TOUCH.
 
 ## Current state
@@ -9,18 +9,16 @@ directive; this file is outside any contract TOUCH.
   `32fef2beac91a73b2c8a5ae9c150603736993e97`; post-merge checkpoint `e671882`.
 - PIVOT-006 branch: `opencode/pivot-006-audit`.
 - Worktree: `/home/esc/saven/wt-pivot-006`, based on `32fef2b`.
-- Previously reviewed heads: `3c40839c5a2c4ba547bd4abcdf8af022b3f9c281` (initial),
-  `8af08cc24bfd37748c2cc13d5b93acebb94daeda` (R1) and
-  `4bdf44d19ae50fb4882ed2b74c8f10d9f6fa51b2` (R2).
-- R3 implementation commit: `cb81f11cc9f29c9dec5acccb16cb06c20df8337f`
-  (`db: resolve audit types by catalog identity and enforce schema inventory
-  [contract:PIVOT-006]`).
-- Delivery report: `docs/contractor/deliveries/PIVOT-006-audit-triggers.md`
-  (required by review `d8fe104`).
-- This checkpoint is a follow-up commit on the same branch. PIVOT-006 is **not merged**;
-  no main/other branch was changed and no force was used.
+- **PIVOT-006 R3 delivered at `5d909a78dcb2258cb87b012f7195214b7edf3826`**
+  (`docs: record PIVOT-006 R3 intermediate failure evidence`; implementation
+  `cb81f11cc9f29c9dec5acccb16cb06c20df8337f`).
+- **Codex ACCEPT at `26f8263` (02:45 PKT, 18 November 2026).**
+- PIVOT-006 is **awaiting the human merge decision** and is a merge-queue item. It is not
+  merged; no main/other branch was changed and no force was used.
+- Worker status: **idle, not looping**, since approximately **02:00 PKT** awaiting the
+  verdict. No new work was started after that point.
 
-## Review corrections closed (d8fe104 and R1 review)
+## Review corrections closed (d8fe104, R1 review and R2 review)
 
 1. **Dedicated least-privileged audit owner.** 041 is now an offline-admin payload that
    provisions `saven_audit_definer` (`NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
@@ -131,18 +129,16 @@ PIVOT-004 fixtures/tests are untouched.
 
 ## Where I stopped
 
-R3 implementation, delivery report, focused/regression/serial full-suite evidence,
-commit and push are complete on `opencode/pivot-006-audit`. No review corrections have
-been started. PIVOT-006 is not merged.
+PIVOT-006 R3 was delivered, pushed and accepted. I have been idle since approximately
+02:00 PKT awaiting the verdict and did not start any new work; the ACCEPT arrived at
+02:45 PKT but was not relayed until now. No review corrections, vertical slice, contract
+work or merge action is in progress.
 
 ## Exact next step
 
-1. Await the Codex review/verdict on this PIVOT-006 R1 delivery (expected on
-   `origin/codex/pivot-003-rulings`).
-2. On **REVISE**: fetch the rulings branch, read the new review in full, apply exactly the
-   scoped corrections inside the PIVOT-006 TOUCH/amendment, re-run the focused gate plus
-   PIVOT-005, update the delivery report/checkpoint, commit and push; do not merge.
-3. On **ACCEPT**: stop and report; a human Business Merge Request is required. Do not
-   merge without the dispatcher's explicit merge instruction.
-4. PIVOT-006 application acceptance remains gated by AUTH-006; failed-attempt durability
+1. **Await the dispatcher's post-merge assignment** after a fresh reload: either the next
+   vertical slice or the next contract, with its exact worktree and base SHA.
+2. Do not start new work, merge PIVOT-006, or reopen the accepted branch without the
+   dispatcher's explicit instruction. PIVOT-006 remains a human merge-queue item.
+3. PIVOT-006 application acceptance remains gated by AUTH-006; failed-attempt durability
    and operational parity remain separate PIVOT-013/PIVOT-009/010 work.
