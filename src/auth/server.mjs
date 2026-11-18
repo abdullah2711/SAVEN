@@ -8,6 +8,12 @@ import {
   AuthError,
 } from './session-store.mjs';
 import {createAuthRoutes} from './routes.mjs';
+import {createAuditWriter} from './audit.mjs';
+
+// AUTH-009 moved the append-only audit writer into `audit.mjs` so every auth
+// module shares one catalogued, redacting, durable writer. It is re-exported here
+// for the composition roots and tests that already import it from server.mjs.
+export {createAuditWriter} from './audit.mjs';
 
 // AUTH-002 composition root (AUTH-002-R1). It is intentionally not imported by any
 // active entry point: the SQLite `/api` handler remains the running auth path until
@@ -52,33 +58,12 @@ async function verifyRetained(password, credential) {
   return verifyRetainedScrypt(password, credential.hash);
 }
 
-// Append-only auth audit. When a transaction client is supplied (success
-// transitions), the audit row commits with the transition. Failure events are
-// written on their own autocommit statement path so a rolled-back attempt is still
-// recorded. An audit failure fails the request instead of reporting an unrecorded
-// success.
-export function createAuditWriter(pool) {
-  return async function audit(event, {tx} = {}) {
-    const executor = tx ?? pool;
-    await executor.query(
-      `INSERT INTO auth.auth_audit(
-         event_type, outcome, user_id, realm, session_id, request_id,
-         ip_address, user_agent, detail_jsonb)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
-      [
-        event.eventType,
-        event.outcome ?? 'success',
-        event.user?.id ?? null,
-        event.realm ?? null,
-        event.sessionId ?? null,
-        event.request?.headers?.get('x-request-id')?.slice(0, 200) ?? null,
-        event.request?.headers?.get('cf-connecting-ip') ?? null,
-        event.request?.headers?.get('user-agent')?.slice(0, 1000) ?? null,
-        JSON.stringify(event.detail ?? {}),
-      ],
-    );
-  };
-}
+// Append-only auth audit. The writer (src/auth/audit.mjs) validates the event
+// against the AUTH-009 catalog, redacts the detail payload, and writes success
+// transitions on the caller's transaction so they commit atomically. Failed
+// events are written by `audit.failure()` on an independent connection.
+//
+// createAuthServer composes the durable writer; tests may inject their own.
 
 export function createAuthServer({
   pool,

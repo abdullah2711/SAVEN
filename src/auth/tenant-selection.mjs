@@ -32,7 +32,7 @@ function requireUuid(value, code, message) {
   return value;
 }
 
-export function createTenantSelection({store, clock = () => new Date()} = {}) {
+export function createTenantSelection({store, clock = () => new Date(), audit = async () => {}} = {}) {
   if (!store || typeof store.withTransaction !== 'function' ||
       typeof store.readSessionById !== 'function' || typeof store.setSessionSelection !== 'function') {
     throw new Error('createTenantSelection requires the transactional auth session store.');
@@ -294,8 +294,9 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
 
   // Resolves exactly one selector against the principal's own active memberships and
   // binds it. The same authoritative assurance check runs here, so a missing route-level
-  // guard is not the sole defence.
-  async function select(session, input = {}) {
+  // guard is not the sole defence. The success event is written inside this transaction
+  // (AUTH-009), so the bound membership and its audit row commit together.
+  async function select(session, input = {}, context = {}) {
     if (!session || typeof session.id !== 'string') throw sessionRequired();
     const hasTenant = input.tenantId !== undefined;
     const hasMembership = input.membershipId !== undefined;
@@ -318,16 +319,37 @@ export function createTenantSelection({store, clock = () => new Date()} = {}) {
         roleId: row.role_id,
       }, {tx: executor});
       if (!bound) throw new TenantSelectionError(409, 'TENANT_SELECTION_STALE', 'Your access changed. Sign in again.');
+      await audit({
+        eventType: 'tenant_selected',
+        outcome: 'success',
+        actorKind: 'authenticated',
+        realm: context.realm ?? 'customer',
+        user: {id: session.userId},
+        sessionId: session.id,
+        tenantId: row.tenant_id,
+        request: context.request ?? null,
+        detail: {membership_id: row.id, role_id: row.role_id},
+      }, {tx: executor});
       return {...publicMembership(row), selectedTenantId: row.tenant_id, selectedMembershipId: row.id};
     });
   }
 
-  async function clear(session) {
+  async function clear(session, context = {}) {
     if (!session || typeof session.id !== 'string') throw sessionRequired();
     return store.withTransaction(async executor => {
       await loadAuthority(executor, session);
       const cleared = await store.clearSessionSelection(session.id, {tx: executor});
       if (!cleared) throw sessionRequired();
+      await audit({
+        eventType: 'tenant_cleared',
+        outcome: 'success',
+        actorKind: 'authenticated',
+        realm: context.realm ?? 'customer',
+        user: {id: session.userId},
+        sessionId: session.id,
+        request: context.request ?? null,
+        detail: {},
+      }, {tx: executor});
       return {cleared: true};
     });
   }

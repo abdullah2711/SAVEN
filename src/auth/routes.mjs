@@ -4,7 +4,7 @@ import {createPasswordPolicy} from './password-policy.mjs';
 import {createMfaService} from './factors.mjs';
 import {createRecoveryService} from './recovery.mjs';
 import {createMailDispatcher} from './mail.mjs';
-import {createTenantSelection} from './tenant-selection.mjs';
+import {createTenantSelection, TenantSelectionError} from './tenant-selection.mjs';
 import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './rate-limit.mjs';
 
 // AUTH-003 versioned auth routes.
@@ -191,7 +191,10 @@ export function createAuthRoutes({
   // forgot-password route keeps the AUTH-003 no-delivery behaviour instead of inventing
   // an ad-hoc channel.
   const recovery = createRecoveryService({store, clock, config: recoveryConfig});
-  const selectionService = tenantSelection ?? createTenantSelection({store, clock});
+  // AUTH-009: selection success events are written inside the selection transaction
+  // so the bound membership and its audit row commit together. A test-injected
+  // service keeps its own composition.
+  const selectionService = tenantSelection ?? createTenantSelection({store, clock, audit});
   // Delivery is decoupled from the public response: the route enqueues a bounded job and
   // never waits for the external provider. The dispatcher owns the in-memory token until
   // delivery and invalidates an undelivered challenge through `onFailure` (best effort).
@@ -246,6 +249,36 @@ export function createAuthRoutes({
     }
   }
 
+  // AUTH-009 failure durability. Failed attempts are recorded outside the attempt
+  // transaction so a rollback cannot erase them. The writer's durable path
+  // (`audit.failure`) takes its own connection; an injected plain writer is used as
+  // a fallback. A failure-audit fault is counted and retained here, and it never
+  // replaces the authentication decision returned to the caller.
+  let failureAuditMisses = 0;
+  let lastFailureAudit = null;
+  async function recordFailure(event) {
+    const attempt = {...event, outcome: event.outcome ?? 'failure'};
+    try {
+      if (typeof audit.failure === 'function') await audit.failure(attempt);
+      else await audit(attempt, {});
+      return {recorded: true};
+    } catch (error) {
+      failureAuditMisses += 1;
+      lastFailureAudit = {
+        eventType: attempt.eventType ?? null,
+        code: typeof error?.code === 'string' ? error.code : 'AUDIT_DURABILITY_FAILED',
+      };
+      return {recorded: false, error: lastFailureAudit};
+    }
+  }
+
+  // Only security refusals become append-only failure history. Malformed bodies and
+  // unavailable stores are request faults, not authentication decisions.
+  const SECURITY_REFUSAL_STATUSES = new Set([401, 403, 409, 429]);
+  function isSecurityRefusal(error) {
+    return SECURITY_REFUSAL_STATUSES.has(error?.status);
+  }
+
   async function login(request, url, realm) {
     if (realm === 'operator') {
       throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local operator sign-in is not enabled.');
@@ -273,6 +306,7 @@ export function createAuthRoutes({
       await record({
         eventType: 'login_failure',
         outcome: denied ? 'denied' : 'failure',
+        actorKind: user ? 'unverified_attempt' : 'unknown',
         realm,
         user,
         request: archive,
@@ -335,6 +369,7 @@ export function createAuthRoutes({
             await record({
               eventType: 'login_success',
               outcome: 'success',
+              actorKind: 'authenticated',
               realm,
               user,
               request: archive,
@@ -423,6 +458,7 @@ export function createAuthRoutes({
       await record({
         eventType: 'password_reset_requested',
         outcome: denied ? 'denied' : 'success',
+        actorKind: 'unknown',
         realm,
         request: archive,
         detail: throttleDetail(keys, verdict, denied
@@ -500,10 +536,19 @@ export function createAuthRoutes({
     }
     // Cheap authoritative check first: current address, credential generation, purpose
     // validity and expiry. A stale token never starts a password KDF.
-    const usable = await recovery.probeReset(body.token).catch(() => false);
-    if (!usable) throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
-    const hashed = await policy.hash(body.password);
     const archive = auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip);
+    const usable = await recovery.probeReset(body.token).catch(() => false);
+    if (!usable) {
+      await recordFailure({
+        eventType: 'password_reset_failed',
+        outcome: 'denied',
+        realm,
+        request: archive,
+        detail: {reason: 'RESET_TOKEN_INVALID'},
+      });
+      throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
+    }
+    const hashed = await policy.hash(body.password);
     let result;
     try {
       result = await store.withTransaction(async tx => {
@@ -515,6 +560,7 @@ export function createAuthRoutes({
         await record({
           eventType: 'password_reset_completed',
           outcome: 'success',
+          actorKind: 'recovery_token',
           realm,
           user: {id: consumed.userId},
           request: archive,
@@ -524,6 +570,17 @@ export function createAuthRoutes({
             credential_version: consumed.credentialVersion,
           },
         }, {tx});
+        // ADR03 "one/all sessions revoked" is a distinct event, not only a count on
+        // the reset event. It commits with the credential change and the reset audit.
+        await record({
+          eventType: 'sessions_revoked',
+          outcome: 'success',
+          actorKind: 'recovery_token',
+          realm,
+          user: {id: consumed.userId},
+          request: archive,
+          detail: {scope: 'all', reason: 'password_reset', revoked_count: consumed.revoked},
+        }, {tx});
         return consumed;
       });
     } catch (error) {
@@ -531,11 +588,26 @@ export function createAuthRoutes({
         throw new AuthError(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
       }
       // One coherent outward contract for the reset route: the cheap pre-check and the
-      // authoritative consume report the same codes.
+      // authoritative consume report the same codes. Each security refusal is also
+      // recorded independently of the rolled-back attempt.
       if (error?.code === 'RECOVERY_TOKEN_INVALID') {
+        await recordFailure({
+          eventType: 'password_reset_failed',
+          outcome: 'denied',
+          realm,
+          request: archive,
+          detail: {reason: 'RECOVERY_TOKEN_INVALID'},
+        });
         throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
       }
       if (error?.code === 'RECOVERY_TOKEN_STALE') {
+        await recordFailure({
+          eventType: 'password_reset_failed',
+          outcome: 'denied',
+          realm,
+          request: archive,
+          detail: {reason: 'RECOVERY_TOKEN_STALE'},
+        });
         throw new AuthError(400, 'RESET_TOKEN_STALE', 'The reset link is no longer valid. Request a new one.');
       }
       throw error;
@@ -559,6 +631,7 @@ export function createAuthRoutes({
     if (!delivery) throw new AuthError(503, 'MAIL_UNAVAILABLE', 'Email verification is not configured.');
     const session = await mutationSession(request, realm);
     const ingress = sanitizeIngress(request, trustedClientHeader);
+    const archive = auditView(request, trustedClientHeader, ingress.ip);
     const outcome = await store.withTransaction(async tx => {
       await mfaService.assertMutationAuthority({session, tx});
       const verdict = await recovery.admitVerificationRequest({
@@ -566,12 +639,34 @@ export function createAuthRoutes({
         network: ingress.ip,
         tx,
       });
-      if (!verdict.allowed) return {denied: verdict};
+      if (!verdict.allowed) {
+        await record({
+          eventType: 'email_verification_requested',
+          outcome: 'denied',
+          actorKind: 'authenticated',
+          realm,
+          user: {id: session.userId},
+          sessionId: session.id,
+          request: archive,
+          detail: {retry_after_ms: verdict.retryAfterMs},
+        }, {tx});
+        return {denied: verdict};
+      }
       const issued = await recovery.issueVerification({
         userId: session.userId,
         network: ingress.ip,
         tx,
       });
+      await record({
+        eventType: 'email_verification_requested',
+        outcome: 'success',
+        actorKind: 'authenticated',
+        realm,
+        user: {id: session.userId},
+        sessionId: session.id,
+        request: archive,
+        detail: {delivery: 'mail_adapter'},
+      }, {tx});
       return {issued};
     });
     if (outcome.denied) {
@@ -607,7 +702,34 @@ export function createAuthRoutes({
     if (Object.keys(body).some(key => key !== 'token') || typeof body.token !== 'string') {
       throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide the verification token.');
     }
-    const result = await store.withTransaction(tx => recovery.consumeVerification(body.token, {tx}));
+    const archive = auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip);
+    let result;
+    try {
+      result = await store.withTransaction(async tx => {
+        const consumed = await recovery.consumeVerification(body.token, {tx});
+        await record({
+          eventType: 'email_verified',
+          outcome: 'success',
+          actorKind: 'recovery_token',
+          realm,
+          user: {id: consumed.userId},
+          request: archive,
+          detail: {already_verified: consumed.alreadyVerified === true},
+        }, {tx});
+        return consumed;
+      });
+    } catch (error) {
+      if (typeof error?.code === 'string') {
+        await recordFailure({
+          eventType: 'email_verification_failed',
+          outcome: 'failure',
+          realm,
+          request: archive,
+          detail: {reason: error.code},
+        });
+      }
+      throw error;
+    }
     return json({ok: true, verified: true, userId: result.userId});
   }
 
@@ -668,11 +790,12 @@ export function createAuthRoutes({
       await record({
         eventType: 'logout',
         outcome: 'success',
+        actorKind: 'authenticated',
         realm,
         user: {id: session.userId},
         request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
         sessionId: session.id,
-        detail: {},
+        detail: {scope: 'one'},
       }, {tx});
       return result;
     });
@@ -707,7 +830,25 @@ export function createAuthRoutes({
       throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown tenant selection fields.');
     }
     const session = await mutationSession(request, realm);
-    const selected = await selectionService.select(session, body);
+    const archive = auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip);
+    let selected;
+    try {
+      selected = await selectionService.select(session, body, {request: archive, realm});
+    } catch (error) {
+      if (error instanceof TenantSelectionError) {
+        await recordFailure({
+          eventType: 'tenant_selection_failed',
+          outcome: error.status === 403 ? 'denied' : 'failure',
+          actorKind: 'authenticated',
+          realm,
+          user: {id: session.userId},
+          sessionId: session.id,
+          request: archive,
+          detail: {reason: error.code},
+        });
+      }
+      throw error;
+    }
     return json({selected});
   }
 
@@ -717,7 +858,8 @@ export function createAuthRoutes({
     const body = await readJson(request);
     if (Object.keys(body).length > 0) throw new AuthError(400, 'UNKNOWN_FIELDS', 'No fields are accepted.');
     const session = await mutationSession(request, realm);
-    const result = await selectionService.clear(session);
+    const archive = auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip);
+    const result = await selectionService.clear(session, {request: archive, realm});
     return json(result);
   }
 
@@ -731,34 +873,35 @@ export function createAuthRoutes({
   }
 
   async function auditOperatorFailure(error, request, realm) {
-    try {
-      await audit({
-        eventType: 'login_failure',
-        outcome: error?.status === 409 ? 'denied' : 'failure',
-        realm,
-        user: null,
-        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
-        detail: {reason: typeof error?.code === 'string' ? error.code : 'operator_access_failed'},
-      }, {});
-    } catch {
-      // Failure audit must not replace the authentication decision.
-    }
+    await recordFailure({
+      eventType: 'login_failure',
+      outcome: error?.status === 409 ? 'denied' : 'failure',
+      actorKind: 'operator_assertion',
+      realm,
+      user: null,
+      request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+      detail: {reason: typeof error?.code === 'string' ? error.code : 'operator_access_failed'},
+    });
   }
 
   async function operatorAccessRoute(request, url, realm) {
-    operatorRealmGuard(realm);
-    if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
-    const body = await readJson(request);
-    if (Object.keys(body).length > 0) throw new AuthError(400, 'UNKNOWN_FIELDS', 'No exchange fields are accepted.');
-    if (!operatorAccess) throw new AuthError(503, 'OPERATOR_ACCESS_UNAVAILABLE', 'Operator Access is not configured.');
-    const authorization = request.headers.get('authorization') ?? '';
-    const match = /^Bearer\s+(\S+)$/.exec(authorization);
-    if (!match || match[1].length > 16384) {
-      throw new AuthError(401, 'OPERATOR_ACCESS_REQUIRED', 'A Cloud operator assertion is required.');
-    }
+    // AUTH-009: every refusal on the operator exchange route is recorded, including
+    // the guards that run before the assertion is exchanged (origin, body shape,
+    // configuration, missing bearer). Previously those sat outside the failure-audit
+    // path and were lost.
     const ingress = sanitizeIngress(request, trustedClientHeader);
     const archive = auditView(request, trustedClientHeader, ingress.ip);
     try {
+      operatorRealmGuard(realm);
+      if (request.headers.get('origin') !== url.origin) throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+      const body = await readJson(request);
+      if (Object.keys(body).length > 0) throw new AuthError(400, 'UNKNOWN_FIELDS', 'No exchange fields are accepted.');
+      if (!operatorAccess) throw new AuthError(503, 'OPERATOR_ACCESS_UNAVAILABLE', 'Operator Access is not configured.');
+      const authorization = request.headers.get('authorization') ?? '';
+      const match = /^Bearer\s+(\S+)$/.exec(authorization);
+      if (!match || match[1].length > 16384) {
+        throw new AuthError(401, 'OPERATOR_ACCESS_REQUIRED', 'A Cloud operator assertion is required.');
+      }
       const result = await operatorAccess.exchange(match[1], {
         ipAddress: ingress.ip,
         userAgent: archive.headers.get('user-agent') ?? null,
@@ -767,6 +910,7 @@ export function createAuthRoutes({
           await record({
             eventType: 'login_success',
             outcome: 'success',
+            actorKind: 'operator_assertion',
             realm: 'operator',
             user: {id: mapping.user_id},
             request: archive,
@@ -848,11 +992,12 @@ export function createAuthRoutes({
       await record({
         eventType: 'logout',
         outcome: 'success',
+        actorKind: 'operator_assertion',
         realm: 'operator',
         user: {id: session.userId},
         request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
         sessionId: session.id,
-        detail: {},
+        detail: {scope: 'one'},
       }, {tx});
       return result;
     });
@@ -925,6 +1070,27 @@ export function createAuthRoutes({
     }
   }
 
+  // AUTH-009: factor verification failures roll the lifecycle transaction back to
+  // keep the successful-state invariants, but the security refusal must still be
+  // observable. This writes it independently after the rollback and never changes
+  // the response.
+  async function recordMfaRefusal(eventType, {session, realm, request, error, stage, method = null}) {
+    await recordFailure({
+      eventType,
+      outcome: error?.status === 403 || error?.status === 429 ? 'denied' : 'failure',
+      actorKind: 'authenticated',
+      realm,
+      user: {id: session.userId},
+      sessionId: session.id,
+      request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+      detail: {
+        reason: typeof error?.code === 'string' ? error.code : 'MFA_FAILED',
+        stage,
+        ...(method ? {method} : {}),
+      },
+    });
+  }
+
   async function mfaStatusRoute(request, url, realm) {
     mfaRealmGuard(realm);
     const token = readCookies(request)[cookieName(realm, secureCookies)];
@@ -957,7 +1123,9 @@ export function createAuthRoutes({
       throw new AuthError(400, 'UNKNOWN_FIELDS', 'Replacement requires the password and exactly one existing code.');
     }
     const session = await mutationSession(request, realm);
-    const result = await store.withTransaction(async tx => {
+    let result;
+    try {
+      result = await store.withTransaction(async tx => {
       // Common lifecycle authority: revalidate the actual session token/realm,
       // revocation, both expiries, active principal and credential epoch inside this
       // owned transaction AFTER the deterministic lifecycle locks, before any
@@ -1000,6 +1168,7 @@ export function createAuthRoutes({
       await record({
         eventType: 'mfa_enrolled',
         outcome: 'success',
+        actorKind: 'authenticated',
         realm,
         user: {id: session.userId},
         request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
@@ -1007,8 +1176,19 @@ export function createAuthRoutes({
         detail: {stage: started.replaced ? 'replaced' : 'started'},
       }, {tx});
       return started;
-    });
-    if (result.failed) throw result.failed;
+      });
+    } catch (error) {
+      if (isSecurityRefusal(error)) {
+        await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error, stage: 'enroll_reauth'});
+      }
+      throw error;
+    }
+    if (result.failed) {
+      if (isSecurityRefusal(result.failed)) {
+        await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error: result.failed, stage: 'enroll_reauth'});
+      }
+      throw result.failed;
+    }
     return json({otpauthUri: result.otpauthUri, pending: true, replaced: result.replaced === true});
   }
 
@@ -1018,29 +1198,43 @@ export function createAuthRoutes({
     const body = await readJson(request);
     if (Object.keys(body).some(key => key !== 'code')) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Unknown verification fields.');
     const session = await mutationSession(request, realm);
-    const result = await store.withTransaction(async tx => {
-      await mfaService.assertMutationAuthority({session, tx});
-      let completed;
-      try {
-        completed = await mfaService.completeEnrollment(session.userId, body.code, {tx});
-      } catch (error) {
-        if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
-        throw error;
+    let result;
+    try {
+      result = await store.withTransaction(async tx => {
+        await mfaService.assertMutationAuthority({session, tx});
+        let completed;
+        try {
+          completed = await mfaService.completeEnrollment(session.userId, body.code, {tx});
+        } catch (error) {
+          if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+          throw error;
+        }
+        const assurance = await store.setSessionAssurance(session.id, 'mfa_verified', {tx});
+        if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+        await record({
+          eventType: 'mfa_enrolled',
+          outcome: 'success',
+          actorKind: 'authenticated',
+          realm,
+          user: {id: session.userId},
+          request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+          sessionId: session.id,
+          detail: {stage: 'completed', recovery_codes_issued: completed.recoveryCodes.length},
+        }, {tx});
+        return completed;
+      });
+    } catch (error) {
+      if (isSecurityRefusal(error)) {
+        await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error, stage: 'enroll_complete'});
       }
-      const assurance = await store.setSessionAssurance(session.id, 'mfa_verified', {tx});
-      if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-      await record({
-        eventType: 'mfa_enrolled',
-        outcome: 'success',
-        realm,
-        user: {id: session.userId},
-        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
-        sessionId: session.id,
-        detail: {stage: 'completed', recovery_codes_issued: completed.recoveryCodes.length},
-      }, {tx});
-      return completed;
-    });
-    if (result.failed) throw result.failed;
+      throw error;
+    }
+    if (result.failed) {
+      if (isSecurityRefusal(result.failed)) {
+        await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error: result.failed, stage: 'enroll_complete'});
+      }
+      throw result.failed;
+    }
     return json({ok: true, assuranceLevel: 'mfa_verified', recoveryCodes: result.recoveryCodes});
   }
 
@@ -1053,31 +1247,46 @@ export function createAuthRoutes({
     const usesRecovery = keys.includes('recoveryCode') && keys.length === 1;
     if (!usesCode && !usesRecovery) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide exactly one code or recovery code.');
     const session = await mutationSession(request, realm);
-    const result = await store.withTransaction(async tx => {
-      await mfaService.assertMutationAuthority({session, tx});
-      let verified;
-      try {
-        verified = usesRecovery
-          ? await mfaService.verifyRecovery(session.userId, body.recoveryCode, {tx})
-          : await mfaService.verifyTotp(session.userId, body.code, {tx});
-      } catch (error) {
-        if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
-        throw error;
+    const method = usesRecovery ? 'recovery' : 'totp';
+    let result;
+    try {
+      result = await store.withTransaction(async tx => {
+        await mfaService.assertMutationAuthority({session, tx});
+        let verified;
+        try {
+          verified = usesRecovery
+            ? await mfaService.verifyRecovery(session.userId, body.recoveryCode, {tx})
+            : await mfaService.verifyTotp(session.userId, body.code, {tx});
+        } catch (error) {
+          if (typeof error?.status === 'number' && typeof error?.code === 'string') return {failed: error};
+          throw error;
+        }
+        const assurance = await store.setSessionAssurance(session.id, 'mfa_verified', {tx});
+        if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+        await record({
+          eventType: 'mfa_verified',
+          outcome: 'success',
+          actorKind: 'authenticated',
+          realm,
+          user: {id: session.userId},
+          request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+          sessionId: session.id,
+          detail: {method: verified.method, assurance: 'mfa_verified'},
+        }, {tx});
+        return verified;
+      });
+    } catch (error) {
+      if (isSecurityRefusal(error)) {
+        await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error, stage: 'verify', method});
       }
-      const assurance = await store.setSessionAssurance(session.id, 'mfa_verified', {tx});
-      if (!assurance) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
-      await record({
-        eventType: 'mfa_verified',
-        outcome: 'success',
-        realm,
-        user: {id: session.userId},
-        request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
-        sessionId: session.id,
-        detail: {method: verified.method, assurance: 'mfa_verified'},
-      }, {tx});
-      return verified;
-    });
-    if (result.failed) throw result.failed;
+      throw error;
+    }
+    if (result.failed) {
+      if (isSecurityRefusal(result.failed)) {
+        await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error: result.failed, stage: 'verify', method});
+      }
+      throw result.failed;
+    }
     return json({ok: true, method: result.method, assuranceLevel: 'mfa_verified'});
   }
 
@@ -1093,8 +1302,11 @@ export function createAuthRoutes({
     const usesRecovery = typeof body.recoveryCode === 'string' && body.code === undefined;
     if (!usesCode && !usesRecovery) throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide exactly one code or recovery code.');
     const session = await mutationSession(request, realm);
-    const result = await store.withTransaction(async tx => {
-      await mfaService.assertMutationAuthority({session, tx});
+    const method = usesRecovery ? 'recovery' : 'totp';
+    let result;
+    try {
+      result = await store.withTransaction(async tx => {
+        await mfaService.assertMutationAuthority({session, tx});
       // Reauthentication reads run on the already-owned transaction: no nested checkout.
       const user = await loadUserById(tx, session.userId);
       if (!user || user.id !== session.userId) throw new AuthError(401, 'SIGN_IN_FAILED', 'Reauthentication failed.');
@@ -1122,6 +1334,7 @@ export function createAuthRoutes({
       await record({
         eventType: 'mfa_disabled',
         outcome: 'success',
+        actorKind: 'authenticated',
         realm,
         user: {id: session.userId},
         request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
@@ -1129,8 +1342,19 @@ export function createAuthRoutes({
         detail: {reenrollment_required: true},
       }, {tx});
       return {disabled: true};
-    });
-    if (result.failed) throw result.failed;
+      });
+    } catch (error) {
+      if (isSecurityRefusal(error)) {
+        await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error, stage: 'disable', method});
+      }
+      throw error;
+    }
+    if (result.failed) {
+      if (isSecurityRefusal(result.failed)) {
+        await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error: result.failed, stage: 'disable', method});
+      }
+      throw result.failed;
+    }
     return json({ok: true, disabled: result.disabled, mfa: {required: true, pending: true}});
   }
 
@@ -1220,5 +1444,10 @@ export function createAuthRoutes({
   };
   // Explicit ownership: composition/tests may flush or close the bounded delivery queue.
   handle.mailDelivery = delivery;
+  // AUTH-009 observability: failure-audit durability misses are queryable, not silent.
+  handle.auditDurability = () => ({
+    failureAuditMisses,
+    lastFailure: lastFailureAudit ? {...lastFailureAudit} : null,
+  });
   return handle;
 }

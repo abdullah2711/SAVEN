@@ -550,8 +550,9 @@ a business before verification. Operator realms refuse selection.
 - Listing/selection does not grant business permissions, approval authority or owner
   protections; those remain the shared business authorization layer. This module is not the
   full business policy engine.
-- No tenant-selection audit event is emitted; the canonical `auth_event_type` domain has no
-  such value (AUTH-009/reference-data owner).
+- Listing itself is a read; successful selection/clearing and security refusals now write
+  `tenant_selected`, `tenant_cleared` and `tenant_selection_failed` through the AUTH-009
+  catalog (AUTH-006's original non-claim is superseded).
 
 ## Cloud operator Access (AUTH-007)
 
@@ -646,6 +647,85 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
 
 - No live Access policy, network key fetch, DNS/tunnel change or production credential is
   included; tests use mocked keys/assertions.
-- Complete operator-read audit and failure taxonomy remain AUTH-009/PIVOT-007 work. Some
-  pre-exchange route guard failures are not audited; this is not complete durable failure
-  coverage.
+- Complete operator-read audit remains PIVOT-007 work. AUTH-009 now records every refusal on
+  the `/v1/auth/operator/access` route, including origin, body-shape, configuration and
+  missing-bearer guards that previously sat outside the failure path.
+
+## Authentication audit (AUTH-009)
+
+`src/auth/audit.mjs` is the single writer for `auth.auth_audit`. Every auth module writes
+through it; no caller builds its own `INSERT`.
+
+### Event catalog
+
+`AUTH_AUDIT_CATALOG` is inert data: each entry declares a category, the real consuming
+adapter (`producer`), permitted actor semantics, permitted outcomes and the exact detail
+keys. `ADR03_REQUIRED_EVENTS` maps ADR03's required set onto catalog names. Live producers
+today:
+
+| Event | Producer |
+| --- | --- |
+| `login_success`, `login_failure` | customer credential sign-in and operator Access exchange |
+| `logout` | customer and operator logout (single-session; `detail.scope = one`) |
+| `sessions_revoked` | password reset's revoke-all (`detail.scope = all`) |
+| `mfa_enrolled`, `mfa_enroll_failed`, `mfa_verified`, `mfa_verification_failed`, `mfa_disabled` | MFA routes |
+| `password_reset_requested`, `password_reset_completed`, `password_reset_failed` | recovery routes |
+| `email_verification_requested`, `email_verified`, `email_verification_failed` | verification routes |
+| `tenant_selected`, `tenant_cleared`, `tenant_selection_failed` | tenant selection |
+
+Explicit gaps (catalogued, no producer, no synthetic row): `password_changed`, `role_changed`,
+`membership_invited`, `membership_accepted`. The AUTH-001..007 surface has no authenticated
+password-change, role-change or membership-invite route, so emitting those events would mean
+inventing an unauthorised security flow. The vocabulary and allow-lists are ready for the
+future contract that adds the flow.
+
+### Invariants
+
+- **Append-only.** The table trigger refuses UPDATE, DELETE and TRUNCATE for every role,
+  including the owner; the writer never issues either statement.
+- **Atomic success.** Success transitions pass the caller's transaction, so session/binding/
+  credential state and its audit row commit or roll back together. An audit fault fails the
+  request (`AUTH_ACCOUNTING_UNAVAILABLE`) instead of reporting an unrecorded success.
+- **Durable failure.** `audit.failure(event)` takes its own connection outside the attempt
+  transaction. A rolled-back sign-in, MFA verification or reset still leaves an observable
+  refusal row. Login throttling reservations are the same pattern. A failure-audit fault is
+  counted in `audit.stats()` and exposed by `handler.auditDurability()`; it never changes the
+  authentication decision.
+- **Actor semantics.** `user_id` is a verified principal UUID or NULL. The writer records
+  `detail.actor_kind`: `authenticated`, `unverified_attempt` (known account, unverified
+  credential), `unknown`, `operator_assertion` or `recovery_token`. A client body/header value
+  can never set an actor, tenant or session id; unknown sign-in fields are refused.
+- **Redaction.** Detail is allow-listed per event and type-bounded (scalars only, strings
+  truncated). Any key naming a password, token, secret, assertion, cookie, CSRF value or
+  one-time code is refused before the allow-list is consulted. Raw session tokens, CSRF
+  tokens, reset/verification tokens, TOTP seeds, recovery codes, passwords and bearer
+  assertions never reach the ledger. The ingress address is accepted only when it is a valid
+  IP after the route's trusted-header sanitisation.
+- **Versioned rows.** `detail_schema_version` is written explicitly (`AUTH_AUDIT_VERSION`).
+- **Distinct ledgers.** Auth events go only to `auth.auth_audit`; business audit/outbox and
+  `operator.operator_audit` remain separate authorities and are never written here.
+
+### Extension points
+
+- Add an event by extending `AUTH_AUDIT_CATALOG` (data, not branches): name, category,
+  producer, actors, outcomes and detail keys. No schema migration is needed because
+  `event_type` is free text with a length check.
+- The same catalog shape is intended to move to a versioned reference table and JSON schema
+  without changing call sites; `prepareAuditRow` is the single mapping point.
+- A new detail field is an allow-list edit plus a redaction review. Never add a credential
+  field; the sensitive-name guard is deliberate and cannot be allow-listed away.
+- More realms are a `realms` writer option and a route origin decision; the default is the
+  two fixed SAVEN realms.
+- Retention/export and indexed storage are deployment concerns; this module only appends.
+
+### Non-claims
+
+- This is not a SIEM, alerting pipeline or tamper-evident chain. It is append-only history in
+  the same database; privileged DDL/trigger tampering remains an owner boundary.
+- Failure-audit durability is best-effort against a total database outage: the attempt is
+  refused but no row can exist while the ledger is unreachable. The miss is counted and
+  exposed rather than claimed as delivered.
+- The four producer-less ADR03 events above are not covered. `password_changed` in particular
+  needs its own authenticated credential-change contract; reset is not a substitute.
+- Success events for read-only routes (`me`, tenant listing) are intentionally not emitted.
+- No UI, active entry point, migration or deployment is changed by this module.
