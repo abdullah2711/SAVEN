@@ -2,13 +2,16 @@
 
 DISPATCHER FIRST ACTION ON BOOT: (1) read this file; if present, also read the machine footer at `docs/agents/BOOT_STATE_machine.md` — note it is generated at black-box time and exists on the `system-checkpoints` branch, not necessarily on `testing-1`; when absent, the prose in this file is authoritative; (2) run `bash ~/.local/bin/saven-recover` if panes/processes are dead; (3) inject the Checkpoint Reload bootstrap into any relaunched worker pane; (4) resume routing. Protocols: `docs/agents/CONTRACTOR_ROLE.md`, `docs/agents/DECISION_LOG.md`, `docs/contractor/CONVENTIONS.md`.
 
-Last human review: 18 Nov 2026, 01:55 PKT (dispatcher prose update — refreshed after AUTH-006 merge and black-box v3.2 repair).
+Last revised: 18 Nov 2026, 03:55 PKT (dispatcher — prose refresh after PIVOT-006 merge; housekeeping directive).
+Last human review: none yet — this line advances ONLY on an actual Principal review of this file, never on dispatcher edits.
 
 ## Integration state
-- `testing-1` @ `0df990a`: accepted and integrated contract IDs, explicitly: PIVOT-002 (with increments 002b, 002c, 002d), PIVOT-003, PIVOT-004, PIVOT-005, AUTH-001, AUTH-002, AUTH-003, AUTH-004, AUTH-005, AUTH-006, AUTH-008. (AUTH-007 delivered, in review; PIVOT-006 round 3 in flight.)
+- `testing-1`: accepted and integrated, one ID per line (counts reconcile to the 24 contract files: 14 merged + 10 remaining; PIVOT-002c is NOT a missing contract file — it was executed under the PIVOT-002b review's scoped directive and has its own delivery/review records, but no standalone contract file was authored):
+MERGED (14): PIVOT-002, PIVOT-002b, PIVOT-002d, PIVOT-003, PIVOT-004, PIVOT-005, PIVOT-006, AUTH-001, AUTH-002, AUTH-003, AUTH-004, AUTH-005, AUTH-006, AUTH-008.
+REMAINING (10): AUTH-007 (delivered, review round 2 in flight), AUTH-009, AUTH-010, PIVOT-007, PIVOT-008, PIVOT-009, PIVOT-010, PIVOT-011, PIVOT-012, PIVOT-013.
 - Merge queue: empty; no pending ACCEPTs awaiting the human except in-review work.
 - AUTH-chain progress: 7 of 10 AUTH contracts merged (AUTH-001..006, 008). AUTH-007 delivered, in review. After AUTH-007 merges: AUTH-009 (auth audit) runs BEFORE the vertical slice; AUTH-010 (security docs) runs AFTER the slice passes. The auth chain is NOT complete until 009 and 010 are merged.
-- Sequencing per Principal directive: after PIVOT-006 merges → AUTH-007 → AUTH-009 → vertical slice (one tenant, one chart of accounts, one posted entry, one void, audit read-back) → AUTH-010 → then UI. UI contracts stay HELD until the vertical slice passes.
+- Sequencing per Principal directive: AUTH-007 merge → AUTH-009 → vertical slice (one tenant, one chart of accounts, one posted entry, one void, audit read-back) → AUTH-010 → then UI. UI contracts stay HELD until the vertical slice passes.
 
 ## Workers
 - worker-a (w1:p2): contract AUTH-007 (operator access), branch `opencode/auth-007-operator-access`, worktree `/home/esc/saven/wt-auth-007`, based on `0df990a`. AUTH-006 merged at `0df990a`.
