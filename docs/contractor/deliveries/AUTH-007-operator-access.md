@@ -241,3 +241,70 @@ AUTH-004 case; the immediate serial rerun was 139/139.
 ## GIT (R2)
 
 branch=opencode/auth-007-operator-access commit=`9208e60`,report+checkpoint commit pushed=yes
+
+# AUTH-007-R3 revision — 18 November 2026
+
+Verdict: `docs/contractor/reviews/AUTH-007-R2-operator-access.md` at `66aba74`.
+Implementation `2821117`; report + checkpoint follow. One remaining HIGH: allocator
+reapplication must never reseed issued mapping generations.
+
+## Finding closed
+
+**HIGH — non-reusable allocator survives reapplication and interruption. Closed.**
+`06-operator-identity.sql` no longer unconditionally `setval`s the generation sequence.
+Reconciliation is advance-only:
+
+- the needed floor is `GREATEST(max(live access_identity.mapping_epoch),
+  max(access_session_binding.mapping_epoch)) + 1`, so a generation retained only by a
+  session binding after mapping deletion still protects the allocator;
+- the sequence's current next value is read from `last_value/is_called`; `setval` runs only
+  when the current next value is below the needed floor;
+- because `setval` is not rolled back, every adjustment moves forward only. A failed or
+  interrupted reapplication can leave the allocator advanced, never regressed.
+
+The 06 install is idempotent for its own objects (`CREATE OR REPLACE FUNCTION`, guarded
+`DROP TRIGGER IF EXISTS`/recreate, `CREATE TABLE/SEQUENCE/INDEX IF NOT EXISTS`, guarded
+column/default), so reapplication reaches the allocator and completes rather than failing
+after reconciliation.
+
+Tests: install, issue a generation, delete the mapping (binding retains it), reapply 06 →
+allocator next value does not regress and remains above the issued generation; a recreated
+mapping receives a fresh generation; the old session stays denied and a fresh exchange
+succeeds. A statement-by-statement reapplication is interrupted after allocator
+reconciliation and rolled back → the allocator still never regresses and the issued
+generation remains unusable; recovery uses a fresh generation.
+
+## Evidence
+
+```text
+$ node --version
+v24.19.0
+$ node scripts/check.mjs
+PASS: 169 JavaScript files parsed; package manifest valid.
+$ node --test tests/auth-007-access.test.mjs
+tests 20  pass 20  fail 0
+```
+
+Combined serial run (`--test-concurrency=1`, disposable PostgreSQL 18.6 on
+`127.0.0.1:55433`, auth fixture + AUTH-006 033 + operator 06 applied as administrator with
+namespaced roles, real non-owner auth-service login):
+
+```text
+AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27, AUTH-006 27/27, AUTH-007 20/20
+combined 140 tests, 140 pass, 0 fail
+```
+
+## Boundaries
+
+- `06-operator-identity.sql` still depends on AUTH-006 `033`; apply 033 first. No applied 033
+  bytes, native source or production profile changed.
+- Allocator reconciliation is administrator-applied and advance-only; it deliberately does
+  not promise rollback of sequence state (PostgreSQL semantics), only non-regression and
+  non-reuse.
+- MFA/realm, canonical replay, lock order, mapping binding and refresh corrections remain
+  closed from R1/R2. No live Access policy/DNS/tunnel/network fetch; operator reads and full
+  audit remain PIVOT-007/AUTH-009; SQLite remains production.
+
+## GIT (R3)
+
+branch=opencode/auth-007-operator-access commit=`2821117`,report+checkpoint commit pushed=yes
