@@ -2,7 +2,7 @@
 
 TASK: Build and permanently prove one narrow PostgreSQL application lifecycle: authenticated create → post → read → terminal void → audit read-back, with two tenants for refusal controls.
 
-STATUS: DRAFT FOR PRINCIPAL REVIEW — NOT DISPATCHED. The Principal approves this contract and its [plain-English cover sheet](PIVOT-014-vertical-slice-cover-sheet.md) before worker assignment. This document authorizes no merge, production activation or database cutover.
+STATUS: APPROVED FOR STAGED DISPATCH (fires only after AUTH-009 is accepted and integrated). Principal approval recorded 19 November 2026 for this contract and its [plain-English cover sheet](PIVOT-014-vertical-slice-cover-sheet.md), including S2 no-flakiness. This approval authorizes no merge, production activation or database cutover.
 
 ## Authority and prerequisites
 

@@ -1,6 +1,6 @@
 # PIVOT-014 — Principal cover sheet
 
-RE-ISSUED 19 November 2026 FOR PRINCIPAL RE-APPROVAL — no-flakiness constraint and direct-posting exclusion added; not implementation evidence, not dispatched.
+APPROVED 19 November 2026 by the Principal (cover sheet and S2 no-flakiness constraint approved).
 
 The delivered cover sheet must replace these promised checks with links to the permanent tests and their results; the Principal approves the business proof, while engineers independently read the SQL and source.
 
@@ -18,4 +18,4 @@ Counting disclosure: the logical command audit and physical row-change audit are
 
 Exclusion: this slice exercises authorized DIRECT posting; the approval-policy gate and AI-origin no-direct-post rules (D-004/D-005) are NOT exercised, and a green slice does not prove them.
 
-Approval: pending Principal re-approval; this draft claims no tests executed or properties implemented.
+Approval recorded above; no tests executed or properties implemented are claimed, and dispatch remains staged until AUTH-009 is accepted and integrated.
