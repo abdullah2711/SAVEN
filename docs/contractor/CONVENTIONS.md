@@ -97,3 +97,9 @@ Agent permissions are scoped by WHAT CAN BE TOUCHED, never by WHICH COMMAND is u
 The standing inventories rule (D-017, docs/agents/DECISION_LOG.md) already covers base-SHA discipline.
 
 A permission rule is unproven until a hostile attempt against it has been shown to be refused: every deny rule is validated by mutation (attempt the attack, observe the refusal) before it is trusted, and the attempt is recorded.
+
+## Factory automation — changes between contracts
+
+Principal standing rule, 19 November 2026. Recorded: 2026-11-19 21:17:48 PKT (+0500), from `date`.
+
+NO CHANGES to permissions, heartbeat, monitor, black box or any other factory automation while a contract is in flight. Batch automation changes and apply between contracts. Reason on the record: three stalls on 19 Nov (heartbeat, black box, permissions) were each caused by a change made while work was running.
