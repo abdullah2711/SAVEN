@@ -1,90 +1,99 @@
-# AUTH-009 delivery (revision 5) — bounded round-2 correction, resubmitted
+# AUTH-009 delivery (revision 6) — boundary evidence completed, resubmitted
 
 ## Identity
 
 - Contract: `docs/contractor/contracts/AUTH-009-auth-audit.md`
 - Branch: `opencode/auth-009-audit`; worktree `/home/esc/saven/wt-auth-009`
 - Base `testing-1` SHA: `c543ef7`
-- Prior revisions: `eb6830a`, `de7d470`, `606c4e3`, `08f335c`
-- Round-2 implementation commit: `0afeb5002d57806c058daa793ad323538181820f`
-  (`app: revalidate MFA assurance inside password-change authority boundary
-  [contract:AUTH-009]`)
+- Prior revisions: `eb6830a`, `de7d470`, `606c4e3`, `08f335c`, `ba948cf`
+- Round-3 test commit: `d3d595c0a7663016f59728fa276fe4e7e0504692`
+  (`test: prove password-change authority and owned-client boundaries [contract:AUTH-009]`)
 - Report/checkpoint commit: this commit
 
-Review state per the routed verdict (`87b7977` + amendment at the rulings head): finding 2
-**CLOSED**, finding 3 **CLOSED**, finding 1 **AMENDED on the record** — the three
-role/membership producers remain mandatory ADR03 requirements owned by the future IAM
-contract, and their absence is no longer an AUTH-009 acceptance blocker (D-018). This round
-performs only the remaining bounded correction.
+Review state (verdict `121de7e`): the owned-authority implementation is accepted as built;
+D-018 producer narrowing, early-refusal coverage and external configuration remain closed.
+This round adds only the three previously required boundary-evidence scenarios. **No runtime
+source changed**; the delta is test code.
 
-## Bounded correction: password-change owned authority boundary
+## Scenario 1 — invalidation-first (DONE)
 
-The generic pre-route MFA check is not treated as mutation authority. Inside the
-password-change transaction (`src/auth/routes.mjs`, `passwordChange`):
+Tests:
 
-1. **Shared authority gate first.** `acquireAuthorityGate(tx)` acquires the accepted shared
-   gate (`pg_advisory_xact_lock_shared`, AUTH-006 033) before any principal/factor/session
-   lock or authoritative read. The exported gate helper is the same contract used by tenant
-   admission (extracted to module scope in `tenant-selection.mjs`; no behavior change there).
-2. **Lifecycle lock order.** `assertMutationAuthority` locks principal then factor
-   (users -> two_factor), then the session row is locked via
-   `readSessionById(..., {forUpdate: true, realm})` — the accepted users -> factor -> sessions
-   order, matching reset/rotation.
-3. **Authoritative re-read after blocking acquisitions.** The locked session row supplies the
-   current assurance; `mfaService.status` re-reads the current required-MFA authority
-   (active/effective membership roles) and factor enrollment. The earlier pre-route
-   snapshot is never treated as authority.
-4. **Fail closed.** Unresolved authority -> `503 MFA_AUTHORITY_UNAVAILABLE`; required MFA with
-   insufficient assurance or no enrolled factor -> `403 MFA_REQUIRED`, recorded as
-   `assurance_denied` after rollback (actor from the verified session).
-5. **Reserved authority held through commit.** The gate and row locks stay held through the
-   credential `UPDATE`, session revocation, `password_changed` and `sessions_revoked` rows.
-6. **Preserved invariants.** No selected business tenant required; customer realm only (no
-   operator context); durable pre-KDF attempt reservation unchanged; token/realm/epoch/expiry
-   checks still enforced; credential-generation advancement and success-audit atomicity
-   unchanged; denied-attempt evidence preserved.
+1. `AUTH-009 invalidation-first committed membership requirement denies password change`
+   - A wrapped store observes the early handler transaction, then a **real committed**
+     `auth.tenant_membership` INSERT (`tenant_admin`, requiring MFA) runs after that early
+     check and before the mutation's final authority read.
+   - Asserts exactly `403 MFA_REQUIRED`; password hash and `credential_version` unchanged; no
+     session revoked; no `password_changed` / `sessions_revoked`; exactly one
+     `assurance_denied` (reason `MFA_REQUIRED`, route `/v1/auth/password/change`, actor from
+     the verified session); exactly one durable `password_change_failed` reservation.
+2. `AUTH-009 invalidation-first committed session assurance loss denies password change`
+   - A fully enrolled administrator with an `mfa_verified` session passes the early check;
+     the test then performs a **real stored** `UPDATE auth.sessions SET
+     assurance_level='single_factor'` and the owned boundary re-reads it and refuses.
+   - Asserts `403 MFA_REQUIRED`, unchanged credential, no success audit, exactly one
+     `assurance_denied`. This is not the earlier false pre-read snapshot case.
 
-Proving test: `AUTH-009 password change revalidates required MFA assurance inside its owned
-boundary`. A fresh pending single-factor session is combined with a store snapshot that
-falsely claims `mfa_verified` so the pre-route gate passes; the owned boundary re-reads the
-locked session, refuses with `MFA_REQUIRED`, leaves `credential_version` and password
-unchanged, writes no `password_changed`/`sessions_revoked`, and commits exactly one
-`assurance_denied` row. The test runs under the real non-owner `saven_auth_service` login with
-033 installed.
+## Scenario 2 — mutation-first (DONE)
 
-Existing password-change tests were moved to the same non-owner composition:
-`AUTH-009 password_changed is produced by the authenticated credential-change flow`,
-`AUTH-009 a wrong current password is a durable, single refusal and changes nothing`,
-`AUTH-009 a failed password_changed audit rolls the credential change and revokes back`.
+Test: `AUTH-009 mutation-first writer cannot commit until the password transaction ends`
+
+- The success audit pauses on a bounded in-test barrier **after final authority validation and
+  the credential/revocation writes, before COMMIT**.
+- A cooperating real membership writer (`auth_service` client) starts `BEGIN; INSERT
+  auth.tenant_membership ...` on its own connection.
+- Blocking is proven by polling `pg_stat_activity` until that PID reports
+  `wait_event_type='Lock'`, `wait_event='advisory'`; the test also asserts the writer promise
+  is still unsettled. A wall-clock sleep alone is not used as proof.
+- Releasing the barrier lets the password transaction commit; only then does the writer
+  commit. The membership row is asserted present.
+- Subsequent-request authority is asserted: a fresh sign-in is pending MFA, and the next
+  password-change request is refused with `MFA_REQUIRED` and one `assurance_denied`.
+- Positive controls: `AUTH-009 authorized positive controls: ordinary user and current-MFA
+  administrator` proves an ordinary user and an `mfa_verified` administrator both change
+  password successfully (two `password_changed` rows).
+
+## Scenario 3 — owned client and failure boundary (DONE)
+
+Tests:
+
+1. `AUTH-009 password change runs on a size-one auth pool without a nested checkout`
+   - Real non-owner `saven_auth_service` pool with `max: 1`, 033 installed: successful change
+     and a wrong-current-password refusal both complete within a bounded 15 s race; exactly
+     two durable `password_change_failed` reservations (success attempt + refusal).
+2. `AUTH-009 password-change success COMMIT uncertainty destroys the client and serves a
+   clean borrower`
+   - The accepted AUTH-002 phase-injection writer pattern is reused at the owned boundary:
+     the COMMIT of the credential/audit transaction throws after `UPDATE auth.users`.
+   - Asserts `503 SESSION_TRANSACTION_UNCERTAIN`; the checked-out connection is destroyed
+     (`release(true)` observed); the credential version is treated as **unknown**
+     (`old` or `old+1` accepted, never claimed rolled back); exactly one durable reservation
+     is distinguished from the later credential commit; a subsequent borrower gets a clean
+     connection.
+3. `AUTH-009 password-change rollback uncertainty destroys the client and serves a clean
+   borrower`
+   - The success audit throws and ROLLBACK also fails; the lease is marked uncertain and the
+     connection destroyed.
+   - Asserts `503 AUTH_ACCOUNTING_UNAVAILABLE`, destruction, unknown credential state,
+     retained attempt accounting, and a clean subsequent borrower.
+
+No new membership policy, privilege, schema change, grant or production operation was added.
 
 ## Findings 2 and 3 — no regression
 
-All prior tests still pass, including:
-
-- early refusals: `pre-reservation login refusals...`, `assurance, CSRF and session
-  refusals...`, `email verification request/verify refusals...`, `composed refusals run under
-  the real non-owner auth-service login`, `MFA route guards...`, `operator guard refusals...`,
-  `every route family records its early security decision exactly once`;
-- catalog: `event domain is an external, versioned, validated configuration`, `server
-  composition validates and forwards the configured catalog`, `required-event map stays
-  independent`, `producer/transition map...`.
-
-The required map and producer map are unchanged from revision 4: all four ADR03 events
-required; `password_changed` live; `role_changed`/`membership_invited`/`membership_accepted`
-explicitly producer-deferred to IAM with `BUSINESS_ROLE_SAVED` carried forward. The corrected
-premise (legacy flows are live; not covered by the audited PostgreSQL surface; porting is an
-IAM contract) remains in README and this delivery.
+All prior closed tests remain green, including early-refusal coverage
+(`pre-reservation login refusals...`, `assurance, CSRF and session refusals...`, `email
+verification request/verify refusals...`, `composed refusals run under the real non-owner
+auth-service login`, `MFA route guards...`, `operator guard refusals...`, `every route family
+records its early security decision exactly once`) and catalog boundary tests (`event domain
+is an external, versioned, validated configuration`, `server composition validates and
+forwards the configured catalog`, required/producer maps).
 
 ## Files changed vs TOUCH
 
-TOUCH: `src/auth/audit.mjs`; `src/auth/routes.mjs`; `src/auth/server.mjs`;
-`src/auth/session-store.mjs`; `src/auth/password-policy.mjs`; `src/auth/rate-limit.mjs`;
-`src/auth/factors.mjs`; `src/auth/recovery.mjs`; `src/auth/tenant-selection.mjs`;
-`src/auth/access.mjs`; `src/auth/README.md`; `tests/auth-009-audit.test.mjs`.
-
-This round: `tenant-selection.mjs` (gate helpers exported, no behavior change),
-`routes.mjs` (owned-boundary revalidation), `README.md`, `tests/auth-009-audit.test.mjs`
-(25 tests). No migration, grant, role, accepted-migration, SQLite or legacy-flow change.
+This round: `tests/auth-009-audit.test.mjs` only (32 focused tests). No runtime source,
+schema, migration, grant or legacy file changed. Prior approved new file
+`src/auth/audit-catalog.v1.json` and the revision-2..5 source remain as reviewed.
 
 ## Gate
 
@@ -95,21 +104,21 @@ Node **v24.19.0**, PostgreSQL **18.6**, disposable loopback cluster `127.0.0.1:5
 $ node scripts/check.mjs
 PASS: 172 JavaScript files parsed; package manifest valid.
 $ node --test tests/auth-009-audit.test.mjs
-ℹ tests 25
-ℹ pass 25
+ℹ tests 32
+ℹ pass 32
 ℹ fail 0
 ```
 
-Serial regression: AUTH-002 18/18, AUTH-003 27/27, AUTH-005 27/27, AUTH-006 27/27, AUTH-007
-22/22. AUTH-004 hit the **pre-existing** shared-fixture transient
-`terminating connection due to administrator command` once; the isolated rerun is 21/21, and
-the same error was reproduced on unmodified base `c543ef7`. Not attributed to this change;
-disclosed rather than rounded up.
+Serial regression in this run: AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27,
+AUTH-006 27/27, AUTH-007 22/22 — combined **174/174**. Earlier runs intermittently hit the
+pre-existing shared-fixture transient `terminating connection due to administrator command`
+in AUTH-004/006 (reproduced on unmodified base `c543ef7`); this run was uninterrupted, and the
+transient remains disclosed rather than guaranteed absent.
 
 ## Limits
 
-- Role/invitation/acceptance producers remain deferred by Principal amendment (D-018) and are
-  not implemented here.
-- Failure durability is best-effort under a total ledger outage (counted/exposed).
-- No UI, active entry point, deployment, migration, cutover or merge; no live Access/IdP,
-  SMTP, pooler or load claim.
+- The concurrency tests exercise one writer kind (membership INSERT) against the shared gate;
+  role-requirement updates use the same trigger contract and are not separately raced.
+- COMMIT uncertainty is asserted as genuinely unknown, not as a rollback guarantee.
+- No live IdP, mail, pooler, production load, cutover or restore evidence is claimed.
+- No merge.
