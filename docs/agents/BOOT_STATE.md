@@ -6,7 +6,7 @@ Last revised (dispatcher): 18 November 2026 (Asia/Karachi), BOOT_STATE housekeep
 Last human review: none yet — advances only on an actual Principal review.
 
 ## Integration state
-MERGED (16):
+MERGED (17):
 - PIVOT-002
 - PIVOT-002b
 - PIVOT-002d
@@ -14,6 +14,7 @@ MERGED (16):
 - PIVOT-004
 - PIVOT-005
 - PIVOT-006
+- PIVOT-007
 - AUTH-001
 - AUTH-002
 - AUTH-003
@@ -24,9 +25,8 @@ MERGED (16):
 - AUTH-008
 - AUTH-009
 
-REMAINING (8):
+REMAINING (7):
 - AUTH-010
-- PIVOT-007
 - PIVOT-008
 - PIVOT-009
 - PIVOT-010
@@ -41,8 +41,8 @@ PIVOT-002c resolution: executed under the PIVOT-002b review directive; no standa
 - Live sequencing per Principal directive: AUTH-009 merged at `5b86ced` → vertical slice (worker-b) → AUTH-010 → UI. PIVOT-006 and AUTH-007 are merged; UI contracts stay HELD until the vertical slice passes.
 
 ## Workers
-- worker-a (w1:p2): AUTH-009 (auth audit) merged into `testing-1` at `5b86ced`. Next assignment = checkpoint + reload, then PIVOT-007 (unblocked: PIVOT-006 + AUTH-007 merged; TOUCH disjoint from the vertical slice); not yet dispatched — awaiting fresh dispatcher reload.
-- worker-b (w1:p3): PIVOT-006 (audit triggers) merged into `testing-1` at `bdf9f80`; worker idle. Next assignment = vertical slice (to be authored by Codex; worker-b awaits dispatcher dispatch after this push).
+- worker-a (w1:p2): PIVOT-007 (operator functions) merged into `testing-1` at `550d120`. Next assignment = checkpoint + reload, then PIVOT-008 (RLS coverage gate; TOUCH db/postgres/README.md + a coverage-gate test — VERIFY TOUCH against the PIVOT-014 slice (043/vertical-slice files) and report any overlap BEFORE starting); not yet dispatched — awaiting fresh dispatcher reload.
+- worker-b (w1:p3): unchanged — PIVOT-014 corrections in flight.
 - Engineer (w1:p4): reviews land on `codex/pivot-003-rulings`; relay pattern: `Review <delivery-path>`. Latest review head: `27e9190` (AUTH-009-R4 ACCEPT).
 
 ## Standing protocols
