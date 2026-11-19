@@ -89,3 +89,9 @@ HARD PROHIBITIONS
 ## Partial deliveries and per-finding review
 
 A partial delivery must be labelled PARTIAL, not complete. Enumerate every prior finding separately as DONE, PARTIAL or UNTOUCHED; for each, name the exact proving tests, state what remains unimplemented or untested, and identify who owns the resolution. Where no producer or test exists, say NO PRODUCER or NO TEST rather than claiming coverage. Include exact failure evidence for unfinished fixes: failing test, error text and current hypothesis. The engineer reviews each finding separately, recording closure or remaining corrective work and ownership; a consolidated verdict must name all unresolved findings and must not treat the partial delivery as a whole ACCEPT. A scope or policy conflict is resolved on the record by the engineer or the Principal, never by an inferred dispatcher deferral.
+
+## Agent permissions — scope by touchability
+
+Agent permissions are scoped by WHAT CAN BE TOUCHED, never by WHICH COMMAND is used. Read commands are not safe by name: cat, sed, head, tail and grep grant read access to every file the agent user can read, and exfiltration is a read, not a write. Allow reads only on relative paths inside the agent own worktree; deny absolute paths, ~, .., and any path matching .env, .ssh, .pem, *.key, credentials or tunnel configuration; everything else asks.
+
+The standing inventories rule (D-017, docs/agents/DECISION_LOG.md) already covers base-SHA discipline.
