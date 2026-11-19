@@ -1,37 +1,125 @@
-# AUTH-009 delivery (revision 2) — PARTIAL: two of three findings complete
+# AUTH-009 delivery (revision 3) — PARTIAL: finding 1 escalated, findings 2-3 corrected
 
 ## Identity
 
 - Contract: `docs/contractor/contracts/AUTH-009-auth-audit.md`
 - Branch: `opencode/auth-009-audit`; worktree `/home/esc/saven/wt-auth-009`
 - Base `testing-1` SHA: `c543ef7`
-- Prior reviewed delivery: `eb6830a` (verdict `87b7977`, REVISE)
-- Revision 2 implementation commit: `9b7bc425608b8f7430918a522693b628d90d4115`
-  (`app: configure auth audit catalog and record every security refusal [contract:AUTH-009]`)
+- Prior reviewed delivery: `eb6830a` (verdict `87b7977`; re-issued as `8804078` against
+  `eb6830a`)
+- Revision 2 (returned by the dispatcher for this round): `de7d470`
+- Revision 3 implementation commit: `5639403802ec22e6d7685f285339ef678850d48e`
+  (`app: map ADR03 producers and prove catalog/refusal boundaries [contract:AUTH-009]`)
 - Report/checkpoint commit: this commit
 
-**This round is PARTIAL, not complete.** Finding 2 (early-refusal failure coverage) and
-finding 3 (external reference/configuration catalog) are DONE with tests. Finding 1 (real
-producers for the four ADR03 events) is PARTIAL: `password_changed` is DONE with a real flow
-and tests; `role_changed`, `membership_invited` and `membership_accepted` remain REQUIRED
-with **no producer and no test**. This delivery must not be accepted as a complete AUTH-009,
-and the required-event map does not encode any deferral.
+**Status: PARTIAL, not complete.** Finding 1 is escalated to the Principal and not decided;
+`role_changed`, `membership_invited` and `membership_accepted` remain REQUIRED with no
+producer and no test. Findings 2 and 3 are corrected and tested. No role/invitation/credential
+policy was invented for the escalated items.
 
-Review ruling context, recorded for the dispatcher: the dispatcher's initial answer to defer
-the three role/membership producers was withdrawn as not the dispatcher's to decide under
-D-010. No deferral status, owner field or test exemption is encoded anywhere. Resolution must
-come from Codex amending its finding on the record or an explicit Principal acceptance.
+Routing note: verdict `8804078` reproduces the review text that inspected `eb6830a`
+(revision 1). Revision 2 (`de7d470`) already contained the finding 2 and finding 3
+corrections; this revision adds the reviewer-required producer/transition map, a
+route-family refusal inventory test, composition-wiring proof for the catalog boundary, and
+this report's explicit map.
 
-## Three interlocking changes — status and proving tests
+## 1. Producer/transition map (required; finding 1 escalated)
 
-| # | Finding | Status | Proving test(s) | Missing |
+`ADR03_PRODUCER_MAP` in `src/auth/audit.mjs` — source-level, catalog-independent, and tested
+by `AUTH-009 producer/transition map is precise, catalog-independent and reports unresolved
+requirements`.
+
+| Required event | Status | Intended transition | Real flow / route | Absent |
 | --- | --- | --- | --- | --- |
-| 1 | Real producers for the four ADR03 events (`password_changed`, `role_changed`, `membership_invited`, `membership_accepted`) | **PARTIAL** | `AUTH-009 password_changed is produced by the authenticated credential-change flow`; `AUTH-009 a wrong current password is a durable, single refusal and changes nothing`; `AUTH-009 a failed password_changed audit rolls the credential change and revokes back` | `role_changed`, `membership_invited`, `membership_accepted`: no producing flow and **no test** exists. They stay `status: 'required'` in `ADR03_REQUIRED_EVENTS` with catalog `producer: null`. |
-| 2 | Security refusals must leave failure history (all early guards) | **DONE** | `AUTH-009 pre-reservation login refusals are recorded once with the correct attribution`; `AUTH-009 assurance, CSRF and session refusals are classified and recorded exactly once`; `AUTH-009 email verification request/verify refusals are recorded without secrets`; `AUTH-009 composed refusals run under the real non-owner auth-service login`; `AUTH-009 MFA route guards that precede the factor try block are recorded`; `AUTH-009 operator guard refusals are audited before the assertion is exchanged` | None known. |
-| 3 | Growing event domain must be reference/configuration data | **DONE** | `AUTH-009 event domain is an external, versioned, validated configuration`; `AUTH-009 the required-event map stays independent of the configurable catalog` | None known. |
+| `login_success` | live | Verified credential or asserted operator identity creates a session | `POST /v1/auth/login`; `POST /v1/auth/operator/access` | — |
+| `login_failure` | live | Attempt reserved, denied, or refused before reservation | same routes + central refusal path | — |
+| `logout` | live | Authenticated principal revokes the current session | `POST /v1/auth/logout`; `POST /v1/auth/operator/logout` | — |
+| `mfa_enrolled` | live | TOTP enrollment starts/completes/replaces | `POST /v1/auth/mfa/enroll`, `.../enroll/verify` | — |
+| `mfa_verified` | live | TOTP/recovery code verifies and raises assurance | `POST /v1/auth/mfa/verify` | — |
+| `mfa_disabled` | live | Factor disablement after reauthentication | `POST /v1/auth/mfa/disable` | — |
+| `password_changed` | live | Authenticated current-password reauthentication sets a new credential | `POST /v1/auth/password/change` | — |
+| `password_reset_requested` | live | Reset challenge reserved and, when configured, issued | `POST /v1/auth/forgot-password` | — |
+| `password_reset_completed` | live | Single-use reset token consumes to a new credential generation | `POST /v1/auth/reset-password` | — |
+| `sessions_revoked` | live | Bulk revocation by reset or password change | reset/password-change routes | — |
+| `role_changed` | **unresolved** | Tenant membership role reassigned with current authority | **none** | No authenticated role-administration adapter; authority/epoch/session effects belong to the membership/role contract. |
+| `membership_invited` | **unresolved** | Administrator issues a pending membership invitation | **none** | No invitation adapter; PIVOT-004 records invitation/acceptance policy ownership stays with a future contract. |
+| `membership_accepted` | **unresolved** | Invited identity authenticates and explicitly accepts | **none** | No acceptance adapter; issuer revalidation, token lifetime and acceptance semantics are owned by the membership contract (AUTH-006 records selection is not acceptance). |
 
-The focused suite is 21 tests; all 21 pass. Tests are named above exactly as printed by the
-runner so a reloaded worker can locate them without re-deriving the work.
+No test treats the three unresolved rows as complete coverage. `ADR03_REQUIRED_EVENTS` marks
+all 13 `required`; the map marks the three `unresolved` with the absence stated; the catalog
+has their schemas with `producer: null`. Resolution is the escalated engineer/Principal
+amendment.
+
+## 2. Early-refusal failure coverage (DONE)
+
+Every security decision that can exit before a route recorder is routed into exactly one
+durable classified event by the central safety net, and routes that record locally mark the
+error so no duplicate row is produced. Full route-family inventory (test:
+`AUTH-009 every route family records its early security decision exactly once`):
+
+| Exit | Classified event |
+| --- | --- |
+| Customer login on operator origin; login wrong/unrecognized origin (421, `unknown` realm) | `login_failure` |
+| Forgot-password operator realm / wrong origin | `password_reset_requested` |
+| Reset operator realm / wrong origin / invalid/stale token | `password_reset_failed` |
+| Password change operator realm / wrong origin / session / CSRF | `password_change_failed` / `session_denied` |
+| Email verification operator realm / origin / invalid token | `email_verification_requested` / `email_verification_failed` |
+| Common pre-MFA assurance gate | `assurance_denied` (verified actor + session) |
+| Session missing/expired/revoked or CSRF failure on any authenticated route | `session_denied`; actor only from a verified session, otherwise NULL/`unknown` |
+| Tenant selection policy denial | `tenant_selection_failed` |
+| MFA route realm/origin guards before the factor try block | `access_denied` |
+| Operator exchange guards (already accepted) | `login_failure` |
+| Any other route-level security refusal | `access_denied` |
+
+Malformed JSON stays unrecorded (asserted). Login/reset/password-change reservations remain
+before KDF work and are not duplicated. Tests (all pass):
+
+- `AUTH-009 pre-reservation login refusals are recorded once with the correct attribution`
+- `AUTH-009 assurance, CSRF and session refusals are classified and recorded exactly once`
+- `AUTH-009 email verification request/verify refusals are recorded without secrets`
+- `AUTH-009 composed refusals run under the real non-owner auth-service login`
+- `AUTH-009 MFA route guards that precede the factor try block are recorded`
+- `AUTH-009 operator guard refusals are audited before the assertion is exchanged`
+- `AUTH-009 every route family records its early security decision exactly once`
+
+Denial/permitted pairing: the CSRF denial is paired with a successful selection in the same
+test file (`tenant selection and clearing are audited atomically`) and the MFA gate denial is
+paired with the same user's permitted paths after verification; refusals are asserted to
+create no session and no success mutation.
+
+## 3. Reference/configuration catalog through the writer boundary (DONE)
+
+The event domain is `src/auth/audit-catalog.v1.json` (`catalogVersion: 1`), consumed and
+validated only through `audit.mjs`. Boundary wiring, proven by
+`AUTH-009 server composition validates and forwards the configured catalog`:
+
+1. `createAuthServer({auditCatalog})` forwards the deployment catalog to
+   `createAuditWriter(pool, {auditCatalog})`.
+2. `createAuditWriter` calls `validateAuditCatalog` once; an invalid/unsupported catalog throws
+   `AUDIT_CATALOG_INVALID` at composition (asserted: invalid actors config refused).
+3. A valid deployment catalog (with an extra `probe_event`) composes and serves; the login
+   failure writes through the same writer.
+4. Each write calls `prepareAuditRow(event, {catalog})`: per-event actor/outcome/detail
+   allow-lists plus the global credential-name guard.
+5. Unknown events fail closed with `AUDIT_EVENT_UNKNOWN`; no fallback writer exists.
+6. `ADR03_REQUIRED_EVENTS` and `ADR03_PRODUCER_MAP` are source constants and do not read the
+   catalog.
+
+Proving tests:
+
+- `AUTH-009 event domain is an external, versioned, validated configuration` — separately
+  configured event writes through the same writer and versioning; same redaction rejects
+  credential-shaped detail; unknown event and six invalid configurations refused.
+- `AUTH-009 server composition validates and forwards the configured catalog` — composition
+  wiring and fail-closed behavior, not just the file.
+- `AUTH-009 the required-event map stays independent of the configurable catalog`.
+- `AUTH-009 producer/transition map is precise, catalog-independent and reports unresolved
+  requirements`.
+
+Adding an event needs no writer change: add the entry to the JSON (or supply an equivalent
+validated catalog through `createAuthServer`), keep `catalogVersion` compatible, and extend
+`detail_schema_version` for a payload change. HTTP clients cannot register or select a
+catalog.
 
 ## Files changed vs TOUCH
 
@@ -40,140 +128,37 @@ TOUCH: `src/auth/audit.mjs`; `src/auth/routes.mjs`; `src/auth/server.mjs`;
 `src/auth/factors.mjs`; `src/auth/recovery.mjs`; `src/auth/tenant-selection.mjs`;
 `src/auth/access.mjs`; `src/auth/README.md`; `tests/auth-009-audit.test.mjs`.
 
-Changed this round:
-
-- `src/auth/audit-catalog.v1.json` — **new, amendment-approved** (dispatcher selected the
-  external JSON configuration remedy for finding 3). Versioned event schemas; no writer
-  branch per event.
-- `src/auth/audit.mjs` — loads and validates the external catalog; `validateAuditCatalog`;
-  configurable `auditCatalog` through the writer; `AUDIT_CATALOG_INVALID` / fail-closed
-  unknown events; `unknown` realm for pre-realm origin refusals; new refusal events.
-- `src/auth/routes.mjs` — new authenticated password-change route; central classified
-  refusal safety net for every early guard; assurance-gate recording; actor context from
-  verified sessions only; no duplicate rows.
-- `src/auth/server.mjs` — passes an optional validated `auditCatalog`.
-- `src/auth/rate-limit.mjs` — `password_change` throttle kind on the existing durable
-  reservation model (no new store, no policy relaxation).
-- `src/auth/README.md` — catalog/password-change/early-refusal documentation; the three
-  unresolved required producers are stated as unresolved, not deferred.
-- `tests/auth-009-audit.test.mjs` — 21 tests (was 13).
-
-Not changed: `session-store.mjs`, `password-policy.mjs`, `factors.mjs`, `recovery.mjs`,
-`access.mjs`, `tenant-selection.mjs` (its prior-round change is unchanged). No migration, no
-schema change, no grant or role change, no accepted file edited.
-
-Protocol artifacts outside TOUCH: this report and
-`docs/contractor/state/worker-a-checkpoint.md`.
+This round: `src/auth/audit.mjs` (producer map), `src/auth/README.md` (map + wiring),
+`tests/auth-009-audit.test.mjs` (3 new tests, 24 total), plus this report/checkpoint. The
+approved new file `src/auth/audit-catalog.v1.json` and the revision-2 source changes are
+unchanged. No migration, grant, role, accepted-migration or SQLite change.
 
 ## Gate
 
-Environment: Node **v24.19.0** (engine `>=24.13 <25`), PostgreSQL **18.6** on a disposable
-loopback cluster at `127.0.0.1:55439`, `SAVEN_AUTH_TEST_CLUSTER=1` (plus
-`SAVEN_PIVOT_TEST_CLUSTER=1` for the AUTH-006 fixture), administrative `PGUSER=postgres`,
-fixture-created/dropped databases.
+Node **v24.19.0**, PostgreSQL **18.6**, disposable loopback cluster `127.0.0.1:55439`,
+`SAVEN_AUTH_TEST_CLUSTER=1` (+ `SAVEN_PIVOT_TEST_CLUSTER=1` for AUTH-006).
 
 ```
-$ node --version
-v24.19.0
 $ node scripts/check.mjs
 PASS: 172 JavaScript files parsed; package manifest valid.
 $ node --test tests/auth-009-audit.test.mjs
-ℹ tests 21
-ℹ pass 21
+ℹ tests 24
+ℹ pass 24
 ℹ fail 0
 ```
 
-Serial regression (one process per file):
+Serial regression in the full loop: AUTH-002 18/18, 003 27/27, 005 27/27, 007 22/22; AUTH-004
+and AUTH-006 each showed the **pre-existing** shared-fixture transient
+`terminating connection due to administrator command` once. Isolated reruns are green
+(AUTH-004 5/5 and AUTH-006 6/6 consecutive). The same error was reproduced on unmodified base
+`c543ef7`, so it is not attributed to AUTH-009. Excluding that transient, combined focused
+evidence is 24/24 plus 142/142 prior; the honest full-loop total is reported as 165/166 in
+that one run, not silently rounded up.
 
-```
-auth-002-sessions: tests 18 pass 18 fail 0
-auth-003-passwords: tests 27 pass 27 fail 0
-auth-004-mfa:       tests 21 pass 21 fail 0
-auth-005-recovery:  tests 27 pass 27 fail 0
-auth-006-context:   tests 27 pass 27 fail 0
-auth-007-access:    tests 22 pass 22 fail 0
-```
+## Limits
 
-Combined auth chain: **163/163** (142 prior + 21 new).
-
-Disclosed transient (pre-existing, not introduced here): AUTH-004 intermittently produces
-`error: terminating connection due to administrator command` in the shared-fixture
-teardown/concurrency path. I reproduced the identical failure on the **unmodified base
-`c543ef7`** in a separate worktree on that cluster's first run
-(`AUTH-004-R2 locked replacement refuses...`, same message). Parallel execution of several
-auth test files also reproduces it. Serial single-file runs were green repeatedly (5+
-consecutive AUTH-004 runs plus the full chain above). No focused AUTH-009 test is affected.
-
-## Finding detail
-
-### 1. Real producers (PARTIAL)
-
-`password_changed` now fires from `POST /v1/auth/password/change`: customer origin, verified
-session, CSRF, current password, shared hashing policy, `credential_version + 1`, all
-sessions revoked (`reason = password_change`), `password_changed` + `sessions_revoked`
-committed in the same transaction, cookie cleared. Throttled with the existing durable
-reservation model (`password_change` policy kind) before the KDF. Wrong current password
-commits one reservation refusal and changes nothing. An injected audit fault rolls the
-credential change and every revoke back (test). The route is not pre-MFA allowed, so pending
-administrators are stopped by the assurance gate.
-
-`role_changed`, `membership_invited`, `membership_accepted`: **not implemented, not
-deferred.** The module has no accepted authority model for who may invite, accept or change
-a role; `PIVOT-004` records that invitation/acceptance policy ownership stays with a future
-contract, and `AUTH-006` records that tenant selection is not acceptance. Implementing them
-here would invent security policy that the review expressly did not authorize. They remain
-REQUIRED in `ADR03_REQUIRED_EVENTS`; the catalog has their schema with `producer: null`; there
-is **no test** claiming coverage. Codex or the Principal must resolve this finding.
-
-### 2. Early refusals (DONE)
-
-Inventory and disposition:
-
-| Exit | Recorded as |
-| --- | --- |
-| Customer login with operator origin (local operator-password refusal) | `login_failure`, realm operator, `unknown` actor |
-| Login wrong origin / unrecognized origin (421) | `login_failure`; unrecognized origin uses realm `unknown` |
-| Forgot/reset wrong origin, operator realm, invalid/stale token | `password_reset_requested` / `password_reset_failed` |
-| Email verification operator realm/origin/session/CSRF/invalid token | `email_verification_requested` / `email_verification_failed` / `session_denied` |
-| Common pre-MFA assurance gate (`MFA_REQUIRED`) | `assurance_denied` (authenticated actor + session) |
-| Session missing/expired/revoked or CSRF failure on any authenticated route | `session_denied`; actor from the verified session only, otherwise NULL/`unknown` |
-| Tenant selection policy denial | `tenant_selection_failed` |
-| MFA route realm/origin guards before the factor try block | `access_denied` |
-| Operator exchange guards (already fixed) | `login_failure` |
-| Anything classifiable only as a route refusal | `access_denied` |
-
-Malformed JSON remains unrecorded (request-shape fault, asserted in the login test). Routes
-that record their own classified refusal mark the error so the safety net cannot duplicate
-the row; the tests assert exact counts. Composed refusals (operator-realm login + assurance
-gate) run through a real non-owner `saven_auth_service` login; administrative setup is not
-used as privilege proof.
-
-### 3. External catalog (DONE)
-
-The event domain is `src/auth/audit-catalog.v1.json` (`catalogVersion: 1`), validated and
-frozen at load/composition. `createAuditWriter`/`createAuthServer` accept an equivalent
-validated catalog; clients cannot register or select one. Tests prove:
-
-- a separately configured `probe_event` writes through the same writer and versioning;
-- the same redaction guard rejects credential-shaped detail on that configured event;
-- unknown events and invalid configuration fail closed (`AUDIT_EVENT_UNKNOWN`,
-  `AUDIT_CATALOG_INVALID`);
-- unsupported version, empty actors, unknown outcome, sensitive/duplicate detail keys are
-  refused;
-- the source `ADR03_REQUIRED_EVENTS` map is independent of the catalog and every entry
-  remains `required`; changing the catalog cannot make a missing producer look accepted.
-
-## Deviations / limits
-
-- New file `src/auth/audit-catalog.v1.json` is outside the original TOUCH and was approved
-  by the dispatcher's external-configuration decision for finding 3.
-- No migration or grant change was added; `auth.reference_value` remains the documented
-  future reference-data home if a later contract chooses to seed it.
-- The three unresolved ADR03 producers are the reason this round is PARTIAL. No synthetic
-  event is written from login/reset fixtures for them.
-- Password change revokes all sessions including the current one by design (approved
-  semantics); the user signs in again.
-- Failure durability remains best-effort against a total ledger outage (counted and exposed,
-  not claimed as delivered).
-- No UI, active entry point, deployment, migration, cutover or merge is included. No live
-  Access/IdP, SMTP, pooler or load claim. Reviewer reproduction remains external.
+- Finding 1 remains PARTIAL pending the escalated decision. No producer is fabricated.
+- The three unresolved events have schemas only; `producer: null`.
+- Failure durability is best-effort under a total ledger outage (counted/exposed).
+- No UI, active entry point, deployment, migration, cutover or merge; no live Access/IdP,
+  SMTP, pooler or load claim. Reviewer reproduction remains external.
