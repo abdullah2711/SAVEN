@@ -101,7 +101,9 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
       return true;
     });
 
-    const allocated = await repository.reserveNumber(ctx, {id, company: journal.company, kind: kinds.journal});
+    const allocated = await repository.reserveNumber(ctx, {
+      id, company: journal.company, kind: kinds.journal, requestDigest: digest,
+    });
 
     try {
       return await repository.transaction(ctx, async tx => {
@@ -113,6 +115,14 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
         // Revalidate on the accepted bytes inside the transaction that mutates: an
         // allocation reservation never carries authorization forward, and a period lock
         // or role/denial change that won after the pre-allocation pass is observed here.
+        if (post) await requireDirectPostAuthority(ctx, tx, journal);
+        else await tx.requireAuthority({...authorityInput(ctx, journal), action: actions.prepare});
+        await tx.requireOpenPeriod(journal);
+        await tx.requireAccounts(journal);
+
+        // Revalidate on the accepted bytes in the transaction that mutates: a reservation
+        // never carries authorization forward, so a period lock or role/denial change that
+        // won after the pre-allocation pass is observed here and rolls the write back.
         if (post) await requireDirectPostAuthority(ctx, tx, journal);
         else await tx.requireAuthority({...authorityInput(ctx, journal), action: actions.prepare});
         await tx.requireOpenPeriod(journal);
@@ -203,29 +213,44 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
     });
   }
 
-  function read(ctx, {id, tenantId}) {
+  function read(ctx, {id, tenantId, company, branch}) {
     if (tenantId && tenantId !== ctx.tenantId) throw refuse.auditTenantDenied(tenantId);
     return repository.transaction(ctx, async tx => {
       const journal = await tx.readJournal(id);
       if (!journal) throw refuse.tenantResourceDenied(id);
-      if (journal.actor !== ctx.actor) throw refuse.tenantResourceDenied(id);
+      // Read is authority, not authorship: any principal with module/company/branch scope
+      // may read the entry; a scoped reader may not read outside that scope.
+      await tx.requireAuthority({
+        actor: ctx.actor, action: actions.read,
+        company: journal.company, branch: journal.branch, accounts: [],
+      });
+      if (company && company !== journal.company) throw refuse.permissionDenied(actions.read);
+      if (branch && branch !== journal.branch) throw refuse.permissionDenied(actions.read);
       return journal;
     }, {readOnly: true});
   }
 
-  function list(ctx, {tenantId} = {}) {
+  function list(ctx, {tenantId, company, branch} = {}) {
     if (tenantId && tenantId !== ctx.tenantId) throw refuse.auditTenantDenied(tenantId);
-    return repository.transaction(ctx, async tx => tx.listJournals(), {readOnly: true});
+    return repository.transaction(ctx, async tx => {
+      await tx.requireAuthority({actor: ctx.actor, action: actions.read, company, branch, accounts: []});
+      return tx.listJournals({company, branch});
+    }, {readOnly: true});
   }
 
   /** Canonical logical stream and the physical change stream, independently. */
-  function audit(ctx, {tenantId, commandId, sinceId} = {}) {
+  function audit(ctx, {tenantId, commandId, sinceId, company, branch} = {}) {
     if (tenantId && tenantId !== ctx.tenantId) throw refuse.auditTenantDenied(tenantId);
     const since = Number.isSafeInteger(Number(sinceId)) ? Number(sinceId) : 0;
-    return repository.transaction(ctx, async tx => ({
-      lifecycle: await tx.listLifecycle(commandId),
-      changes: await tx.listChangeEvents({commandId: commandId ?? null, sinceId: since}),
-    }), {readOnly: true});
+    return repository.transaction(ctx, async tx => {
+      // Audit read is a module-resource decision, separate from authentication and from
+      // journal authorship.
+      await tx.requireAuthority({actor: ctx.actor, action: actions.read, company, branch, accounts: []});
+      return {
+        lifecycle: await tx.listLifecycle(commandId),
+        changes: await tx.listChangeEvents({commandId: commandId ?? null, sinceId: since}),
+      };
+    }, {readOnly: true});
   }
 
   async function applyPost(ctx, tx, {id, journal, digest, number, at, idempotencyKey}) {

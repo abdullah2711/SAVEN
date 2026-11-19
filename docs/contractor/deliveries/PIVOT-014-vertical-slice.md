@@ -278,3 +278,70 @@ first allocation. This revision fixes the second and documents the first as bloc
 
 The original S1–S9 assertion mapping and cover sheet are **not** offered as proof of these
 corrections; they describe the original delivery only.
+
+---
+
+# Revision 3 — both amendments implemented (2026-11-20)
+
+**LABEL: corrections complete for findings 1, 3, 4, 6, 8; findings 2, 5, 7 advanced with one
+carried gap each.** Both Principal/engineer amendments A and B are implemented and proved. No
+accepted payload byte, 040/041/042 SQL, policy surface or unrelated runtime source was rewritten.
+
+| Item | Value |
+|---|---|
+| Revision implementation SHA | *(see `git log`; the commit that adds this section's code)* |
+| Base | `testing-1 @ e0fa9fb` |
+| Gate | `node scripts/check.mjs` → 178 JS files, **17/17** lifecycle, **1/1** AUTH-006 context, exit 0 |
+| Disposable lineage | `00, 05, 006, 10, 20, 021, 30, 031, 032, 033, 040, 041, 042, 40-triggers, 043` |
+
+## Amendment A — implemented
+
+`src/auth/tenant-selection.mjs` now takes the admission principal lock as
+`FOR NO KEY UPDATE` instead of `FOR UPDATE`. Gate-first order (principal → factor → session),
+full realm/role/epoch/required-MFA checks and authority-through-business-completion are
+unchanged; only the principal lock strength moved, and no other lock was touched globally.
+
+Proved by `tests/auth-006-context.test.mjs` (run by `scripts/check.mjs`):
+- a `FOR KEY SHARE` holder on `auth.users` is **not blocked** while admission is held (this is
+  the lock the accepted 042 void FK needs);
+- while admission is held, `FOR NO KEY UPDATE`, `status` update, `credential_version` update
+  and membership revocation all fail on lock timeout (`55P03`) — retention preserved;
+- the same writer succeeds after release (permitted control);
+- the lifecycle test's void now commits **under retained admission**
+  (`S5 void is a state change with retained evidence`).
+
+## Amendment B — implemented (bounded 043 addition)
+
+`db/postgres/migrations/043-vertical-slice.sql` adds one narrow immutable table
+`tenant_data.document_allocations`: tenant-leading PK `(tenant_id, allocation_id)`,
+`UNIQUE(tenant_id, company, kind, sequence)`, immutable `actor` + `request_digest` + `number`,
+`state = 'CONSUMED'`, forced RLS with tenant-scoped SELECT/INSERT policies, a `BEFORE UPDATE OR
+DELETE` guard raising `ALLOCATION_RECEIPT_RETAINED`, and `REVOKE ALL` from every non-runtime
+role. No accepted table is altered and no fingerprint changes.
+
+Proved:
+- `S8 …` hostile reuse — a different actor/content cannot recover an abandoned identity
+  (`IDEMPOTENCY_CONFLICT`) while the identical original request recovers the same number;
+- real reapplication — re-applying 043 retains the receipt count and the high-water mark, and a
+  later allocation continues past them;
+- retained high-water — a direct regression `UPDATE` is refused by the accepted 040 guard;
+- gaps are permitted and never back-filled.
+
+## Per-finding disposition (1–8) at this revision
+
+| # | Status | Named proving tests | Carried gap |
+|---|---|---|---|
+| 1 | **DONE** | `S1`, `S3`, entire lifecycle; `AUTH-006 …` | none |
+| 2 | **PARTIAL** | `S2b canonical resource authority is separate from authorship`, `S3 …`, `S4 …`, `S6 …`, `S7 …` | no dedicated concurrent invalidation-race test; pre-commit revalidation is wired (`assertAdmission` before every COMMIT) but the race is not separately timed |
+| 3 | **DONE** | `S8 …` (binding, hostile reuse, reapplication, high-water) | — |
+| 4 | **DONE** | `R1 …` 4 probes | — |
+| 5 | **PARTIAL** | `cluster setup failure leaves no owned directory behind`, helper stop-verification/timeouts | whole-test budget still does not formally include teardown/child processes |
+| 6 | **DONE** | `S4 …`, `S7 …` (in-transaction revalidation + post-key binding/conflict) | concurrent *first* post is same-key replay, not a barrier race |
+| 7 | **PARTIAL** | `S3`, `S5`, `S6`, `S8` (isolated guards, A-own control, per-event metadata, reinstall probe) | S8 overlap still measured by promise counting |
+| 8 | **DONE** | `security-audit pin compares the writer active catalog` | — |
+
+## Lineage note (finding 1 root cause confirmed)
+
+The earlier failure of `031`/`032` was caused by the replacement preflight reading the session
+snapshot. With the accepted composed boundary and the narrowed lock, the full lineage installs
+and the whole suite is green — i.e. the correction is the composition, not a weaker profile.

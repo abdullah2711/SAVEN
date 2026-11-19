@@ -276,7 +276,7 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
         {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's1-journal-0001', body: {journal: balanced()}});
       assert.equal(created.status, 201, created.text);
       const steps = app.trace.map(entry => entry.step);
-      for (const required of ['origin.verified', 'session.verified', 'tenant.admitted', 'csrf.verified', 'service.create', 'principal.observed']) {
+      for (const required of ['origin.verified', 'session.verified', 'csrf.verified', 'tenant.admitted', 'gate.held', 'service.create']) {
         assert.ok(steps.includes(required), `request path missing ${required}`);
       }
       assert.equal(created.body.meta.principal.current_user, 'saven_customer_app');
@@ -654,8 +654,19 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       // Failure AFTER allocation: the reserved identity is consumed, not reissued.
       const repository = createPgRepository({pool: appPool});
       const contextFor = {tenantId: TENANT_A, userUuid: OWNER_A, actor: ACTOR.ownerA, now: Date.now()};
-      const reserved = await repository.reserveNumber(contextFor, {id: 's8-abandoned-0001', company: COMPANY, kind: 'JRN'});
-      const retry = await repository.reserveNumber(contextFor, {id: 's8-abandoned-0001', company: COMPANY, kind: 'JRN'});
+      const abandonedDigest = 'd'.repeat(64);
+      const reserved = await repository.reserveNumber(contextFor,
+        {id: 's8-abandoned-0001', company: COMPANY, kind: 'JRN', requestDigest: abandonedDigest});
+      const retry = await repository.reserveNumber(contextFor,
+        {id: 's8-abandoned-0001', company: COMPANY, kind: 'JRN', requestDigest: abandonedDigest});
+
+      // Hostile reuse: a different actor or different content cannot claim the identity.
+      const hostile = await repository.reserveNumber(
+        {...contextFor, actor: ACTOR.clerkA, userUuid: CLERK_A},
+        {id: 's8-abandoned-0001', company: COMPANY, kind: 'JRN', requestDigest: 'e'.repeat(64)}
+      ).then(() => null, error => error);
+      assert.ok(hostile, 'a different actor/content must not recover another allocation');
+      assert.equal(hostile.code, 'IDEMPOTENCY_CONFLICT');
       assert.equal(retry.number, reserved.number, 'the same id must keep its allocated identity');
       assert.equal(retry.reused, true);
 
@@ -670,6 +681,29 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
         `SELECT id FROM tenant_data.document_numbers WHERE tenant_id=$1 AND number=$2`,
         [TENANT_A, reserved.number]);
       assert.deepEqual(others.map(row => row.id), ['s8-abandoned-0001']);
+
+      // Real reapplication probe: re-applying 043 must be idempotent and must retain both
+      // the consumed-identity receipts and the counter high-water.
+      const receiptsBefore = (await shortcut(
+        `SELECT count(*)::int AS n FROM tenant_data.document_allocations WHERE tenant_id=$1`,
+        [TENANT_A]))[0].n;
+      const highWaterBefore = (await shortcut(
+        `SELECT next_number FROM tenant_data.document_sequences
+          WHERE tenant_id=$1 AND company=$2 AND kind='JRN'`, [TENANT_A, COMPANY]))[0].next_number;
+      cluster.apply('db/postgres/migrations/043-vertical-slice.sql');
+      const receiptsAfter = (await shortcut(
+        `SELECT count(*)::int AS n FROM tenant_data.document_allocations WHERE tenant_id=$1`,
+        [TENANT_A]))[0].n;
+      const highWaterAfter = (await shortcut(
+        `SELECT next_number FROM tenant_data.document_sequences
+          WHERE tenant_id=$1 AND company=$2 AND kind='JRN'`, [TENANT_A, COMPANY]))[0].next_number;
+      assert.equal(receiptsAfter, receiptsBefore, 'reapplication must retain allocation receipts');
+      assert.equal(highWaterAfter, highWaterBefore, 'reapplication must retain the high-water mark');
+      const afterReapply = await call(app, 'POST', `${API_PREFIX}/journals?post=1`,
+        {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's8-reapply-0001', body: {journal: balanced()}});
+      assert.equal(afterReapply.status, 201, afterReapply.text);
+      assert.ok(sequence(afterReapply.body.data.number) >= sequence(later.body.data.number) + 1,
+        'a post-reapplication allocation must continue past the retained high-water');
 
       // Reapplication/interruption probe: the counter high-water cannot move backwards.
       const before = (await shortcut(
@@ -721,6 +755,49 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       }
       const authAuditTotal = (await shortcut('SELECT count(*)::int AS n FROM auth.auth_audit'))[0].n;
       assert.ok(authAuditTotal > authAuditBaseline, 'refusals must have added durable auth audit rows');
+    });
+
+    // ---------------------------------------------------------------- S2b
+    await t.test('S2b canonical resource authority is separate from authorship', async () => {
+      // A second company in the same tenant, outside the clerk's configured scope.
+      await asTenant(TENANT_A, OWNER_A, async () => {
+        await seed(`INSERT INTO tenant_data.company_profiles
+                      (tenant_id, id, name, currency, branch, created_at)
+                    VALUES ($1, 'BETA', 'Beta', 'USD', 'HQ', 0)`, [TENANT_A]);
+        await seed(`INSERT INTO tenant_data.periods
+                      (tenant_id, company, start_date, end_date, locked)
+                    VALUES ($1, 'BETA', '2026-01-01', '2026-12-31', false)`, [TENANT_A]);
+      });
+
+      const beta = await call(app, 'POST', `${API_PREFIX}/journals?post=1`,
+        {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's2b-beta-0001',
+          body: {journal: {...balanced(), company: 'BETA'}}});
+      assert.equal(beta.status, 201, beta.text);
+
+      // The clerk may not create, list or audit the out-of-scope company.
+      const deniedCreate = await call(app, 'POST', `${API_PREFIX}/journals`,
+        {cookie: clerkA.cookie, csrf: clerkA.csrf, key: 's2b-beta-0002',
+          body: {journal: {...balanced(), company: 'BETA'}}});
+      assert.equal(deniedCreate.status, 403);
+      assert.equal(deniedCreate.body.error.code, 'PERMISSION_DENIED');
+      const deniedList = await call(app, 'GET', `${API_PREFIX}/journals?company=BETA`, {cookie: clerkA.cookie});
+      assert.equal(deniedList.status, 403);
+      assert.equal(deniedList.body.error.code, 'PERMISSION_DENIED');
+      const deniedAudit = await call(app, 'GET', `${API_PREFIX}/audit?company=BETA`, {cookie: clerkA.cookie});
+      assert.equal(deniedAudit.status, 403);
+      assert.equal(deniedAudit.body.error.code, 'PERMISSION_DENIED');
+
+      // Authorized different-author read: the clerk may read the owner's ACME entry.
+      const ownScope = await call(app, 'POST', `${API_PREFIX}/journals?post=1`,
+        {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's2b-acme-0001', body: {journal: balanced()}});
+      assert.equal(ownScope.status, 201, ownScope.text);
+      const crossAuthor = await call(app, 'GET', `${API_PREFIX}/journals/${ownScope.body.data.id}`,
+        {cookie: clerkA.cookie});
+      assert.equal(crossAuthor.status, 200, 'a scoped reader may read another author in scope');
+      assert.equal(crossAuthor.body.data.actor, ACTOR.ownerA);
+      const crossBranch = await call(app, 'GET', `${API_PREFIX}/journals/${ownScope.body.data.id}?branch=OTHER`,
+        {cookie: clerkA.cookie});
+      assert.equal(crossBranch.status, 403);
     });
 
     const elapsed = Date.now() - started;

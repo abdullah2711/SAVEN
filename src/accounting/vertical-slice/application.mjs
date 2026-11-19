@@ -74,48 +74,35 @@ export function createSessionPort({store, cookieName}) {
 }
 
 /**
- * Tenant admission port. Re-reads the selected membership through the accepted auth
- * store so a suspended or revoked membership, or a stale epoch, fails closed before any
- * business statement. The business transaction independently re-checks admission via
- * `tenant_data.session_admitted`, so this is defence in depth rather than the only gate.
+ * Admission port over the accepted AUTH-006 boundary.
+ *
+ * `withAdmission` delegates to `createTenantSelection().withAuthority`, which resolves the
+ * verified principal, the exact selected role/epoch, assurance/MFA, takes the shared
+ * authority gate and keeps the auth transaction (and its locks) open until the business
+ * action completes. `assertAdmission` is the accepted pre-commit revalidation hook.
+ *
+ * `actorFor` only maps an already-verified user id to its tenant-local text id; it takes
+ * no admission decision and cannot substitute for the gate above.
  */
-export function createAdmissionPort({store}) {
-  if (!store || typeof store.withTransaction !== 'function') {
+export function createAdmissionPort({tenantSelection, authStore}) {
+  if (!tenantSelection || typeof tenantSelection.withAuthority !== 'function') {
+    throw new Error('createAdmissionPort requires the accepted tenant-selection authority port.');
+  }
+  if (!authStore || typeof authStore.withTransaction !== 'function') {
     throw new Error('createAdmissionPort requires the accepted auth transaction boundary.');
   }
   return Object.freeze({
-    async admit({session}) {
-      if (!session.selectedTenantId || !session.selectedMembershipId || session.membershipEpoch == null) {
-        throw refuse.tenantRequired();
-      }
-      return store.withTransaction(async tx => {
-        const {rows} = await tx.query(
-          `SELECT tm.id, tm.tenant_id, tm.user_id, tm.status, tm.membership_epoch,
-                  tm.revoked_at, tm.suspended_at, u.status AS user_status, u.legacy_id
-             FROM auth.tenant_membership tm
-             JOIN auth.users u ON u.id = tm.user_id
-            WHERE tm.id = $1`,
-          [session.selectedMembershipId],
-        );
-        const row = rows[0];
-        if (!row) throw refuse.tenantRequired();
-        if (row.tenant_id !== session.selectedTenantId
-            || Number(row.membership_epoch) !== session.membershipEpoch
-            || row.status !== 'active' || row.revoked_at || row.suspended_at
-            || row.user_status !== 'active') {
-          throw new SliceError(403, 'TENANT_SELECTION_STALE',
-            'The selected business membership is no longer active.');
-        }
-        if (!row.legacy_id) {
+    withAdmission(session, action) {
+      return tenantSelection.withAuthority(session, action);
+    },
+    async actorFor(userId) {
+      return authStore.withTransaction(async tx => {
+        const {rows} = await tx.query('SELECT legacy_id FROM auth.users WHERE id = $1', [userId]);
+        if (!rows[0]?.legacy_id) {
           throw new SliceError(403, 'TENANT_ACTOR_UNMAPPED',
             'This identity has no tenant-local principal mapping.');
         }
-        return {
-          tenantId: row.tenant_id,
-          userUuid: row.user_id,
-          actor: row.legacy_id,
-          membershipEpoch: Number(row.membership_epoch),
-        };
+        return rows[0].legacy_id;
       });
     },
   });
@@ -212,24 +199,33 @@ export function createVerticalSliceApplication(ports) {
       request._sliceSession = resolved;
       record('session.verified', {sessionId: resolved.id});
 
-      const admission = await gate.admit({session: resolved});
-      record('tenant.admitted', {tenantId: admission.tenantId, epoch: admission.membershipEpoch});
-
       const mutation = request.method !== 'GET';
       if (mutation && !session.csrfMatches(request, resolved)) throw refuse.csrfRequired();
       if (mutation) record('csrf.verified');
 
-      const ctx = {
-        tenantId: admission.tenantId,
-        userUuid: admission.userUuid,
-        actor: admission.actor,
-        membershipEpoch: admission.membershipEpoch,
-        requestId: request.headers.get('x-request-id') || null,
-        now: clock.now(),
-      };
-
+      const requestId = request.headers.get('x-request-id') || null;
       const tail = url.pathname.slice(API_PREFIX.length);
       const parts = tail.split('/').filter(Boolean);
+
+      // The accepted AUTH-006 boundary owns admission for the whole request: allocation,
+      // reads, listing, posting and voiding all run inside it, with the auth transaction
+      // and its locks held until the business action completes.
+      let response = null;
+      await gate.withAdmission(resolved, async ({resolved: admitted, assertAdmission}) => {
+        record('tenant.admitted', {tenantId: admitted.tenantId, epoch: admitted.membershipEpoch});
+        const actor = await gate.actorFor(admitted.userId);
+        const ctx = {
+          tenantId: admitted.tenantId,
+          userUuid: admitted.userId,
+          actor,
+          membershipEpoch: admitted.membershipEpoch,
+          roleId: admitted.roleId,
+          requestId,
+          now: clock.now(),
+          beforeCommit: assertAdmission,
+        };
+        record('gate.held', {tenantId: ctx.tenantId});
+        response = await (async () => {
 
       if (request.method === 'POST' && parts.length === 1 && parts[0] === 'journals') {
         const body = await readJson(request);
@@ -237,9 +233,7 @@ export function createVerticalSliceApplication(ports) {
         const post = url.searchParams.get('post') === '1' || body.post === true;
         record('service.create');
         const result = await service.create(ctx, {payload: body.journal ?? body, idempotencyKey: key, post});
-        const principal = await journal.identity();
-        record('principal.observed', principal);
-        return json(post ? 201 : 201, {ok: true, data: result, meta: {principal, version: API_VERSION, slice: SLICE_VERSION}});
+        return json(201, {ok: true, data: result, meta: {principal: ctx.principal, version: API_VERSION, slice: SLICE_VERSION}});
       }
 
       if (request.method === 'POST' && parts.length === 3 && parts[0] === 'journals' && parts[2] === 'post') {
@@ -247,9 +241,7 @@ export function createVerticalSliceApplication(ports) {
         const result = await service.post(ctx, {
           id: parts[1], idempotencyKey: request.headers.get('idempotency-key') ?? undefined,
         });
-        const principal = await journal.identity();
-        record('principal.observed', principal);
-        return json(200, {ok: true, data: result, meta: {principal, version: API_VERSION, slice: SLICE_VERSION}});
+        return json(200, {ok: true, data: result, meta: {principal: ctx.principal, version: API_VERSION, slice: SLICE_VERSION}});
       }
 
       if (request.method === 'POST' && parts.length === 3 && parts[0] === 'journals' && parts[2] === 'void') {
@@ -258,19 +250,26 @@ export function createVerticalSliceApplication(ports) {
         const result = await service.voidEntry(ctx, {
           id: parts[1], reason: body.reason, idempotencyKey: request.headers.get('idempotency-key'),
         });
-        const principal = await journal.identity();
-        record('principal.observed', principal);
-        return json(200, {ok: true, data: result, meta: {principal, version: API_VERSION, slice: SLICE_VERSION}});
+        return json(200, {ok: true, data: result, meta: {principal: ctx.principal, version: API_VERSION, slice: SLICE_VERSION}});
       }
 
       if (request.method === 'GET' && parts.length === 2 && parts[0] === 'journals') {
-        const data = await service.read(ctx, {id: parts[1], tenantId: url.searchParams.get('tenantId') ?? undefined});
+        const data = await service.read(ctx, {
+          id: parts[1],
+          tenantId: url.searchParams.get('tenantId') ?? undefined,
+          company: url.searchParams.get('company') ?? undefined,
+          branch: url.searchParams.get('branch') ?? undefined,
+        });
         record('service.read');
         return json(200, {ok: true, data, meta: {version: API_VERSION, slice: SLICE_VERSION}});
       }
 
       if (request.method === 'GET' && parts.length === 1 && parts[0] === 'journals') {
-        const data = await service.list(ctx, {tenantId: url.searchParams.get('tenantId') ?? undefined});
+        const data = await service.list(ctx, {
+          tenantId: url.searchParams.get('tenantId') ?? undefined,
+          company: url.searchParams.get('company') ?? undefined,
+          branch: url.searchParams.get('branch') ?? undefined,
+        });
         record('service.list', {count: data.length});
         return json(200, {ok: true, data, meta: {version: API_VERSION, slice: SLICE_VERSION}});
       }
@@ -280,12 +279,17 @@ export function createVerticalSliceApplication(ports) {
           tenantId: url.searchParams.get('tenantId') ?? undefined,
           commandId: url.searchParams.get('commandId') ?? undefined,
           sinceId: url.searchParams.get('since') ?? undefined,
+          company: url.searchParams.get('company') ?? undefined,
+          branch: url.searchParams.get('branch') ?? undefined,
         });
         record('service.audit', {lifecycle: data.lifecycle.length, changes: data.changes.length});
         return json(200, {ok: true, data, meta: {version: API_VERSION, slice: SLICE_VERSION}});
       }
 
       return failure(404, 'ACCOUNTING_ROUTE_UNAVAILABLE', 'Versioned accounting endpoint unavailable.');
+        })();
+      });
+      return response;
     } catch (error) {
       if (error instanceof SliceError || (typeof error?.status === 'number' && typeof error?.code === 'string')) {
         return refuseWith(request, error);
@@ -325,14 +329,14 @@ async function readJson(request) {
  * nothing here reads environment secrets.
  */
 export function composeVerticalSlice({
-  businessPool, authStore, securityAuditWriter, customerOrigin, cookieName,
+  businessPool, authStore, tenantSelection, securityAuditWriter, customerOrigin, cookieName,
   clock = {now: () => Date.now()}, pinnedCatalogVersion = 1, actions,
 }) {
   const journal = createPgRepository({pool: businessPool});
   const securityAudit = createSecurityAuditPort({writer: securityAuditWriter, pinnedVersion: pinnedCatalogVersion});
   return createVerticalSliceApplication({
     session: createSessionPort({store: authStore, cookieName}),
-    gate: createAdmissionPort({store: authStore}),
+    gate: createAdmissionPort({tenantSelection, authStore}),
     journal,
     securityAudit,
     clock,

@@ -88,3 +88,100 @@ END
 $ledger$;
 
 COMMIT;
+
+BEGIN;
+
+-- =====================================================================
+-- PIVOT-014 Amendment B — immutable allocation receipt (consumed identity)
+--
+-- Binds a permanent document-number identity to the verified actor, tenant scope and
+-- accepted request digest at the moment it is consumed. Consequences that matter:
+--   * only the identical original request may recover the receipt;
+--   * a different actor or content receives a conflict instead of someone else's number;
+--   * the row outlives a failed business transaction, so a consumed identity leaves
+--     permanent evidence and is never reissued (gaps are permitted, never back-filled).
+--
+-- Tenant-leading, forced RLS, append-only, narrow SELECT/INSERT for the runtime.
+-- No accepted payload byte, fingerprinted table or existing grant is touched.
+-- =====================================================================
+
+DO $alloc_preflight$
+BEGIN
+  IF to_regclass('tenant_data.document_numbers') IS NULL THEN
+    RAISE EXCEPTION 'Run 20-tenant-schema.sql before 043-vertical-slice.sql';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+    WHERE c.relname IN ('document_allocations') AND NOT t.tgisinternal
+      AND t.tgname <> 'document_allocations_no_change'
+  ) THEN
+    RAISE EXCEPTION '043 refuses a pre-existing conflicting trigger on document_allocations';
+  END IF;
+END
+$alloc_preflight$;
+
+CREATE TABLE IF NOT EXISTS tenant_data.document_allocations (
+  tenant_id uuid NOT NULL,
+  allocation_id text NOT NULL,
+  company text NOT NULL,
+  kind text NOT NULL,
+  sequence integer NOT NULL,
+  number text NOT NULL,
+  actor text NOT NULL,
+  request_digest text NOT NULL,
+  state text NOT NULL DEFAULT 'CONSUMED',
+  consumed_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT document_allocations_pkey PRIMARY KEY (tenant_id, allocation_id),
+  CONSTRAINT document_allocations_scope_key UNIQUE (tenant_id, company, kind, sequence),
+  CONSTRAINT document_allocations_id_not_blank CHECK (length(btrim(allocation_id)) BETWEEN 8 AND 200),
+  CONSTRAINT document_allocations_actor_not_blank CHECK (length(btrim(actor)) BETWEEN 1 AND 200),
+  CONSTRAINT document_allocations_digest_not_blank CHECK (length(btrim(request_digest)) BETWEEN 1 AND 200),
+  CONSTRAINT document_allocations_sequence_positive CHECK (sequence > 0),
+  CONSTRAINT document_allocations_state_consumed CHECK (state = 'CONSUMED')
+);
+
+COMMENT ON TABLE tenant_data.document_allocations IS
+  'PIVOT-014 Amendment B: immutable consumed-identity receipt. Binds a document number to the verified actor, scope and accepted request digest. Append-only; deletion and rewriting are refused.';
+
+ALTER TABLE tenant_data.document_allocations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tenant_data.document_allocations FORCE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS document_allocations_tenant_select ON tenant_data.document_allocations;
+CREATE POLICY document_allocations_tenant_select ON tenant_data.document_allocations
+  FOR SELECT
+  USING (tenant_id = tenant_data.current_tenant_id());
+
+DROP POLICY IF EXISTS document_allocations_tenant_insert ON tenant_data.document_allocations;
+CREATE POLICY document_allocations_tenant_insert ON tenant_data.document_allocations
+  FOR INSERT
+  WITH CHECK (
+    tenant_id = tenant_data.current_tenant_id()
+    AND EXISTS (
+      SELECT 1 FROM tenant_data.members m
+      WHERE m.tenant_id = tenant_data.current_tenant_id()
+        AND m.user_id = document_allocations.actor
+        AND m.user_uuid = tenant_data.current_user_id()
+        AND m.active
+    )
+  );
+
+CREATE OR REPLACE FUNCTION tenant_data.immutability_043_allocation_guard() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, tenant_data
+AS $fn$
+BEGIN
+  RAISE EXCEPTION 'ALLOCATION_RECEIPT_RETAINED: an allocation receipt is immutable and retained';
+END;
+$fn$;
+
+DROP TRIGGER IF EXISTS document_allocations_no_change ON tenant_data.document_allocations;
+CREATE TRIGGER document_allocations_no_change
+  BEFORE UPDATE OR DELETE ON tenant_data.document_allocations
+  FOR EACH ROW EXECUTE FUNCTION tenant_data.immutability_043_allocation_guard();
+
+REVOKE ALL ON tenant_data.document_allocations FROM PUBLIC;
+REVOKE ALL ON tenant_data.document_allocations FROM saven_auth_service, saven_auth_definer,
+  saven_operator_read, saven_operator_admin, saven_operator_definer;
+GRANT SELECT, INSERT ON tenant_data.document_allocations TO saven_customer_app;
+
+COMMIT;

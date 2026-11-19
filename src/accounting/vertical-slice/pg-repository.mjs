@@ -160,7 +160,15 @@ export function createPgRepository({
         [ctx.tenantId, ctx.userUuid],
       );
       const tx = createTx(client, ctx);
-      return fn(tx);
+      const result = await fn(tx);
+      // Accepted AUTH-006 pre-commit revalidation: a membership/role/assurance change that
+      // won during handler execution discards these business effects.
+      if (typeof ctx.beforeCommit === 'function') await ctx.beforeCommit();
+      // The acting principal is observed on the client that executed the work.
+      const identity = await client.query(
+        'SELECT current_user AS current_user, session_user AS session_user');
+      ctx.principal = identity.rows[0];
+      return result;
     }, {readOnly: options.readOnly === true});
   }
 
@@ -311,13 +319,16 @@ export function createPgRepository({
             WHERE tenant_id = $1 AND entry_id = $2`, [ctx.tenantId, id]);
         return {...rows[0], lines, voided: voided[0] ?? null};
       },
-      async listJournals() {
+      async listJournals({company = null, branch = null} = {}) {
         const {rows} = await q(
           `SELECT j.id, j.company, j.branch, j.posting_date, j.narrative, c.state, n.number
              FROM tenant_data.journals j
              JOIN tenant_data.command_inbox c ON c.tenant_id = j.tenant_id AND c.id = j.id
              LEFT JOIN tenant_data.document_numbers n ON n.tenant_id = j.tenant_id AND n.id = j.id
-            WHERE j.tenant_id = $1 ORDER BY j.id`, [ctx.tenantId]);
+            WHERE j.tenant_id = $1
+              AND ($2::text IS NULL OR j.company = $2)
+              AND ($3::text IS NULL OR j.branch = $3)
+            ORDER BY j.id`, [ctx.tenantId, company, branch]);
         return rows;
       },
       async listLifecycle(commandId) {
@@ -383,7 +394,7 @@ export function createPgRepository({
    * the number already recorded for that id instead of consuming a second one, so a
    * lost-response retry converges without duplicate identities.
    */
-  async function reserveNumber(ctx, {id, company, kind}) {
+  async function reserveNumber(ctx, {id, company, kind, requestDigest}) {
     if (!isUuid(ctx.tenantId) || !isUuid(ctx.userUuid)) {
       throw new SliceError(500, 'ACCOUNTING_CONTEXT_INVALID', 'A verified tenant context is required.');
     }
@@ -400,11 +411,25 @@ export function createPgRepository({
       const locked = await client.query(SEQ_ROW_LOCK, [ctx.tenantId, company, kind]);
       if (locked.rowCount !== 1) throw refuse.allocatorExhausted();
 
+      // Immutable binding: only the identical original request may recover the receipt.
+      const receipt = await client.query(
+        `SELECT company, kind, sequence, number, actor, request_digest
+           FROM tenant_data.document_allocations WHERE tenant_id = $1 AND allocation_id = $2`,
+        [ctx.tenantId, id]);
+      if (receipt.rowCount === 1) {
+        const row = receipt.rows[0];
+        if (row.actor !== ctx.actor || row.request_digest !== requestDigest
+            || row.company !== company || row.kind !== kind) {
+          throw refuse.idempotencyConflict();
+        }
+        return {sequence: row.sequence, number: row.number, reused: true};
+      }
       const existing = await client.query(
         `SELECT sequence, number FROM tenant_data.document_numbers
           WHERE tenant_id = $1 AND id = $2`, [ctx.tenantId, id]);
       if (existing.rowCount === 1) {
-        return {sequence: existing.rows[0].sequence, number: existing.rows[0].number, reused: true};
+        // A number exists without a receipt: an allocator-era gap. Refuse to rebind it.
+        throw refuse.idempotencyConflict();
       }
 
       const next = boundedInteger(locked.rows[0].next_number, 'next_number');
@@ -420,6 +445,11 @@ export function createPgRepository({
            (tenant_id, id, company, kind, sequence, number, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
         [ctx.tenantId, id, company, kind, next, number, ctx.now]);
+      await client.query(
+        `INSERT INTO tenant_data.document_allocations
+           (tenant_id, allocation_id, company, kind, sequence, number, actor, request_digest)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [ctx.tenantId, id, company, kind, next, number, ctx.actor, requestDigest]);
       return {sequence: next, number, reused: false};
     });
   }

@@ -249,7 +249,14 @@ export function createTenantSelection({store, clock = () => new Date(), audit = 
     if (initial.userId !== session.userId) throw new TenantSelectionError(403, 'TENANT_ACCESS_DENIED', 'Tenant access denied.');
 
     const user = await executor.query(
-      'SELECT id, status, credential_version FROM auth.users WHERE id = $1 FOR UPDATE',
+      // PIVOT-014 Amendment A: the admission principal lock is narrowed to
+      // NO KEY UPDATE. It still excludes every authority/lifecycle writer (status,
+      // credential version, membership, role, session, factor) and still serializes this
+      // admission, but it no longer conflicts with the KEY SHARE lock that a business
+      // write must take for its auth.users foreign key (the accepted 042 void receipt).
+      // The factor and session locks below remain FOR UPDATE and the gate-first order
+      // (principal -> factor -> session) is unchanged.
+      'SELECT id, status, credential_version FROM auth.users WHERE id = $1 FOR NO KEY UPDATE',
       [initial.userId],
     );
     if (user.rowCount !== 1 || user.rows[0].status !== 'active') throw sessionRequired();

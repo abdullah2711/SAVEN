@@ -23,3 +23,9 @@ const focused = spawnSync(process.execPath, ['--test', resolve(root, 'tests/pivo
 if (focused.error) { process.stderr.write(`${focused.error.message}\n`); process.exit(1); }
 if (focused.status !== 0) process.exit(focused.status ?? 1);
 console.log('PASS: PIVOT-014 vertical-slice lifecycle test executed and passed.');
+
+// PIVOT-014 Amendment A: AUTH-006 admission lock compatibility/retention regression.
+const authContext = spawnSync(process.execPath, ['--test', resolve(root, 'tests/auth-006-context.test.mjs')], {stdio: 'inherit'});
+if (authContext.error) { process.stderr.write(`${authContext.error.message}\n`); process.exit(1); }
+if (authContext.status !== 0) process.exit(authContext.status ?? 1);
+console.log('PASS: AUTH-006 admission lock compatibility test executed and passed.');

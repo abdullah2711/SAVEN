@@ -191,7 +191,9 @@ export function assertPorts(ports) {
   for (const fn of ['verify', 'csrfMatches']) {
     if (typeof ports.session[fn] !== 'function') throw new Error(`The session port must implement ${fn}().`);
   }
-  if (typeof ports.gate.admit !== 'function') throw new Error('The gate port must implement admit().');
+  for (const fn of ['withAdmission', 'actorFor']) {
+    if (typeof ports.gate[fn] !== 'function') throw new Error(`The gate port must implement ${fn}().`);
+  }
   for (const fn of ['transaction', 'reserveNumber', 'identity']) {
     if (typeof ports.journal[fn] !== 'function') throw new Error(`The journal port must implement ${fn}().`);
   }

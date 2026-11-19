@@ -31,6 +31,8 @@ export const SCHEMA_FILES = Object.freeze([
   'db/postgres/20-tenant-schema.sql',
   'db/postgres/migrations/021-tenant-schema-corrections.sql',
   'db/postgres/30-rls-policies.sql',
+  'db/postgres/migrations/031-rls-corrections.sql',
+  'db/postgres/migrations/032-rls-hardening.sql',
   'db/postgres/migrations/033-membership-admission-lock.sql',
   'db/postgres/migrations/040-posted-immutability.sql',
   'db/postgres/migrations/041-audit.sql',
