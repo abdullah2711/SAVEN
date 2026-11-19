@@ -1,61 +1,60 @@
-# AUTH-009 delivery (revision 3) — PARTIAL: finding 1 escalated, findings 2-3 corrected
+# AUTH-009 delivery (revision 4) — narrowed scope, resubmitted for review
 
 ## Identity
 
 - Contract: `docs/contractor/contracts/AUTH-009-auth-audit.md`
 - Branch: `opencode/auth-009-audit`; worktree `/home/esc/saven/wt-auth-009`
 - Base `testing-1` SHA: `c543ef7`
-- Prior reviewed delivery: `eb6830a` (verdict `87b7977`; re-issued as `8804078` against
-  `eb6830a`)
-- Revision 2 (returned by the dispatcher for this round): `de7d470`
-- Revision 3 implementation commit: `5639403802ec22e6d7685f285339ef678850d48e`
-  (`app: map ADR03 producers and prove catalog/refusal boundaries [contract:AUTH-009]`)
+- Prior deliveries: `eb6830a` (verdict `87b7977`/`8804078`), `de7d470` (revision 2),
+  `606c4e3` (revision 3)
+- Revision 4 implementation commit: `2d673b045cbc0d861afd95c4d91fa56e052e7331`
+  (`app: record Principal-approved producer deferral for IAM events [contract:AUTH-009]`)
 - Report/checkpoint commit: this commit
 
-**Status: PARTIAL, not complete.** Finding 1 is escalated to the Principal and not decided;
-`role_changed`, `membership_invited` and `membership_accepted` remain REQUIRED with no
-producer and no test. Findings 2 and 3 are corrected and tested. No role/invitation/credential
-policy was invented for the escalated items.
+Principal decision of 19 November 2026: the narrowing amendment is APPROVED. AUTH-009 ships
+the vocabulary, validation, required map and an explicit producer-deferred marker for
+`role_changed`, `membership_invited` and `membership_accepted`. No role/invitation policy is
+implemented here. `password_changed` remains real and tested. All four remain REQUIRED in the
+required map. Codex is recording the decision in `DECISION_LOG` (owning contract ID at
+authoring; legacy `BUSINESS_ROLE_SAVED` carried forward, not dropped); this delivery does not
+edit that file.
 
-Routing note: verdict `8804078` reproduces the review text that inspected `eb6830a`
-(revision 1). Revision 2 (`de7d470`) already contained the finding 2 and finding 3
-corrections; this revision adds the reviewer-required producer/transition map, a
-route-family refusal inventory test, composition-wiring proof for the catalog boundary, and
-this report's explicit map.
+## 1. Producer/transition map (narrowed scope)
 
-## 1. Producer/transition map (required; finding 1 escalated)
+`ADR03_PRODUCER_MAP` in `src/auth/audit.mjs` — source-level, catalog-independent. Test:
+`AUTH-009 producer/transition map is precise and records the Principal-approved producer
+deferral`.
 
-`ADR03_PRODUCER_MAP` in `src/auth/audit.mjs` — source-level, catalog-independent, and tested
-by `AUTH-009 producer/transition map is precise, catalog-independent and reports unresolved
-requirements`.
-
-| Required event | Status | Intended transition | Real flow / route | Absent |
+| Required event | Status | Intended transition | Real flow / route | Legacy producer / note |
 | --- | --- | --- | --- | --- |
-| `login_success` | live | Verified credential or asserted operator identity creates a session | `POST /v1/auth/login`; `POST /v1/auth/operator/access` | — |
-| `login_failure` | live | Attempt reserved, denied, or refused before reservation | same routes + central refusal path | — |
-| `logout` | live | Authenticated principal revokes the current session | `POST /v1/auth/logout`; `POST /v1/auth/operator/logout` | — |
-| `mfa_enrolled` | live | TOTP enrollment starts/completes/replaces | `POST /v1/auth/mfa/enroll`, `.../enroll/verify` | — |
-| `mfa_verified` | live | TOTP/recovery code verifies and raises assurance | `POST /v1/auth/mfa/verify` | — |
+| `login_success` | live | Verified credential/asserted identity creates a session | `POST /v1/auth/login`; `POST /v1/auth/operator/access` | — |
+| `login_failure` | live | Attempt reserved, denied, or refused before reservation | same + central refusal path | — |
+| `logout` | live | Principal revokes the current session | customer/operator logout | — |
+| `mfa_enrolled` | live | TOTP enrollment starts/completes/replaces | `POST /v1/auth/mfa/enroll[/verify]` | — |
+| `mfa_verified` | live | TOTP/recovery verifies and raises assurance | `POST /v1/auth/mfa/verify` | — |
 | `mfa_disabled` | live | Factor disablement after reauthentication | `POST /v1/auth/mfa/disable` | — |
 | `password_changed` | live | Authenticated current-password reauthentication sets a new credential | `POST /v1/auth/password/change` | — |
-| `password_reset_requested` | live | Reset challenge reserved and, when configured, issued | `POST /v1/auth/forgot-password` | — |
-| `password_reset_completed` | live | Single-use reset token consumes to a new credential generation | `POST /v1/auth/reset-password` | — |
-| `sessions_revoked` | live | Bulk revocation by reset or password change | reset/password-change routes | — |
-| `role_changed` | **unresolved** | Tenant membership role reassigned with current authority | **none** | No authenticated role-administration adapter; authority/epoch/session effects belong to the membership/role contract. |
-| `membership_invited` | **unresolved** | Administrator issues a pending membership invitation | **none** | No invitation adapter; PIVOT-004 records invitation/acceptance policy ownership stays with a future contract. |
-| `membership_accepted` | **unresolved** | Invited identity authenticates and explicitly accepts | **none** | No acceptance adapter; issuer revalidation, token lifetime and acceptance semantics are owned by the membership contract (AUTH-006 records selection is not acceptance). |
+| `password_reset_requested` | live | Reset challenge reserved/issued | `POST /v1/auth/forgot-password` | — |
+| `password_reset_completed` | live | Single-use reset token consumes to a new generation | `POST /v1/auth/reset-password` | — |
+| `sessions_revoked` | live | Bulk revocation by reset/password change | reset/password-change | — |
+| `role_changed` | **producer-deferred (IAM)** | Membership role reassigned with current authority | **none on audited PG surface** | LIVE legacy flow: `src/local/administration.mjs` records `BUSINESS_ROLE_SAVED`. Carried forward, not dropped. |
+| `membership_invited` | **producer-deferred (IAM)** | Administrator issues a pending invitation | **none on audited PG surface** | LIVE legacy flow: `src/operating.mjs` `invite()`/`membershipInvitation()`, imported/routed by `src/api.mjs`. |
+| `membership_accepted` | **producer-deferred (IAM)** | Invited identity authenticates and accepts | **none on audited PG surface** | LIVE legacy flow: `src/operating.mjs` `membershipInvitation()`, imported/routed by `src/api.mjs`. |
 
-No test treats the three unresolved rows as complete coverage. `ADR03_REQUIRED_EVENTS` marks
-all 13 `required`; the map marks the three `unresolved` with the absence stated; the catalog
-has their schemas with `producer: null`. Resolution is the escalated engineer/Principal
-amendment.
+**Corrected premise (important):** the deferral is not because the workflows do not exist.
+They are live on the legacy data layer. The accurate reason is that they are **not covered by
+the new auth-audited PostgreSQL surface**, and porting them is an IAM contract of its own
+(authority, tenant scoping, invitation/acceptance token semantics, role epochs and session
+consequences). No producer is fabricated; no legacy behavior is dropped.
+
+Required-map state: all 13 entries are `status: 'required'`; the three carry
+`producerDeferredTo: 'IAM/membership administration contract'`. No `deferred` status exists,
+and a catalog edit cannot change the map.
 
 ## 2. Early-refusal failure coverage (DONE)
 
 Every security decision that can exit before a route recorder is routed into exactly one
-durable classified event by the central safety net, and routes that record locally mark the
-error so no duplicate row is produced. Full route-family inventory (test:
-`AUTH-009 every route family records its early security decision exactly once`):
+durable classified event; local recorders mark the error so no duplicate row is produced.
 
 | Exit | Classified event |
 | --- | --- |
@@ -68,11 +67,11 @@ error so no duplicate row is produced. Full route-family inventory (test:
 | Session missing/expired/revoked or CSRF failure on any authenticated route | `session_denied`; actor only from a verified session, otherwise NULL/`unknown` |
 | Tenant selection policy denial | `tenant_selection_failed` |
 | MFA route realm/origin guards before the factor try block | `access_denied` |
-| Operator exchange guards (already accepted) | `login_failure` |
+| Operator exchange guards | `login_failure` |
 | Any other route-level security refusal | `access_denied` |
 
-Malformed JSON stays unrecorded (asserted). Login/reset/password-change reservations remain
-before KDF work and are not duplicated. Tests (all pass):
+Malformed JSON stays unrecorded (asserted). Reservations remain before KDF work and are not
+duplicated. Tests (all pass):
 
 - `AUTH-009 pre-reservation login refusals are recorded once with the correct attribution`
 - `AUTH-009 assurance, CSRF and session refusals are classified and recorded exactly once`
@@ -82,44 +81,33 @@ before KDF work and are not duplicated. Tests (all pass):
 - `AUTH-009 operator guard refusals are audited before the assertion is exchanged`
 - `AUTH-009 every route family records its early security decision exactly once`
 
-Denial/permitted pairing: the CSRF denial is paired with a successful selection in the same
-test file (`tenant selection and clearing are audited atomically`) and the MFA gate denial is
-paired with the same user's permitted paths after verification; refusals are asserted to
-create no session and no success mutation.
-
 ## 3. Reference/configuration catalog through the writer boundary (DONE)
 
-The event domain is `src/auth/audit-catalog.v1.json` (`catalogVersion: 1`), consumed and
-validated only through `audit.mjs`. Boundary wiring, proven by
-`AUTH-009 server composition validates and forwards the configured catalog`:
+`src/auth/audit-catalog.v1.json` (`catalogVersion: 1`) is consumed and validated only through
+`audit.mjs`. Wiring (test: `AUTH-009 server composition validates and forwards the configured
+catalog`):
 
-1. `createAuthServer({auditCatalog})` forwards the deployment catalog to
-   `createAuditWriter(pool, {auditCatalog})`.
-2. `createAuditWriter` calls `validateAuditCatalog` once; an invalid/unsupported catalog throws
-   `AUDIT_CATALOG_INVALID` at composition (asserted: invalid actors config refused).
-3. A valid deployment catalog (with an extra `probe_event`) composes and serves; the login
-   failure writes through the same writer.
+1. `createAuthServer({auditCatalog})` forwards to `createAuditWriter(pool, {auditCatalog})`.
+2. `createAuditWriter` calls `validateAuditCatalog` once; invalid/unsupported catalog throws
+   `AUDIT_CATALOG_INVALID` at composition.
+3. A valid deployment catalog composes and serves; a login failure writes through it.
 4. Each write calls `prepareAuditRow(event, {catalog})`: per-event actor/outcome/detail
-   allow-lists plus the global credential-name guard.
-5. Unknown events fail closed with `AUDIT_EVENT_UNKNOWN`; no fallback writer exists.
-6. `ADR03_REQUIRED_EVENTS` and `ADR03_PRODUCER_MAP` are source constants and do not read the
+   allow-lists + global credential-name guard.
+5. Unknown events fail closed (`AUDIT_EVENT_UNKNOWN`); no fallback writer.
+6. `ADR03_REQUIRED_EVENTS` / `ADR03_PRODUCER_MAP` are source constants independent of the
    catalog.
+
+No-code-change path: add the entry to the JSON (or supply an equivalent validated catalog via
+`createAuthServer`), keep `catalogVersion` compatible, version payload changes with the
+event's detail schema. Clients cannot register or select a catalog.
 
 Proving tests:
 
-- `AUTH-009 event domain is an external, versioned, validated configuration` — separately
-  configured event writes through the same writer and versioning; same redaction rejects
-  credential-shaped detail; unknown event and six invalid configurations refused.
-- `AUTH-009 server composition validates and forwards the configured catalog` — composition
-  wiring and fail-closed behavior, not just the file.
-- `AUTH-009 the required-event map stays independent of the configurable catalog`.
-- `AUTH-009 producer/transition map is precise, catalog-independent and reports unresolved
-  requirements`.
-
-Adding an event needs no writer change: add the entry to the JSON (or supply an equivalent
-validated catalog through `createAuthServer`), keep `catalogVersion` compatible, and extend
-`detail_schema_version` for a payload change. HTTP clients cannot register or select a
-catalog.
+- `AUTH-009 event domain is an external, versioned, validated configuration`
+- `AUTH-009 server composition validates and forwards the configured catalog`
+- `AUTH-009 the required-event map stays independent of the configurable catalog`
+- `AUTH-009 producer/transition map is precise and records the Principal-approved producer
+  deferral`
 
 ## Files changed vs TOUCH
 
@@ -128,10 +116,11 @@ TOUCH: `src/auth/audit.mjs`; `src/auth/routes.mjs`; `src/auth/server.mjs`;
 `src/auth/factors.mjs`; `src/auth/recovery.mjs`; `src/auth/tenant-selection.mjs`;
 `src/auth/access.mjs`; `src/auth/README.md`; `tests/auth-009-audit.test.mjs`.
 
-This round: `src/auth/audit.mjs` (producer map), `src/auth/README.md` (map + wiring),
-`tests/auth-009-audit.test.mjs` (3 new tests, 24 total), plus this report/checkpoint. The
-approved new file `src/auth/audit-catalog.v1.json` and the revision-2 source changes are
-unchanged. No migration, grant, role, accepted-migration or SQLite change.
+This round: `src/auth/audit.mjs` (required-map marker + producer map), `src/auth/README.md`
+(narrowing + corrected premise), `tests/auth-009-audit.test.mjs` (marker assertions), plus this
+report/checkpoint. The amendment-approved new file `src/auth/audit-catalog.v1.json` and the
+revision-2/3 source changes are unchanged. No migration, grant, role, accepted-migration or
+SQLite change; no legacy flow removed.
 
 ## Gate
 
@@ -147,18 +136,16 @@ $ node --test tests/auth-009-audit.test.mjs
 ℹ fail 0
 ```
 
-Serial regression in the full loop: AUTH-002 18/18, 003 27/27, 005 27/27, 007 22/22; AUTH-004
-and AUTH-006 each showed the **pre-existing** shared-fixture transient
-`terminating connection due to administrator command` once. Isolated reruns are green
-(AUTH-004 5/5 and AUTH-006 6/6 consecutive). The same error was reproduced on unmodified base
-`c543ef7`, so it is not attributed to AUTH-009. Excluding that transient, combined focused
-evidence is 24/24 plus 142/142 prior; the honest full-loop total is reported as 165/166 in
-that one run, not silently rounded up.
+Serial regression: AUTH-002 18/18, AUTH-003 27/27, AUTH-004 21/21, AUTH-005 27/27,
+AUTH-006 27/27, AUTH-007 22/22 (final clean pass). Prior runs occasionally hit the
+pre-existing shared-fixture transient `terminating connection due to administrator command`
+in AUTH-004/AUTH-006; the same error reproduces on unmodified base `c543ef7`, and isolated
+reruns are green. Not attributed to AUTH-009.
 
 ## Limits
 
-- Finding 1 remains PARTIAL pending the escalated decision. No producer is fabricated.
-- The three unresolved events have schemas only; `producer: null`.
+- The three deferred producers remain absent from the audited PostgreSQL surface by Principal
+  decision; their schemas and markers exist, and the legacy flows remain in place.
 - Failure durability is best-effort under a total ledger outage (counted/exposed).
 - No UI, active entry point, deployment, migration, cutover or merge; no live Access/IdP,
   SMTP, pooler or load claim. Reviewer reproduction remains external.
