@@ -2,6 +2,35 @@
 
 Date: 19 November 2026 (Asia/Karachi).
 
+## Current state — PIVOT-014 REVISION 2: PARTIAL, findings 1 and 3 blocked on engineer amendments
+
+Date: 20 November 2026 (Asia/Karachi).
+
+| Item | Value |
+|---|---|
+| Branch | `opencode/pivot-014-vertical-slice` |
+| Base | `e0fa9fb` |
+| Revision implementation | `2af8fae254dc7f62e76156692d3b78ba9f31a020` |
+| Revision report | `550378cea01a376afc15311afc8b69287f29bb65` (+ SHA-record commit) |
+| Gate | `node scripts/check.mjs` → 178 files + **16/16**, exit 0, ~3.1 s of 240 s |
+
+**LABEL: PARTIAL.** Findings 4, 8 DONE; 5, 2, 6, 7 PARTIAL; 1 and 3 OPEN and blocked on
+engineer-owned amendments. Per-finding table with named tests is in the delivery §"Revision 2".
+
+- **Amendment A requested:** AUTH-006 admission holds `FOR UPDATE` on `auth.users`; accepted
+  042 `entry_voids_actor_fkey` needs `KEY SHARE` on the same row → the void blocks
+  (`canceling statement due to statement timeout`) when the accepted gate is held across the
+  business transaction. Options and blast radius are in the delivery.
+- **Amendment B requested:** bounded additive 043 table `tenant_data.document_allocations`
+  (+RLS+grants) to bind the permanent identity to verified actor/tenant/company/kind/request
+  digest. Until approved, hostile different-actor reuse of a failed request's number remains
+  possible and is disclosed, not hidden.
+- Applying accepted `031`/`032` to the disposable lineage makes every request fail
+  `TENANT_SELECTION_REQUIRED`; `006` is fine. 031/032 are therefore not in the delivered
+  lineage; completing finding 1 needs the accepted composed path under Amendment A.
+
+---
+
 ## Current state — PIVOT-014 vertical slice DELIVERED, awaiting review
 
 - Contract: `docs/contractor/contracts/PIVOT-014-vertical-slice.md`.
