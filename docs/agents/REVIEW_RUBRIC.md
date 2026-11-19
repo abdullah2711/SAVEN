@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 7. Created: 19 November 2026 (Asia/Karachi).
+Version: 8. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -109,3 +109,7 @@ Append future entries here only after the corresponding review is committed; inc
 - 20 November 2026 — v6 — review `92f3e00` (PIVOT-007 R2, REVISE): no new defect pattern; apply R69/R40/R43 to the actual captured AUTH-007 source-age/skew policy and to policy effective windows after the last blocking consent gate, and R61/R09 to missing/short bearer decisions that precede the independent denial recorder, with exact refusals, durable unknown-actor evidence and permitted controls.
 
 - 20 November 2026 — v7 — review `b974d37` (PIVOT-014 partial R2, REVISE plus A/B amendments): R72 — Prove compatibility of locks held on separate auth/business connections with real FK KEY SHARE; choose the least mode that still blocks authority changes, never remove retained FKs or release admission early to bypass self-blocking; R73 — Cleanup/notification callbacks cannot suppress the primary outcome or skip exact-client destruction; reapply R34/R71 to executed-BEGIN and attempted-start acknowledgement uncertainty, R09 to actual permitted controls and R12/R13 to explicit partial scope/amendment ownership.
+
+## Version 8 — 20 November 2026 (Asia/Karachi)
+
+Review: `782ed6b` — PIVOT-014 revision 3, REVISE. No new defect class: apply R08 to preserve accepted AUTH-006 regression coverage when adding lock-compatibility tests; R48/R49/R70 to rollback-resistant consumed identities and retained high-water validation; R22/R23 to atomic complete-payload activation and existing-object validation; R34/R73 to uncertain BEGIN and throwing cleanup observers; R09/R11/R55/R71 to truthful concurrent first-post, mutation and whole-budget evidence. A bound receipt in the same rollbackable transaction is not nontransactional consumption.
