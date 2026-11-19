@@ -315,6 +315,11 @@ test('AUTH-009 the required-event map stays independent of the configurable cata
     assert.ok(Object.hasOwn(AUTH_AUDIT_CATALOG, name), `${name} must have a configured schema`);
   }
   assert.ok(AUTH_AUDIT_CATALOG.password_changed.producer, 'password_changed now has a real producer');
+  for (const name of ['role_changed', 'membership_invited', 'membership_accepted']) {
+    assert.equal(ADR03_REQUIRED_EVENTS[name].status, 'required');
+    assert.equal(ADR03_REQUIRED_EVENTS[name].producerDeferredTo, 'IAM/membership administration contract',
+      `${name} must carry the explicit producer-deferred marker`);
+  }
   // A catalog entry cannot mark an event optional: the source map has no such status,
   // and every entry is checked above as `required`.
   for (const spec of Object.values(AUTH_AUDIT_CATALOG)) {
@@ -322,26 +327,30 @@ test('AUTH-009 the required-event map stays independent of the configurable cata
   }
 });
 
-test('AUTH-009 producer/transition map is precise, catalog-independent and reports unresolved requirements', () => {
+test('AUTH-009 producer/transition map is precise and records the Principal-approved producer deferral', () => {
   assert.deepEqual(Object.keys(ADR03_PRODUCER_MAP).sort(), Object.keys(ADR03_REQUIRED_EVENTS).sort());
-  const unresolved = [];
+  const deferred = [];
   for (const [name, entry] of Object.entries(ADR03_PRODUCER_MAP)) {
-    assert.ok(['live', 'unresolved'].includes(entry.status), `${name} needs an explicit status`);
-    assert.notEqual(entry.status, 'deferred', `${name} may not be deferred by the map`);
+    assert.ok(['live', 'producer-deferred'].includes(entry.status), `${name} needs an explicit status`);
+    assert.notEqual(entry.status, 'deferred', `${name} may not be dropped from the required set by the map`);
     assert.equal(typeof entry.transition, 'string');
     if (entry.status === 'live') {
       assert.ok(entry.producer && entry.route, `${name} live entry needs flow and route`);
       assert.ok(AUTH_AUDIT_CATALOG[name].producer, `${name} live entry must match a configured producer`);
     } else {
-      unresolved.push(name);
+      deferred.push(name);
       assert.equal(entry.producer, null);
       assert.equal(entry.route, null);
-      assert.ok(entry.absent && entry.absent.length > 0, `${name} must state what is absent`);
+      assert.equal(entry.deferredTo, 'IAM/membership administration contract');
+      assert.ok(entry.legacyProducer && entry.legacyProducer.length > 0, `${name} must name the live legacy producer`);
+      assert.ok(entry.absent && entry.absent.length > 0, `${name} must state what the audited surface lacks`);
       assert.equal(AUTH_AUDIT_CATALOG[name].producer, null, `${name} must not claim a configured producer`);
+      assert.equal(ADR03_REQUIRED_EVENTS[name].status, 'required', `${name} stays REQUIRED`);
+      assert.equal(ADR03_REQUIRED_EVENTS[name].producerDeferredTo, 'IAM/membership administration contract');
     }
   }
-  assert.deepEqual(unresolved.sort(), ['membership_accepted', 'membership_invited', 'role_changed'],
-    'these REQUIRED producers remain unresolved and must reach review as such, not as complete coverage');
+  assert.deepEqual(deferred.sort(), ['membership_accepted', 'membership_invited', 'role_changed'],
+    'these producers are Principal-deferred to the IAM contract, not silently skipped');
   assert.equal(ADR03_PRODUCER_MAP.password_changed.status, 'live');
 });
 

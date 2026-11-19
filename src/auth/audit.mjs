@@ -86,9 +86,21 @@ export const ADR03_REQUIRED_EVENTS = Object.freeze({
   password_reset_requested: Object.freeze({status: 'required'}),
   password_reset_completed: Object.freeze({status: 'required'}),
   sessions_revoked: Object.freeze({status: 'required'}),
-  role_changed: Object.freeze({status: 'required'}),
-  membership_invited: Object.freeze({status: 'required'}),
-  membership_accepted: Object.freeze({status: 'required'}),
+  role_changed: Object.freeze({
+    status: 'required',
+    producerDeferredTo: 'IAM/membership administration contract',
+    reason: 'Principal-approved narrowing (19 Nov 2026): AUTH-009 ships the vocabulary, validation and required map; the producer is deferred to the IAM/membership contract. The role-change flow is live on the legacy data layer (src/local/administration.mjs records BUSINESS_ROLE_SAVED); it is not covered by the new auth-audited PostgreSQL surface, and porting it is an IAM contract of its own. BUSINESS_ROLE_SAVED is carried forward, not dropped.',
+  }),
+  membership_invited: Object.freeze({
+    status: 'required',
+    producerDeferredTo: 'IAM/membership administration contract',
+    reason: 'Principal-approved narrowing (19 Nov 2026): AUTH-009 ships the vocabulary, validation and required map; the producer is deferred to the IAM/membership contract. The invitation flow is live on the legacy data layer (src/operating.mjs invite()/membershipInvitation(), imported and routed by src/api.mjs); it is not covered by the new auth-audited PostgreSQL surface, and porting it is an IAM contract of its own.',
+  }),
+  membership_accepted: Object.freeze({
+    status: 'required',
+    producerDeferredTo: 'IAM/membership administration contract',
+    reason: 'Principal-approved narrowing (19 Nov 2026): AUTH-009 ships the vocabulary, validation and required map; the producer is deferred to the IAM/membership contract. The acceptance flow is live on the legacy data layer (src/operating.mjs membershipInvitation(), imported and routed by src/api.mjs); it is not covered by the new auth-audited PostgreSQL surface, and porting it is an IAM contract of its own.',
+  }),
 });
 
 // Precise producer/transition map. This is reporting and review evidence, not a
@@ -157,25 +169,31 @@ export const ADR03_PRODUCER_MAP = Object.freeze({
     route: 'POST /v1/auth/reset-password; POST /v1/auth/password/change',
   }),
   role_changed: Object.freeze({
-    status: 'unresolved',
+    status: 'producer-deferred',
     transition: 'A tenant membership role is reassigned with current authority.',
     producer: null,
     route: null,
-    absent: 'No authenticated role-administration adapter exists in AUTH-001..007. Current authority, tenant scoping and effect on sessions would have to be defined by the owning membership/role contract; inventing it here would create unauthorised security policy.',
+    deferredTo: 'IAM/membership administration contract',
+    legacyProducer: 'src/local/administration.mjs records BUSINESS_ROLE_SAVED on the legacy data layer',
+    absent: 'The transition exists on the legacy data layer but has no auth-audited PostgreSQL producer. AUTH-009 is not authorized to define role authority, epoch effects or session consequences; porting the transition is an IAM contract of its own. BUSINESS_ROLE_SAVED is carried forward, not dropped.',
   }),
   membership_invited: Object.freeze({
-    status: 'unresolved',
+    status: 'producer-deferred',
     transition: 'A tenant administrator issues a pending membership invitation.',
     producer: null,
     route: null,
-    absent: 'No invitation adapter exists. PIVOT-004 records that invitation/acceptance policy ownership stays with a future contract; AUTH-006 records that selection is not acceptance.',
+    deferredTo: 'IAM/membership administration contract',
+    legacyProducer: 'src/operating.mjs invite()/membershipInvitation(), imported and routed by src/api.mjs',
+    absent: 'The invitation workflow is live on the legacy data layer but has no auth-audited PostgreSQL producer. Porting it (authority, token lifetime, membership status) is an IAM contract of its own.',
   }),
   membership_accepted: Object.freeze({
-    status: 'unresolved',
+    status: 'producer-deferred',
     transition: 'The invited identity authenticates and explicitly accepts the membership.',
     producer: null,
     route: null,
-    absent: 'No acceptance adapter exists. Issuer authority revalidation, token lifetime and acceptance semantics are owned by the membership contract, not AUTH-009.',
+    deferredTo: 'IAM/membership administration contract',
+    legacyProducer: 'src/operating.mjs membershipInvitation(), imported and routed by src/api.mjs',
+    absent: 'The acceptance workflow is live on the legacy data layer but has no auth-audited PostgreSQL producer. Acceptance authority, issuer revalidation and token semantics belong to the IAM/membership contract.',
   }),
 });
 

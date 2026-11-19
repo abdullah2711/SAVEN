@@ -686,18 +686,28 @@ report carries the same table for review. Live producers today:
 | `tenant_selected`, `tenant_cleared`, `tenant_selection_failed` | tenant selection |
 | `assurance_denied`, `session_denied`, `access_denied` | common assurance gate and early route guards |
 
-### Required producers still unresolved
+### Producer-deferred events (Principal-approved narrowing, 19 Nov 2026)
 
 `role_changed`, `membership_invited` and `membership_accepted` are REQUIRED by ADR03 and
 remain in `ADR03_REQUIRED_EVENTS` as `required`. `ADR03_PRODUCER_MAP` records their intended
-transition and marks them `unresolved` with the absent authority/flow stated explicitly. They
-have no producing flow and the catalog marks their `producer` as `null`. This is an
-**unresolved required gap, reported against AUTH-009** — not a deferral, not a narrowing, and
-not satisfied by a synthetic row. The transition authority for membership
-invitation/acceptance and role change belongs to the membership/role administration contract;
-implementing it here would invent credential, invitation and role policy. AUTH-009 is not
-complete as a contract until those producers exist or Codex/Principal records an explicit
-amendment on the review.
+transition, the live legacy producer, and marks them `producer-deferred` to the
+IAM/membership administration contract. The catalog carries their schemas with
+`producer: null`.
+
+The justification is not "the workflows do not exist": they are LIVE on the legacy data
+layer —
+
+- invitations and acceptance: `src/operating.mjs` `invite()` / `membershipInvitation()`,
+  imported and routed by `src/api.mjs`;
+- role change: `src/local/administration.mjs` records `BUSINESS_ROLE_SAVED`.
+
+The accurate reason for the deferral is that those flows are **not covered by the new
+auth-audited PostgreSQL surface**, and porting them is an IAM contract of its own (authority,
+tenant scoping, invitation/acceptance token semantics, role epochs and session consequences).
+AUTH-009 ships the vocabulary, validation, required map and explicit deferral marker; it does
+not implement role or invitation policy. `BUSINESS_ROLE_SAVED` is carried forward, not
+dropped. All four ADR03 events formerly listed as absent remain REQUIRED — `password_changed`
+is live and tested, and the other three are visibly deferred, never silently skipped.
 
 ### Catalog boundary wiring
 
@@ -792,8 +802,9 @@ not add a second row.
 - Failure-audit durability is best-effort against a total database outage: the attempt is
   refused but no row can exist while the ledger is unreachable. The miss is counted and
   exposed rather than claimed as delivered.
-- `role_changed`, `membership_invited` and `membership_accepted` remain REQUIRED but have no
-  producer; AUTH-009 cannot be accepted as complete until Codex amends the finding on the
-  record or the Principal explicitly accepts the dependency.
+- `role_changed`, `membership_invited` and `membership_accepted` remain REQUIRED and are
+  explicitly producer-deferred to the IAM/membership contract under the Principal-approved
+  narrowing of 19 November 2026. Their legacy flows are live on the legacy data layer and are
+  carried forward (`BUSINESS_ROLE_SAVED` included); they are not silently skipped.
 - Success events for read-only routes (`me`, tenant listing) are intentionally not emitted.
 - No UI, active entry point, migration or deployment is changed by this module.
