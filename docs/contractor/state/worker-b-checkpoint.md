@@ -2,7 +2,47 @@
 
 Date: 19 November 2026 (Asia/Karachi).
 
-## Current state — PIVOT-014 REVISION 2: PARTIAL, findings 1 and 3 blocked on engineer amendments
+## Current state — PIVOT-014 REVISION 3: both amendments implemented
+
+Date: 20 November 2026 (Asia/Karachi).
+
+| Item | Value |
+|---|---|
+| Branch | `opencode/pivot-014-vertical-slice` |
+| Base | `e0fa9fb` |
+| Revision implementation | `3d59e80bde960f681c68b7c5177a5ea4e3412fc3` |
+| Gate | `node scripts/check.mjs` → 178 files, **17/17** lifecycle, **1/1** AUTH-006 context, exit 0 |
+| Lineage | 00, 05, **006**, 10, 20, 021, 30, **031, 032**, 033, 040, 041, 042, 40-triggers, 043 |
+
+### Amendment A (approved) — DONE
+`src/auth/tenant-selection.mjs`: admission principal lock `FOR UPDATE` → `FOR NO KEY UPDATE`.
+Gate-first principal→factor→session order, realm/role/epoch/MFA checks and
+authority-through-completion unchanged; factor/session locks untouched.
+Proof: `tests/auth-006-context.test.mjs` (KEY SHARE not blocked; NO KEY UPDATE / status /
+credential / membership writers blocked `55P03`; permitted control after release) and void
+committing under retained admission in `S5`.
+
+### Amendment B (approved) — DONE
+`043` adds immutable tenant-leading `tenant_data.document_allocations` (actor + request digest +
+scope binding, forced RLS, narrow SELECT/INSERT, `ALLOCATION_RECEIPT_RETAINED` guard).
+Proof: `S8` hostile reuse → `IDEMPOTENCY_CONFLICT`; real 043 reapplication retains receipts and
+high-water; regression refused; gaps permitted.
+
+### Per-finding status
+| # | Status | Proof |
+|---|---|---|
+| 1 AUTH-006 composition + canonical lineage | **DONE** | `S1`, `S3`, `AUTH-006 …` |
+| 2 canonical resource permissions | **PARTIAL** | `S2b`, `S3`, `S4`, `S6`, `S7` (no dedicated race test) |
+| 3 immutable allocation identity | **DONE** | `S8` |
+| 4 uncertain-checkout destruction | **DONE** | `R1 …` |
+| 5 S2 setup/cleanup/budget | **PARTIAL** | setup-failure probe; teardown not in budget |
+| 6 transactional validation + post key | **DONE** | `S4`, `S7` |
+| 7 proof breadth | **PARTIAL** | `S3`, `S5`, `S6`, `S8` (overlap still promise-counted) |
+| 8 active catalog pin | **DONE** | catalog probe |
+
+---
+
+## Superseded — REVISION 2: PARTIAL, findings 1 and 3 blocked on engineer amendments
 
 Date: 20 November 2026 (Asia/Karachi).
 

@@ -289,7 +289,7 @@ accepted payload byte, 040/041/042 SQL, policy surface or unrelated runtime sour
 
 | Item | Value |
 |---|---|
-| Revision implementation SHA | *(see `git log`; the commit that adds this section's code)* |
+| Revision implementation SHA | `3d59e80bde960f681c68b7c5177a5ea4e3412fc3` |
 | Base | `testing-1 @ e0fa9fb` |
 | Gate | `node scripts/check.mjs` → 178 JS files, **17/17** lifecycle, **1/1** AUTH-006 context, exit 0 |
 | Disposable lineage | `00, 05, 006, 10, 20, 021, 30, 031, 032, 033, 040, 041, 042, 40-triggers, 043` |
