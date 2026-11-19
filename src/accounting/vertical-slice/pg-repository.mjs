@@ -79,63 +79,89 @@ export function createPgRepository({
   pool,
   principalRole = 'saven_customer_app',
   allocator = {sequence: 'document_sequences', kindSeparator: '-'},
+  onCleanupFault = () => {},
 } = {}) {
   if (!pool || typeof pool.connect !== 'function') {
     throw new Error('createPgRepository requires a PostgreSQL pool.');
   }
 
   /**
-   * Checkout that pins the restricted principal. `SET ROLE` is issued from a login that
-   * is a member of this one group role only; the login holds no owner, DDL or BYPASSRLS
-   * authority, so this is not "SET ROLE from an owner connection".
+   * Checkout that pins the restricted principal.
+   *
+   * AUTH-002/003 discipline on a money-writing path: every checkout is owned exactly
+   * once, and an uncertain transaction, rollback or role/context reset destroys it
+   * irreversibly instead of returning it to the pool for reuse. Cleanup never erases the
+   * primary failure: the original error is always the one propagated.
    */
-  async function checkout(run) {
+  async function checkout(run, {readOnly = false} = {}) {
     const client = await pool.connect();
-    let poison = false;
+    let entered = false;
+    let committed = false;
+    let uncertain = false;
+
+    const destroy = () => { uncertain = true; };
+
     try {
       await client.query(`SET ROLE ${principalRole}`);
+      await client.query('BEGIN');
+      entered = true;
+      if (readOnly) await client.query('SET TRANSACTION READ ONLY');
       const result = await run(client);
-      return result;
+      try {
+        await client.query('COMMIT');
+        committed = true;
+        return result;
+      } catch (commitError) {
+        // The commit outcome is unknown: destroy the checkout, never reuse it.
+        destroy();
+        throw commitError;
+      }
     } catch (error) {
-      poison = true;
+      if (entered && !committed) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          destroy();
+        }
+      }
       throw error;
     } finally {
-      try {
-        if (poison) await client.query('ROLLBACK').catch(() => {});
-        await client.query('RESET ROLE');
-      } catch {
-        client.release(true);
-        return;
+      // RESET ROLE is only meaningful on a confirmed-clean connection. A failure here
+      // means the session state is unknown, so the client is destroyed.
+      let resetFailed = false;
+      if (!uncertain) {
+        try {
+          await client.query('RESET ROLE');
+        } catch {
+          resetFailed = true;
+        }
       }
-      client.release();
+      if (uncertain || resetFailed) {
+        // A confirmed COMMIT stays reported as committed; the cleanup fault is surfaced
+        // separately so a caller cannot mistake it for a failed business transaction and
+        // retry it into a duplicate. The connection itself is never reused.
+        if (resetFailed) onCleanupFault(new Error('RESET ROLE failed; connection destroyed'));
+        client.release(true);
+      } else {
+        client.release();
+      }
     }
   }
 
-  async function transaction(ctx, fn, {readOnly = false} = {}) {
+  async function transaction(ctx, fn, options = {}) {
     if (!isUuid(ctx.tenantId) || !isUuid(ctx.userUuid) || typeof ctx.actor !== 'string') {
       throw new SliceError(500, 'ACCOUNTING_CONTEXT_INVALID', 'A verified tenant/actor context is required.');
     }
     return checkout(async client => {
-      await client.query('BEGIN');
-      let settled = false;
-      try {
-        // Transaction-scoped context only: never a session-level GUC behind a pooler.
-        await client.query(
-          `SELECT set_config('app.current_tenant_id', $1, true),
-                  set_config('app.current_user_id', $2, true)`,
-          [ctx.tenantId, ctx.userUuid],
-        );
-        if (readOnly) await client.query('SET TRANSACTION READ ONLY');
-        const tx = createTx(client, ctx);
-        const result = await fn(tx);
-        await client.query('COMMIT');
-        settled = true;
-        return result;
-      } catch (error) {
-        if (!settled) await client.query('ROLLBACK').catch(() => {});
-        throw error;
-      }
-    });
+      // Transaction-scoped context only: never a session-level GUC behind a pooler.
+      await client.query(
+        `SELECT set_config('app.current_tenant_id', $1, true),
+                set_config('app.current_user_id', $2, true)`,
+        [ctx.tenantId, ctx.userUuid],
+      );
+      const tx = createTx(client, ctx);
+      return fn(tx);
+    }, {readOnly: options.readOnly === true});
   }
 
   function createTx(client, ctx) {
@@ -318,6 +344,18 @@ export function createPgRepository({
              FROM tenant_data.audit_event WHERE tenant_id = $1${filter} ORDER BY id`, params);
         return rows;
       },
+      /** First-post key/digest binding, recorded on the canonical posting event. */
+      async postingReceiptKey(commandId) {
+        const {rows} = await q(
+          `SELECT detail FROM tenant_data.audit
+            WHERE tenant_id = $1 AND command_id = $2 AND event = 'JOURNAL_POSTED'
+            ORDER BY id DESC LIMIT 1`, [ctx.tenantId, commandId]);
+        if (!rows[0]) return null;
+        try {
+          const detail = JSON.parse(rows[0].detail);
+          return {idempotencyKey: detail.idempotencyKey ?? null, requestDigest: detail.requestDigest ?? null};
+        } catch { return null; }
+      },
       async ledger() {
         const {rows} = await q(
           `SELECT journal_id, line_no, account, debit, credit FROM tenant_data.active_general_ledger
@@ -350,51 +388,39 @@ export function createPgRepository({
       throw new SliceError(500, 'ACCOUNTING_CONTEXT_INVALID', 'A verified tenant context is required.');
     }
     return checkout(async client => {
-      await client.query('BEGIN');
-      try {
-        await client.query(
-          `SELECT set_config('app.current_tenant_id', $1, true),
-                  set_config('app.current_user_id', $2, true)`,
-          [ctx.tenantId, ctx.userUuid],
-        );
-        await client.query(
-          `INSERT INTO tenant_data.document_sequences (tenant_id, company, kind, next_number, updated_by)
-           VALUES ($1, $2, $3, 1, $4) ON CONFLICT (tenant_id, company, kind) DO NOTHING`,
-          [ctx.tenantId, company, kind, ctx.actor]);
-        const locked = await client.query(SEQ_ROW_LOCK, [ctx.tenantId, company, kind]);
-        if (locked.rowCount !== 1) throw refuse.allocatorExhausted();
+      await client.query(
+        `SELECT set_config('app.current_tenant_id', $1, true),
+                set_config('app.current_user_id', $2, true)`,
+        [ctx.tenantId, ctx.userUuid],
+      );
+      await client.query(
+        `INSERT INTO tenant_data.document_sequences (tenant_id, company, kind, next_number, updated_by)
+         VALUES ($1, $2, $3, 1, $4) ON CONFLICT (tenant_id, company, kind) DO NOTHING`,
+        [ctx.tenantId, company, kind, ctx.actor]);
+      const locked = await client.query(SEQ_ROW_LOCK, [ctx.tenantId, company, kind]);
+      if (locked.rowCount !== 1) throw refuse.allocatorExhausted();
 
-        // Idempotent on the journal id: an earlier attempt (including one whose business
-        // transaction failed) already owns a number, so it is reused instead of consuming
-        // a second identity. The sequence row lock above serializes this check.
-        const existing = await client.query(
-          `SELECT sequence, number FROM tenant_data.document_numbers
-            WHERE tenant_id = $1 AND id = $2`, [ctx.tenantId, id]);
-        if (existing.rowCount === 1) {
-          await client.query('ROLLBACK');
-          return {sequence: existing.rows[0].sequence, number: existing.rows[0].number, reused: true};
-        }
-
-        const next = boundedInteger(locked.rows[0].next_number, 'next_number');
-        if (next > 999999999) throw refuse.allocatorExhausted();
-        await client.query(
-          `UPDATE tenant_data.document_sequences SET next_number = next_number + 1,
-                  updated_at = (extract(epoch FROM now()) * 1000)::bigint, updated_by = $4
-            WHERE tenant_id = $1 AND company = $2 AND kind = $3`,
-          [ctx.tenantId, company, kind, ctx.actor]);
-        const sequence = next;
-        const number = `${kind}${allocator.kindSeparator}${String(sequence).padStart(6, '0')}`;
-        await client.query(
-          `INSERT INTO tenant_data.document_numbers
-             (tenant_id, id, company, kind, sequence, number, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-          [ctx.tenantId, id, company, kind, sequence, number, ctx.now]);
-        await client.query('COMMIT');
-        return {sequence, number, reused: false};
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw error;
+      const existing = await client.query(
+        `SELECT sequence, number FROM tenant_data.document_numbers
+          WHERE tenant_id = $1 AND id = $2`, [ctx.tenantId, id]);
+      if (existing.rowCount === 1) {
+        return {sequence: existing.rows[0].sequence, number: existing.rows[0].number, reused: true};
       }
+
+      const next = boundedInteger(locked.rows[0].next_number, 'next_number');
+      if (next > 999999999) throw refuse.allocatorExhausted();
+      await client.query(
+        `UPDATE tenant_data.document_sequences SET next_number = next_number + 1,
+                updated_at = (extract(epoch FROM now()) * 1000)::bigint, updated_by = $4
+          WHERE tenant_id = $1 AND company = $2 AND kind = $3`,
+        [ctx.tenantId, company, kind, ctx.actor]);
+      const number = `${kind}${allocator.kindSeparator}${String(next).padStart(6, '0')}`;
+      await client.query(
+        `INSERT INTO tenant_data.document_numbers
+           (tenant_id, id, company, kind, sequence, number, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [ctx.tenantId, id, company, kind, next, number, ctx.now]);
+      return {sequence: next, number, reused: false};
     });
   }
 

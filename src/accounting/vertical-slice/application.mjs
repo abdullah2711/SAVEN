@@ -130,8 +130,18 @@ export function createSecurityAuditPort({writer, pinnedVersion = 1}) {
   if (!writer || typeof writer !== 'function') {
     throw new Error('createSecurityAuditPort requires the accepted security-audit writer.');
   }
+  // Read the ACTIVE catalog version from the configured writer itself; a caller-supplied
+  // pin is never echoed back as evidence of what the writer will emit.
+  const active = typeof writer.catalog === 'function'
+    ? writer.catalog()?.catalogVersion
+    : typeof writer.stats === 'function' ? writer.stats()?.catalogVersion : writer.catalogVersion;
+  if (typeof active !== 'number') {
+    throw new SliceError(500, 'AUDIT_CATALOG_UNAVAILABLE',
+      'The security-audit writer does not expose its active catalog version.');
+  }
+  if (active !== pinnedVersion) throw refuse.catalogMismatch(pinnedVersion, active);
   return Object.freeze({
-    version: pinnedVersion,
+    version: active,
     async record(event) {
       await writer(event);
       return {recorded: true, version: pinnedVersion};

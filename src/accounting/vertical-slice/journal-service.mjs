@@ -110,6 +110,14 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
           if (raced.digest !== digest || raced.actor !== ctx.actor) throw refuse.idempotencyConflict();
           return {id, number: allocated.number, state: raced.state, replayed: true, digest: raced.digest};
         }
+        // Revalidate on the accepted bytes inside the transaction that mutates: an
+        // allocation reservation never carries authorization forward, and a period lock
+        // or role/denial change that won after the pre-allocation pass is observed here.
+        if (post) await requireDirectPostAuthority(ctx, tx, journal);
+        else await tx.requireAuthority({...authorityInput(ctx, journal), action: actions.prepare});
+        await tx.requireOpenPeriod(journal);
+        await tx.requireAccounts(journal);
+
         await tx.insertCommand({
           id, actor: ctx.actor, digest, payload: JSON.stringify(storedJournal(journal)), state: 'ACCEPTED_PENDING',
           at: ctx.now,
@@ -153,6 +161,11 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
       const number = await tx.findNumber(id);
       if (!number) throw new SliceError(409, 'NUMBER_MISSING', 'The accepted source has no allocation.');
       if (command.state === 'POSTED' || command.state === 'VOIDED') {
+        // The first post binds its idempotency key and request digest. A replay with that
+        // key returns the receipt; a different key on the same target is a conflict.
+        const receipt = await tx.postingReceiptKey(id);
+        if (receipt?.idempotencyKey && receipt.idempotencyKey !== key) throw refuse.idempotencyConflict();
+        if (receipt?.requestDigest && receipt.requestDigest !== command.digest) throw refuse.idempotencyConflict();
         return {id, number: number.number, state: command.state, replayed: true, digest: command.digest};
       }
       if (command.state !== 'ACCEPTED_PENDING') {
@@ -164,7 +177,7 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
       await requireDirectPostAuthority(ctx, tx, journal);
       await tx.requireOpenPeriod(journal);
       await tx.requireAccounts(journal);
-      const receipt = await applyPost(ctx, tx, {id, journal, digest: command.digest, number: number.number, at: ctx.now});
+      const receipt = await applyPost(ctx, tx, {id, journal, digest: command.digest, number: number.number, at: ctx.now, idempotencyKey: key});
       return {...receipt, replayed: false};
     });
   }
@@ -215,7 +228,7 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
     }), {readOnly: true});
   }
 
-  async function applyPost(ctx, tx, {id, journal, digest, number, at}) {
+  async function applyPost(ctx, tx, {id, journal, digest, number, at, idempotencyKey}) {
     await tx.insertJournal({id, journal, at});
     await tx.insertLines({id, lines: journal.lines, at});
     // The accepted receipt guard requires the canonical posting event to exist before
@@ -223,7 +236,7 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
     await tx.logLifecycle({commandId: id, event: 'JOURNAL_POSTED', detail: {
       number, company: journal.company, branch: journal.branch, lines: journal.lines.length,
       debit: journal.debit.toString(), credit: journal.credit.toString(),
-      origin: 'human', requestDigest: digest, idempotencyKey: `${id}:post`,
+      origin: 'human', requestDigest: digest, idempotencyKey: idempotencyKey ?? `${id}:post`,
     }});
     // Outbox row precedes the POSTED transition: the accepted receipt guard requires
     // both the posting audit row and the outbox effect to exist first.

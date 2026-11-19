@@ -17,10 +17,11 @@ import pg from 'pg';
 
 import {createDisposableCluster} from './helpers/pivot-014-disposable-postgres.mjs';
 import {createAuthServer} from '../src/auth/server.mjs';
+import {createTenantSelection} from '../src/auth/tenant-selection.mjs';
 import {cookieName} from '../src/auth/routes.mjs';
 import {createAuditWriter, AUTH_AUDIT_CATALOG_VERSION, AUTH_AUDIT_VERSION} from '../src/auth/audit.mjs';
 import {encodePassword} from '../src/passwords.mjs';
-import {composeVerticalSlice} from '../src/accounting/vertical-slice/application.mjs';
+import {composeVerticalSlice, createSecurityAuditPort} from '../src/accounting/vertical-slice/application.mjs';
 import {createPgRepository} from '../src/accounting/vertical-slice/pg-repository.mjs';
 import {API_PREFIX} from '../src/accounting/vertical-slice/ports.mjs';
 
@@ -124,8 +125,8 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
     cluster = await createDisposableCluster();
     const connection = {host: cluster.host, port: cluster.port, database: cluster.database};
 
-    const appPool = new pg.Pool({...connection, user: cluster.logins.app, password: cluster.logins.appPassword, max: 12});
-    const authPool = new pg.Pool({...connection, user: cluster.logins.auth, password: cluster.logins.authPassword, max: 12});
+    const appPool = new pg.Pool({...connection, user: cluster.logins.app, password: cluster.logins.appPassword, max: 12, options: '-c statement_timeout=8000 -c lock_timeout=8000'});
+    const authPool = new pg.Pool({...connection, user: cluster.logins.auth, password: cluster.logins.authPassword, max: 12, options: '-c statement_timeout=8000 -c lock_timeout=8000'});
     pools.push(appPool, authPool);
     admin = new pg.Client({...connection, user: process.env.USER});
     await admin.connect();
@@ -220,9 +221,11 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       audit: createAuditWriter(authService),
     });
     const securityWriter = createAuditWriter(authService);
+    const tenantSelection = createTenantSelection({store: auth.store, audit: securityWriter});
     const app = composeVerticalSlice({
       businessPool: appPool,
       authStore: auth.store,
+      tenantSelection,
       securityAuditWriter: securityWriter,
       customerOrigin: ORIGIN,
       cookieName: cookieName('customer', false),
@@ -302,6 +305,13 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       const bId = bCreate.body.data.id;
 
       const beforeB = await tenantCounts(TENANT_B);
+      const aOwn = await call(app, 'POST', `${API_PREFIX}/journals?post=1`,
+        {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's3-own-journal-01', body: {journal: balanced()}});
+      assert.equal(aOwn.status, 201, aOwn.text);
+      const aOwnRead = await call(app, 'GET', `${API_PREFIX}/journals/${aOwn.body.data.id}`, {cookie: ownerA.cookie});
+      assert.equal(aOwnRead.status, 200, 'the permitted own-journal control must succeed');
+      assert.equal(aOwnRead.body.data.id, aOwn.body.data.id);
+
       const foreignRead = await call(app, 'GET', `${API_PREFIX}/journals/${bId}`, {cookie: ownerA.cookie});
       assert.equal(foreignRead.status, 403);
       assert.equal(foreignRead.body.error.code, 'TENANT_RESOURCE_DENIED');
@@ -403,23 +413,33 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       assert.equal(again.body.error.code, 'ENTRY_ALREADY_VOIDED');
 
       // Physical mutation is refused by the accepted database guards.
-      let directUpdate = null;
-      let directDelete = null;
-      await seed('BEGIN');
-      try {
-        await seed(`SELECT set_config('app.current_tenant_id', $1, true),
-                           set_config('app.current_user_id', $2, true)`, [TENANT_A, OWNER_A]);
-        directUpdate = await admin.query(
-          `UPDATE tenant_data.journals SET narrative='tampered' WHERE tenant_id=$1 AND id=$2`, [TENANT_A, id]
-        ).then(() => null, error => error);
-        directDelete = await admin.query(
-          `DELETE FROM tenant_data.journal_lines WHERE tenant_id=$1 AND journal_id=$2`, [TENANT_A, id]
-        ).then(() => null, error => error);
-      } finally {
-        await seed('ROLLBACK');
-      }
+      // Each guard attack gets its own transaction and asserts the exact trigger error.
+      const attack = async sql => {
+        await seed('BEGIN');
+        try {
+          await seed(`SELECT set_config('app.current_tenant_id', $1, true),
+                             set_config('app.current_user_id', $2, true)`, [TENANT_A, OWNER_A]);
+          await admin.query(sql, [TENANT_A, id]);
+          return null;
+        } catch (error) {
+          return error;
+        } finally {
+          await seed('ROLLBACK').catch(() => {});
+        }
+      };
+      const directUpdate = await attack(
+        `UPDATE tenant_data.journals SET narrative='tampered' WHERE tenant_id=$1 AND id=$2`);
       assert.ok(directUpdate, 'direct journal update must be refused');
+      assert.match(directUpdate.message, /POSTED|IMMUTABLE/i, `unexpected update guard error: ${directUpdate.message}`);
+      const directDelete = await attack(
+        `DELETE FROM tenant_data.journal_lines WHERE tenant_id=$1 AND journal_id=$2`);
       assert.ok(directDelete, 'direct line delete must be refused');
+      assert.match(directDelete.message, /POSTED|IMMUTABLE|RETAINED/i, `unexpected delete guard error: ${directDelete.message}`);
+      // Permitted control: the rows are still intact after both attacks.
+      const stillThere = await shortcut(
+        `SELECT count(*)::int AS n FROM tenant_data.journal_lines WHERE tenant_id=$1 AND journal_id=$2`,
+        [TENANT_A, id]);
+      assert.equal(stillThere[0].n, 2);
 
       // Authority is data, never a role name encoded in a table, view or policy.
       const policies = await shortcut(`SELECT qual, with_check FROM pg_policies WHERE schemaname='tenant_data'`);
@@ -483,6 +503,11 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       assert.deepEqual(postEvents.map(row => `${row.entity_type}:${row.event}`).sort(),
         ['document_registry:TENANT_CHANGE_UPDATE', 'journal_lines:TENANT_CHANGE_INSERT',
           'journal_lines:TENANT_CHANGE_INSERT', 'journals:TENANT_CHANGE_INSERT']);
+      assert.ok(postEvents.every(row => row.actor_id === ACTOR.ownerA));
+      for (const row of postEvents) {
+        const expectedOrigin = row.entity_type === 'document_registry' ? 'human' : 'system';
+        assert.equal(row.origin_type, expectedOrigin, `origin for post event ${row.entity_type}`);
+      }
       const postLifecycle = await lifecycleFor(id);
       assert.equal(postLifecycle.length, 2);
       assert.equal(postLifecycle[1].event, 'JOURNAL_POSTED');
@@ -495,6 +520,7 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       assert.deepEqual(voidEvents.map(row => `${row.entity_type}:${row.event}`), ['journal:ENTRY_VOIDED']);
       // The accepted 042 primitive records the void against its own command id, so the
       // entry keeps exactly its create and post events and the void event is separate.
+      assert.ok(voidEvents.every(row => row.actor_id === ACTOR.ownerA && row.origin_type === 'human'));
       assert.equal((await lifecycleFor(id)).length, 2);
       const voidCommandId = voided.body.data.voidCommandId;
       const voidLifecycle = await lifecycleFor(voidCommandId);
@@ -567,13 +593,19 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
       assert.equal(replay.body.data.replayed, true);
       assert.deepEqual(await tenantCounts(TENANT_A), baseline, 'replay must add no rows');
 
-      // Concurrent replay of the same post: still one journal and one logical event.
+      // Concurrent replay of the same request: still one journal and one logical event.
       const [a, b] = await Promise.all([
-        call(app, 'POST', `${API_PREFIX}/journals/${id}/post`, {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's7-post-0002'}),
-        call(app, 'POST', `${API_PREFIX}/journals/${id}/post`, {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's7-post-0003'}),
+        call(app, 'POST', `${API_PREFIX}/journals/${id}/post`, {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's7-post-0001'}),
+        call(app, 'POST', `${API_PREFIX}/journals/${id}/post`, {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's7-post-0001'}),
       ]);
       assert.ok([a.status, b.status].every(status => status === 200), `${a.text} / ${b.text}`);
       assert.deepEqual(await tenantCounts(TENANT_A), baseline, 'concurrent replay must add no rows');
+
+      // The first post binds its key: a different key for the same target is a conflict.
+      const otherKey = await call(app, 'POST', `${API_PREFIX}/journals/${id}/post`,
+        {cookie: ownerA.cookie, csrf: ownerA.csrf, key: 's7-post-9999'});
+      assert.equal(otherKey.status, 409);
+      assert.equal(otherKey.body.error.code, 'IDEMPOTENCY_CONFLICT');
 
       // Same idempotency key with different content is refused by its specific error.
       const conflict = await call(app, 'POST', `${API_PREFIX}/journals`,
@@ -699,4 +731,91 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
     for (const pool of pools) await pool.end().catch(() => {});
     if (cluster) await cluster.stop();
   }
+});
+
+// ---------------------------------------------------------------------------
+// PIVOT-014 R1 fault probes.
+//
+// These are real failure injections, not comments: an uncertain checkout must be
+// destroyed rather than reused, the security-audit pin must be compared with the
+// writer's ACTIVE catalog, and a setup failure must not leak an owned cluster.
+// ---------------------------------------------------------------------------
+
+test('PIVOT-014 R1 uncertain checkout and composition fault probes', {timeout: 60_000}, async t => {
+  const ctx = {tenantId: TENANT_A, userUuid: OWNER_A, actor: ACTOR.ownerA, now: Date.now()};
+
+  function fakePool(faults) {
+    const events = [];
+    const client = {
+      async query(sql) {
+        events.push(sql);
+        const key = Object.keys(faults).find(marker => sql.includes(marker));
+        if (key) throw faults[key];
+        return {rows: [{current_user: 'saven_customer_app', session_user: 'p014_app_login', next_number: 1}], rowCount: 1};
+      },
+      release(destroyed) { events.push(destroyed === true ? 'release:destroy' : 'release:reuse'); },
+    };
+    return {pool: {connect: async () => client}, events};
+  }
+
+  await t.test('RESET ROLE failure destroys the checkout and reports the cleanup fault', async () => {
+    const {pool, events} = fakePool({'RESET ROLE': new Error('reset failed')});
+    const faults = [];
+    const repository = createPgRepository({pool, onCleanupFault: fault => faults.push(fault)});
+    // The COMMIT succeeded, so the business result is genuinely committed: it is returned,
+    // while the connection is destroyed and the cleanup fault is surfaced separately.
+    assert.equal(await repository.transaction(ctx, async () => 'result'), 'result');
+    assert.ok(events.includes('release:destroy'), 'an uncertain reset must destroy the client');
+    assert.ok(!events.includes('release:reuse'));
+    assert.equal(faults.length, 1);
+    assert.match(faults[0].message, /RESET ROLE/);
+  });
+
+  await t.test('COMMIT uncertainty destroys the checkout and propagates', async () => {
+    const {pool, events} = fakePool({'COMMIT': new Error('commit ack lost')});
+    const repository = createPgRepository({pool});
+    await assert.rejects(() => repository.transaction(ctx, async () => 'result'), /commit ack lost/);
+    assert.ok(events.includes('release:destroy'));
+  });
+
+  await t.test('failed handler with failed ROLLBACK destroys and keeps the primary error', async () => {
+    const {pool, events} = fakePool({'ROLLBACK': new Error('rollback failed')});
+    const repository = createPgRepository({pool});
+    await assert.rejects(() => repository.transaction(ctx, async () => { throw new Error('primary failure'); }), /primary failure/);
+    assert.ok(events.includes('release:destroy'));
+  });
+
+  await t.test('clean transaction is released for reuse', async () => {
+    const {pool, events} = fakePool({});
+    const repository = createPgRepository({pool});
+    assert.equal(await repository.transaction(ctx, async () => 'ok'), 'ok');
+    assert.ok(events.includes('release:reuse'));
+    assert.ok(!events.includes('release:destroy'));
+  });
+
+  await t.test('security-audit pin compares the writer active catalog', async () => {
+    const stale = Object.assign(async () => {}, {catalogVersion: 2});
+    assert.throws(() => createSecurityAuditPort({writer: stale, pinnedVersion: 1}),
+      error => error.code === 'AUDIT_CATALOG_MISMATCH');
+    const silent = async () => {};
+    assert.throws(() => createSecurityAuditPort({writer: silent, pinnedVersion: 1}),
+      error => error.code === 'AUDIT_CATALOG_UNAVAILABLE');
+    const current = Object.assign(async () => {}, {catalogVersion: 1});
+    assert.equal(createSecurityAuditPort({writer: current, pinnedVersion: 1}).version, 1);
+  });
+
+  await t.test('cluster setup failure leaves no owned directory behind', async () => {
+    const {readdirSync} = await import('node:fs');
+    const before = readdirSync('/tmp').filter(name => name.startsWith('pivot014-')).length;
+    const previous = process.env.PIVOT014_INITDB;
+    process.env.PIVOT014_INITDB = '/bin/false';
+    try {
+      await assert.rejects(() => createDisposableCluster({label: 'pivot014-fault'}));
+    } finally {
+      if (previous === undefined) delete process.env.PIVOT014_INITDB;
+      else process.env.PIVOT014_INITDB = previous;
+    }
+    const after = readdirSync('/tmp').filter(name => name.startsWith('pivot014-')).length;
+    assert.equal(after, before, 'a failed setup must not leave an owned cluster directory');
+  });
 });

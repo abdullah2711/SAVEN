@@ -26,6 +26,7 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
 export const SCHEMA_FILES = Object.freeze([
   'db/postgres/00-roles.sql',
   'db/postgres/05-auth-schema.sql',
+  'db/postgres/migrations/006-auth-schema-corrections.sql',
   'db/postgres/10-operator-schema.sql',
   'db/postgres/20-tenant-schema.sql',
   'db/postgres/migrations/021-tenant-schema-corrections.sql',
@@ -73,6 +74,7 @@ function run(command, args, {input, env = {}} = {}) {
     input,
     env: {...process.env, ...env},
     maxBuffer: 32 * 1024 * 1024,
+    timeout: 120_000,
   });
   if (result.status !== 0) {
     const detail = [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
@@ -83,103 +85,106 @@ function run(command, args, {input, env = {}} = {}) {
 
 /**
  * Creates the cluster, applies the accepted lineage plus 043, and provisions the two
- * restricted runtime logins. Returns {port, root, psql, stop}.
+ * restricted runtime logins. Cleanup is owned from the first temporary-directory
+ * allocation, so any partial setup failure stops what started and removes the directory
+ * only once shutdown is confirmed.
  */
 export async function createDisposableCluster({label = 'pivot014'} = {}) {
   const initdb = binary('initdb');
   const pgCtl = binary('pg_ctl');
   const psql = binary('psql');
 
+  // Ownership starts here: after this line every early return must clean up.
   const root = mkdtempSync(join(tmpdir(), `${label}-`));
   const dataDir = join(root, 'data');
   const socketDir = join(root, 'run');
-  const port = await allocatePort();
-  mkdirSync(socketDir, {recursive: true});
   let started = false;
+  let stopped = false;
 
-  // Setup failure must not leave a cluster process or directory behind.
+  const shutdown = () => {
+    if (!started || stopped) return {stopped: true, detail: 'nothing to stop'};
+    const stop = spawnSync(pgCtl, ['-D', dataDir, '-m', 'immediate', '-w', '-t', '60', 'stop'], {
+      encoding: 'utf8', timeout: 90_000,
+    });
+    if (stop.error || stop.status !== 0) {
+      return {stopped: false, detail: [stop.error?.message, stop.stdout, stop.stderr].filter(Boolean).join('\n').trim()};
+    }
+    stopped = true;
+    return {stopped: true, detail: ''};
+  };
+
   try {
-    return await provision();
-  } catch (error) {
-    try {
-      if (started) spawnSync(pgCtl, ['-D', dataDir, '-m', 'immediate', '-w', '-t', '30', 'stop']);
-    } finally {
+    const port = await allocatePort();
+    mkdirSync(socketDir, {recursive: true});
+
+    run(initdb, ['-D', dataDir, '-U', process.env.USER || 'postgres', '--auth=trust', '--no-sync',
+      '--encoding=UTF8', '--locale=C']);
+
+    writeFileSync(join(dataDir, 'postgresql.auto.conf'), [
+      `listen_addresses = '127.0.0.1'`,
+      `port = ${port}`,
+      `unix_socket_directories = '${socketDir}'`,
+      'fsync = off',
+      'synchronous_commit = off',
+      'full_page_writes = off',
+      'max_connections = 40',
+      '',
+    ].join('\n'));
+
+    run(pgCtl, ['-D', dataDir, '-l', join(root, 'server.log'), '-w', '-t', '60', 'start']);
+    started = true;
+
+    const env = {PGHOST: '127.0.0.1', PGPORT: String(port)};
+    // Single verification after pg_ctl -w reported readiness. A failure here is a real
+    // failure, not a transient to retry while the gate waits for green.
+    const probe = spawnSync(psql, ['-X', '-q', '-A', '-t', '-d', 'postgres', '-c', 'SELECT 1'], {
+      encoding: 'utf8', env: {...process.env, ...env}, timeout: 30_000,
+    });
+    if (probe.status !== 0 || probe.stdout.trim() !== '1') {
+      throw new Error(
+        `PIVOT-014: the cluster did not accept a verification query after pg_ctl reported ready `
+        + `(logs: ${join(root, 'server.log')}): ${[probe.stdout, probe.stderr].filter(Boolean).join(' ')}`,
+      );
+    }
+
+    const applyFile = relative => {
+      run(psql, ['-X', '-q', '--set', 'ON_ERROR_STOP=1', '-d', 'postgres', '-f', join(repoRoot, relative)], {env});
+    };
+    for (const file of SCHEMA_FILES) applyFile(file);
+
+    run(psql, ['-X', '-q', '-d', 'postgres', '-c', `
+      CREATE ROLE p014_app_login LOGIN PASSWORD 'p014-local-app' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+      CREATE ROLE p014_auth_login LOGIN PASSWORD 'p014-local-auth' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
+      GRANT saven_customer_app TO p014_app_login;
+      GRANT saven_auth_service TO p014_auth_login;
+    `], {env});
+
+    async function stop() {
+      const result = shutdown();
+      if (!result.stopped) {
+        // Never delete beneath an unconfirmed live cluster: keep the data for diagnosis.
+        throw new Error(`PIVOT-014: cluster shutdown could not be confirmed; ${root} preserved. ${result.detail}`);
+      }
       rmSync(root, {recursive: true, force: true});
+    }
+
+    return {
+      root, port, psql, stop,
+      host: '127.0.0.1',
+      database: 'postgres',
+      logins: Object.freeze({app: 'p014_app_login', appPassword: 'p014-local-app',
+        auth: 'p014_auth_login', authPassword: 'p014-local-auth'}),
+      exec(sql) {
+        return run(psql, ['-X', '-q', '-A', '-t', '--set', 'ON_ERROR_STOP=1', '-d', 'postgres', '-c', sql], {env}).stdout;
+      },
+      apply: applyFile,
+    };
+  } catch (error) {
+    const result = shutdown();
+    if (result.stopped) rmSync(root, {recursive: true, force: true});
+    if (!result.stopped) {
+      error.message = `${error.message}\nPIVOT-014 cleanup could not confirm shutdown; ${root} preserved. ${result.detail}`;
     }
     throw error;
   }
-
-  async function provision() {
-  run(initdb, ['-D', dataDir, '-U', process.env.USER || 'postgres', '--auth=trust', '--no-sync',
-    '--encoding=UTF8', '--locale=C']);
-
-  // Loopback only, no external listener, fast but still durable-enough for a disposable
-  // cluster used to prove behaviour rather than throughput.
-  writeFileSync(join(dataDir, 'postgresql.auto.conf'), [
-    `listen_addresses = '127.0.0.1'`,
-    `port = ${port}`,
-    `unix_socket_directories = '${socketDir}'`,
-    'fsync = off',
-    'synchronous_commit = off',
-    'full_page_writes = off',
-    'max_connections = 40',
-    '',
-  ].join('\n'));
-
-  run(pgCtl, ['-D', dataDir, '-l', join(root, 'server.log'), '-w', '-t', '60', 'start']);
-  started = true;
-  await waitReady(psql, port, root);
-
-  const env = {PGHOST: '127.0.0.1', PGPORT: String(port)};
-
-  function applyFile(relative) {
-    run(psql, ['-X', '-q', '--set', 'ON_ERROR_STOP=1', '-d', 'postgres', '-f', join(repoRoot, relative)], {env});
-  }
-
-  for (const file of SCHEMA_FILES) applyFile(file);
-
-  // Restricted runtime logins: each is a member of exactly one accepted group role and
-  // holds no owner, DDL, superuser or BYPASSRLS authority. The application pins the
-  // group role with SET ROLE from this login.
-  run(psql, ['-X', '-q', '--set', 'ON_ERROR_STOP=1', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-c', `
-    CREATE ROLE p014_app_login LOGIN PASSWORD 'p014-local-app' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-    CREATE ROLE p014_auth_login LOGIN PASSWORD 'p014-local-auth' NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
-    GRANT saven_customer_app TO p014_app_login;
-    GRANT saven_auth_service TO p014_auth_login;
-  `], {env});
-
-  async function stop() {
-    try {
-      run(pgCtl, ['-D', dataDir, '-m', 'immediate', '-w', '-t', '60', 'stop']);
-    } finally {
-      started = false;
-      rmSync(root, {recursive: true, force: true});
-    }
-  }
-
-  return {
-    root, port, psql, stop,
-    host: '127.0.0.1',
-    database: 'postgres',
-    logins: Object.freeze({app: 'p014_app_login', appPassword: 'p014-local-app',
-      auth: 'p014_auth_login', authPassword: 'p014-local-auth'}),
-    exec(sql) {
-      return run(psql, ['-X', '-q', '-A', '-t', '--set', 'ON_ERROR_STOP=1', '-d', 'postgres', '-c', sql], {env}).stdout;
-    },
-    apply: applyFile,
-  };
-  }
-}
-
-function waitReady(psql, port, root) {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const probe = spawnSync(psql, ['-X', '-q', '-A', '-t', '-d', 'postgres', '-c', 'SELECT 1'], {
-      encoding: 'utf8',
-      env: {...process.env, PGHOST: '127.0.0.1', PGPORT: String(port)},
-    });
-    if (probe.status === 0 && probe.stdout.trim() === '1') return;
-    spawnSync('sleep', ['0.2']);
-  }
-  throw new Error(`PIVOT-014: the disposable cluster did not become ready within 30s (logs: ${join(root, 'server.log')}).`);
 }
