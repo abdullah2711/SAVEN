@@ -11,7 +11,7 @@ cutover was performed. Nothing outside the contract TOUCH list was changed.
 | Branch | `opencode/pivot-014-vertical-slice` |
 | Base SHA | `e0fa9fb` (testing-1, AUTH-009 merged) |
 | Implementation SHA | `37399dac79264830ac3cc1a76f5047fa4039d637` |
-| Report commit | *(this delivery + cover sheet commit; see `git log` on the branch)* |
+| Report commit | `be2f76bd30f0304047b756b6334d25ef10499842` (this delivery, cover sheet and checkpoint; a later one-line commit records this SHA) |
 | Worktree | `/home/esc/saven/wt-pivot-014` |
 
 ## Files changed vs TOUCH
