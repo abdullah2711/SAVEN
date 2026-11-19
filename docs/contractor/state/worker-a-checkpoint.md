@@ -1,59 +1,61 @@
-# WORKER-A checkpoint — AUTH-009 revision 6: boundary evidence completed
+# WORKER-A checkpoint — PIVOT-007 operator functions delivered
 
-Date: 19 November 2026 (Asia/Karachi). Checkpoint directive; outside any contract TOUCH.
+Date: 19 November 2026 (Asia/Karachi). Round-end checkpoint.
 
 ## Exact contract
 
-- `docs/contractor/contracts/AUTH-009-auth-audit.md`
-- Base `testing-1` @ `c543ef7`; prior revisions through `ba948cf`.
-- Branch/worktree: `opencode/auth-009-audit` @ `/home/esc/saven/wt-auth-009`.
-- Round-3 test commit: `d3d595c0a7663016f59728fa276fe4e7e0504692`.
-- Review `121de7e`: implementation accepted as built; three boundary-evidence scenarios
-  required. D-018 and findings 2/3 remain closed.
+- `docs/contractor/contracts/PIVOT-007-operator-functions.md`
+- Base `testing-1` @ `e0fa9fb`; branch `opencode/pivot-007-operator-functions` @ `/home/esc/saven/wt-pivot-007`.
+- TOUCH: `db/postgres/50-functions.sql`, `db/postgres/README.md`, `tests/pivot-007-operator-access.test.mjs`.
+- Implementation SHA: `ee1b31ac235b100855562c173d9e2ceb3cd36dce`.
+- Delivery report: `docs/contractor/deliveries/PIVOT-007-operator-functions.md`.
 
-## Per-finding enumeration (this round)
+## Prior review findings
 
-### Scenario 1 — invalidation-first — DONE
+None. This is the first PIVOT-007 round on this branch; no Codex findings exist yet.
 
-- Named test: `AUTH-009 invalidation-first committed membership requirement denies password
-  change` (real committed membership INSERT after the early check).
-- Named test: `AUTH-009 invalidation-first committed session assurance loss denies password
-  change` (real stored session assurance UPDATE, not a false pre-read snapshot).
-- Asserted: exact `MFA_REQUIRED`, unchanged password/epoch, no revocation/success audit, one
-  durable non-duplicated `assurance_denied` + one reservation.
+## Delivered
 
-### Scenario 2 — mutation-first — DONE
+- `operator.read_tenant_support()` — SECURITY DEFINER, owned by `saven_operator_definer`,
+  fixed `search_path = pg_catalog, operator, tenant_data`, static schema-qualified SQL.
+  Verifies the AUTH-007 Access binding/mapping/session under the shared AUTH-006 gate and
+  principal→session `FOR SHARE` locks, requires a current customer `support_grants` row for
+  exact subject/tenant/action/resource/company (version-1 scope JSON, active authoring
+  member), scopes `app.current_tenant_id` itself and restores the caller's value, reads one
+  of five reviewed resources with an explicit projection and 1–500 row cap, and writes one
+  append-only `operator.operator_audit` row atomically.
+- `operator.log_operator_read_denial()` — independent-transaction denial evidence with
+  best-effort actor resolution; no operator id argument; grants no read authority.
+- Grants: definer gets enumerated column reads on `operator.access_identity`,
+  `operator.access_session_binding`, `auth.users/sessions/roles`, `tenant_data.support_grants`,
+  `tenant_data.members` and the five read tables, INSERT on `operator.operator_audit`, and
+  single-column UPDATE on `auth.users.status` / `auth.sessions.revoked_at` solely for
+  `FOR SHARE` locking. EXECUTE only to `saven_operator_read`; `PUBLIC` revoked; post-install
+  validation of owner/`SECURITY DEFINER`/`search_path`/allow-list.
+- README: run-order step 14, definer role description, PIVOT-007 authority/grant/audit/limits
+  section, fixture and contract-test notes.
 
-- Named test: `AUTH-009 mutation-first writer cannot commit until the password transaction
-  ends` (barrier after final authority, before COMMIT; real writer blocks; proof via
-  `pg_stat_activity` advisory wait, not sleep; subsequent authority asserted).
-- Positive controls: `AUTH-009 authorized positive controls: ordinary user and current-MFA
-  administrator`.
+## Gate evidence
 
-### Scenario 3 — owned client and failure boundary — DONE
+- `node scripts/check.mjs` → `PASS: 173 JavaScript files parsed; package manifest valid.`
+- `node --test tests/pivot-007-operator-access.test.mjs` → **9/9** pass, 0 fail.
+- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55435,
+  `SAVEN_PIVOT_TEST_CLUSTER=1`.
+- No known out-of-scope failure observed this run.
 
-- `AUTH-009 password change runs on a size-one auth pool without a nested checkout` (max 1,
-  bounded race, two durable attempt rows).
-- `AUTH-009 password-change success COMMIT uncertainty destroys the client and serves a clean
-  borrower` (503 SESSION_TRANSACTION_UNCERTAIN, release(true), credential state unknown,
-  clean borrower).
-- `AUTH-009 password-change rollback uncertainty destroys the client and serves a clean
-  borrower` (503 AUTH_ACCOUNTING_UNAVAILABLE, release(true), unknown credential state, clean
-  borrower).
+## Where I stopped
 
-## Gate / failure evidence
-
-- Focused: `node scripts/check.mjs` PASS (172); `node --test
-  tests/auth-009-audit.test.mjs` → **32/32** pass, 0 fail.
-- Serial regression this run: 002 18/18, 003 27/27, 004 21/21, 005 27/27, 006 27/27,
-  007 22/22 → combined **174/174**.
-- Known pre-existing transient `terminating connection due to administrator command`
-  (AUTH-004/006 fixture teardown) is disclosed; reproduced on unmodified base `c543ef7`; not
-  observed in this run.
-- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55439.
+Delivery is complete and pushed on the branch; not merged. No mid-fix failure evidence to
+report (the three local test failures encountered during development — missing
+`company_profiles.created_at`, an unused `$1` parameter, and an incorrect
+`journal_lines`/ACL expectation — were fixed before the recorded gate run and are not
+outstanding).
 
 ## Exact next step
 
-1. Codex reviews `d3d595c` for the three boundary-evidence scenarios.
-2. No runtime source changed this round; keep D-018 producer markers and closed findings.
-3. Never merge; the dispatcher relays the human-approved merge command.
+1. Codex reviews `ee1b31a` against PIVOT-007 invariants.
+2. PIVOT-008 follows on its own branch; do not merge without the human-approved dispatcher
+   command.
+3. Known open evidence for later contracts: application integration of
+   `log_operator_read_denial` after a caught refusal, and the AUTH-007 issuer/audience/
+   source-age policy that this payload intentionally does not duplicate.
