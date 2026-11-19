@@ -1,41 +1,71 @@
 CONTRACT: docs/contractor/contracts/PIVOT-007-operator-functions.md
-STATUS: DONE — least-privileged, customer-granted operator reads are implemented as two `SECURITY DEFINER` functions owned by `saven_operator_definer`, with atomic success audit and caller-driven independent denial evidence. No merge performed.
+REVISION: R1 against review `16be2ae` (REVISE, five findings)
+STATUS: 4 findings DONE, finding 1 PARTIAL — the SQL/authority side is hardened and the bounded commit-before-disclosure adapter design is supplied, but the source module is outside TOUCH and, per the review, must not be added before an engineer amendment. No merge performed.
 
 ## Identity
 
 - Branch: `opencode/pivot-007-operator-functions`
 - Worktree: `/home/esc/saven/wt-pivot-007`
 - Base SHA (`testing-1`): `e0fa9fbb0eaaa1d96046aafbb33963e6732f347a`
-- Implementation SHA: `ee1b31ac235b100855562c173d9e2ceb3cd36dce`
-- Report/checkpoint commit: this commit (identified in the push message)
+- Revision implementation SHA: `c96376d4133cb4f524464d11ce11645adf6f2dc3`
+- Report/checkpoint commit: this commit
 
 ## Files changed vs TOUCH
 
 | Path | Change |
 | --- | --- |
-| `db/postgres/50-functions.sql` | New PIVOT-007 payload: preflight, enumerated definer grants, `operator.read_tenant_support()`, `operator.log_operator_read_denial()`, ownership transfer, EXECUTE allow-list, post-install validation. |
-| `db/postgres/README.md` | Run order step 14, definer role description, full PIVOT-007 section, fixture/gate notes. |
-| `tests/pivot-007-operator-access.test.mjs` | New focused contract test (9 tests). |
-| `docs/contractor/deliveries/PIVOT-007-operator-functions.md` | This delivery report (protocol artifact, outside implementation TOUCH). |
-| `docs/contractor/state/worker-a-checkpoint.md` | Round-end checkpoint (protocol artifact, outside implementation TOUCH). |
+| `db/postgres/50-functions.sql` | Revision 1: bearer digest proof, versioned read policy, consent gate + six triggers, runtime writer-protocol validation, exact-authority validator, hardened read/denial functions. |
+| `db/postgres/README.md` | Revised PIVOT-007 section, run-order/policy seed, definer surface, bounded adapter design. |
+| `tests/pivot-007-operator-access.test.mjs` | 16 focused tests covering every review counterexample. |
+| `docs/contractor/deliveries/PIVOT-007-operator-functions.md` | This report. |
+| `docs/contractor/state/worker-a-checkpoint.md` | Round-end checkpoint. |
 
-No existing SQL, migration, fixture, source route, workflow or reference file was modified. Applied migration bytes are untouched. No `40-triggers.sql` change was needed because PIVOT-007 adds no trigger.
+No applied migration, source module, fixture, workflow or reference file was modified. No AUTH-007/033 bytes were rewritten. No EXECUTE grant was added to auth-service.
 
-## What was built
+## Per-finding enumeration
 
-**Interface.** `operator.read_tenant_support(p_tenant uuid, p_resource text, p_action text, p_company text, p_reason text, p_request_id text, p_limit integer DEFAULT 200) RETURNS jsonb`. It is not a generic SQL endpoint: the resource allow-list is `business`, `company_profiles`, `accounts`, `journals`, `journal_lines`, each with an explicit column projection, a row cap (1–500) and a `truncated` flag.
+### Finding 1 — real admission and commit-before-disclosure — PARTIAL
 
-**Verified actor.** The only context input is the transaction-local `app.operator_session_id` set by the application from an already-verified AUTH-007 operator session. The function resolves `operator.access_session_binding` → `operator.access_identity` → `auth.users` → `auth.roles` and revalidates: `generation-v1` binding scheme, binding/mapping generation + role + assurance equality, active mapping/principal, `is_operator`, `requires_mfa`, effective windows, non-first-factor assurance, `realm = 'operator'`, unrevoked local session, unexpired idle/absolute session, unexpired Access source assertion. It holds the AUTH-006 gate shared and locks principal then session `FOR SHARE`, so mapping/role/membership changes and session revocation cannot commit mid-read. No operator id, subject, role or tenant is accepted as authority from the caller; `p_tenant` is a target, and the function scopes `app.current_tenant_id` itself and restores the caller's prior value.
+**DONE (SQL side).** The payload now requires `p_session_proof`, the lowercase SHA-256 digest of the raw operator session token, and compares it with `auth.sessions.token_hash`. A UUID alone is refused; a valid UUID for another operator plus a different bearer digest is refused. Issuer/audience/assurance/source-age are read from the configured versioned policy, not inferred. Raw bearer values never appear in arguments, audit payloads or results (only the session UUID and digest-verified subject).
 
-**Customer consent.** A current `tenant_data.support_grants` row must match the exact Access subject, tenant, action key, resource and company. `scope_jsonb` is versioned shape 1: `{"version":1,"resources":[...],"companies":[...]}` with unknown keys/versions/arrays failing closed; `companies` absent means all tenant companies. The authoring `granted_by_user_id` must still map to an active `tenant_data.members` row. A reason string never supplies consent and is recorded separately from the grant reason.
+**PARTIAL (publication side).** SQL cannot commit inside a caller's transaction, and the review explicitly says not to add a source module or relax the EXECUTE allow-list before a bounded amendment. The bounded design is in `db/postgres/README.md` ("Mediated adapter"): `src/operator/support-read.mjs` must resolve the bearer through AUTH-007, call `admitSession` and the SQL read on the **same owned client/transaction** (no nested size-one checkout), `COMMIT` before returning any row, discard rows on COMMIT uncertainty, and log refusals on a fresh connection in a separate transaction with observable logging failure. This is not implemented and is not claimed as enforced.
 
-**Atomic success audit / independent denials.** Every successful read inserts one append-only `operator.operator_audit` row in the same transaction (local actor identity, `OPERATOR_READ`, tenant, reason, request id, subject, role, mapping generation, session, action, resource, company, grant id, counts). If the audit INSERT fails the read fails. A refused read raises a fixed code and writes nothing; the application must call `operator.log_operator_read_denial(...)` in a fresh transaction, which writes `OPERATOR_READ_DENIED` with `durability = 'independent-transaction'`. The test never asserts that a preceding in-transaction INSERT survives a rollback.
+**Named tests:** `PIVOT-007 requires a bearer-derived proof, not a caller-nominated session UUID`; `PIVOT-007 reads a granted tenant only with the bearer-derived proof and commits one audit`; `PIVOT-007 commits read and audit together and records denials with independent durability` (explicitly proves rollback pairing, not disclosure prevention).
 
-**Least privilege.** Both functions are `SECURITY DEFINER`, owned by `saven_operator_definer`, `search_path = pg_catalog, operator, tenant_data`, static schema-qualified SQL, no dynamic SQL. EXECUTE is revoked from PUBLIC and granted only to `saven_operator_read`; admin/customer/auth roles cannot execute. The definer receives enumerated column reads only, INSERT on `operator.operator_audit`, and two single-column UPDATE grants (`auth.users.status`, `auth.sessions.revoked_at`) that exist solely because PostgreSQL requires an UPDATE privilege for `FOR SHARE` locking. It owns no table, has no schema CREATE, no runtime membership, no `BYPASSRLS`, no superuser. Post-install SQL validates owner, `SECURITY DEFINER`, exact `search_path`, the allow-list and absence of PUBLIC EXECUTE.
+### Finding 2 — exact AUTH-007 authority and trusted time — DONE
+
+Implemented: `credential_version` equality; configured issuer/audience/exact assurance/max source age/clock skew from `operator.access_read_policy`; trusted `clock_timestamp()` sampled after gate/principal/session acquisitions; runtime validation of the exclusive gate body/owner and every gated trigger (`tgenabled = 'O'`, exact function, exact BEFORE/STATEMENT event); fail-closed on missing/disabled/replica-only/misbound protections.
+
+**Named tests:** `PIVOT-007 revalidates credential epochs and session liveness exactly`; `PIVOT-007 enforces configured issuer, audience, exact assurance, source age and policy state`; `PIVOT-007 samples trusted time after blocking acquisitions and denies a session that expires while waiting`; `PIVOT-007 fails closed when the installed authority/consent writer protocol is disabled, replica-only or misbound` (includes a tampered gate body).
+
+### Finding 3 — consent reservation through read/audit — DONE
+
+Implemented a cooperative consent gate: reads hold `saven.operator.consent_gate` shared; `BEFORE STATEMENT` triggers on `tenant_data.support_grants` and `tenant_data.members` hold it exclusive for INSERT/UPDATE/DELETE. Grant window, scope, action and authoring-member activity are revalidated after acquisition; disabling the trigger fails the read closed. The protocol (grant row before member row) is documented.
+
+**Named tests:** `PIVOT-007 serializes customer consent writes against in-flight reads` (read-first writer blocks with `55P03`; committed revocation/narrowing/deactivation observed; verified denial audit); protocol-disable cases in the protocol test.
+
+### Finding 4 — reused definer authority validated — DONE
+
+Implemented `operator.assert_operator_definer_authority(stage, allow_bootstrap)`: role flags/settings, direct/transitive memberships, owned objects, schema/database/default ACLs, the complete table/column/sequence/function ACL set, PUBLIC relation/column/SECURITY-DEFINER reachability, and the known bootstrap grants. Pre-stage accepts only the bootstrap set; the payload revokes the broad operator SELECT/sequence grants and re-grants the enumerated minimum; post-stage requires exact equality and refuses excess without stripping unrelated rights. Runtime protocol validation also rechecks membership/ownership/schema-CREATE/settings drift.
+
+**Named tests:** `PIVOT-007 installs exactly the reviewed definer authority surface and EXECUTE allow-list`; `PIVOT-007 refuses a poisoned definer profile before installation and preserves it` (membership, column ACL, schema CREATE, ownership, default privilege, role setting, PUBLIC SECURITY DEFINER path, incompatible LOGIN role; poison preserved on refusal).
+
+### Finding 5 — denial attribution — DONE
+
+Denial logging now verifies digest, session liveness, credential epoch, mapping generation/user continuity, role/assurance, issuer/audience and policy before attribution. Otherwise `actor_id = 'unverified'`, `attribution = 'unverified'`, no verified subject/role/epoch, and only labelled `claimedSubject`/`claimedSessionId` metadata. It remains usable when read authority fails and grants no tenant access.
+
+**Named tests:** `PIVOT-007 denial attribution never invents a current actor from a stale binding` (reassignment, epoch-stale, revoked session, unknown session, verified positive).
+
+### Additional review checks — DONE
+
+- Exact scope typing without `->>` coercion; non-string resources/companies/actions, string version, unknown keys, malformed arrays fail closed.
+- `business` and `accounts` declared tenant-wide and reject a company selector; `company_profiles`/`journals`/`journal_lines` are company-scoped.
+- Accepted `040/041/042` + `40-triggers` composition and customer-consent audit coexistence.
+- **Named tests:** `PIVOT-007 validates scope JSON typing exactly and declares tenant-wide resources`; `PIVOT-007 refuses wrong tenant, company, action, resource and malformed arguments`; `PIVOT-007 applies company scope, exact minor-unit money and bounded row limits`; `PIVOT-007 composes with the accepted 040/041/042 stack and audits customer consent writes`.
 
 ## Gates — exact commands and results
 
-Environment: Node `v24.19.0` (`/tmp/auth009-node/node-v24.19.0-linux-x64/bin`; host default `v22.23.5` does not satisfy `>=24.13 <25`), PostgreSQL `18.6`, disposable loopback cluster `127.0.0.1:55435`, `SAVEN_PIVOT_TEST_CLUSTER=1`.
+Environment: Node `v24.19.0` (`/tmp/auth009-node/node-v24.19.0-linux-x64/bin`; host default v22 does not satisfy the engine), PostgreSQL `18.6`, disposable loopback cluster `127.0.0.1:55435`, `SAVEN_PIVOT_TEST_CLUSTER=1`.
 
 ```text
 $ node scripts/check.mjs
@@ -44,52 +74,50 @@ EXIT=0
 
 $ SAVEN_PIVOT_TEST_CLUSTER=1 PGHOST=127.0.0.1 PGPORT=55435 PGUSER=esc PGSSLMODE=disable \
     node --test tests/pivot-007-operator-access.test.mjs
-✔ PIVOT-007 installs two definer functions with a fixed search_path and a read-only EXECUTE allow-list (373ms)
-✔ PIVOT-007 reads a granted tenant and commits exactly one atomic operator audit row (378ms)
-✔ PIVOT-007 denies missing, forged, stale and expired operator identity (491ms)
-✔ PIVOT-007 requires a current customer grant and denies expired, revoked or inactive consent (450ms)
-✔ PIVOT-007 refuses wrong tenant, company, action, resource and malformed scope (510ms)
-✔ PIVOT-007 applies company scope, exact minor-unit money and bounded row limits (419ms)
-✔ PIVOT-007 ignores caller search_path and temporary relation shadows (389ms)
-✔ PIVOT-007 rolls back read and audit together and records denials in an independent transaction (409ms)
-✔ PIVOT-007 keeps tenant rows unreachable except through the mediated read and ignores caller tenant context (396ms)
-ℹ tests 9
-ℹ pass 9
+✔ PIVOT-007 installs exactly the reviewed definer authority surface and EXECUTE allow-list (411ms)
+✔ PIVOT-007 reads a granted tenant only with the bearer-derived proof and commits one audit (424ms)
+✔ PIVOT-007 requires a bearer-derived proof, not a caller-nominated session UUID (464ms)
+✔ PIVOT-007 revalidates credential epochs and session liveness exactly (472ms)
+✔ PIVOT-007 enforces configured issuer, audience, exact assurance, source age and policy state (556ms)
+✔ PIVOT-007 samples trusted time after blocking acquisitions and denies a session that expires while waiting (2205ms)
+✔ PIVOT-007 fails closed when the installed authority/consent writer protocol is disabled, replica-only or misbound (534ms)
+✔ PIVOT-007 validates scope JSON typing exactly and declares tenant-wide resources (565ms)
+✔ PIVOT-007 refuses wrong tenant, company, action, resource and malformed arguments (506ms)
+✔ PIVOT-007 applies company scope, exact minor-unit money and bounded row limits (474ms)
+✔ PIVOT-007 ignores caller search_path and temporary relation shadows (438ms)
+✔ PIVOT-007 commits read and audit together and records denials with independent durability (457ms)
+✔ PIVOT-007 serializes customer consent writes against in-flight reads (750ms)
+✔ PIVOT-007 denial attribution never invents a current actor from a stale binding (457ms)
+✔ PIVOT-007 refuses a poisoned definer profile before installation and preserves it (497ms)
+✔ PIVOT-007 composes with the accepted 040/041/042 stack and audits customer consent writes (609ms)
+ℹ tests 16
+ℹ pass 16
 ℹ fail 0
 EXIT=0
 ```
 
-No known out-of-scope failure was observed in this run. No earlier suite was modified; the fixture's default role set is unchanged.
+No known out-of-scope failure observed in the recorded run. The composition test installs accepted `040/041/042`, activates `40-triggers.sql`, then applies `50-functions.sql` in the production order.
 
-## Coverage — proven vs excluded
+## Coverage and limits
 
-Proven by the focused test (real installed roles, real SQL, disposable database):
+Proven: all named scenarios above against real fixture roles/RLS, including concurrency blocking, poisoned-profile refusal with preservation, gate/trigger tamper fail-closed, configured policy enforcement, trusted-time expiry after a blocked wait, exact denial attribution and full-stack audit coexistence.
 
-- owner/`SECURITY DEFINER`/exact `search_path`; EXECUTE only for `saven_operator_read`; no PUBLIC/operator-admin/customer/auth EXECUTE; definer role flags all false; operator read has no `tenant_data` schema/table or audit INSERT privilege;
-- successful read returns the granted rows and commits exactly one audit row with subject, role, session, grant and counts;
-- missing/malformed/unknown session context, forged binding subject, stale mapping generation, non-operator/non-MFA role, first-factor-only assurance, inactive principal, revoked session and expired Access assertion all deny;
-- absent, expired, revoked, inactive and ex-authorizing-member grants deny; a reason alone does not grant;
-- wrong tenant, company, action and ungranted resource deny; unsupported resource, blank reason and out-of-range limit are rejected; unknown scope keys, unsupported version, non-array resources and non-array actions fail closed;
-- company scope filters rows; `journal_lines` join stays inside the granted company; `999999999999` is returned as an exact JSON number; `p_limit` truncation is reported;
-- temporary `support_grants` and `journals` relations plus a caller `search_path = pg_temp` cannot inject consent or rows;
-- read + audit roll back together, audit-write failure fails the read, and denial evidence is durable only when written in a separate transaction;
-- direct `tenant_data` SELECT, direct operator audit INSERT and `SET ROLE` to the definer are denied; the definer self-scopes tenant context while the caller's previous context is restored; audit rows reject UPDATE.
+Not proven / explicitly excluded:
 
-Excluded / depends on later work:
+- **Commit-before-disclosure**: requires the bounded `src/operator/support-read.mjs` adapter and its own tests; finding 1 remains PARTIAL.
+- No HTTP route, UI, cookie handling, OpenAPI entry point or live operator session acquisition.
+- No bulk export, search, write, impersonation or arbitrary table read.
+- Denial durability still depends on the adapter calling the logging function in a fresh transaction; SQL cannot provide an autonomous transaction.
+- AUTH-007 issuer/audience pinning is duplicated as versioned deployment policy data for the DB boundary; the two must be kept consistent operationally.
 
-- No HTTP route, UI, session-cookie handling or OpenAPI surface: AUTH-007 owns admission and this payload owns the mediated read.
-- Issuer/audience pinning and source-age policy remain AUTH-007 exchange/admission configuration; this payload revalidates the durable binding, expiry and current mapping it can prove.
-- Denial durability depends on the caller invoking `log_operator_read_denial` in a fresh transaction (PostgreSQL has no autonomous transaction); no in-transaction claim is made.
-- The read surface is deliberately five resources with no export, search, write, impersonation or raw-SQL mode. A new resource is a reviewed authority-surface change, not a reference row; a new scope key requires shape version 2.
-- Visibility policy for financial data remains the future application RBAC / User Access Settings concern (D-014); this contract does not encode role-name visibility.
+## Deviations / narrowing decisions
 
-## Deviations and decisions that narrow future options
-
-- Exactly two single-column UPDATE grants were added to the definer solely to satisfy PostgreSQL's `SELECT … FOR SHARE` privilege requirement; the definer owns no write function. Removing row locking later would remove those grants, but would also remove the revocation race protection.
-- The Access actor is recorded in the audit payload; the audit `actor_id` is the local identity UUID because `operator.operator_audit.actor_id` is limited to 200 characters while an Access subject may be 320. This is documented in the README and is a deliberate schema-bound choice.
-- `scope_jsonb` shape 1 requires exactly `version`, `resources` and optional `companies`; unknown keys fail closed. Supporting new scope dimensions will require a reviewed version bump rather than silently tolerating unknown keys.
-- No files outside TOUCH were edited for implementation. The delivery report and checkpoint are the protocol artifacts required by `CONTRACTOR_ROLE.md`.
+- Added `operator.access_read_policy`, the consent gate/triggers and an internal protocol validator inside TOUCH. The policy table is deployment data and must be seeded; missing policy fails closed.
+- Revoked the inherited broad bootstrap operator grants from the definer and re-granted the enumerated minimum. This is a narrowing of the definer's own surface, not a change to other roles; no applied SQL was edited.
+- Two lock-only UPDATE column grants remain (`auth.users.status`, `auth.sessions.revoked_at`) and are enumerated in the validator; they exist solely for `FOR SHARE`.
+- Denial `actor_id` is the local identity UUID because the operator-audit column limit is 200 chars while an Access subject may be 320; the verified subject is retained in the payload.
+- No source module was added without the required engineer amendment.
 
 ## Local environment note
 
-The worktree had no `node_modules`; a gitignored symlink to the repository's installed modules was used for the local gates and is not staged or committed. The disposable test cluster was started at `127.0.0.1:55435` with `esc` as the administrative test principal; no production or client database was touched.
+A gitignored `node_modules` symlink to the repository installation was used for local gates and is not staged. The disposable cluster was `127.0.0.1:55435` with `esc` as administrative test principal. No production/client database was touched.
