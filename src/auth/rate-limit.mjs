@@ -26,6 +26,7 @@ export const RATE_LIMIT_DEFAULTS = Object.freeze({
   // configuration and must be reviewed and versioned by server composition.
   login: Object.freeze({limit: 8, windowMs: 15 * 60 * 1000}),
   reset: Object.freeze({limit: 5, windowMs: 15 * 60 * 1000}),
+  password_change: Object.freeze({limit: 5, windowMs: 15 * 60 * 1000}),
 });
 
 const MIN_WINDOW_MS = 60 * 1000;
@@ -51,6 +52,7 @@ export function normalizeRatePolicy(policy = {}) {
   const merged = {
     login: {...RATE_LIMIT_DEFAULTS.login, ...(policy.login ?? {})},
     reset: {...RATE_LIMIT_DEFAULTS.reset, ...(policy.reset ?? {})},
+    password_change: {...RATE_LIMIT_DEFAULTS.password_change, ...(policy.password_change ?? {})},
   };
   for (const [kind, value] of Object.entries(merged)) {
     if (!Number.isInteger(value.limit) || value.limit < 1 || value.limit > 1000) {
@@ -94,7 +96,12 @@ export function throttleScopes({email, network = null, realm = 'customer'}) {
   };
 }
 
-const DETAIL_KEY = {login: 'throttle_account', reset: 'throttle_account'};
+const DETAIL_KEY = {login: 'throttle_account', reset: 'throttle_account', password_change: 'throttle_account'};
+const COUNTED_EVENT = {
+  login: 'login_failure',
+  reset: 'password_reset_requested',
+  password_change: 'password_change_failed',
+};
 
 export function createRateLimiter({
   store,
@@ -172,11 +179,11 @@ export function createRateLimiter({
       `SELECT count(*)::int AS failures,
               min((a.detail_jsonb->>'attempt_at')::timestamptz) AS first_failure
        FROM auth.auth_audit a
-       WHERE a.event_type = 'password_reset_requested'
+       WHERE a.event_type = $5
          AND a.outcome <> 'denied'
          AND a.detail_jsonb->>$1 = $2
          AND (a.detail_jsonb->>'attempt_at')::timestamptz > $3::timestamptz - make_interval(secs => $4)`,
-      params,
+      [...params, COUNTED_EVENT[kind]],
     );
     return result.rows[0];
   }

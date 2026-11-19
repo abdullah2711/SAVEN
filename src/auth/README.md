@@ -550,8 +550,9 @@ a business before verification. Operator realms refuse selection.
 - Listing/selection does not grant business permissions, approval authority or owner
   protections; those remain the shared business authorization layer. This module is not the
   full business policy engine.
-- No tenant-selection audit event is emitted; the canonical `auth_event_type` domain has no
-  such value (AUTH-009/reference-data owner).
+- Listing itself is a read; successful selection/clearing and security refusals now write
+  `tenant_selected`, `tenant_cleared` and `tenant_selection_failed` through the AUTH-009
+  catalog (AUTH-006's original non-claim is superseded).
 
 ## Cloud operator Access (AUTH-007)
 
@@ -646,6 +647,174 @@ Local `/v1/auth/login`, password reset and MFA routes continue to refuse the ope
 
 - No live Access policy, network key fetch, DNS/tunnel change or production credential is
   included; tests use mocked keys/assertions.
-- Complete operator-read audit and failure taxonomy remain AUTH-009/PIVOT-007 work. Some
-  pre-exchange route guard failures are not audited; this is not complete durable failure
-  coverage.
+- Complete operator-read audit remains PIVOT-007 work. AUTH-009 now records every refusal on
+  the `/v1/auth/operator/access` route, including origin, body-shape, configuration and
+  missing-bearer guards that previously sat outside the failure path.
+
+## Authentication audit (AUTH-009)
+
+`src/auth/audit.mjs` is the single writer for `auth.auth_audit`. Every auth module writes
+through it; no caller builds its own `INSERT`.
+
+### Event catalog (configuration, not writer logic)
+
+The event domain is the versioned JSON configuration `src/auth/audit-catalog.v1.json`.
+`validateAuditCatalog` normalizes and freezes it; `createAuditWriter`/`createAuthServer`
+accept an equivalent validated catalog through `auditCatalog`. Adding or amending an event
+is a configuration edit (or a deployment-supplied validated catalog), not a writer-code
+change. HTTP clients cannot register, select or override a catalog. Invalid configuration
+(unsupported version, unknown actor/outcome, duplicate or credential-shaped detail key,
+empty actors) fails closed at composition with `AUDIT_CATALOG_INVALID`; an unknown event at
+write time fails closed with `AUDIT_EVENT_UNKNOWN`.
+
+Each entry declares a category, the real consuming adapter (`producer`), permitted actor
+semantics, permitted outcomes and the exact detail keys. `ADR03_REQUIRED_EVENTS` is the
+independent, source-level requirement map: every entry is `required`, and changing the JSON
+catalog cannot downgrade one. `ADR03_PRODUCER_MAP` is the precise, catalog-independent
+transition map (which flow/route would emit each event, and what is absent); the delivery
+report carries the same table for review. Live producers today:
+
+| Event | Producer |
+| --- | --- |
+| `login_success`, `login_failure` | customer credential sign-in and operator Access exchange |
+| `logout` | customer and operator logout (single-session; `detail.scope = one`) |
+| `sessions_revoked` | password reset and password change revoke-all (`detail.scope = all`) |
+| `mfa_enrolled`, `mfa_enroll_failed`, `mfa_verified`, `mfa_verification_failed`, `mfa_disabled` | MFA routes |
+| `password_reset_requested`, `password_reset_completed`, `password_reset_failed` | recovery routes |
+| `password_changed`, `password_change_failed` | authenticated password-change route |
+| `email_verification_requested`, `email_verified`, `email_verification_failed` | verification routes |
+| `tenant_selected`, `tenant_cleared`, `tenant_selection_failed` | tenant selection |
+| `assurance_denied`, `session_denied`, `access_denied` | common assurance gate and early route guards |
+
+### Producer-deferred events (Principal-approved narrowing, 19 Nov 2026)
+
+`role_changed`, `membership_invited` and `membership_accepted` are REQUIRED by ADR03 and
+remain in `ADR03_REQUIRED_EVENTS` as `required`. `ADR03_PRODUCER_MAP` records their intended
+transition, the live legacy producer, and marks them `producer-deferred` to the
+IAM/membership administration contract. The catalog carries their schemas with
+`producer: null`.
+
+The justification is not "the workflows do not exist": they are LIVE on the legacy data
+layer —
+
+- invitations and acceptance: `src/operating.mjs` `invite()` / `membershipInvitation()`,
+  imported and routed by `src/api.mjs`;
+- role change: `src/local/administration.mjs` records `BUSINESS_ROLE_SAVED`.
+
+The accurate reason for the deferral is that those flows are **not covered by the new
+auth-audited PostgreSQL surface**, and porting them is an IAM contract of its own (authority,
+tenant scoping, invitation/acceptance token semantics, role epochs and session consequences).
+AUTH-009 ships the vocabulary, validation, required map and explicit deferral marker; it does
+not implement role or invitation policy. `BUSINESS_ROLE_SAVED` is carried forward, not
+dropped. All four ADR03 events formerly listed as absent remain REQUIRED — `password_changed`
+is live and tested, and the other three are visibly deferred, never silently skipped.
+
+### Catalog boundary wiring
+
+The configuration path is explicit in production composition:
+
+1. `src/auth/audit-catalog.v1.json` is the versioned default configuration.
+2. `createAuthServer({auditCatalog})` forwards a deployment-supplied catalog to
+   `createAuditWriter(pool, {auditCatalog})`.
+3. `createAuditWriter` calls `validateAuditCatalog` exactly once; an invalid/unsupported
+   catalog throws `AUDIT_CATALOG_INVALID` at composition, before any request is served.
+4. Every write calls `prepareAuditRow(event, {catalog})`, which applies the validated
+   per-event actors, outcomes and detail allow-list plus the global credential-name guard.
+5. Unknown events are refused with `AUDIT_EVENT_UNKNOWN`; there is no fallback writer.
+6. The required/producer maps are source constants and do not read the catalog, so a catalog
+   edit cannot make a missing producer look accepted.
+
+### Password change
+
+`POST /v1/auth/password/change` is the real `password_changed` producer. It requires the
+customer origin, an authenticated session, CSRF, and the current password; it hashes the new
+password with the shared policy, advances `credential_version`, revokes every session
+(`reason = password_change`) and writes `password_changed` plus `sessions_revoked` in the
+same transaction. The current cookie is cleared. The attempt is throttled with the same
+durable reservation model as sign-in (`password_change` policy kind) before the KDF; a wrong
+current password commits one refusal reservation and changes nothing.
+
+The mutation does not rely on the generic pre-route MFA check. Inside its owned transaction it
+takes the accepted shared authority gate first, then the lifecycle locks in order
+(principal -> factor -> session), re-reads the locked session, and re-reads the current
+required-MFA authority and factor/enrollment state. Unresolved authority fails closed with
+`MFA_AUTHORITY_UNAVAILABLE`; insufficient assurance or an unenrolled required factor fails
+closed with `MFA_REQUIRED` (recorded as `assurance_denied` after rollback). The shared gate is
+held through the credential change and audit commit, so a concurrent membership/role change
+either blocks or is observed. No selected business tenant is required to change a password,
+and the operator realm is refused. The route is deliberately not pre-MFA allowed, so a
+pending administrator also hits the pre-route assurance gate.
+
+### Early refusal coverage
+
+A security decision that exits before a route's own recorder still produces exactly one
+classified, independently committed failure row:
+
+- pre-reservation sign-in refusals (operator-realm credential login, origin mismatch,
+  unrecognized origin) -> `login_failure`;
+- session/CSRF refusals on authenticated routes -> `session_denied`;
+- the common MFA assurance gate -> `assurance_denied`;
+- tenant selection policy refusals -> `tenant_selection_failed`;
+- MFA route realm/origin guards before the factor try block -> `access_denied`;
+- email verification refusals -> `email_verification_failed`;
+- reset refusals -> `password_reset_failed`; password-change refusals ->
+  `password_change_failed`;
+- anything else classifiable only as a route-level refusal -> `access_denied`.
+
+The actor is taken only from a server-verified session; an unverified or unrecognized
+request records `user_id = NULL` / `actor_kind = unknown`. A refusal that happens before any
+exact origin can be established (for example an unrecognized `Host`) is recorded under the
+explicit `unknown` realm rather than a fabricated customer/operator attribution. Malformed
+JSON is a request-shape fault, not an authentication decision, and is not recorded. Routes
+that already recorded their own classified refusal mark the error so the safety net does
+not add a second row.
+
+### Invariants
+
+- **Append-only.** The table trigger refuses UPDATE, DELETE and TRUNCATE for every role,
+  including the owner; the writer never issues either statement.
+- **Atomic success.** Success transitions pass the caller's transaction, so session/binding/
+  credential state and its audit row commit or roll back together. An audit fault fails the
+  request (`AUTH_ACCOUNTING_UNAVAILABLE`) instead of reporting an unrecorded success.
+- **Durable failure.** `audit.failure(event)` takes its own connection outside the attempt
+  transaction. A rolled-back sign-in, MFA verification, reset or password change still leaves
+  an observable refusal row. Login/reset/password-change throttling reservations are the same
+  pattern. A failure-audit fault is counted in `audit.stats()` and exposed by
+  `handler.auditDurability()`; it never changes the authentication decision.
+- **Actor semantics.** `user_id` is a verified principal UUID or NULL. The writer records
+  `detail.actor_kind`: `authenticated`, `unverified_attempt` (known account, unverified
+  credential), `unknown`, `operator_assertion` or `recovery_token`. A client body/header value
+  can never set an actor, tenant or session id; unknown sign-in fields are refused.
+- **Redaction.** Detail is allow-listed per event and type-bounded (scalars only, strings
+  truncated). Any key naming a password, token, secret, assertion, cookie, CSRF value or
+  one-time code is refused before the allow-list is consulted, including in a
+  deployment-supplied catalog. Raw session tokens, CSRF tokens, reset/verification tokens,
+  TOTP seeds, recovery codes, passwords and bearer assertions never reach the ledger.
+- **Versioned rows.** `detail_schema_version` is written explicitly (`AUTH_AUDIT_VERSION`).
+- **Distinct ledgers.** Auth events go only to `auth.auth_audit`; business audit/outbox and
+  `operator.operator_audit` remain separate authorities and are never written here.
+
+### Extension points
+
+- Add an event in `audit-catalog.v1.json` (or supply a validated catalog to the writer):
+  name, category, producer, actors, outcomes and detail keys. No writer branch is added.
+- Breaking schema changes bump `catalogVersion`; `SUPPORTED_CATALOG_VERSIONS` is the explicit
+  compatibility gate. `detail_schema_version` versions an individual event's payload.
+- A new detail field is an allow-list edit plus a redaction review. Never add a credential
+  field; the sensitive-name guard is deliberate and cannot be allow-listed away.
+- Realms are a writer option; `unknown` is reserved for pre-realm origin refusals only.
+- Retention/export and indexed storage are deployment concerns; this module only appends.
+
+### Non-claims
+
+- This is not a SIEM, alerting pipeline or tamper-evident chain. It is append-only history in
+  the same database; privileged DDL/trigger tampering remains an owner boundary.
+- Failure-audit durability is best-effort against a total database outage: the attempt is
+  refused but no row can exist while the ledger is unreachable. The miss is counted and
+  exposed rather than claimed as delivered.
+- `role_changed`, `membership_invited` and `membership_accepted` remain REQUIRED and are
+  explicitly producer-deferred to the IAM/membership contract under the Principal-approved
+  narrowing of 19 November 2026. Their legacy flows are live on the legacy data layer and are
+  carried forward (`BUSINESS_ROLE_SAVED` included); they are not silently skipped.
+- Success events for read-only routes (`me`, tenant listing) are intentionally not emitted.
+- No UI, active entry point, migration or deployment is changed by this module.

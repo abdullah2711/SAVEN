@@ -1,0 +1,188 @@
+{
+  "catalogVersion": 1,
+  "description": "AUTH-009 authentication audit event catalog. Versioned configuration consumed by src/auth/audit.mjs. Add or amend an event here (or supply an equivalent validated catalog through the writer boundary); writer code does not change. Rows describe schemas only: whether a required event has a live producer is recorded independently in ADR03_REQUIRED_EVENTS. Actor values: authenticated, unverified_attempt, unknown, operator_assertion, recovery_token. Outcome values: success, failure, denied.",
+  "events": {
+    "login_success": {
+      "category": "authentication",
+      "producer": "routes.login+access.exchange",
+      "actors": ["authenticated", "operator_assertion"],
+      "outcomes": ["success"],
+      "detail": ["assurance", "rehashed", "reservation_order", "throttle_account", "throttle_network", "attempt_at", "attempt_order", "operator_subject", "operator_role", "access_issuer", "access_audience", "exchange"]
+    },
+    "login_failure": {
+      "category": "authentication",
+      "producer": "routes.login+access.exchange",
+      "actors": ["unknown", "unverified_attempt", "operator_assertion"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "retry_after_ms", "phase", "route", "throttle_account", "throttle_network", "attempt_at", "attempt_order"]
+    },
+    "logout": {
+      "category": "session",
+      "producer": "routes.logout+route.operatorLogout",
+      "actors": ["authenticated", "operator_assertion"],
+      "outcomes": ["success"],
+      "detail": ["scope"]
+    },
+    "sessions_revoked": {
+      "category": "session",
+      "producer": "routes.resetPassword+passwordChange",
+      "actors": ["authenticated", "recovery_token"],
+      "outcomes": ["success"],
+      "detail": ["scope", "reason", "revoked_count"]
+    },
+    "mfa_enrolled": {
+      "category": "mfa",
+      "producer": "routes.mfaEnroll+mfaEnrollVerify",
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["stage", "recovery_codes_issued"]
+    },
+    "mfa_enroll_failed": {
+      "category": "mfa",
+      "producer": "routes.mfaEnroll+mfaEnrollVerify",
+      "actors": ["authenticated"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "stage", "method"]
+    },
+    "mfa_verified": {
+      "category": "mfa",
+      "producer": "routes.mfaVerify",
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["method", "assurance"]
+    },
+    "mfa_verification_failed": {
+      "category": "mfa",
+      "producer": "routes.mfaVerify+mfaDisable",
+      "actors": ["authenticated"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "stage", "method"]
+    },
+    "mfa_disabled": {
+      "category": "mfa",
+      "producer": "routes.mfaDisable",
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["reenrollment_required"]
+    },
+    "password_reset_requested": {
+      "category": "credential",
+      "producer": "routes.forgotPassword",
+      "actors": ["unknown"],
+      "outcomes": ["success", "failure", "denied"],
+      "detail": ["reason", "route", "retry_after_ms", "delivery", "throttle_account", "throttle_network", "attempt_at", "attempt_order"]
+    },
+    "password_reset_failed": {
+      "category": "credential",
+      "producer": "routes.resetPassword",
+      "actors": ["unknown", "recovery_token"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "route"]
+    },
+    "password_reset_completed": {
+      "category": "credential",
+      "producer": "routes.resetPassword",
+      "actors": ["recovery_token"],
+      "outcomes": ["success"],
+      "detail": ["purpose", "sessions_revoked", "credential_version"]
+    },
+    "password_changed": {
+      "category": "credential",
+      "producer": "routes.passwordChange",
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["sessions_revoked", "credential_version"]
+    },
+    "password_change_failed": {
+      "category": "credential",
+      "producer": "routes.passwordChange",
+      "actors": ["authenticated", "unknown"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "route", "retry_after_ms", "throttle_account", "throttle_network", "attempt_at", "attempt_order"]
+    },
+    "email_verification_requested": {
+      "category": "credential",
+      "producer": "routes.emailVerificationRequest",
+      "actors": ["authenticated", "unknown"],
+      "outcomes": ["success", "denied"],
+      "detail": ["delivery", "reason", "route", "retry_after_ms"]
+    },
+    "email_verified": {
+      "category": "credential",
+      "producer": "routes.emailVerifyRoute",
+      "actors": ["recovery_token"],
+      "outcomes": ["success"],
+      "detail": ["already_verified"]
+    },
+    "email_verification_failed": {
+      "category": "credential",
+      "producer": "routes.emailVerifyRoute",
+      "actors": ["unknown", "recovery_token"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "route"]
+    },
+    "tenant_selected": {
+      "category": "membership",
+      "producer": "tenant-selection.select",
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["membership_id", "role_id"]
+    },
+    "tenant_cleared": {
+      "category": "membership",
+      "producer": "tenant-selection.clear",
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": []
+    },
+    "tenant_selection_failed": {
+      "category": "membership",
+      "producer": "routes.selectTenant+assurance gate",
+      "actors": ["authenticated", "unknown"],
+      "outcomes": ["failure", "denied"],
+      "detail": ["reason", "route"]
+    },
+    "assurance_denied": {
+      "category": "assurance",
+      "producer": "routes.handle assurance gate",
+      "actors": ["authenticated"],
+      "outcomes": ["denied"],
+      "detail": ["reason", "route", "required", "enrolled"]
+    },
+    "session_denied": {
+      "category": "session",
+      "producer": "routes session/CSRF guards",
+      "actors": ["authenticated", "unknown"],
+      "outcomes": ["denied", "failure"],
+      "detail": ["reason", "route"]
+    },
+    "access_denied": {
+      "category": "authentication",
+      "producer": "routes pre-realm/origin guards",
+      "actors": ["unknown", "authenticated", "operator_assertion"],
+      "outcomes": ["denied", "failure"],
+      "detail": ["reason", "route"]
+    },
+    "role_changed": {
+      "category": "membership",
+      "producer": null,
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["role_id", "previous_role_id"]
+    },
+    "membership_invited": {
+      "category": "membership",
+      "producer": null,
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["membership_id", "role_id"]
+    },
+    "membership_accepted": {
+      "category": "membership",
+      "producer": null,
+      "actors": ["authenticated"],
+      "outcomes": ["success"],
+      "detail": ["membership_id", "role_id"]
+    }
+  }
+}
