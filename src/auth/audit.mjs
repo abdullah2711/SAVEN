@@ -91,6 +91,94 @@ export const ADR03_REQUIRED_EVENTS = Object.freeze({
   membership_accepted: Object.freeze({status: 'required'}),
 });
 
+// Precise producer/transition map. This is reporting and review evidence, not a
+// status that can relax the contract: `unresolved` means a REQUIRED ADR03 transition
+// has no adapter flow and must not be treated as covered or deferred. It is kept in
+// source, independent of the JSON catalog, so a catalog edit cannot change it.
+export const ADR03_PRODUCER_MAP = Object.freeze({
+  login_success: Object.freeze({
+    status: 'live',
+    transition: 'Verified credential or asserted operator identity creates a session.',
+    producer: 'routes.login; access.exchange',
+    route: 'POST /v1/auth/login; POST /v1/auth/operator/access',
+  }),
+  login_failure: Object.freeze({
+    status: 'live',
+    transition: 'A sign-in attempt is reserved, denied, or refused before reservation.',
+    producer: 'routes.login; access.exchange; routes.refusalNet',
+    route: 'POST /v1/auth/login; POST /v1/auth/operator/access',
+  }),
+  logout: Object.freeze({
+    status: 'live',
+    transition: 'The authenticated principal revokes the current session.',
+    producer: 'routes.logout; routes.operatorLogoutRoute',
+    route: 'POST /v1/auth/logout; POST /v1/auth/operator/logout',
+  }),
+  mfa_enrolled: Object.freeze({
+    status: 'live',
+    transition: 'TOTP enrollment starts, completes, or replaces an existing factor.',
+    producer: 'routes.mfaEnrollRoute; routes.mfaEnrollVerifyRoute',
+    route: 'POST /v1/auth/mfa/enroll; POST /v1/auth/mfa/enroll/verify',
+  }),
+  mfa_verified: Object.freeze({
+    status: 'live',
+    transition: 'A TOTP or recovery code verifies and raises session assurance.',
+    producer: 'routes.mfaVerifyRoute',
+    route: 'POST /v1/auth/mfa/verify',
+  }),
+  mfa_disabled: Object.freeze({
+    status: 'live',
+    transition: 'Factor disablement after reauthentication.',
+    producer: 'routes.mfaDisableRoute',
+    route: 'POST /v1/auth/mfa/disable',
+  }),
+  password_changed: Object.freeze({
+    status: 'live',
+    transition: 'Authenticated current-password reauthentication sets a new credential.',
+    producer: 'routes.passwordChange',
+    route: 'POST /v1/auth/password/change',
+  }),
+  password_reset_requested: Object.freeze({
+    status: 'live',
+    transition: 'A reset challenge request is reserved and, when configured, issued.',
+    producer: 'routes.forgotPassword',
+    route: 'POST /v1/auth/forgot-password',
+  }),
+  password_reset_completed: Object.freeze({
+    status: 'live',
+    transition: 'A single-use reset token consumes to a new credential generation.',
+    producer: 'routes.resetPassword',
+    route: 'POST /v1/auth/reset-password',
+  }),
+  sessions_revoked: Object.freeze({
+    status: 'live',
+    transition: 'Bulk revocation: reset or password change invalidates every session.',
+    producer: 'routes.resetPassword; routes.passwordChange',
+    route: 'POST /v1/auth/reset-password; POST /v1/auth/password/change',
+  }),
+  role_changed: Object.freeze({
+    status: 'unresolved',
+    transition: 'A tenant membership role is reassigned with current authority.',
+    producer: null,
+    route: null,
+    absent: 'No authenticated role-administration adapter exists in AUTH-001..007. Current authority, tenant scoping and effect on sessions would have to be defined by the owning membership/role contract; inventing it here would create unauthorised security policy.',
+  }),
+  membership_invited: Object.freeze({
+    status: 'unresolved',
+    transition: 'A tenant administrator issues a pending membership invitation.',
+    producer: null,
+    route: null,
+    absent: 'No invitation adapter exists. PIVOT-004 records that invitation/acceptance policy ownership stays with a future contract; AUTH-006 records that selection is not acceptance.',
+  }),
+  membership_accepted: Object.freeze({
+    status: 'unresolved',
+    transition: 'The invited identity authenticates and explicitly accepts the membership.',
+    producer: null,
+    route: null,
+    absent: 'No acceptance adapter exists. Issuer authority revalidation, token lifetime and acceptance semantics are owned by the membership contract, not AUTH-009.',
+  }),
+});
+
 export class AuditEventError extends Error {
   constructor(code, message) {
     super(message);

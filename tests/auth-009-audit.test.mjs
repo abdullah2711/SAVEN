@@ -13,8 +13,10 @@ import {
   AUTH_AUDIT_CATALOG,
   AUTH_AUDIT_CATALOG_VERSION,
   ADR03_REQUIRED_EVENTS,
+  ADR03_PRODUCER_MAP,
   AuditDurabilityError,
 } from '../src/auth/audit.mjs';
+import {createAuthServer} from '../src/auth/server.mjs';
 import {createPasswordPolicy} from '../src/auth/password-policy.mjs';
 import {createMailAdapter} from '../src/auth/mail.mjs';
 import {totpCode} from '../src/auth/factors.mjs';
@@ -318,6 +320,29 @@ test('AUTH-009 the required-event map stays independent of the configurable cata
   for (const spec of Object.values(AUTH_AUDIT_CATALOG)) {
     assert.equal(Object.hasOwn(spec, 'required'), false);
   }
+});
+
+test('AUTH-009 producer/transition map is precise, catalog-independent and reports unresolved requirements', () => {
+  assert.deepEqual(Object.keys(ADR03_PRODUCER_MAP).sort(), Object.keys(ADR03_REQUIRED_EVENTS).sort());
+  const unresolved = [];
+  for (const [name, entry] of Object.entries(ADR03_PRODUCER_MAP)) {
+    assert.ok(['live', 'unresolved'].includes(entry.status), `${name} needs an explicit status`);
+    assert.notEqual(entry.status, 'deferred', `${name} may not be deferred by the map`);
+    assert.equal(typeof entry.transition, 'string');
+    if (entry.status === 'live') {
+      assert.ok(entry.producer && entry.route, `${name} live entry needs flow and route`);
+      assert.ok(AUTH_AUDIT_CATALOG[name].producer, `${name} live entry must match a configured producer`);
+    } else {
+      unresolved.push(name);
+      assert.equal(entry.producer, null);
+      assert.equal(entry.route, null);
+      assert.ok(entry.absent && entry.absent.length > 0, `${name} must state what is absent`);
+      assert.equal(AUTH_AUDIT_CATALOG[name].producer, null, `${name} must not claim a configured producer`);
+    }
+  }
+  assert.deepEqual(unresolved.sort(), ['membership_accepted', 'membership_invited', 'role_changed'],
+    'these REQUIRED producers remain unresolved and must reach review as such, not as complete coverage');
+  assert.equal(ADR03_PRODUCER_MAP.password_changed.status, 'live');
 });
 
 // ---------------------------------------------------------------------------
@@ -945,6 +970,113 @@ test('AUTH-009 MFA route guards that precede the factor try block are recorded',
       assert.equal(accessRows[0].realm, 'operator');
       assert.equal(accessRows[0].detail_jsonb.reason, 'OPERATOR_ASSERTION_REQUIRED');
       assert.equal(accessRows[0].detail_jsonb.route, '/v1/auth/mfa/enroll');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 every route family records its early security decision exactly once', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock, operatorAccess: {}});
+
+      const forgotOperator = await handler(forgotRequest({email: 'nobody@example.com'}, {origin: origins.operator}));
+      assert.equal(forgotOperator.status, 403);
+      assert.equal((await forgotOperator.json()).error.code, 'OPERATOR_ASSERTION_REQUIRED');
+
+      const resetWrongOrigin = await handler(request(`${origins.customer}/v1/auth/reset-password`, {
+        method: 'POST',
+        headers: {origin: 'https://evil.example', 'content-type': 'application/json'},
+        body: {token: 'synthetic-reset-token', password: 'synthetic-new-password'},
+      }));
+      assert.equal(resetWrongOrigin.status, 403);
+      assert.equal((await resetWrongOrigin.json()).error.code, 'ORIGIN_MISMATCH');
+
+      const logoutNoSession = await handler(request(`${origins.customer}/v1/auth/logout`, {
+        method: 'POST',
+        headers: {origin: origins.customer},
+      }));
+      assert.equal(logoutNoSession.status, 401);
+
+      const changeOperator = await handler(request(`${origins.operator}/v1/auth/password/change`, {
+        method: 'POST',
+        headers: {origin: origins.operator, 'content-type': 'application/json'},
+        body: {currentPassword: 'a', newPassword: 'b'},
+      }));
+      assert.equal(changeOperator.status, 403);
+      assert.equal((await changeOperator.json()).error.code, 'OPERATOR_ASSERTION_REQUIRED');
+
+      const operatorMeNoCookie = await handler(request(`${origins.operator}/v1/auth/operator/me`, {method: 'GET'}));
+      assert.equal(operatorMeNoCookie.status, 401);
+
+      const requested = await ledger(db, "event_type = 'password_reset_requested'");
+      assert.equal(requested.length, 1);
+      assert.equal(requested[0].realm, 'operator');
+      assert.equal(requested[0].detail_jsonb.reason, 'OPERATOR_ASSERTION_REQUIRED');
+
+      const resetFailed = await ledger(db, "event_type = 'password_reset_failed'");
+      assert.equal(resetFailed.length, 1);
+      assert.equal(resetFailed[0].realm, 'customer');
+      assert.equal(resetFailed[0].detail_jsonb.reason, 'ORIGIN_MISMATCH');
+
+      const changeFailed = await ledger(db, "event_type = 'password_change_failed'");
+      assert.equal(changeFailed.length, 1);
+      assert.equal(changeFailed[0].realm, 'operator');
+      assert.equal(changeFailed[0].detail_jsonb.reason, 'OPERATOR_ASSERTION_REQUIRED');
+
+      const sessionRows = await ledger(db, "event_type = 'session_denied'");
+      assert.equal(sessionRows.length, 2, 'logout and operator/me each produce one row');
+      assert.ok(sessionRows.every(row => row.detail_jsonb.reason === 'SESSION_REQUIRED'));
+      assert.ok(sessionRows.every(row => row.user_id === null && row.detail_jsonb.actor_kind === 'unknown'));
+
+      assert.equal((await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions')).rows[0].n, 0,
+        'no refusal created a success mutation');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 server composition validates and forwards the configured catalog', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      assert.throws(
+        () => createAuthServer({
+          pool,
+          origins,
+          auditCatalog: {
+            catalogVersion: 1,
+            events: {probe_event: {category: 'probe', producer: null, actors: [], outcomes: ['success'], detail: []}},
+          },
+        }),
+        error => error.code === 'AUDIT_CATALOG_INVALID',
+        'an invalid deployment catalog fails at composition',
+      );
+
+      const deploymentCatalog = {
+        catalogVersion: 1,
+        events: {
+          ...AUTH_AUDIT_CATALOG,
+          probe_event: {
+            category: 'probe',
+            producer: 'deployment.probe',
+            actors: ['authenticated'],
+            outcomes: ['success'],
+            detail: ['reason'],
+          },
+        },
+      };
+      const server = createAuthServer({pool, origins, auditCatalog: deploymentCatalog});
+      await insertUser(db, 'wiring@example.com', 'correct-horse-battery');
+      const response = await server.handler(loginRequest({email: 'wiring@example.com', password: 'wrong-password-value'}));
+      assert.equal(response.status, 401);
+      const rows = await ledger(db, "event_type = 'login_failure'");
+      assert.equal(rows.length, 1, 'the composed writer uses the deployment catalog through the same boundary');
+      assert.equal(rows[0].detail_jsonb.reason, 'attempt_reserved');
     } finally {
       await pool.end();
     }

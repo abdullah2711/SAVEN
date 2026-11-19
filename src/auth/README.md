@@ -670,7 +670,9 @@ write time fails closed with `AUDIT_EVENT_UNKNOWN`.
 Each entry declares a category, the real consuming adapter (`producer`), permitted actor
 semantics, permitted outcomes and the exact detail keys. `ADR03_REQUIRED_EVENTS` is the
 independent, source-level requirement map: every entry is `required`, and changing the JSON
-catalog cannot downgrade one. Live producers today:
+catalog cannot downgrade one. `ADR03_PRODUCER_MAP` is the precise, catalog-independent
+transition map (which flow/route would emit each event, and what is absent); the delivery
+report carries the same table for review. Live producers today:
 
 | Event | Producer |
 | --- | --- |
@@ -687,13 +689,30 @@ catalog cannot downgrade one. Live producers today:
 ### Required producers still unresolved
 
 `role_changed`, `membership_invited` and `membership_accepted` are REQUIRED by ADR03 and
-remain in `ADR03_REQUIRED_EVENTS` as `required`. They have no producing flow and the catalog
-marks their `producer` as `null`. This is an **unresolved required gap, reported against
-AUTH-009** — not a deferral, not a narrowing, and not satisfied by a synthetic row. The
-transition authority for membership invitation/acceptance and role change belongs to the
-membership/role administration contract; implementing it here would invent credential,
-invitation and role policy. AUTH-009 is not complete as a contract until those producers
-exist or Codex/Principal records an explicit amendment on the review.
+remain in `ADR03_REQUIRED_EVENTS` as `required`. `ADR03_PRODUCER_MAP` records their intended
+transition and marks them `unresolved` with the absent authority/flow stated explicitly. They
+have no producing flow and the catalog marks their `producer` as `null`. This is an
+**unresolved required gap, reported against AUTH-009** — not a deferral, not a narrowing, and
+not satisfied by a synthetic row. The transition authority for membership
+invitation/acceptance and role change belongs to the membership/role administration contract;
+implementing it here would invent credential, invitation and role policy. AUTH-009 is not
+complete as a contract until those producers exist or Codex/Principal records an explicit
+amendment on the review.
+
+### Catalog boundary wiring
+
+The configuration path is explicit in production composition:
+
+1. `src/auth/audit-catalog.v1.json` is the versioned default configuration.
+2. `createAuthServer({auditCatalog})` forwards a deployment-supplied catalog to
+   `createAuditWriter(pool, {auditCatalog})`.
+3. `createAuditWriter` calls `validateAuditCatalog` exactly once; an invalid/unsupported
+   catalog throws `AUDIT_CATALOG_INVALID` at composition, before any request is served.
+4. Every write calls `prepareAuditRow(event, {catalog})`, which applies the validated
+   per-event actors, outcomes and detail allow-list plus the global credential-name guard.
+5. Unknown events are refused with `AUDIT_EVENT_UNKNOWN`; there is no fallback writer.
+6. The required/producer maps are source constants and do not read the catalog, so a catalog
+   edit cannot make a missing producer look accepted.
 
 ### Password change
 
