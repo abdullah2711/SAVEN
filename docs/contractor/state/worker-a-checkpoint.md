@@ -1,47 +1,46 @@
-# WORKER-A checkpoint — PIVOT-007 revision 2 (review 4d0d7fc, amended TOUCH)
+# WORKER-A checkpoint — PIVOT-007 revision 3 (review 92f3e00)
 
 Date: 20 November 2026 (Asia/Karachi). Round-end checkpoint.
 
 ## Exact contract
 
-- `docs/contractor/contracts/PIVOT-007-operator-functions.md` (engineer amendment 19 Nov 2026)
+- `docs/contractor/contracts/PIVOT-007-operator-functions.md` (19–20 Nov amendments)
 - Base `testing-1` @ `e0fa9fb`; branch `opencode/pivot-007-operator-functions` @
   `/home/esc/saven/wt-pivot-007`.
 - TOUCH: `db/postgres/50-functions.sql`, `db/postgres/README.md`,
   `tests/pivot-007-operator-access.test.mjs`, `src/operator/support-read.mjs`,
-  `src/operator/README.md`.
-- Revision implementation SHA: `98629ac89db171f4dd5e1e0d8ff60230787468e3`.
+  `src/operator/README.md`, `src/auth/access.mjs` (metadata-only amendment).
+- Revision implementation SHA: `102e39a54e3bb129b7b0c0165b13dfe541396929`.
 - Delivery report: `docs/contractor/deliveries/PIVOT-007-operator-functions.md`.
 
 ## Review findings — status
 
 | # | Finding | Status | Named tests |
 | --- | --- | --- | --- |
-| 1 | Real admission / commit-before-disclosure | **DONE** — `src/operator/support-read.mjs` approved adapter: AUTH-007 preflight, owned operator-read tx, policy/identity drift refusal, COMMIT-before-return, client destruction, separate-tx denial, observable logging failure | 8 adapter tests listed in the report |
-| 2 | Exact AUTH-007 authority/trusted time | **DONE** — consent gate before final clock; all expiry checked after last wait; exact trigger/function profile; fixed `access_mfa`; policy fingerprint | `revalidates the whole authority set after the consent-gate wait`; `rejects conditional, column-scoped or re-profiled writer triggers/functions`; prior authority tests |
-| 3 | Consent/author lifecycle serialization | **DONE** — shared gate through read/audit COMMIT; writer blocks until publication; reservation and conditional-trigger tests | `serializes customer consent writes against in-flight reads`; `adapter reserves customer consent through publication COMMIT` |
-| 4 | Reused definer authority | **CLOSED (retained)** — no weakening; validator/poison tests still pass | `installs exactly the reviewed definer authority surface…`; `refuses a poisoned definer profile…` |
-| 5 | Denial attribution | **DONE** — current `auth.roles` operator/active/MFA/effective validation; weak roles labelled unverified | `denial attribution never invents a current actor from a stale binding`; `denial role evidence is current, never historical authorization` |
+| 2a | Actual AUTH-007 source-age/skew policy | **DONE** — validator exposes captured immutable descriptor; adapter compares actual issuer/audience/access_mfa/age/skew with expected and SQL fingerprint; mismatch + boundary tests | `adapter compares the actual AUTH-007 age/skew descriptor, not expected values`; `adapter refuses post-preflight source-age boundary crossing with a permitted control` |
+| 2b | Policy effective window after final wait | **DONE** — policy-writer gate + triggers; policy selected with final `clock_timestamp()` after all gates; expiry-during-wait and writer-blocking tests | `revalidates policy expiry after the consent-gate wait and serializes policy writers`; policy-trigger disable in protocol test |
+| 2c | Early bearer refusals | **DONE** — missing/short/oversize bearer records unverified denial, no secret echo, outage observable | `adapter records early bearer refusals and exposes logging outage` |
+| 3 | Consent reservation | **CLOSED retained** — shared gate through COMMIT; writer blocking/revocation tests still pass | `serializes customer consent writes against in-flight reads`; `adapter reserves customer consent through publication COMMIT` |
+| 4 | Definer profile | **CLOSED retained** — no widening; validator/poison tests pass | `installs exactly the reviewed definer authority surface…`; `refuses a poisoned definer profile…` |
+| 5 | Denial attribution | **CLOSED retained** — current role/assurance/MFA/effective validation | `denial role evidence is current…`; `denial attribution never invents…` |
 
 ## Gate evidence
 
 - `node scripts/check.mjs` → `PASS: 174 JavaScript files parsed; package manifest valid.`
-- `node --test tests/pivot-007-operator-access.test.mjs` → **27/27** pass, 0 fail.
+- `node --test tests/pivot-007-operator-access.test.mjs` → **31/31** pass, 0 fail.
+- `node --test tests/auth-007-access.test.mjs` → **22/22** pass (metadata-only regression).
 - Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55435,
   `SAVEN_PIVOT_TEST_CLUSTER=1`.
-- Adapter tests use real signed AUTH-007 assertions/exchange and separate temporary
-  restricted logins inside the disposable database.
 
 ## Where I stopped
 
-Revision delivered and pushed; not merged. No known failing test or outstanding finding
-from this review. Finding 4 remains the reviewer-closed profile; no applied migration bytes
-were edited.
+Revision delivered and pushed; not merged. No known failing test. Publication tests now use
+an entered-COMMIT barrier rather than fixed sleeps. Test logins are namespaced cluster roles
+created/dropped on the disposable cluster (not inside the database) and are not credentials.
 
 ## Exact next step
 
-1. Codex reviews `98629ac` per finding; the adapter is now implemented under the amendment.
-2. PIVOT-008 follows on its own branch; do not merge without the human-approved dispatcher
-   command.
-3. Deployment must seed `operator.access_read_policy` and pass the same values as the
-   adapter's `expectedPolicy`; drift fails closed.
+1. Codex reviews `102e39a` against the two remaining policy-authority findings.
+2. PIVOT-008 follows on its own branch; no merge without the human-approved dispatcher command.
+3. Deployment must seed `operator.access_read_policy` and pass the same actual AUTH-007
+   issuer/audience/`access_mfa`/source-age/skew to the adapter; drift fails closed.
