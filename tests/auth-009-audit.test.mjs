@@ -95,11 +95,11 @@ function makeFindUser(pool) {
   };
 }
 
-function buildRoutes({pool, clock, audit = null, mail = null, operatorAccess = null, mfa = mfaConfig(), rateLimitPolicy = {}, wrapStore = null}) {
-  const base = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
-  const store = wrapStore ? wrapStore(base) : base;
+function buildRoutes({pool, clock, audit = null, mail = null, operatorAccess = null, mfa = mfaConfig(), rateLimitPolicy = {}, wrapStore = null, store = null}) {
+  const base = store ?? createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+  const finalStore = wrapStore ? wrapStore(base) : base;
   const handler = createAuthRoutes({
-    store,
+    store: finalStore,
     findUserByEmail: makeFindUser(pool),
     audit: audit ?? createAuditWriter(pool),
     origins,
@@ -110,7 +110,7 @@ function buildRoutes({pool, clock, audit = null, mail = null, operatorAccess = n
     mail,
     operatorAccess,
   });
-  return {store, handler};
+  return {store: finalStore, handler};
 }
 
 function request(url, {method = 'GET', cookie, headers = {}, body} = {}) {
@@ -225,7 +225,7 @@ async function applyAuthorityGate(db) {
 // The authority gate rejects a superuser caller, so composed runtime paths are
 // exercised through a real non-owner auth-service login. Setup/observation stay
 // administrative; the requests do not.
-async function withAuthServicePool(db, action) {
+async function withAuthServicePool(db, action, {max = 8} = {}) {
   const login = `saven_auth_${randomBytes(5).toString('hex')}_service_login`;
   const password = randomBytes(24).toString('base64url');
   const quote = value => `"${String(value).replaceAll('"', '""')}"`;
@@ -234,7 +234,7 @@ async function withAuthServicePool(db, action) {
     'NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOBYPASSRLS NOREPLICATION',
   );
   await db.adminQuery(`GRANT ${quote(db.roles.authService)} TO ${quote(login)}`);
-  const pool = new Pool(connectionConfig(db.database, {user: login, password}));
+  const pool = new Pool(connectionConfig(db.database, {user: login, password, max}));
   try {
     return await action(pool);
   } finally {
@@ -243,9 +243,85 @@ async function withAuthServicePool(db, action) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Reference/configuration catalog (finding 3)
-// ---------------------------------------------------------------------------
+// Bounded observation helpers for concurrency tests: a wall-clock sleep must never be
+// the proof. `waitFor` polls an observable condition (pg_stat_activity, row count).
+function bounded(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+  ]);
+}
+
+async function waitFor(predicate, {timeoutMs = 4000, intervalMs = 25, label = 'condition'} = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    last = await predicate();
+    if (last) return last;
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`${label} was not observed within ${timeoutMs}ms; last=${JSON.stringify(last)}`);
+}
+
+async function writerWaitState(db, pid) {
+  const result = await db.adminQuery(
+    'SELECT state, wait_event_type, wait_event FROM pg_stat_activity WHERE pid = $1',
+    [pid],
+  );
+  return result.rows[0] ?? null;
+}
+
+// Wraps a real auth-service pool and injects failures by observed transaction phase on
+// the checked-out client. This is the accepted AUTH-002 writer pattern reused at the
+// password-change owned boundary; no production hook is added.
+function makeOwnedPool(basePool, {failOnPhase = null, failRollback = false} = {}) {
+  const releases = [];
+  let injected = false;
+  let sawCredentialUpdate = false;
+  let sawSuccessAudit = false;
+  let activePhase = null;
+  return {
+    releases,
+    get injected() { return injected; },
+    get sawCredentialUpdate() { return sawCredentialUpdate; },
+    get sawSuccessAudit() { return sawSuccessAudit; },
+    pool: {
+      query: (text, params) => basePool.query(text, params),
+      async connect() {
+        const client = await basePool.connect();
+        const originalQuery = client.query.bind(client);
+        const originalRelease = client.release.bind(client);
+        client.query = async (text, params) => {
+          const statement = typeof text === 'string' ? text.trim().toUpperCase() : '';
+          if (statement === 'BEGIN') activePhase = null;
+          if (statement.startsWith('INSERT INTO AUTH.AUTH_AUDIT')) {
+            if (params?.[0] === 'password_change_failed') activePhase = 'reservation';
+            if (params?.[0] === 'password_changed') {
+              sawSuccessAudit = true;
+              activePhase = 'success';
+            }
+          }
+          if (statement.startsWith('UPDATE AUTH.USERS')) {
+            sawCredentialUpdate = true;
+            activePhase = 'success';
+          }
+          if (statement === 'COMMIT' && !injected && failOnPhase !== null && activePhase === failOnPhase) {
+            injected = true;
+            throw new Error(`commit acknowledgement lost in the ${activePhase} phase`);
+          }
+          if (statement === 'ROLLBACK' && failRollback) throw new Error('rollback failed');
+          return originalQuery(text, params);
+        };
+        client.release = destroy => {
+          releases.push(destroy === true);
+          return originalRelease(destroy);
+        };
+        return client;
+      },
+    },
+  };
+}
+
 
 test('AUTH-009 event domain is an external, versioned, validated configuration', async () => {
   assert.equal(AUTH_AUDIT_CATALOG_VERSION, 1);
@@ -655,6 +731,326 @@ test('AUTH-009 password change revalidates required MFA assurance inside its own
       assert.equal(denied[0].detail_jsonb.route, '/v1/auth/password/change');
       assert.equal(denied[0].user_id, enrolled.userId);
       assert.equal(denied[0].detail_jsonb.actor_kind, 'authenticated');
+    });
+  });
+});
+
+test('AUTH-009 invalidation-first committed membership requirement denies password change', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'invalidate-membership@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const base = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+      let armed = false;
+      let injected = false;
+      const store = {
+        ...base,
+        withTransaction: async action => {
+          const result = await base.withTransaction(action);
+          if (armed && !injected) {
+            injected = true;
+            armed = false;
+            // A real committed authority change after the early handler check and
+            // before the mutation's final authority read.
+            await db.adminQuery(
+              `INSERT INTO auth.tenant_membership(tenant_id, user_id, role_id, status, invited_at, accepted_at)
+               VALUES ($1, $2, 'tenant_admin', 'active', now(), now())`,
+              [TENANT, user.id],
+            );
+          }
+          return result;
+        },
+      };
+      const {handler} = buildRoutes({pool, clock, store});
+      const session = await login(handler, 'invalidate-membership@example.com', 'correct-horse-battery');
+      assert.equal(session.response.status, 200);
+
+      armed = true;
+      const attempt = await handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'should-not-change-horse',
+      }));
+      assert.equal(attempt.status, 403);
+      assert.equal((await attempt.json()).error.code, 'MFA_REQUIRED');
+      assert.equal(injected, true, 'the membership writer committed between the early check and final authority');
+
+      const after = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      assert.equal(Number(after.rows[0].credential_version), user.credentialVersion);
+      const policy = createPasswordPolicy();
+      assert.equal((await policy.verify('correct-horse-battery', after.rows[0].password_hash)).valid, true);
+      const sessions = await db.adminQuery('SELECT revoked_at FROM auth.sessions WHERE user_id = $1::uuid', [user.id]);
+      assert.ok(sessions.rows.every(row => row.revoked_at === null), 'no session was revoked');
+      assert.equal((await ledger(db, "event_type = 'password_changed'")).length, 0);
+      assert.equal((await ledger(db, "event_type = 'sessions_revoked'")).length, 0);
+      const denied = await ledger(db, "event_type = 'assurance_denied'");
+      assert.equal(denied.length, 1, 'exactly one durable refusal row');
+      assert.equal(denied[0].detail_jsonb.reason, 'MFA_REQUIRED');
+      assert.equal(denied[0].detail_jsonb.route, '/v1/auth/password/change');
+      assert.equal(denied[0].user_id, user.id);
+      const reservations = await ledger(db, "event_type = 'password_change_failed'");
+      assert.equal(reservations.length, 1, 'the pre-KDF attempt accounting is exact and not duplicated');
+    });
+  });
+});
+
+test('AUTH-009 invalidation-first committed session assurance loss denies password change', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    await withAuthServicePool(db, async pool => {
+      const clock = testClock();
+      const {handler: enrollHandler, store: enrollStore} = buildRoutes({pool, clock});
+      const enrolled = await enrolledAdmin({db, clock, handler: enrollHandler, email: 'invalidate-assurance@example.com'});
+      const active = await enrollStore.readSession(enrolled.token, {realm: 'customer'});
+      assert.ok(active?.id);
+
+      const base = enrollStore;
+      let armed = false;
+      let injected = false;
+      const store = {
+        ...base,
+        withTransaction: async action => {
+          const result = await base.withTransaction(action);
+          if (armed && !injected) {
+            injected = true;
+            armed = false;
+            // Real stored assurance loss, not a false pre-read snapshot.
+            await db.adminQuery(
+              "UPDATE auth.sessions SET assurance_level = 'single_factor' WHERE id = $1::uuid",
+              [active.id],
+            );
+          }
+          return result;
+        },
+      };
+      const {handler} = buildRoutes({pool, clock, store});
+      armed = true;
+      const attempt = await handler(authedPost('/v1/auth/password/change', enrolled.token, enrolled.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'should-not-change-horse',
+      }));
+      assert.equal(attempt.status, 403);
+      assert.equal((await attempt.json()).error.code, 'MFA_REQUIRED');
+      assert.equal(injected, true);
+      const after = await db.adminQuery(
+        'SELECT credential_version FROM auth.users WHERE id = $1::uuid',
+        [enrolled.userId],
+      );
+      assert.equal(Number(after.rows[0].credential_version), 1);
+      assert.equal((await ledger(db, "event_type = 'password_changed'")).length, 0);
+      const denied = await ledger(db, "event_type = 'assurance_denied'");
+      assert.equal(denied.length, 1, 'the assurance-loss refusal is recorded once');
+      assert.equal(denied[0].detail_jsonb.reason, 'MFA_REQUIRED');
+      assert.equal(denied[0].user_id, enrolled.userId);
+    });
+  });
+});
+
+test('AUTH-009 mutation-first writer cannot commit until the password transaction ends', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'mutation-first@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      let releaseAudit;
+      let enteredResolve;
+      const auditEntered = new Promise(resolve => { enteredResolve = resolve; });
+      const auditRelease = new Promise(resolve => { releaseAudit = resolve; });
+      const writer = createAuditWriter(pool);
+      const pausingAudit = async (event, options) => {
+        if (event.eventType === 'password_changed') {
+          enteredResolve();
+          await auditRelease;
+        }
+        return writer(event, options);
+      };
+      pausingAudit.failure = writer.failure;
+      const {handler} = buildRoutes({pool, clock, audit: pausingAudit});
+      const session = await login(handler, 'mutation-first@example.com', 'correct-horse-battery');
+      assert.equal(session.response.status, 200);
+
+      let writerClient = null;
+      let writerSettled = false;
+      let writerPromise = null;
+      try {
+        const pending = handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+          currentPassword: 'correct-horse-battery',
+          newPassword: 'new-correct-horse-battery',
+        }));
+        await bounded(auditEntered, 15000, 'password mutation reaching success audit');
+
+        writerClient = await pool.connect();
+        const pid = writerClient.processID;
+        writerPromise = (async () => {
+          await writerClient.query('BEGIN');
+          await writerClient.query(
+            `INSERT INTO auth.tenant_membership(tenant_id, user_id, role_id, status, invited_at, accepted_at)
+             VALUES ($1, $2, 'tenant_admin', 'active', now(), now())`,
+            [TENANT, user.id],
+          );
+          await writerClient.query('COMMIT');
+        })().then(() => { writerSettled = true; }, error => { writerSettled = true; throw error; });
+        writerPromise.catch(() => {});
+
+        const observed = await waitFor(
+          async () => {
+            const state = await writerWaitState(db, pid);
+            return state && state.wait_event_type === 'Lock' ? state : null;
+          },
+          {label: 'membership writer blocked on the authority gate'},
+        );
+        assert.equal(observed.wait_event, 'advisory');
+        assert.equal(writerSettled, false, 'the writer has not committed while the password transaction is open');
+
+        releaseAudit();
+        const changed = await bounded(pending, 15000, 'password change completion');
+        assert.equal(changed.status, 200);
+        await bounded(writerPromise, 15000, 'membership writer completion');
+        assert.equal(writerSettled, true);
+      } finally {
+        releaseAudit?.();
+        if (writerClient) {
+          await writerClient.query('ROLLBACK').catch(() => {});
+          writerClient.release(true);
+        }
+      }
+
+      const membership = await db.adminQuery(
+        'SELECT role_id, status FROM auth.tenant_membership WHERE user_id = $1::uuid',
+        [user.id],
+      );
+      assert.deepEqual(membership.rows, [{role_id: 'tenant_admin', status: 'active'}]);
+
+      // Subsequent request authority reflects the committed requirement.
+      const relogin = await login(handler, 'mutation-first@example.com', 'new-correct-horse-battery');
+      assert.equal(relogin.response.status, 200);
+      const denied = await handler(authedPost('/v1/auth/password/change', relogin.token, relogin.csrf, {
+        currentPassword: 'new-correct-horse-battery',
+        newPassword: 'another-correct-horse',
+      }));
+      assert.equal(denied.status, 403);
+      assert.equal((await denied.json()).error.code, 'MFA_REQUIRED');
+      assert.equal((await ledger(db, "event_type = 'assurance_denied'")).length, 1);
+    });
+  });
+});
+
+test('AUTH-009 authorized positive controls: ordinary user and current-MFA administrator', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    await insertUser(db, 'ordinary-control@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const {handler} = buildRoutes({pool, clock});
+      const ordinary = await login(handler, 'ordinary-control@example.com', 'correct-horse-battery');
+      const ordinaryChange = await handler(authedPost('/v1/auth/password/change', ordinary.token, ordinary.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'ordinary-new-correct-horse',
+      }));
+      assert.equal(ordinaryChange.status, 200);
+
+      const enrolled = await enrolledAdmin({db, clock, handler, email: 'mfa-control@example.com'});
+      const mfaChange = await handler(authedPost('/v1/auth/password/change', enrolled.token, enrolled.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'mfa-new-correct-horse',
+      }));
+      assert.equal(mfaChange.status, 200);
+      assert.equal((await ledger(db, "event_type = 'password_changed'")).length, 2);
+    });
+  });
+});
+
+test('AUTH-009 password change runs on a size-one auth pool without a nested checkout', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    await insertUser(db, 'size-one@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const {handler} = buildRoutes({pool, clock});
+      const session = await login(handler, 'size-one@example.com', 'correct-horse-battery');
+      const changed = await bounded(handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'size-one-new-correct-horse',
+      })), 15000, 'size-one password change');
+      assert.equal(changed.status, 200);
+      const again = await login(handler, 'size-one@example.com', 'size-one-new-correct-horse');
+      const wrong = await bounded(handler(authedPost('/v1/auth/password/change', again.token, again.csrf, {
+        currentPassword: 'not-the-password',
+        newPassword: 'should-not-change-horse',
+      })), 15000, 'size-one wrong-password refusal');
+      assert.equal(wrong.status, 401);
+      assert.equal((await ledger(db, "event_type = 'password_change_failed'")).length, 2,
+        'success and refusal have distinct durable attempt rows');
+    }, {max: 1});
+  });
+});
+
+test('AUTH-009 password-change success COMMIT uncertainty destroys the client and serves a clean borrower', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'uncertain-commit@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const injection = makeOwnedPool(pool, {failOnPhase: 'success'});
+      const {handler} = buildRoutes({pool: injection.pool, clock});
+      const session = await login(handler, 'uncertain-commit@example.com', 'correct-horse-battery');
+      assert.equal(session.response.status, 200);
+
+      const response = await bounded(handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'uncertain-new-correct-horse',
+      })), 15000, 'uncertain success COMMIT');
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).error.code, 'SESSION_TRANSACTION_UNCERTAIN');
+      assert.equal(injection.injected, true);
+      assert.equal(injection.sawCredentialUpdate, true);
+      assert.ok(injection.releases.includes(true), 'the uncertain checked-out client is destroyed');
+
+      const after = await db.adminQuery('SELECT credential_version FROM auth.users WHERE id = $1::uuid', [user.id]);
+      const version = Number(after.rows[0].credential_version);
+      assert.ok([user.credentialVersion, user.credentialVersion + 1].includes(version),
+        'the commit outcome is treated as unknown, not claimed as rolled back');
+      assert.equal((await ledger(db, "event_type = 'password_change_failed'")).length, 1,
+        'the durable reservation is distinct from the uncertain credential commit');
+      const clean = await pool.query('SELECT 1 AS ok');
+      assert.equal(clean.rows[0].ok, 1, 'a subsequent borrower receives a clean connection');
+    });
+  });
+});
+
+test('AUTH-009 password-change rollback uncertainty destroys the client and serves a clean borrower', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'uncertain-rollback@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
+      const injection = makeOwnedPool(pool, {failRollback: true});
+      const writer = createAuditWriter(injection.pool);
+      const failingAudit = async (event, options) => {
+        if (event.eventType === 'password_changed') throw new Error('audit store unavailable');
+        return writer(event, options);
+      };
+      failingAudit.failure = writer.failure;
+      const {handler} = buildRoutes({pool: injection.pool, clock, audit: failingAudit});
+      const session = await login(handler, 'uncertain-rollback@example.com', 'correct-horse-battery');
+      assert.equal(session.response.status, 200);
+
+      const response = await bounded(handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'uncertain-rollback-horse',
+      })), 15000, 'uncertain rollback');
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      assert.ok(injection.releases.includes(true), 'a failed rollback destroys the connection');
+      const after = await db.adminQuery('SELECT credential_version FROM auth.users WHERE id = $1::uuid', [user.id]);
+      assert.ok([user.credentialVersion, user.credentialVersion + 1].includes(Number(after.rows[0].credential_version)),
+        'the credential state is not claimed as certainly rolled back');
+      assert.ok((await ledger(db, "event_type = 'password_change_failed'")).length >= 1);
+      const clean = await pool.query('SELECT 1 AS ok');
+      assert.equal(clean.rows[0].ok, 1);
     });
   });
 });
