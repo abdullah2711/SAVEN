@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 4. Created: 19 November 2026 (Asia/Karachi).
+Version: 5. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -103,3 +103,5 @@ Append future entries here only after the corresponding review is committed; inc
 - 19 November 2026 — v3 — review `cfe9e0d` (PIVOT-014, REVISE): R69 — Compare an independently pinned expectation to the actual configured active writer version before using its evidence, never to a port that merely echoes the pin; R70 — Permanent allocation receipts bind actor, tenant/scope and accepted content digest, so recovery cannot reassign an abandoned number to a different party or transaction; R71 — Own disposable-resource cleanup from the first setup step and enforce the whole budget including synchronous children and teardown, with failure evidence preserved rather than retries-to-green; reapply R04/R09/R10/R22/R34/R40–R43/R55/R60 to full accepted lineage, exact client identity, isolated guard attacks, real critical-section overlap, uncertain cleanup and initial-post replay.
 
 - 19 November 2026 — v4 — review `8ee4111` (PIVOT-014 partial cleanup revision, REVISE): no new defect pattern; apply R01/R12 to reconcile the exact submitted Git tree with relay claims and enumerate partial closures, and R71/R07 to retain cleanup ownership before port allocation, verify shutdown before directory removal and preserve primary plus secondary failure evidence.
+
+- 19 November 2026 — v5 — review `4d0d7fc` (PIVOT-007 partial R1, REVISE plus bounded adapter amendment): no new defect pattern; apply R01/R12/R13 to exact-object partial scope and explicit amendment ownership, R04/R33/R68 to an executable privilege-safe commit-before-publication adapter, R23 to unconditional trigger predicates/function profiles, R40/R43 to freshness after the last blocking consent gate, R44 to coherent weaker-assurance configuration, and R57 to current versus historical denial-role attribution.
