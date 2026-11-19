@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 8. Created: 19 November 2026 (Asia/Karachi).
+Version: 9. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -113,3 +113,7 @@ Append future entries here only after the corresponding review is committed; inc
 ## Version 8 — 20 November 2026 (Asia/Karachi)
 
 Review: `782ed6b` — PIVOT-014 revision 3, REVISE. No new defect class: apply R08 to preserve accepted AUTH-006 regression coverage when adding lock-compatibility tests; R48/R49/R70 to rollback-resistant consumed identities and retained high-water validation; R22/R23 to atomic complete-payload activation and existing-object validation; R34/R73 to uncertain BEGIN and throwing cleanup observers; R09/R11/R55/R71 to truthful concurrent first-post, mutation and whole-budget evidence. A bound receipt in the same rollbackable transaction is not nontransactional consumption.
+
+## Version 9 — 20 November 2026 (Asia/Karachi)
+
+Review: `2c248ec` — PIVOT-007 revision 3, ACCEPT. No new defect pattern; apply R69/R40/R43 to actual captured validator policy, final effective-policy selection after blocking gates and cooperating policy writers; R61/R09 to early unverified bearer refusal evidence with authorized positive and observable logging outage; R68 to commit-before-publication. Distinguish source inspection and worker-reported gates, shortened age/skew boundary tests, time-based wait scenarios and actual entered-COMMIT barriers.
