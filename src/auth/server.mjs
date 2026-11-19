@@ -73,6 +73,7 @@ export function createAuthServer({
   config = {},
   verifyCredential = null,
   audit = null,
+  auditCatalog = undefined,
 } = {}) {
   if (!pool || typeof pool.connect !== 'function' || typeof pool.query !== 'function') {
     throw new Error('createAuthServer requires a PostgreSQL pool with connect() and query().');
@@ -85,7 +86,7 @@ export function createAuthServer({
     store,
     findUserByEmail: email => findUser((text, params) => pool.query(text, params), email),
     verifyPassword: verifyCredential ?? verifyRetained,
-    audit: audit ?? createAuditWriter(pool),
+    audit: audit ?? createAuditWriter(pool, auditCatalog === undefined ? {} : {auditCatalog}),
     origins,
     secureCookies,
     clock,

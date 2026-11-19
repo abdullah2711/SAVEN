@@ -272,11 +272,72 @@ export function createAuthRoutes({
     }
   }
 
-  // Only security refusals become append-only failure history. Malformed bodies and
-  // unavailable stores are request faults, not authentication decisions.
-  const SECURITY_REFUSAL_STATUSES = new Set([401, 403, 409, 429]);
+  // Only security decisions become append-only failure history. Malformed bodies and
+  // unavailable stores are request faults, not authentication decisions. 421 is the
+  // unrecognized-origin decision; it is recorded under the explicit `unknown` realm
+  // because no exact realm can be attributed.
+  const SECURITY_REFUSAL_STATUSES = new Set([401, 403, 409, 421, 429]);
   function isSecurityRefusal(error) {
     return SECURITY_REFUSAL_STATUSES.has(error?.status);
+  }
+
+  // Per-request verified-actor context. Only a server-verified session may populate it;
+  // a cookie, header, query or body value never does.
+  const requestContext = new WeakMap();
+  function rememberActor(request, session) {
+    const context = requestContext.get(request);
+    if (!context || !session) return;
+    context.userId = session.userId;
+    context.sessionId = session.id;
+    context.actorKind = context.realm === 'operator' ? 'operator_assertion' : 'authenticated';
+  }
+
+  // A route that already recorded its own classified refusal marks the error so the
+  // top-level safety net does not create a second row for the same decision.
+  function markAudited(error) {
+    if (error && typeof error === 'object') error.auditRecorded = true;
+    return error;
+  }
+
+  function classifyRefusal(path, error) {
+    const code = typeof error?.code === 'string' ? error.code : null;
+    if (code === 'SESSION_REQUIRED' || code === 'CSRF_FAILED') {
+      return {eventType: 'session_denied', outcome: 'denied'};
+    }
+    if (path === '/v1/auth/login') return {eventType: 'login_failure', outcome: 'denied'};
+    if (path === '/v1/auth/forgot-password') return {eventType: 'password_reset_requested', outcome: 'denied'};
+    if (path === '/v1/auth/reset-password') return {eventType: 'password_reset_failed', outcome: 'denied'};
+    if (path.startsWith('/v1/auth/email/')) return {eventType: 'email_verification_failed', outcome: 'denied'};
+    if (path === '/v1/auth/password/change') return {eventType: 'password_change_failed', outcome: 'failure'};
+    if (path === '/v1/auth/tenant/select' || path === '/v1/auth/tenant/clear') {
+      return {eventType: 'tenant_selection_failed', outcome: 'denied'};
+    }
+    if (path.endsWith('/logout')) return {eventType: 'session_denied', outcome: 'denied'};
+    return {eventType: 'access_denied', outcome: 'denied'};
+  }
+
+  // The single safety net for early guards: a real authentication/assurance decision
+  // that exits before (or outside) a route's own recorder still produces exactly one
+  // classified, independently committed failure row.
+  async function recordRefusal(request, realm, path, error) {
+    const context = requestContext.get(request) ?? {};
+    const {eventType, outcome} = classifyRefusal(path, error);
+    const actor = context.userId
+      ? {actorKind: context.actorKind, user: {id: context.userId}, sessionId: context.sessionId ?? null}
+      : {actorKind: 'unknown', user: null};
+    const result = await recordFailure({
+      eventType,
+      outcome,
+      realm: context.realm ?? realm,
+      ...actor,
+      request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+      detail: {
+        reason: typeof error?.code === 'string' ? error.code : 'security_refusal',
+        route: path,
+      },
+    });
+    markAudited(error);
+    return result;
   }
 
   async function login(request, url, realm) {
@@ -414,7 +475,7 @@ export function createAuthRoutes({
     }
 
     if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'SIGN_IN_THROTTLED');
-    if (outcome.rejected) throw new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.');
+    if (outcome.rejected) throw markAudited(new AuthError(401, 'SIGN_IN_FAILED', 'The email or password is incorrect.'));
 
     const response = json({
       realm,
@@ -544,9 +605,9 @@ export function createAuthRoutes({
         outcome: 'denied',
         realm,
         request: archive,
-        detail: {reason: 'RESET_TOKEN_INVALID'},
+        detail: {reason: 'RESET_TOKEN_INVALID', route: '/v1/auth/reset-password'},
       });
-      throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
+      throw markAudited(new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.'));
     }
     const hashed = await policy.hash(body.password);
     let result;
@@ -596,9 +657,9 @@ export function createAuthRoutes({
           outcome: 'denied',
           realm,
           request: archive,
-          detail: {reason: 'RECOVERY_TOKEN_INVALID'},
+          detail: {reason: 'RECOVERY_TOKEN_INVALID', route: '/v1/auth/reset-password'},
         });
-        throw new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.');
+        throw markAudited(new AuthError(400, 'RESET_TOKEN_INVALID', 'The reset link is invalid or has expired.'));
       }
       if (error?.code === 'RECOVERY_TOKEN_STALE') {
         await recordFailure({
@@ -606,13 +667,128 @@ export function createAuthRoutes({
           outcome: 'denied',
           realm,
           request: archive,
-          detail: {reason: 'RECOVERY_TOKEN_STALE'},
+          detail: {reason: 'RECOVERY_TOKEN_STALE', route: '/v1/auth/reset-password'},
         });
-        throw new AuthError(400, 'RESET_TOKEN_STALE', 'The reset link is no longer valid. Request a new one.');
+        throw markAudited(new AuthError(400, 'RESET_TOKEN_STALE', 'The reset link is no longer valid. Request a new one.'));
       }
       throw error;
     }
     return json({ok: true, userId: result.userId});
+  }
+
+  // AUTH-009 password change. This is the real producer for the ADR03
+  // `password_changed` transition: an authenticated, CSRF-checked session plus the
+  // current password, the same bounded hashing policy as sign-in/reset, and a
+  // credential-generation advance. Every prior session (including this one) is
+  // revoked in the same transaction, so a stolen session cannot survive a known
+  // credential change. The attempt reservation is durable before any KDF work.
+  async function passwordChange(request, url, realm) {
+    if (realm === 'operator') {
+      throw new AuthError(403, 'OPERATOR_ASSERTION_REQUIRED', 'Operator access uses an asserted identity provider; local password change is not enabled.');
+    }
+    if (request.headers.get('origin') !== url.origin) {
+      throw new AuthError(403, 'ORIGIN_MISMATCH', 'Origin verification failed.');
+    }
+    const body = await readJson(request);
+    const fields = Object.keys(body);
+    if (fields.some(key => !['currentPassword', 'newPassword'].includes(key)) ||
+        typeof body.currentPassword !== 'string' ||
+        typeof body.newPassword !== 'string') {
+      throw new AuthError(400, 'UNKNOWN_FIELDS', 'Provide the current and new password.');
+    }
+    const session = await mutationSession(request, realm);
+    const ingress = sanitizeIngress(request, trustedClientHeader);
+    const archive = auditView(request, trustedClientHeader, ingress.ip);
+    const attemptKeys = limiter.keysFor({email: session.email, network: ingress.ip, realm});
+
+    let outcome;
+    try {
+      outcome = await limiter.attempt({
+        keys: attemptKeys,
+        kind: 'password_change',
+        reserve: async (lease, verdict) => {
+          const denied = !verdict.allowed;
+          await record({
+            eventType: 'password_change_failed',
+            outcome: denied ? 'denied' : 'failure',
+            actorKind: 'authenticated',
+            realm,
+            user: {id: session.userId},
+            sessionId: session.id,
+            request: archive,
+            detail: throttleDetail(attemptKeys, verdict, denied
+              ? {reason: 'throttled', retry_after_ms: verdict.retryAfterMs}
+              : {reason: 'attempt_reserved'}),
+          }, {tx: lease});
+        },
+        action: async (verdict, lease) => {
+          // The new verifier is derived before the lifecycle transaction; the current
+          // password verification runs on the owned client with the lifecycle locks.
+          const hashed = await policy.hash(body.newPassword);
+          return lease.transaction(async tx => {
+            await mfaService.assertMutationAuthority({session, tx});
+            const user = await loadUserById(tx, session.userId);
+            if (!user || user.status !== 'active') return {rejected: true};
+            const verification = await policy.verify(body.currentPassword, user.passwordHash);
+            if (!verification.valid) return {rejected: true};
+            const updated = await tx.query(
+              `UPDATE auth.users
+               SET password_hash = $1, password_scheme = $2, password_updated_at = now(),
+                   credential_version = credential_version + 1, updated_by = 'auth009-password-change',
+                   updated_at = now()
+               WHERE id = $3 AND status = 'active' AND password_hash = $4
+               RETURNING credential_version`,
+              [hashed.hash, hashed.scheme, user.id, user.passwordHash],
+            );
+            if (updated.rowCount !== 1) {
+              return {failed: new AuthError(409, 'CREDENTIAL_CHANGED', 'Your credentials changed. Sign in again.')};
+            }
+            const revoked = await store.revokeAllSessions(session.userId, {
+              reason: 'password_change',
+              actor: session.userId,
+              tx,
+            });
+            const credentialVersion = Number(updated.rows[0].credential_version);
+            await record({
+              eventType: 'password_changed',
+              outcome: 'success',
+              actorKind: 'authenticated',
+              realm,
+              user: {id: session.userId},
+              sessionId: session.id,
+              request: archive,
+              detail: {sessions_revoked: revoked, credential_version: credentialVersion},
+            }, {tx});
+            await record({
+              eventType: 'sessions_revoked',
+              outcome: 'success',
+              actorKind: 'authenticated',
+              realm,
+              user: {id: session.userId},
+              request: archive,
+              detail: {scope: 'all', reason: 'password_change', revoked_count: revoked},
+            }, {tx});
+            return {credentialVersion, revoked};
+          });
+        },
+      });
+    } catch (error) {
+      if (error instanceof AccountingUnavailableError || error instanceof AuditWriteError) {
+        limiter.noteAccountingFailure();
+        return failure(503, 'AUTH_ACCOUNTING_UNAVAILABLE', 'Authentication is temporarily unavailable.');
+      }
+      throw error;
+    }
+    if (outcome.throttled) return throttledResponse(outcome.throttled.retryAfterMs, 'PASSWORD_CHANGE_THROTTLED');
+    if (outcome.rejected) {
+      // The durable reservation above is this attempt's recorded failure; do not
+      // create a second row for the same decision.
+      throw markAudited(new AuthError(401, 'SIGN_IN_FAILED', 'The current password is incorrect.'));
+    }
+    if (outcome.failed) throw outcome.failed;
+    const response = json({ok: true, credentialVersion: outcome.credentialVersion, sessionsRevoked: outcome.revoked});
+    response.headers.set('Set-Cookie', sessionCookie({realm, token: '', secure: secureCookies, maxAgeSeconds: 0}));
+    return response;
   }
 
   // Authenticated request for an email-verification message. It carries the AUTH-004
@@ -725,10 +901,10 @@ export function createAuthRoutes({
           outcome: 'failure',
           realm,
           request: archive,
-          detail: {reason: error.code},
+          detail: {reason: error.code, route: '/v1/auth/email/verify'},
         });
       }
-      throw error;
+      throw markAudited(error);
     }
     return json({ok: true, verified: true, userId: result.userId});
   }
@@ -741,6 +917,7 @@ export function createAuthRoutes({
     if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const session = await store.readSession(token, {realm});
     if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    rememberActor(request, session);
     const refreshed = await store.refreshSession(session.id);
     if (!refreshed) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const status = await store.withTransaction(tx => mfaService.status(session.userId, {tx}));
@@ -778,6 +955,7 @@ export function createAuthRoutes({
     const revoked = await store.withTransaction(async tx => {
       const session = await store.lockSession(token, {realm, tx});
       if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      rememberActor(request, session);
       if (!csrfMatches(provided, session.csrfTokenHash)) {
         throw new AuthError(403, 'CSRF_FAILED', 'CSRF verification failed.');
       }
@@ -818,6 +996,7 @@ export function createAuthRoutes({
     if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const session = await store.readSession(token, {realm});
     if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    rememberActor(request, session);
     const result = await selectionService.list(session);
     return json(result);
   }
@@ -844,10 +1023,10 @@ export function createAuthRoutes({
           user: {id: session.userId},
           sessionId: session.id,
           request: archive,
-          detail: {reason: error.code},
+          detail: {reason: error.code, route: '/v1/auth/tenant/select'},
         });
       }
-      throw error;
+      throw markAudited(error);
     }
     return json({selected});
   }
@@ -946,7 +1125,7 @@ export function createAuthRoutes({
       return response;
     } catch (error) {
       await auditOperatorFailure(error, request, realm);
-      throw error;
+      throw markAudited(error);
     }
   }
 
@@ -959,6 +1138,7 @@ export function createAuthRoutes({
     // principal and source-assertion ceiling under the shared authority gate. Session
     // liveness alone is never sufficient for operator identity.
     const admitted = await operatorAccess.inspectSession(token);
+    rememberActor(request, admitted.session);
     return json({
       operator: {
         userId: admitted.session.userId,
@@ -986,6 +1166,7 @@ export function createAuthRoutes({
     const revoked = await store.withTransaction(async tx => {
       const session = await store.lockSession(token, {realm, tx});
       if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+      rememberActor(request, session);
       if (!csrfMatches(provided, session.csrfTokenHash)) throw new AuthError(403, 'CSRF_FAILED', 'CSRF verification failed.');
       const result = await store.revokeSession(session.tokenHash, {reason: 'logout', actor: session.userId, tx});
       if (!result) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
@@ -1060,6 +1241,7 @@ export function createAuthRoutes({
     if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const session = await store.readSession(token, {realm});
     if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    rememberActor(request, session);
     requireCsrf(request, session);
     return session;
   }
@@ -1097,6 +1279,7 @@ export function createAuthRoutes({
     if (!token) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
     const session = await store.readSession(token, {realm});
     if (!session) throw new AuthError(401, 'SESSION_REQUIRED', 'Sign in required.');
+    rememberActor(request, session);
     const status = await store.withTransaction(tx => mfaService.status(session.userId, {tx}));
     if (!status.resolved) throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
     return json({
@@ -1181,13 +1364,13 @@ export function createAuthRoutes({
       if (isSecurityRefusal(error)) {
         await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error, stage: 'enroll_reauth'});
       }
-      throw error;
+      throw markAudited(error);
     }
     if (result.failed) {
       if (isSecurityRefusal(result.failed)) {
         await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error: result.failed, stage: 'enroll_reauth'});
       }
-      throw result.failed;
+      throw markAudited(result.failed);
     }
     return json({otpauthUri: result.otpauthUri, pending: true, replaced: result.replaced === true});
   }
@@ -1227,13 +1410,13 @@ export function createAuthRoutes({
       if (isSecurityRefusal(error)) {
         await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error, stage: 'enroll_complete'});
       }
-      throw error;
+      throw markAudited(error);
     }
     if (result.failed) {
       if (isSecurityRefusal(result.failed)) {
         await recordMfaRefusal('mfa_enroll_failed', {session, realm, request, error: result.failed, stage: 'enroll_complete'});
       }
-      throw result.failed;
+      throw markAudited(result.failed);
     }
     return json({ok: true, assuranceLevel: 'mfa_verified', recoveryCodes: result.recoveryCodes});
   }
@@ -1279,13 +1462,13 @@ export function createAuthRoutes({
       if (isSecurityRefusal(error)) {
         await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error, stage: 'verify', method});
       }
-      throw error;
+      throw markAudited(error);
     }
     if (result.failed) {
       if (isSecurityRefusal(result.failed)) {
         await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error: result.failed, stage: 'verify', method});
       }
-      throw result.failed;
+      throw markAudited(result.failed);
     }
     return json({ok: true, method: result.method, assuranceLevel: 'mfa_verified'});
   }
@@ -1347,22 +1530,27 @@ export function createAuthRoutes({
       if (isSecurityRefusal(error)) {
         await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error, stage: 'disable', method});
       }
-      throw error;
+      throw markAudited(error);
     }
     if (result.failed) {
       if (isSecurityRefusal(result.failed)) {
         await recordMfaRefusal('mfa_verification_failed', {session, realm, request, error: result.failed, stage: 'disable', method});
       }
-      throw result.failed;
+      throw markAudited(result.failed);
     }
     return json({ok: true, disabled: result.disabled, mfa: {required: true, pending: true}});
   }
 
   const handle = async function handle(request) {
     let response;
+    let requestUrl = null;
+    let requestRealm = 'unknown';
     try {
       const url = new URL(request.url);
+      requestUrl = url;
       const realm = realmFor(url);
+      requestRealm = realm;
+      requestContext.set(request, {realm});
       const path = url.pathname;
       // Pending-MFA sessions may only reach MFA completion, me and logout.
       const preMfaAllowed = new Set([
@@ -1384,11 +1572,24 @@ export function createAuthRoutes({
         if (token) {
           const pendingSession = await store.readSession(token, {realm});
           if (pendingSession) {
+            rememberActor(request, pendingSession);
             const status = await store.withTransaction(tx => mfaService.status(pendingSession.userId, {tx}));
             if (!status.resolved) {
               return failure(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
             }
             if (status.required && (pendingSession.assuranceLevel !== 'mfa_verified' || !status.enrolled)) {
+              // AUTH-009: this is a real assurance decision, not a routing miss. It is
+              // recorded once, independently, before the response is returned.
+              await recordFailure({
+                eventType: 'assurance_denied',
+                outcome: 'denied',
+                actorKind: 'authenticated',
+                realm,
+                user: {id: pendingSession.userId},
+                sessionId: pendingSession.id,
+                request: auditView(request, trustedClientHeader, sanitizeIngress(request, trustedClientHeader).ip),
+                detail: {reason: 'MFA_REQUIRED', route: path, required: true, enrolled: status.enrolled === true},
+              });
               return failure(403, 'MFA_REQUIRED', 'Multi-factor verification is required before this request.');
             }
           }
@@ -1400,6 +1601,8 @@ export function createAuthRoutes({
         response = await forgotPassword(request, url, realm);
       } else if (path === '/v1/auth/reset-password' && request.method === 'POST') {
         response = await resetPassword(request, url, realm);
+      } else if (path === '/v1/auth/password/change' && request.method === 'POST') {
+        response = await passwordChange(request, url, realm);
       } else if (path === '/v1/auth/email/verification/request' && request.method === 'POST') {
         response = await emailVerificationRequest(request, url, realm);
       } else if (path === '/v1/auth/email/verify' && request.method === 'POST') {
@@ -1434,6 +1637,11 @@ export function createAuthRoutes({
         response = failure(404, 'AUTH_ROUTE_UNAVAILABLE', 'Versioned auth endpoint unavailable.');
       }
     } catch (error) {
+      // AUTH-009 safety net: any real authentication/assurance/session decision that
+      // exited before a route's own recorder is still recorded exactly once.
+      if (isSecurityRefusal(error) && error.auditRecorded !== true) {
+        await recordRefusal(request, requestRealm, requestUrl?.pathname ?? '', error);
+      }
       if (error instanceof AuthError || (typeof error?.status === 'number' && typeof error?.code === 'string')) {
         response = failure(error.status, error.code, error.message);
       } else {

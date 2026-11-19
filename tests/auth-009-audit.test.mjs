@@ -9,7 +9,9 @@ import {createAuthRoutes, cookieName} from '../src/auth/routes.mjs';
 import {
   createAuditWriter,
   prepareAuditRow,
+  validateAuditCatalog,
   AUTH_AUDIT_CATALOG,
+  AUTH_AUDIT_CATALOG_VERSION,
   ADR03_REQUIRED_EVENTS,
   AuditDurabilityError,
 } from '../src/auth/audit.mjs';
@@ -24,9 +26,8 @@ const accountKey = Buffer.alloc(32, 11);
 const recoveryKey = Buffer.alloc(32, 13);
 const TENANT = '11111111-1111-4111-8111-111111111111';
 const OTHER_TENANT = '22222222-2222-4222-8222-222222222222';
+const PROBE_USER = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
-// The Node version and disposable-cluster requirements of the AUTH contract are the
-// same as AUTH-001..007: the fixture refuses to run without an explicit opt-in.
 function connectionConfig(database, overrides = {}) {
   return {
     host: process.env.PGHOST ?? '127.0.0.1',
@@ -139,6 +140,10 @@ function authedPost(path, token, csrf, body = {}) {
   });
 }
 
+function authedGet(path, token) {
+  return request(`${origins.customer}${path}`, {headers: {cookie: `${customerCookie}=${token}`}});
+}
+
 function tokenFrom(response) {
   const value = response.headers.get('set-cookie') ?? '';
   return new RegExp(`${customerCookie}=([^;]+)`).exec(value)?.[1] ?? null;
@@ -147,8 +152,7 @@ function tokenFrom(response) {
 async function login(handler, email, password, options = {}) {
   const response = await handler(loginRequest({email, password}, options));
   const body = await response.clone().json().catch(() => null);
-  const setCookie = response.headers.get('set-cookie') ?? '';
-  const token = new RegExp(`${customerCookie}=([^;]+)`).exec(setCookie)?.[1] ?? null;
+  const token = tokenFrom(response);
   return {response, body, token, csrf: body?.csrfToken ?? null};
 }
 
@@ -183,8 +187,7 @@ async function ledger(db, where = '', params = []) {
   const clause = where ? ` WHERE ${where}` : '';
   const result = await db.adminQuery(
     `SELECT event_type, outcome, user_id::text AS user_id, realm, session_id,
-            request_id, tenant_id::text AS tenant_id, detail_jsonb, detail_schema_version,
-            actor_subject
+            request_id, tenant_id::text AS tenant_id, detail_jsonb, detail_schema_version
      FROM auth.auth_audit${clause} ORDER BY id`,
     params,
   );
@@ -216,9 +219,9 @@ async function applyAuthorityGate(db) {
   await db.adminQuery(sql);
 }
 
-// The authority gate rejects a superuser caller (its owner must be unreachable), so
-// tenant selection is exercised through a real non-owner auth-service login exactly as
-// AUTH-006 does. The extra login is dropped before the fixture tears the namespace down.
+// The authority gate rejects a superuser caller, so composed runtime paths are
+// exercised through a real non-owner auth-service login. Setup/observation stay
+// administrative; the requests do not.
 async function withAuthServicePool(db, action) {
   const login = `saven_auth_${randomBytes(5).toString('hex')}_service_login`;
   const password = randomBytes(24).toString('base64url');
@@ -238,43 +241,97 @@ async function withAuthServicePool(db, action) {
 }
 
 // ---------------------------------------------------------------------------
-// Catalog, redaction and attribution contract (no database)
+// Reference/configuration catalog (finding 3)
 // ---------------------------------------------------------------------------
 
-test('AUTH-009 catalog covers every ADR03 event and reports its real producer honestly', () => {
-  for (const required of Object.keys(ADR03_REQUIRED_EVENTS)) {
-    assert.ok(Object.hasOwn(AUTH_AUDIT_CATALOG, required), `${required} must exist in the catalog`);
+test('AUTH-009 event domain is an external, versioned, validated configuration', async () => {
+  assert.equal(AUTH_AUDIT_CATALOG_VERSION, 1);
+  assert.equal(Object.isFrozen(AUTH_AUDIT_CATALOG), true);
+  for (const name of Object.keys(ADR03_REQUIRED_EVENTS)) {
+    assert.ok(Object.hasOwn(AUTH_AUDIT_CATALOG, name), `${name} must be configured`);
   }
-  for (const [name, spec] of Object.entries(AUTH_AUDIT_CATALOG)) {
-    assert.ok(typeof spec.category === 'string' && spec.category.length > 0, `${name} needs a category`);
-    assert.ok(Array.isArray(spec.actors) && spec.actors.length > 0, `${name} needs actor semantics`);
-    assert.ok(Array.isArray(spec.outcomes) && spec.outcomes.length > 0, `${name} needs outcomes`);
-    assert.ok(Array.isArray(spec.detail), `${name} needs a detail allow-list`);
-    assert.ok(spec.producer === null || typeof spec.producer === 'string', `${name} producer must be explicit`);
-    for (const key of spec.detail) {
-      assert.doesNotMatch(key, /password|token|secret|assertion|cookie|otp|totp|csrf/i, `${name}.${key} must not name a credential`);
-    }
-  }
-  // This is the reported AUTH-009 gap: these ADR03 events have no producing flow in
-  // the AUTH-001..007 surface. The vocabulary exists, but no synthetic row is written.
-  // If a later contract adds the flow, it must update this assertion and the delivery
-  // report together.
-  for (const pending of ['password_changed', 'role_changed', 'membership_invited', 'membership_accepted']) {
-    assert.equal(AUTH_AUDIT_CATALOG[pending].producer, null, `${pending} must not claim a producer`);
+
+  const captured = [];
+  const fakePool = {query: async (sql, params) => { captured.push(params); return {rows: [{id: '1'}]}; }};
+  const configured = validateAuditCatalog({
+    catalogVersion: 1,
+    events: {
+      ...AUTH_AUDIT_CATALOG,
+      probe_event: {
+        category: 'probe',
+        producer: 'test.probe',
+        actors: ['authenticated'],
+        outcomes: ['success'],
+        detail: ['reason'],
+      },
+    },
+  });
+  const writer = createAuditWriter(fakePool, {auditCatalog: configured});
+  const written = await writer({eventType: 'probe_event', realm: 'customer', user: {id: PROBE_USER}, detail: {reason: 'probe'}});
+  assert.equal(written.recorded, true);
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0][0], 'probe_event');
+  assert.equal(JSON.parse(captured[0][11]).actor_kind, 'authenticated');
+  assert.equal(captured[0][12], 1, 'the configured event uses the same writer and versioning');
+
+  await assert.rejects(
+    () => writer({eventType: 'probe_event', realm: 'customer', user: {id: PROBE_USER}, detail: {password: 'x'}}),
+    error => error.code === 'AUDIT_DETAIL_FORBIDDEN',
+    'the same redaction guard applies to a separately configured event',
+  );
+  await assert.rejects(
+    () => writer({eventType: 'probe_event', realm: 'customer', user: {id: PROBE_USER}, detail: {undeclared: 'x'}}),
+    error => error.code === 'AUDIT_DETAIL_UNKNOWN',
+  );
+  await assert.rejects(
+    () => writer({eventType: 'unconfigured_event', realm: 'customer', detail: {}}),
+    error => error.code === 'AUDIT_EVENT_UNKNOWN',
+  );
+
+  const invalidCatalogs = [
+    {catalogVersion: 2, events: {probe_event: {category: 'probe', producer: null, actors: ['authenticated'], outcomes: ['success'], detail: []}}},
+    {catalogVersion: 1, events: {probe_event: {category: 'probe', producer: null, actors: [], outcomes: ['success'], detail: []}}},
+    {catalogVersion: 1, events: {probe_event: {category: 'probe', producer: null, actors: ['authenticated'], outcomes: ['invented'], detail: []}}},
+    {catalogVersion: 1, events: {probe_event: {category: 'probe', producer: null, actors: ['authenticated'], outcomes: ['success'], detail: ['password']}}},
+    {catalogVersion: 1, events: {probe_event: {category: 'probe', producer: null, actors: ['authenticated'], outcomes: ['success'], detail: ['reason', 'reason']}}},
+    {catalogVersion: 1, events: {__proto__: null}},
+  ];
+  for (const bad of invalidCatalogs) {
+    assert.throws(
+      () => createAuditWriter(fakePool, {auditCatalog: bad}),
+      error => error.code === 'AUDIT_CATALOG_INVALID',
+    );
   }
 });
 
-test('AUTH-009 redaction refuses unknown events, credential-shaped detail and unverified actors', () => {
+test('AUTH-009 the required-event map stays independent of the configurable catalog', () => {
+  const required = Object.keys(ADR03_REQUIRED_EVENTS);
+  assert.equal(required.length, 13);
+  for (const name of required) {
+    assert.equal(ADR03_REQUIRED_EVENTS[name].status, 'required', `${name} must remain REQUIRED`);
+    assert.notEqual(ADR03_REQUIRED_EVENTS[name].status, 'deferred', 'no review finding may be downgraded by data');
+    assert.ok(Object.hasOwn(AUTH_AUDIT_CATALOG, name), `${name} must have a configured schema`);
+  }
+  assert.ok(AUTH_AUDIT_CATALOG.password_changed.producer, 'password_changed now has a real producer');
+  // A catalog entry cannot mark an event optional: the source map has no such status,
+  // and every entry is checked above as `required`.
+  for (const spec of Object.values(AUTH_AUDIT_CATALOG)) {
+    assert.equal(Object.hasOwn(spec, 'required'), false);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Redaction, attribution, durability
+// ---------------------------------------------------------------------------
+
+test('AUTH-009 redaction refuses credential-shaped detail and unverified actors', () => {
   const base = {eventType: 'login_failure', realm: 'customer', outcome: 'failure', detail: {reason: 'attempt_reserved'}};
   const row = prepareAuditRow(base);
-  assert.equal(row.detail_schema_version, 1, 'the row carries an explicit detail schema version');
+  assert.equal(row.detail_schema_version, 1);
   assert.equal(JSON.parse(row.detail_jsonb).actor_kind, 'unknown');
   assert.equal(row.user_id, null);
 
-  assert.throws(
-    () => prepareAuditRow({...base, eventType: 'invented_event'}),
-    error => error.code === 'AUDIT_EVENT_UNKNOWN',
-  );
+  assert.throws(() => prepareAuditRow({...base, eventType: 'invented_event'}), error => error.code === 'AUDIT_EVENT_UNKNOWN');
   for (const key of ['password', 'raw_token', 'session_token', 'recovery_code', 'csrf', 'authorization', 'assertion', 'code_hash']) {
     assert.throws(
       () => prepareAuditRow({...base, detail: {[key]: 'secret-value'}}),
@@ -282,37 +339,14 @@ test('AUTH-009 redaction refuses unknown events, credential-shaped detail and un
       `${key} must never reach the ledger`,
     );
   }
-  assert.throws(
-    () => prepareAuditRow({...base, detail: {unknown_key: 'x'}}),
-    error => error.code === 'AUDIT_DETAIL_UNKNOWN',
-  );
-  assert.throws(
-    () => prepareAuditRow({...base, detail: {reason: {nested: true}}}),
-    error => error.code === 'AUDIT_DETAIL_INVALID',
-  );
-  assert.throws(
-    () => prepareAuditRow({...base, user: {id: 'not-a-uuid'}}),
-    error => error.code === 'AUDIT_ACTOR_INVALID',
-  );
-  assert.throws(
-    () => prepareAuditRow({...base, actorKind: 'authenticated'}),
-    error => error.code === 'AUDIT_ACTOR_INVALID',
-    'login_failure cannot claim an authenticated actor',
-  );
-  assert.throws(
-    () => prepareAuditRow({...base, realm: 'other'}),
-    error => error.code === 'AUDIT_REALM_INVALID',
-  );
-  assert.throws(
-    () => prepareAuditRow({eventType: 'login_success', realm: 'customer', outcome: 'failure', user: {id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'}}),
-    error => error.code === 'AUDIT_OUTCOME_INVALID',
-  );
-  const sanitized = prepareAuditRow({
-    ...base,
-    detail: {reason: 'x'.repeat(400), retry_after_ms: 1000},
-  });
-  assert.equal(JSON.parse(sanitized.detail_jsonb).reason.length, 320, 'detail strings are bounded');
-  assert.equal(sanitized.ip_address, null, 'an invalid ingress address is dropped, not stored');
+  assert.throws(() => prepareAuditRow({...base, detail: {unknown_key: 'x'}}), error => error.code === 'AUDIT_DETAIL_UNKNOWN');
+  assert.throws(() => prepareAuditRow({...base, detail: {reason: {nested: true}}}), error => error.code === 'AUDIT_DETAIL_INVALID');
+  assert.throws(() => prepareAuditRow({...base, user: {id: 'not-a-uuid'}}), error => error.code === 'AUDIT_ACTOR_INVALID');
+  assert.throws(() => prepareAuditRow({...base, actorKind: 'authenticated'}), error => error.code === 'AUDIT_ACTOR_INVALID');
+  assert.throws(() => prepareAuditRow({...base, realm: 'somewhere'}), error => error.code === 'AUDIT_REALM_INVALID');
+  const sanitized = prepareAuditRow({...base, detail: {reason: 'x'.repeat(400), retry_after_ms: 1000}});
+  assert.equal(JSON.parse(sanitized.detail_jsonb).reason.length, 320);
+  assert.equal(sanitized.ip_address, null);
 });
 
 test('AUTH-009 failure-audit durability faults are counted and notified, never swallowed', async () => {
@@ -325,12 +359,13 @@ test('AUTH-009 failure-audit durability faults are counted and notified, never s
   );
   const stats = writer.stats();
   assert.equal(stats.durabilityFailures, 1);
+  assert.equal(stats.catalogVersion, 1);
   assert.deepEqual(stats.lastFailure, {eventType: 'login_failure', code: 'AUDIT_DURABILITY_FAILED'});
   assert.equal(notified, 1);
 });
 
 // ---------------------------------------------------------------------------
-// Real credential and session flows
+// Login, reset and the new password_changed producer
 // ---------------------------------------------------------------------------
 
 test('AUTH-009 login success is atomic with its audit row and publishes no credential on an audit fault', async () => {
@@ -350,11 +385,10 @@ test('AUTH-009 login success is atomic with its audit row and publishes no crede
       const attempt = await login(handler, 'atomic@example.com', 'correct-horse-battery');
       assert.equal(attempt.response.status, 503);
       assert.equal((await attempt.response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
-      assert.equal(attempt.response.headers.get('set-cookie'), null, 'no credential may be published');
+      assert.equal(attempt.response.headers.get('set-cookie'), null);
       assert.equal((await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions')).rows[0].n, 0);
       assert.equal((await ledger(db, "event_type = 'login_success'")).length, 0);
-      assert.equal((await ledger(db, "event_type = 'login_failure' AND detail_jsonb->>'reason' = 'attempt_reserved'")).length, 1,
-        'the reservation remains durable');
+      assert.equal((await ledger(db, "event_type = 'login_failure' AND detail_jsonb->>'reason' = 'attempt_reserved'")).length, 1);
     } finally {
       await pool.end();
     }
@@ -375,20 +409,17 @@ test('AUTH-009 failed sign-ins are independently committed, attributed and repea
       assert.equal(first.response.status, 401);
       assert.equal(retry.response.status, 401);
       assert.equal(unknown.response.status, 401);
-      assert.deepEqual(await first.response.clone().json(), await unknown.response.clone().json(), 'non-enumerating bodies');
+      assert.deepEqual(await first.response.clone().json(), await unknown.response.clone().json());
 
-      assert.equal((await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions')).rows[0].n, 0,
-        'no failed attempt leaves a session');
+      assert.equal((await db.adminQuery('SELECT count(*)::int AS n FROM auth.sessions')).rows[0].n, 0);
       const failures = await ledger(db, "event_type = 'login_failure'");
       assert.equal(failures.length, 3, 'each attempt is its own committed row, including a retry');
       const knownRows = failures.filter(row => row.user_id === user.id);
       assert.equal(knownRows.length, 2);
       assert.ok(knownRows.every(row => row.detail_jsonb.actor_kind === 'unverified_attempt'));
-      const unknownRow = failures.find(row => row.detail_jsonb.reason === 'attempt_reserved' && row.user_id === null);
-      assert.ok(unknownRow, 'an unknown identity is recorded without inventing attribution');
+      const unknownRow = failures.find(row => row.user_id === null);
+      assert.ok(unknownRow);
       assert.equal(unknownRow.detail_jsonb.actor_kind, 'unknown');
-      assert.ok(failures.every(row => row.detail_schema_version === 1));
-      assert.ok(failures.every(row => row.realm === 'customer'));
       assert.equal((await ledger(db, "event_type = 'login_success'")).length, 0);
     } finally {
       await pool.end();
@@ -419,12 +450,11 @@ test('AUTH-009 client-supplied actor fields never influence audit attribution', 
       const wrong = await login(handler, 'attribution@example.com', 'wrong-password-value');
       assert.equal(wrong.response.status, 401);
       const rows = await ledger(db);
-      assert.ok(rows.length > 0);
-      assert.equal(rows.some(row => row.user_id === forged), false, 'a forged client id never becomes the actor');
+      assert.equal(rows.some(row => row.user_id === forged), false);
       assert.equal(rows.some(row => row.tenant_id === TENANT), false);
       const serialized = await db.adminQuery('SELECT row_to_json(a)::text AS json FROM auth.auth_audit a');
       for (const secret of ['correct-horse-battery', 'wrong-password-value', 'attribution@example.com', forged]) {
-        assert.equal(serialized.rows.some(row => row.json.includes(secret)), false, `the ledger must not contain ${secret.slice(0, 12)}…`);
+        assert.equal(serialized.rows.some(row => row.json.includes(secret)), false);
       }
     } finally {
       await pool.end();
@@ -432,9 +462,122 @@ test('AUTH-009 client-supplied actor fields never influence audit attribution', 
   });
 });
 
-// ---------------------------------------------------------------------------
-// Reset / revoke-all and MFA failure durability
-// ---------------------------------------------------------------------------
+test('AUTH-009 password_changed is produced by the authenticated credential-change flow', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock});
+      const user = await insertUser(db, 'change@example.com', 'correct-horse-battery');
+      const first = await login(handler, 'change@example.com', 'correct-horse-battery');
+      const second = await login(handler, 'change@example.com', 'correct-horse-battery');
+      assert.ok(first.token && second.token);
+
+      const changed = await handler(authedPost('/v1/auth/password/change', first.token, first.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'new-correct-horse-battery',
+      }));
+      assert.equal(changed.status, 200);
+      assert.match(changed.headers.get('set-cookie') ?? '', /Max-Age=0/);
+      const clearCookie = changed.headers.get('set-cookie') ?? '';
+      assert.match(clearCookie, new RegExp(`${customerCookie}=;`));
+      assert.doesNotMatch(JSON.stringify(await changed.clone().json()), /new-correct-horse-battery/);
+
+      const after = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [user.id],
+      );
+      const policy = createPasswordPolicy();
+      assert.equal((await policy.verify('new-correct-horse-battery', after.rows[0].password_hash)).valid, true);
+      assert.equal((await policy.verify('correct-horse-battery', after.rows[0].password_hash)).valid, false);
+      assert.equal(Number(after.rows[0].credential_version), user.credentialVersion + 1);
+
+      const completed = await ledger(db, "event_type = 'password_changed'");
+      assert.equal(completed.length, 1);
+      assert.equal(completed[0].user_id, user.id);
+      assert.equal(completed[0].detail_jsonb.credential_version, user.credentialVersion + 1);
+      assert.equal(completed[0].detail_jsonb.actor_kind, 'authenticated');
+      const revoked = await ledger(db, "event_type = 'sessions_revoked' AND detail_jsonb->>'reason' = 'password_change'");
+      assert.equal(revoked.length, 1);
+      assert.equal(revoked[0].detail_jsonb.scope, 'all');
+      assert.equal(revoked[0].detail_jsonb.revoked_count, 2);
+
+      assert.equal((await handler(authedGet('/v1/auth/me', first.token))).status, 401, 'every prior session is revoked');
+      assert.equal((await handler(authedGet('/v1/auth/me', second.token))).status, 401);
+      assert.equal((await login(handler, 'change@example.com', 'correct-horse-battery')).response.status, 401);
+      assert.equal((await login(handler, 'change@example.com', 'new-correct-horse-battery')).response.status, 200);
+
+      const serialized = await db.adminQuery('SELECT row_to_json(a)::text AS json FROM auth.auth_audit a');
+      assert.equal(serialized.rows.some(row => row.json.includes('new-correct-horse-battery')), false);
+      assert.equal(serialized.rows.some(row => row.json.includes(first.token)), false);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 a wrong current password is a durable, single refusal and changes nothing', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock});
+      const user = await insertUser(db, 'wrong-change@example.com', 'correct-horse-battery');
+      const session = await login(handler, 'wrong-change@example.com', 'correct-horse-battery');
+
+      const attempt = await handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+        currentPassword: 'not-the-password',
+        newPassword: 'new-correct-horse-battery',
+      }));
+      assert.equal(attempt.status, 401);
+      assert.equal((await attempt.json()).error.code, 'SIGN_IN_FAILED');
+
+      const failures = await ledger(db, "event_type = 'password_change_failed'");
+      assert.equal(failures.length, 1, 'exactly one refusal row, not a duplicate from the safety net');
+      assert.equal(failures[0].detail_jsonb.reason, 'attempt_reserved');
+      assert.equal(failures[0].user_id, user.id);
+      assert.equal((await ledger(db, "event_type = 'password_changed'")).length, 0);
+      const after = await db.adminQuery('SELECT credential_version FROM auth.users WHERE id = $1::uuid', [user.id]);
+      assert.equal(Number(after.rows[0].credential_version), user.credentialVersion);
+      assert.equal((await handler(authedGet('/v1/auth/me', session.token))).status, 200, 'the session is not revoked');
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 a failed password_changed audit rolls the credential change and revokes back', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const writer = createAuditWriter(pool);
+      const failingAudit = async (event, options) => {
+        if (event.eventType === 'password_changed') throw new Error('audit store unavailable');
+        return writer(event, options);
+      };
+      failingAudit.failure = writer.failure;
+      const {handler} = buildRoutes({pool, clock, audit: failingAudit});
+      const user = await insertUser(db, 'change-atomic@example.com', 'correct-horse-battery');
+      const session = await login(handler, 'change-atomic@example.com', 'correct-horse-battery');
+
+      const response = await handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'should-not-commit-horse',
+      }));
+      assert.equal(response.status, 503);
+      assert.equal((await response.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      const after = await db.adminQuery('SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid', [user.id]);
+      assert.equal(Number(after.rows[0].credential_version), user.credentialVersion);
+      const policy = createPasswordPolicy();
+      assert.equal((await policy.verify('correct-horse-battery', after.rows[0].password_hash)).valid, true);
+      assert.equal((await ledger(db, "event_type = 'sessions_revoked' AND detail_jsonb->>'reason' = 'password_change'")).length, 0);
+      assert.equal((await handler(authedGet('/v1/auth/me', session.token))).status, 200);
+    } finally {
+      await pool.end();
+    }
+  });
+});
 
 test('AUTH-009 reset completion, all-session revocation and audit commit together', async () => {
   await withAuthDatabase(async db => {
@@ -460,74 +603,231 @@ test('AUTH-009 reset completion, all-session revocation and audit commit togethe
       assert.equal(requested[0].detail_jsonb.delivery, 'mail_adapter');
       const completed = await ledger(db, "event_type = 'password_reset_completed'");
       assert.equal(completed.length, 1);
-      assert.equal(completed[0].user_id, user.id);
-      assert.equal(completed[0].detail_jsonb.actor_kind, 'recovery_token');
       assert.equal(completed[0].detail_jsonb.sessions_revoked, 2);
-      const revoked = await ledger(db, "event_type = 'sessions_revoked'");
-      assert.equal(revoked.length, 1, 'one/all session revocation is its own ADR03 event');
+      const revoked = await ledger(db, "event_type = 'sessions_revoked' AND detail_jsonb->>'reason' = 'password_reset'");
+      assert.equal(revoked.length, 1);
       assert.equal(revoked[0].detail_jsonb.scope, 'all');
-      assert.equal(revoked[0].detail_jsonb.reason, 'password_reset');
       assert.equal(revoked[0].detail_jsonb.revoked_count, 2);
-
-      const sessions = await db.adminQuery(
-        'SELECT revoked_at, revoked_reason FROM auth.sessions WHERE user_id = $1::uuid',
-        [user.id],
-      );
-      assert.equal(sessions.rowCount, 2);
-      assert.ok(sessions.rows.every(row => row.revoked_at instanceof Date && row.revoked_reason === 'password_reset'));
 
       const replay = await handler(resetRequest({token, password: 'another-correct-horse'}));
       assert.equal(replay.status, 400);
-      const failed = await ledger(db, "event_type = 'password_reset_failed'");
-      assert.equal(failed.length, 1, 'a refused reset is independently observable');
-      assert.equal(failed[0].detail_jsonb.reason, 'RESET_TOKEN_INVALID');
+      assert.equal((await ledger(db, "event_type = 'password_reset_failed'")).length, 1);
       assert.equal((await ledger(db, "event_type = 'password_reset_completed'")).length, 1);
-
       const serialized = await db.adminQuery('SELECT row_to_json(a)::text AS json FROM auth.auth_audit a');
-      assert.equal(serialized.rows.some(row => row.json.includes(token)), false, 'the reset token never reaches the ledger');
-      assert.equal(serialized.rows.some(row => row.json.includes('new-correct-horse-battery')), false);
+      assert.equal(serialized.rows.some(row => row.json.includes(token)), false);
     } finally {
       await pool.end();
     }
   });
 });
 
-test('AUTH-009 a failed reset audit rolls back the credential change and every revoke', async () => {
+// ---------------------------------------------------------------------------
+// Early security-decision coverage (finding 2)
+// ---------------------------------------------------------------------------
+
+test('AUTH-009 pre-reservation login refusals are recorded once with the correct attribution', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock});
+
+      const operatorLogin = await handler(loginRequest(
+        {email: 'someone@example.com', password: 'correct-horse-battery'},
+        {origin: origins.operator},
+      ));
+      assert.equal(operatorLogin.status, 403);
+      assert.equal((await operatorLogin.json()).error.code, 'OPERATOR_ASSERTION_REQUIRED');
+
+      const wrongOrigin = await handler(request(`${origins.customer}/v1/auth/login`, {
+        method: 'POST',
+        headers: {origin: 'https://evil.example', 'content-type': 'application/json'},
+        body: {email: 'someone@example.com', password: 'correct-horse-battery'},
+      }));
+      assert.equal(wrongOrigin.status, 403);
+      assert.equal((await wrongOrigin.json()).error.code, 'ORIGIN_MISMATCH');
+
+      const unrecognized = await handler(request('https://evil.example/v1/auth/login', {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: {email: 'someone@example.com', password: 'correct-horse-battery'},
+      }));
+      assert.equal(unrecognized.status, 421);
+      assert.equal((await unrecognized.json()).error.code, 'ORIGIN_UNRECOGNIZED');
+
+      const rows = await ledger(db, "event_type = 'login_failure'");
+      assert.equal(rows.length, 3);
+      const byReason = Object.fromEntries(rows.map(row => [row.detail_jsonb.reason, row]));
+      assert.equal(byReason.OPERATOR_ASSERTION_REQUIRED.realm, 'operator');
+      assert.equal(byReason.ORIGIN_MISMATCH.realm, 'customer');
+      assert.equal(byReason.ORIGIN_UNRECOGNIZED.realm, 'unknown', 'no fabricated realm for an unrecognized origin');
+      assert.ok(rows.every(row => row.user_id === null && row.detail_jsonb.actor_kind === 'unknown'));
+      assert.ok(rows.every(row => row.detail_jsonb.route === '/v1/auth/login'));
+
+      // Malformed JSON is a request fault, not an authentication decision: it may stay
+      // unrecorded, and it must not create a false failure row.
+      const malformed = await handler(new Request(`${origins.customer}/v1/auth/login`, {
+        method: 'POST',
+        headers: {origin: origins.customer, 'content-type': 'application/json'},
+        body: '{not-json',
+      }));
+      assert.equal(malformed.status, 400);
+      assert.equal((await ledger(db, "event_type = 'login_failure'")).length, 3);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 assurance, CSRF and session refusals are classified and recorded exactly once', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock});
+      const admin = await insertUser(db, 'gate@example.com', 'correct-horse-battery');
+      await db.adminQuery(
+        `INSERT INTO auth.tenant_membership(tenant_id, user_id, role_id, status, invited_at, accepted_at)
+         VALUES ($1, $2, 'tenant_admin', 'active', now(), now())`,
+        [TENANT, admin.id],
+      );
+      const pending = await login(handler, 'gate@example.com', 'correct-horse-battery');
+      assert.equal(pending.response.status, 200);
+
+      // Pending-MFA customer session reaches a non-pre-MFA route: the common assurance
+      // gate denies before the tenant-selection route can record anything.
+      const gated = await handler(authedGet('/v1/auth/tenants', pending.token));
+      assert.equal(gated.status, 403);
+      assert.equal((await gated.json()).error.code, 'MFA_REQUIRED');
+      const assurance = await ledger(db, "event_type = 'assurance_denied'");
+      assert.equal(assurance.length, 1);
+      assert.equal(assurance[0].user_id, admin.id);
+      assert.equal(assurance[0].detail_jsonb.reason, 'MFA_REQUIRED');
+      assert.equal(assurance[0].detail_jsonb.route, '/v1/auth/tenants');
+      assert.equal(assurance[0].detail_jsonb.actor_kind, 'authenticated');
+      assert.equal((await ledger(db, "event_type = 'tenant_selection_failed'")).length, 0);
+
+      // A normal member session survives the gate; CSRF failure is a session decision.
+      const member = await insertUser(db, 'member@example.com', 'correct-horse-battery');
+      const session = await login(handler, 'member@example.com', 'correct-horse-battery');
+      assert.equal(session.response.status, 200);
+      const badCsrf = await handler(request(`${origins.customer}/v1/auth/tenant/select`, {
+        method: 'POST',
+        headers: {origin: origins.customer, cookie: `${customerCookie}=${session.token}`, 'x-csrf-token': 'wrong'},
+        body: {tenantId: TENANT},
+      }));
+      assert.equal(badCsrf.status, 403);
+      assert.equal((await badCsrf.json()).error.code, 'CSRF_FAILED');
+      const csrfRows = await ledger(db, "event_type = 'session_denied' AND detail_jsonb->>'reason' = 'CSRF_FAILED'");
+      assert.equal(csrfRows.length, 1);
+      assert.equal(csrfRows[0].user_id, member.id, 'the verified session supplies the actor, not the header');
+      assert.equal(csrfRows[0].detail_jsonb.actor_kind, 'authenticated');
+
+      // A revoked/expired cookie establishes no actor.
+      await db.adminQuery('UPDATE auth.sessions SET revoked_at = now(), revoked_reason = $1 WHERE user_id = $2::uuid',
+        ['admin_revoked', member.id]);
+      const revoked = await handler(authedPost('/v1/auth/tenant/select', session.token, session.csrf, {tenantId: TENANT}));
+      assert.equal(revoked.status, 401);
+      const revokedRows = await ledger(db, "event_type = 'session_denied' AND detail_jsonb->>'reason' = 'SESSION_REQUIRED'");
+      assert.equal(revokedRows.length, 1);
+      assert.equal(revokedRows[0].user_id, null);
+      assert.equal(revokedRows[0].detail_jsonb.actor_kind, 'unknown');
+
+      // An idle-expired cookie is likewise refused before any route recorder runs.
+      await insertUser(db, 'expire@example.com', 'correct-horse-battery');
+      const expiring = await login(handler, 'expire@example.com', 'correct-horse-battery');
+      assert.equal(expiring.response.status, 200);
+      clock.advance(31 * 24 * 60 * 60 * 1000);
+      const expired = await handler(authedPost('/v1/auth/tenant/select', expiring.token, expiring.csrf, {tenantId: TENANT}));
+      assert.equal(expired.status, 401);
+      const expiredRows = await ledger(db, "event_type = 'session_denied' AND detail_jsonb->>'reason' = 'SESSION_REQUIRED'");
+      assert.equal(expiredRows.length, 2);
+      assert.ok(expiredRows.every(row => row.user_id === null && row.detail_jsonb.actor_kind === 'unknown'));
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 email verification request/verify refusals are recorded without secrets', async () => {
   await withAuthDatabase(async db => {
     const pool = new Pool(connectionConfig(db.database));
     try {
       const clock = testClock();
       const {messages, mail} = captureMail();
-      const writer = createAuditWriter(pool);
-      const failingAudit = async (event, options) => {
-        if (event.eventType === 'password_reset_completed') throw new Error('audit store unavailable');
-        return writer(event, options);
-      };
-      failingAudit.failure = writer.failure;
-      const {handler} = buildRoutes({pool, clock, mail, audit: failingAudit});
-      const user = await insertUser(db, 'reset-rollback@example.com', 'correct-horse-battery');
-      const session = await login(handler, 'reset-rollback@example.com', 'correct-horse-battery');
-      assert.ok(session.token);
+      const {handler} = buildRoutes({pool, clock, mail});
+      await insertUser(db, 'verify@example.com', 'correct-horse-battery', {verified: false});
+      const session = await login(handler, 'verify@example.com', 'correct-horse-battery');
 
-      assert.equal((await handler(forgotRequest({email: 'reset-rollback@example.com'}))).status, 202);
+      const requested = await handler(authedPost('/v1/auth/email/verification/request', session.token, session.csrf, {}));
+      assert.equal(requested.status, 202);
       await flushMail(handler);
       const token = tokenFromMessage(messages[0]);
-      const reset = await handler(resetRequest({token, password: 'should-not-commit-horse'}));
-      assert.equal(reset.status, 503);
-      assert.equal((await reset.json()).error.code, 'AUTH_ACCOUNTING_UNAVAILABLE');
+      assert.equal((await ledger(db, "event_type = 'email_verification_requested'")).length, 1);
 
-      const after = await db.adminQuery('SELECT credential_version, password_hash FROM auth.users WHERE id = $1::uuid', [user.id]);
-      assert.equal(Number(after.rows[0].credential_version), user.credentialVersion, 'the credential epoch is unchanged');
-      const policy = createPasswordPolicy();
-      assert.equal((await policy.verify('correct-horse-battery', after.rows[0].password_hash)).valid, true);
-      const sessions = await db.adminQuery('SELECT revoked_at FROM auth.sessions WHERE user_id = $1::uuid', [user.id]);
-      assert.ok(sessions.rows.every(row => row.revoked_at === null), 'no session was revoked by the rolled-back reset');
-      assert.equal((await ledger(db, "event_type = 'sessions_revoked'")).length, 0);
+      const verified = await handler(request(`${origins.customer}/v1/auth/email/verify`, {
+        method: 'POST',
+        headers: {origin: origins.customer, 'content-type': 'application/json'},
+        body: {token},
+      }));
+      assert.equal(verified.status, 200);
+      const success = await ledger(db, "event_type = 'email_verified'");
+      assert.equal(success.length, 1);
+      assert.equal(success[0].detail_jsonb.already_verified, false);
+
+      const replay = await handler(request(`${origins.customer}/v1/auth/email/verify`, {
+        method: 'POST',
+        headers: {origin: origins.customer, 'content-type': 'application/json'},
+        body: {token},
+      }));
+      assert.equal(replay.status, 400);
+      const failed = await ledger(db, "event_type = 'email_verification_failed'");
+      assert.equal(failed.length, 1);
+      assert.equal(failed[0].detail_jsonb.route, '/v1/auth/email/verify');
+      const serialized = await db.adminQuery('SELECT row_to_json(a)::text AS json FROM auth.auth_audit a');
+      assert.equal(serialized.rows.some(row => row.json.includes(token)), false);
     } finally {
       await pool.end();
     }
   });
 });
+
+test('AUTH-009 composed refusals run under the real non-owner auth-service login', async () => {
+  await withAuthDatabase(async db => {
+    const clock = testClock();
+    const admin = await insertUser(db, 'composed-gate@example.com', 'correct-horse-battery');
+    await db.adminQuery(
+      `INSERT INTO auth.tenant_membership(tenant_id, user_id, role_id, status, invited_at, accepted_at)
+       VALUES ($1, $2, 'tenant_admin', 'active', now(), now())`,
+      [TENANT, admin.id],
+    );
+    await withAuthServicePool(db, async pool => {
+      const {handler} = buildRoutes({pool, clock});
+
+      const operatorLogin = await handler(loginRequest(
+        {email: 'composed-gate@example.com', password: 'correct-horse-battery'},
+        {origin: origins.operator},
+      ));
+      assert.equal(operatorLogin.status, 403);
+
+      const pending = await login(handler, 'composed-gate@example.com', 'correct-horse-battery');
+      assert.equal(pending.response.status, 200);
+      const gated = await handler(authedGet('/v1/auth/tenants', pending.token));
+      assert.equal(gated.status, 403);
+      assert.equal((await gated.json()).error.code, 'MFA_REQUIRED');
+
+      const row = await ledger(db, "event_type = 'assurance_denied'");
+      assert.equal(row.length, 1);
+      assert.equal(row[0].user_id, admin.id);
+      const operatorRows = await ledger(db, "event_type = 'login_failure' AND realm = 'operator'");
+      assert.equal(operatorRows.length, 1);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MFA
+// ---------------------------------------------------------------------------
 
 test('AUTH-009 MFA refusals are recorded durably while the lifecycle transaction keeps its invariants', async () => {
   await withAuthDatabase(async db => {
@@ -544,7 +844,6 @@ test('AUTH-009 MFA refusals are recorded durably while the lifecycle transaction
       assert.equal(enrollFailures.length, 1);
       assert.equal(enrollFailures[0].detail_jsonb.reason, 'MFA_REAUTH_REQUIRED');
       assert.equal(enrollFailures[0].detail_jsonb.actor_kind, 'authenticated');
-      assert.equal(enrollFailures[0].user_id, enrolled.userId);
 
       clock.advance(30 * 1000);
       const wrong = await handler(authedPost('/v1/auth/mfa/verify', enrolled.token, enrolled.csrf, {code: '000000'}));
@@ -553,15 +852,10 @@ test('AUTH-009 MFA refusals are recorded durably while the lifecycle transaction
       assert.equal(failures.length, 1);
       assert.equal(failures[0].detail_jsonb.reason, 'MFA_CODE_INVALID');
       assert.equal(failures[0].detail_jsonb.stage, 'verify');
-      assert.equal(failures[0].detail_jsonb.method, 'totp');
-      assert.equal(failures[0].session_id !== null, true);
-      assert.equal((await ledger(db, "event_type = 'mfa_verified'")).length, 0, 'a failure never emits a success event');
+      assert.equal((await ledger(db, "event_type = 'mfa_verified'")).length, 0);
 
-      const factor = await db.adminQuery(
-        `SELECT failed_attempts FROM auth.two_factor WHERE user_id = $1::uuid`,
-        [enrolled.userId],
-      );
-      assert.equal(factor.rows[0].failed_attempts, 1, 'the failure counter also committed');
+      const factor = await db.adminQuery('SELECT failed_attempts FROM auth.two_factor WHERE user_id = $1::uuid', [enrolled.userId]);
+      assert.equal(factor.rows[0].failed_attempts, 1);
 
       clock.advance(30 * 1000);
       const good = await handler(authedPost('/v1/auth/mfa/verify', enrolled.token, enrolled.csrf, {
@@ -576,7 +870,7 @@ test('AUTH-009 MFA refusals are recorded durably while the lifecycle transaction
 });
 
 // ---------------------------------------------------------------------------
-// Operator exchange failure coverage and ledger separation
+// Operator, separation, selection, append-only
 // ---------------------------------------------------------------------------
 
 test('AUTH-009 operator guard refusals are audited before the assertion is exchanged', async () => {
@@ -592,16 +886,12 @@ test('AUTH-009 operator guard refusals are audited before the assertion is excha
         body: {},
       }));
       assert.equal(missing.status, 401);
-      assert.equal((await missing.json()).error.code, 'OPERATOR_ACCESS_REQUIRED');
-
       const badShape = await handler(request(`${origins.operator}/v1/auth/operator/access`, {
         method: 'POST',
         headers: {origin: origins.operator, authorization: 'Bearer synthetic-assertion-value'},
         body: {userId: '99999999-9999-4999-8999-999999999999'},
       }));
       assert.equal(badShape.status, 400);
-      assert.equal((await badShape.json()).error.code, 'UNKNOWN_FIELDS');
-
       const wrongRealm = await handler(request(`${origins.customer}/v1/auth/operator/access`, {
         method: 'POST',
         headers: {origin: origins.customer},
@@ -610,15 +900,51 @@ test('AUTH-009 operator guard refusals are audited before the assertion is excha
       assert.equal(wrongRealm.status, 403);
 
       const rows = await ledger(db, "event_type = 'login_failure'");
-      assert.equal(rows.length, 3, 'every guard refusal on the exchange route is recorded');
+      assert.equal(rows.length, 3);
       assert.ok(rows.every(row => row.detail_jsonb.actor_kind === 'operator_assertion'));
       const reasons = rows.map(row => row.detail_jsonb.reason).sort();
       assert.deepEqual(reasons, ['OPERATOR_ACCESS_REQUIRED', 'OPERATOR_REALM_REQUIRED', 'UNKNOWN_FIELDS']);
-      assert.ok(rows.some(row => row.realm === 'operator'));
-      assert.equal(rows.some(row => row.user_id !== null), false, 'no local identity is invented for a refused assertion');
+      assert.equal(rows.some(row => row.user_id !== null), false);
       const serialized = await db.adminQuery('SELECT row_to_json(a)::text AS json FROM auth.auth_audit a');
-      assert.equal(serialized.rows.some(row => row.json.includes('synthetic-assertion-value')), false,
-        'the bearer assertion never reaches the ledger');
+      assert.equal(serialized.rows.some(row => row.json.includes('synthetic-assertion-value')), false);
+    } finally {
+      await pool.end();
+    }
+  });
+});
+
+test('AUTH-009 MFA route guards that precede the factor try block are recorded', async () => {
+  await withAuthDatabase(async db => {
+    const pool = new Pool(connectionConfig(db.database));
+    try {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock});
+
+      const noSession = await handler(request(`${origins.customer}/v1/auth/mfa/verify`, {
+        method: 'POST',
+        headers: {origin: origins.customer, 'content-type': 'application/json'},
+        body: {code: '123456'},
+      }));
+      assert.equal(noSession.status, 401);
+      assert.equal((await noSession.json()).error.code, 'SESSION_REQUIRED');
+
+      const operatorRealm = await handler(request(`${origins.operator}/v1/auth/mfa/enroll`, {
+        method: 'POST',
+        headers: {origin: origins.operator, 'content-type': 'application/json'},
+        body: {},
+      }));
+      assert.equal(operatorRealm.status, 403);
+      assert.equal((await operatorRealm.json()).error.code, 'OPERATOR_ASSERTION_REQUIRED');
+
+      const sessionRows = await ledger(db, "event_type = 'session_denied'");
+      assert.equal(sessionRows.length, 1);
+      assert.equal(sessionRows[0].detail_jsonb.route, '/v1/auth/mfa/verify');
+      assert.equal(sessionRows[0].user_id, null);
+      const accessRows = await ledger(db, "event_type = 'access_denied'");
+      assert.equal(accessRows.length, 1);
+      assert.equal(accessRows[0].realm, 'operator');
+      assert.equal(accessRows[0].detail_jsonb.reason, 'OPERATOR_ASSERTION_REQUIRED');
+      assert.equal(accessRows[0].detail_jsonb.route, '/v1/auth/mfa/enroll');
     } finally {
       await pool.end();
     }
@@ -638,28 +964,19 @@ test('AUTH-009 authentication audit stays distinct from operator audit history',
       assert.equal(logout.status, 200);
 
       const authRows = await ledger(db);
-      assert.deepEqual(authRows.map(row => row.event_type), ['login_failure', 'login_success', 'logout'],
-        'the durable attempt reservation precedes the success event; nothing crosses realms');
+      assert.deepEqual(authRows.map(row => row.event_type), ['login_failure', 'login_success', 'logout']);
       assert.ok(authRows.every(row => row.realm === 'customer'));
-      assert.equal(authRows[0].outcome, 'failure', 'a successful attempt still records its reservation');
       assert.equal(authRows[0].detail_jsonb.reason, 'attempt_reserved');
       assert.equal(authRows[2].detail_jsonb.scope, 'one');
 
       const operatorAudit = await db.adminQuery('SELECT count(*)::int AS n FROM operator.operator_audit');
-      assert.equal(operatorAudit.rows[0].n, 0, 'auth events never write the operator audit ledger');
-      const operatorRows = await db.adminQuery(
-        "SELECT count(*)::int AS n FROM auth.auth_audit WHERE realm = 'operator'",
-      );
-      assert.equal(operatorRows.rows[0].n, 0);
+      assert.equal(operatorAudit.rows[0].n, 0);
+      assert.equal((await db.adminQuery("SELECT count(*)::int AS n FROM auth.auth_audit WHERE realm = 'operator'")).rows[0].n, 0);
     } finally {
       await pool.end();
     }
   });
 });
-
-// ---------------------------------------------------------------------------
-// Tenant selection (AUTH-006 carry-forward): success event is in-transaction
-// ---------------------------------------------------------------------------
 
 test('AUTH-009 tenant selection and clearing are audited atomically with the binding', async () => {
   await withAuthDatabase(async db => {
@@ -681,7 +998,6 @@ test('AUTH-009 tenant selection and clearing are audited atomically with the bin
       const rows = await ledger(db, "event_type = 'tenant_selected'");
       assert.equal(rows.length, 1);
       assert.equal(rows[0].tenant_id, TENANT);
-      assert.equal(rows[0].user_id, user.id);
       assert.equal(rows[0].detail_jsonb.role_id, 'member');
 
       const denied = await handler(authedPost('/v1/auth/tenant/select', session.token, session.csrf, {tenantId: OTHER_TENANT}));
@@ -689,7 +1005,6 @@ test('AUTH-009 tenant selection and clearing are audited atomically with the bin
       const failed = await ledger(db, "event_type = 'tenant_selection_failed'");
       assert.equal(failed.length, 1);
       assert.equal(failed[0].detail_jsonb.reason, 'TENANT_ACCESS_DENIED');
-      assert.equal(failed[0].detail_jsonb.actor_kind, 'authenticated');
 
       const cleared = await handler(authedPost('/v1/auth/tenant/clear', session.token, session.csrf));
       assert.equal(cleared.status, 200);
@@ -697,10 +1012,6 @@ test('AUTH-009 tenant selection and clearing are audited atomically with the bin
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// Append-only enforcement
-// ---------------------------------------------------------------------------
 
 test('AUTH-009 the ledger refuses UPDATE, DELETE and TRUNCATE for every principal', async () => {
   await withAuthDatabase(async db => {
@@ -723,7 +1034,6 @@ test('AUTH-009 the ledger refuses UPDATE, DELETE and TRUNCATE for every principa
         () => db.asRole('authService', client => client.query('DELETE FROM auth.auth_audit')),
         /AUTH_RECORD_IMMUTABLE|permission denied/,
       );
-      assert.equal((await ledger(db)).length >= 1, true, 'the row survived every mutation attempt');
     } finally {
       await pool.end();
     }

@@ -1,19 +1,21 @@
 import {isIP} from 'node:net';
+import catalogConfig from './audit-catalog.v1.json' with {type: 'json'};
 
 // AUTH-009 append-only authentication audit.
 //
-// This module is the single writer for `auth.auth_audit`. It owns four contract
+// This module is the single writer for `auth.auth_audit` and owns four contract
 // points that call sites must not re-implement:
 //
-//   1. EVENT CATALOG. Only catalogued events may be written, and each event
-//      declares its permitted actor semantics, outcomes and detail keys. The
-//      catalog is inert data (no per-event branches), so a new event is added by
-//      extending the catalog entry and, in the future, loading the same shape from
-//      reference data. See "Extension points" in README.md.
-//   2. REDACTION. Detail payloads are allow-listed and type-bounded. A key that
-//      looks like a credential is refused even if a caller mistakenly allow-lists
-//      it, so a password, token, assertion, cookie or one-time code cannot reach
-//      the ledger.
+//   1. EVENT CONFIGURATION. The event domain is a versioned JSON configuration
+//      (`audit-catalog.v1.json`), validated here and loaded through the writer
+//      boundary. Adding an event is a configuration change; writer logic does not
+//      branch per event. A deployment may supply an equivalent validated catalog
+//      (`createAuditWriter({auditCatalog})`); HTTP clients cannot register or
+//      select one. Unknown events fail closed.
+//   2. REDACTION. Detail payloads are allow-listed per event and type-bounded. A
+//      key that looks like a credential is refused even if a catalog mistakenly
+//      lists it, so a password, token, assertion, cookie or one-time code cannot
+//      reach the ledger.
 //   3. ATOMICITY. `audit(event, {tx})` writes on the caller's transaction, so a
 //      successful transition and its audit row commit or roll back together.
 //   4. FAILURE DURABILITY. `audit.failure(event)` always acquires its own
@@ -25,7 +27,13 @@ import {isIP} from 'node:net';
 // 05-auth-schema.sql); this module never issues UPDATE or DELETE.
 
 export const AUTH_AUDIT_VERSION = 1;
-export const AUTH_AUDIT_REALMS = Object.freeze(['customer', 'operator']);
+export const SUPPORTED_CATALOG_VERSIONS = Object.freeze([1]);
+
+// `unknown` is not an application realm. It is the explicit, non-attributing realm
+// used when a refusal happens before any exact origin/realm can be established
+// (for example an unrecognized Host/Origin). Never use it for a request that did
+// resolve to the customer or operator origin.
+export const AUTH_AUDIT_REALMS = Object.freeze(['customer', 'operator', 'unknown']);
 
 const AUTHENTICATED = 'authenticated';
 const OPERATOR_ASSERTION = 'operator_assertion';
@@ -41,192 +49,15 @@ export const AUTH_AUDIT_ACTORS = Object.freeze({
   RECOVERY_TOKEN,
 });
 
-// Producer values document the real adapter path that consumes the event today.
-// A null producer is an explicit, reported gap: the vocabulary exists so the
-// future flow records it in one call, and no synthetic row is invented in the
-// meantime.
-export const AUTH_AUDIT_CATALOG = Object.freeze({
-  login_success: Object.freeze({
-    category: 'authentication',
-    producer: 'routes.login+access.exchange',
-    actors: [AUTHENTICATED, OPERATOR_ASSERTION],
-    outcomes: ['success'],
-    detail: [
-      'assurance', 'rehashed', 'reservation_order',
-      'throttle_account', 'throttle_network', 'attempt_at', 'attempt_order',
-      'operator_subject', 'operator_role', 'access_issuer', 'access_audience', 'exchange',
-    ],
-  }),
-  login_failure: Object.freeze({
-    category: 'authentication',
-    producer: 'routes.login+access.exchange',
-    actors: [UNKNOWN, UNVERIFIED_ATTEMPT, OPERATOR_ASSERTION],
-    outcomes: ['failure', 'denied'],
-    detail: [
-      'reason', 'retry_after_ms', 'phase',
-      'throttle_account', 'throttle_network', 'attempt_at', 'attempt_order',
-    ],
-  }),
-  logout: Object.freeze({
-    category: 'session',
-    producer: 'routes.logout+route.operatorLogout',
-    actors: [AUTHENTICATED, OPERATOR_ASSERTION],
-    outcomes: ['success'],
-    detail: ['scope'],
-  }),
-  sessions_revoked: Object.freeze({
-    category: 'session',
-    producer: 'routes.resetPassword',
-    actors: [AUTHENTICATED, RECOVERY_TOKEN],
-    outcomes: ['success'],
-    detail: ['scope', 'reason', 'revoked_count'],
-  }),
-  mfa_enrolled: Object.freeze({
-    category: 'mfa',
-    producer: 'routes.mfaEnroll+mfaEnrollVerify',
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['stage', 'recovery_codes_issued'],
-  }),
-  mfa_enroll_failed: Object.freeze({
-    category: 'mfa',
-    producer: 'routes.mfaEnroll+mfaEnrollVerify',
-    actors: [AUTHENTICATED],
-    outcomes: ['failure', 'denied'],
-    detail: ['reason', 'stage', 'method'],
-  }),
-  mfa_verified: Object.freeze({
-    category: 'mfa',
-    producer: 'routes.mfaVerify',
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['method', 'assurance'],
-  }),
-  mfa_verification_failed: Object.freeze({
-    category: 'mfa',
-    producer: 'routes.mfaVerify+mfaDisable',
-    actors: [AUTHENTICATED],
-    outcomes: ['failure', 'denied'],
-    detail: ['reason', 'stage', 'method'],
-  }),
-  mfa_disabled: Object.freeze({
-    category: 'mfa',
-    producer: 'routes.mfaDisable',
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['reenrollment_required'],
-  }),
-  password_reset_requested: Object.freeze({
-    category: 'credential',
-    producer: 'routes.forgotPassword',
-    actors: [UNKNOWN],
-    outcomes: ['success', 'failure', 'denied'],
-    detail: ['reason', 'retry_after_ms', 'delivery', 'throttle_account', 'throttle_network', 'attempt_at', 'attempt_order'],
-  }),
-  password_reset_failed: Object.freeze({
-    category: 'credential',
-    producer: 'routes.resetPassword',
-    actors: [UNKNOWN, RECOVERY_TOKEN],
-    outcomes: ['failure', 'denied'],
-    detail: ['reason'],
-  }),
-  password_reset_completed: Object.freeze({
-    category: 'credential',
-    producer: 'routes.resetPassword',
-    actors: [RECOVERY_TOKEN],
-    outcomes: ['success'],
-    detail: ['purpose', 'sessions_revoked', 'credential_version'],
-  }),
-  password_changed: Object.freeze({
-    category: 'credential',
-    producer: null,
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['sessions_revoked'],
-  }),
-  email_verification_requested: Object.freeze({
-    category: 'credential',
-    producer: 'routes.emailVerificationRequest',
-    actors: [AUTHENTICATED],
-    outcomes: ['success', 'denied'],
-    detail: ['delivery', 'retry_after_ms'],
-  }),
-  email_verified: Object.freeze({
-    category: 'credential',
-    producer: 'routes.emailVerifyRoute',
-    actors: [RECOVERY_TOKEN],
-    outcomes: ['success'],
-    detail: ['already_verified'],
-  }),
-  email_verification_failed: Object.freeze({
-    category: 'credential',
-    producer: 'routes.emailVerifyRoute',
-    actors: [UNKNOWN, RECOVERY_TOKEN],
-    outcomes: ['failure', 'denied'],
-    detail: ['reason'],
-  }),
-  tenant_selected: Object.freeze({
-    category: 'membership',
-    producer: 'tenant-selection.select',
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['membership_id', 'role_id'],
-  }),
-  tenant_cleared: Object.freeze({
-    category: 'membership',
-    producer: 'tenant-selection.clear',
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: [],
-  }),
-  tenant_selection_failed: Object.freeze({
-    category: 'membership',
-    producer: 'routes.selectTenant',
-    actors: [AUTHENTICATED],
-    outcomes: ['failure', 'denied'],
-    detail: ['reason'],
-  }),
-  role_changed: Object.freeze({
-    category: 'membership',
-    producer: null,
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['role_id', 'previous_role_id'],
-  }),
-  membership_invited: Object.freeze({
-    category: 'membership',
-    producer: null,
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['membership_id', 'role_id'],
-  }),
-  membership_accepted: Object.freeze({
-    category: 'membership',
-    producer: null,
-    actors: [AUTHENTICATED],
-    outcomes: ['success'],
-    detail: ['membership_id', 'role_id'],
-  }),
-});
+const OUTCOMES = Object.freeze(['success', 'failure', 'denied']);
 
-// ADR03's required event set, mapped to the catalog names this module owns. The
-// map is the traceability record for review: a required event with no producer is
-// an explicit limitation, never a claim of coverage.
-export const ADR03_REQUIRED_EVENTS = Object.freeze({
-  login_success: 'login_success',
-  login_failure: 'login_failure',
-  logout: 'logout',
-  mfa_enrolled: 'mfa_enrolled',
-  mfa_verified: 'mfa_verified',
-  mfa_disabled: 'mfa_disabled',
-  password_changed: 'password_changed',
-  password_reset_requested: 'password_reset_requested',
-  password_reset_completed: 'password_reset_completed',
-  sessions_revoked: 'sessions_revoked',
-  role_changed: 'role_changed',
-  membership_invited: 'membership_invited',
-  membership_accepted: 'membership_accepted',
-});
+const EVENT_NAME = /^[a-z][a-z0-9_]{0,119}$/;
+const DETAIL_KEY = /^[a-z][a-z0-9_]{0,63}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const REQUEST_ID = /^[A-Za-z0-9._:-]{1,200}$/;
+const MAX_DETAIL_STRING = 320;
+const MAX_ACTOR_SUBJECT = 320;
+const RESERVED_DETAIL_KEYS = Object.freeze(['actor_kind']);
 
 // A key is refused regardless of the per-event allow-list when its name could
 // describe an authenticator, bearer value or one-time code. Substring matching is
@@ -239,16 +70,38 @@ const SENSITIVE_EXACT = Object.freeze(new Set([
   'code', 'code_hash', 'recovery_code', 'recovery_codes', 'value_hash', 'hash', 'credential',
 ]));
 
-const DETAIL_KEY = /^[a-z][a-z0-9_]{0,63}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const REQUEST_ID = /^[A-Za-z0-9._:-]{1,200}$/;
-const MAX_DETAIL_STRING = 320;
-const MAX_ACTOR_SUBJECT = 320;
+// ADR03's required event set, independent of the configurable catalog. This map is
+// the review/traceability source of truth: every entry is REQUIRED. Changing the JSON
+// catalog alone cannot turn a missing producer into a claimed live one (or vice versa).
+// A required event whose producer is null/absent is an unresolved gap reported against
+// this contract, never a deferral and never satisfied by a synthetic row.
+export const ADR03_REQUIRED_EVENTS = Object.freeze({
+  login_success: Object.freeze({status: 'required'}),
+  login_failure: Object.freeze({status: 'required'}),
+  logout: Object.freeze({status: 'required'}),
+  mfa_enrolled: Object.freeze({status: 'required'}),
+  mfa_verified: Object.freeze({status: 'required'}),
+  mfa_disabled: Object.freeze({status: 'required'}),
+  password_changed: Object.freeze({status: 'required'}),
+  password_reset_requested: Object.freeze({status: 'required'}),
+  password_reset_completed: Object.freeze({status: 'required'}),
+  sessions_revoked: Object.freeze({status: 'required'}),
+  role_changed: Object.freeze({status: 'required'}),
+  membership_invited: Object.freeze({status: 'required'}),
+  membership_accepted: Object.freeze({status: 'required'}),
+});
 
 export class AuditEventError extends Error {
   constructor(code, message) {
     super(message);
     this.code = code;
+  }
+}
+
+export class AuditConfigurationError extends Error {
+  constructor(message) {
+    super(`Audit catalog configuration refused: ${message}`);
+    this.code = 'AUDIT_CATALOG_INVALID';
   }
 }
 
@@ -263,6 +116,92 @@ function isSensitiveKey(key) {
   if (SENSITIVE_EXACT.has(key)) return true;
   return SENSITIVE_SUBSTRINGS.some(part => key.includes(part));
 }
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stringArray(value, label, pattern, {allowEmpty = false} = {}) {
+  if (!Array.isArray(value) || (!allowEmpty && value.length === 0)) {
+    throw new AuditConfigurationError(`${label} must be a non-empty array.`);
+  }
+  const seen = new Set();
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !pattern.test(entry)) {
+      throw new AuditConfigurationError(`${label} contains an invalid value.`);
+    }
+    if (seen.has(entry)) throw new AuditConfigurationError(`${label} contains a duplicate value.`);
+    seen.add(entry);
+  }
+  return Object.freeze([...value]);
+}
+
+// Validates and normalizes a catalog document. Throws AuditConfigurationError, so a
+// bad configuration fails at composition/startup rather than writing unvalidated
+// rows. Callers may supply the returned shape but cannot mutate it.
+export function validateAuditCatalog(config) {
+  if (!isPlainObject(config)) throw new AuditConfigurationError('the catalog must be an object.');
+  if (!Number.isSafeInteger(config.catalogVersion) || !SUPPORTED_CATALOG_VERSIONS.includes(config.catalogVersion)) {
+    throw new AuditConfigurationError(`catalogVersion must be one of ${SUPPORTED_CATALOG_VERSIONS.join(', ')}.`);
+  }
+  if (config.description !== undefined && (typeof config.description !== 'string' || config.description.length > 4000)) {
+    throw new AuditConfigurationError('description must be a string of at most 4000 characters.');
+  }
+  if (!isPlainObject(config.events) || Object.keys(config.events).length === 0) {
+    throw new AuditConfigurationError('events must be a non-empty object.');
+  }
+  const events = {};
+  for (const [name, spec] of Object.entries(config.events)) {
+    if (!EVENT_NAME.test(name)) throw new AuditConfigurationError(`event name "${name}" is invalid.`);
+    if (!isPlainObject(spec)) throw new AuditConfigurationError(`event "${name}" must be an object.`);
+    if (typeof spec.category !== 'string' || spec.category.trim().length === 0 || spec.category.length > 80) {
+      throw new AuditConfigurationError(`event "${name}" needs a category of 1-80 characters.`);
+    }
+    if (spec.producer !== null && (typeof spec.producer !== 'string' || spec.producer.length > 320)) {
+      throw new AuditConfigurationError(`event "${name}" producer must be null or a string of at most 320 characters.`);
+    }
+    const actors = stringArray(spec.actors, `event "${name}" actors`, EVENT_NAME);
+    for (const actor of actors) {
+      if (!Object.values(AUTH_AUDIT_ACTORS).includes(actor)) {
+        throw new AuditConfigurationError(`event "${name}" declares unknown actor "${actor}".`);
+      }
+    }
+    const outcomes = stringArray(spec.outcomes, `event "${name}" outcomes`, EVENT_NAME);
+    for (const outcome of outcomes) {
+      if (!OUTCOMES.includes(outcome)) {
+        throw new AuditConfigurationError(`event "${name}" declares unknown outcome "${outcome}".`);
+      }
+    }
+    const detail = stringArray(spec.detail, `event "${name}" detail`, DETAIL_KEY, {allowEmpty: true});
+    for (const key of detail) {
+      if (RESERVED_DETAIL_KEYS.includes(key)) {
+        throw new AuditConfigurationError(`event "${name}" may not declare reserved detail key "${key}".`);
+      }
+      if (isSensitiveKey(key)) {
+        throw new AuditConfigurationError(`event "${name}" may not declare credential-shaped detail key "${key}".`);
+      }
+    }
+    events[name] = Object.freeze({
+      category: spec.category,
+      producer: spec.producer,
+      actors,
+      outcomes,
+      detail,
+    });
+  }
+  return Object.freeze({
+    catalogVersion: config.catalogVersion,
+    ...(config.description === undefined ? {} : {description: config.description}),
+    events: Object.freeze(events),
+  });
+}
+
+const DEFAULT_CATALOG = validateAuditCatalog(catalogConfig);
+
+// Backwards-compatible named view of the validated default configuration. Prefer
+// passing a catalog through `createAuditWriter`/`prepareAuditRow`.
+export const AUTH_AUDIT_CATALOG = DEFAULT_CATALOG.events;
+export const AUTH_AUDIT_CATALOG_VERSION = DEFAULT_CATALOG.catalogVersion;
 
 function header(request, name) {
   if (!request) return null;
@@ -319,17 +258,17 @@ function normalizeActorKind(event, spec) {
   return actorKind;
 }
 
-// Pure row builder. Exported so the redaction and attribution rules can be proven
-// without a database, and so a future reference-data catalog reuses the contract.
-export function prepareAuditRow(event, {realms = AUTH_AUDIT_REALMS} = {}) {
+// Pure row builder. Exported so the redaction, attribution and configuration rules
+// can be proven without a database.
+export function prepareAuditRow(event, {realms = AUTH_AUDIT_REALMS, catalog = AUTH_AUDIT_CATALOG} = {}) {
   if (!event || typeof event !== 'object') {
     throw new AuditEventError('AUDIT_EVENT_INVALID', 'An audit event object is required.');
   }
   const eventType = event.eventType;
-  if (typeof eventType !== 'string' || !Object.hasOwn(AUTH_AUDIT_CATALOG, eventType)) {
-    throw new AuditEventError('AUDIT_EVENT_UNKNOWN', 'The audit event is not in the catalog.');
+  if (typeof eventType !== 'string' || !Object.hasOwn(catalog, eventType)) {
+    throw new AuditEventError('AUDIT_EVENT_UNKNOWN', 'The audit event is not in the configured catalog.');
   }
-  const spec = AUTH_AUDIT_CATALOG[eventType];
+  const spec = catalog[eventType];
   const outcome = event.outcome ?? 'success';
   if (!spec.outcomes.includes(outcome)) {
     throw new AuditEventError('AUDIT_OUTCOME_INVALID', `Outcome "${outcome}" is not declared for ${eventType}.`);
@@ -400,12 +339,18 @@ function params(row) {
 }
 
 export function createAuditWriter(pool, {
+  auditCatalog = DEFAULT_CATALOG,
   onDurabilityFailure = null,
   failureHistoryLimit = 50,
   realms = AUTH_AUDIT_REALMS,
 } = {}) {
   if (!pool || typeof pool.query !== 'function') {
     throw new Error('createAuditWriter requires a PostgreSQL pool with query().');
+  }
+  // Fail closed at composition: an invalid or unsupported catalog means no writer.
+  const catalog = validateAuditCatalog(auditCatalog);
+  for (const realm of realms) {
+    if (typeof realm !== 'string' || realm.length === 0) throw new AuditConfigurationError('realms must be non-empty strings.');
   }
   const history = [];
   let durabilityFailures = 0;
@@ -426,7 +371,7 @@ export function createAuditWriter(pool, {
   }
 
   async function insert(executor, event) {
-    const row = prepareAuditRow(event, {realms});
+    const row = prepareAuditRow(event, {realms, catalog: catalog.events});
     const result = await executor.query(INSERT_SQL, params(row));
     return {recorded: true, id: result?.rows?.[0]?.id ?? null, eventType: row.event_type};
   }
@@ -438,9 +383,9 @@ export function createAuditWriter(pool, {
   }
 
   // Failed attempts must survive the rollback of the attempt they describe, so this
-  // path never accepts a transaction and never runs inside one. It acquires an
-  // independent connection. A failure here is surfaced through stats() and the
-  // optional notifier; the caller reports the authentication decision unchanged.
+  // path never accepts a transaction and never runs inside one. A failure here is
+  // surfaced through stats() and the optional notifier; the caller reports the
+  // authentication decision unchanged.
   audit.failure = async function failure(event) {
     const attempt = {...event, outcome: event?.outcome ?? 'failure'};
     try {
@@ -452,10 +397,13 @@ export function createAuditWriter(pool, {
   };
 
   audit.stats = () => ({
+    catalogVersion: catalog.catalogVersion,
     durabilityFailures,
     lastFailure: lastFailure ? {...lastFailure} : null,
     history: history.map(entry => ({...entry})),
   });
+
+  audit.catalog = () => catalog;
 
   return audit;
 }
