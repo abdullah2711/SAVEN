@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 6. Created: 19 November 2026 (Asia/Karachi).
+Version: 7. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -107,3 +107,5 @@ Append future entries here only after the corresponding review is committed; inc
 - 19 November 2026 — v5 — review `4d0d7fc` (PIVOT-007 partial R1, REVISE plus bounded adapter amendment): no new defect pattern; apply R01/R12/R13 to exact-object partial scope and explicit amendment ownership, R04/R33/R68 to an executable privilege-safe commit-before-publication adapter, R23 to unconditional trigger predicates/function profiles, R40/R43 to freshness after the last blocking consent gate, R44 to coherent weaker-assurance configuration, and R57 to current versus historical denial-role attribution.
 
 - 20 November 2026 — v6 — review `92f3e00` (PIVOT-007 R2, REVISE): no new defect pattern; apply R69/R40/R43 to the actual captured AUTH-007 source-age/skew policy and to policy effective windows after the last blocking consent gate, and R61/R09 to missing/short bearer decisions that precede the independent denial recorder, with exact refusals, durable unknown-actor evidence and permitted controls.
+
+- 20 November 2026 — v7 — review `b974d37` (PIVOT-014 partial R2, REVISE plus A/B amendments): R72 — Prove compatibility of locks held on separate auth/business connections with real FK KEY SHARE; choose the least mode that still blocks authority changes, never remove retained FKs or release admission early to bypass self-blocking; R73 — Cleanup/notification callbacks cannot suppress the primary outcome or skip exact-client destruction; reapply R34/R71 to executed-BEGIN and attempted-start acknowledgement uncertainty, R09 to actual permitted controls and R12/R13 to explicit partial scope/amendment ownership.
