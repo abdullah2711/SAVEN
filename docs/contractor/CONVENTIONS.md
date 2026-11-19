@@ -95,3 +95,5 @@ A partial delivery must be labelled PARTIAL, not complete. Enumerate every prior
 Agent permissions are scoped by WHAT CAN BE TOUCHED, never by WHICH COMMAND is used. Read commands are not safe by name: cat, sed, head, tail and grep grant read access to every file the agent user can read, and exfiltration is a read, not a write. Allow reads only on relative paths inside the agent own worktree; deny absolute paths, ~, .., and any path matching .env, .ssh, .pem, *.key, credentials or tunnel configuration; everything else asks.
 
 The standing inventories rule (D-017, docs/agents/DECISION_LOG.md) already covers base-SHA discipline.
+
+A permission rule is unproven until a hostile attempt against it has been shown to be refused: every deny rule is validated by mutation (attempt the attack, observe the refusal) before it is trusted, and the attempt is recorded.
