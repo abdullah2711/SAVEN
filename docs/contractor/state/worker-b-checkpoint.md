@@ -1,3 +1,70 @@
+# WORKER-B checkpoint — PIVOT-014 current assignment
+
+Date: 19 November 2026 (Asia/Karachi).
+
+## Current state — PIVOT-014 vertical slice DELIVERED, awaiting review
+
+- Contract: `docs/contractor/contracts/PIVOT-014-vertical-slice.md`.
+- Branch `opencode/pivot-014-vertical-slice`, worktree `/home/esc/saven/wt-pivot-014`,
+  base **`e0fa9fb`** (testing-1, AUTH-009 merged).
+- Implementation commit: **`37399dac79264830ac3cc1a76f5047fa4039d637`**.
+- Delivery report: `docs/contractor/deliveries/PIVOT-014-vertical-slice.md`;
+  delivered cover sheet: `docs/contractor/deliveries/PIVOT-014-vertical-slice-cover-sheet.md`.
+- Gates (Node 24.19.0, local PostgreSQL 18.6, disposable loopback cluster):
+  `node scripts/check.mjs` → 178 files parsed + focused test **9/9 pass**, exit 0;
+  focused test alone → 9/9, exit 0. Whole-test budget 240 s, measured ~3.2 s.
+- Not merged; no production/cloud/shared database touched; no credential committed.
+
+## Per-finding enumeration (round 1 — no prior review findings)
+
+| Finding | Status | Proving test |
+|---|---|---|
+| S1 real application path / restricted principal | **DONE** | `S1 real application path and restricted principal` |
+| S2 permanent automated test, no flakiness, budget, cleanup | **DONE** | `scripts/check.mjs` + `S2` budget assertion, helper cleanup |
+| S3 cross-tenant refusal with permitted controls | **DONE** | `S3 cross-tenant refusal with permitted controls` |
+| S4 balanced posts; unbalanced leaves no trace | **DONE** | `S4 unbalanced request leaves no trace and consumes no number` |
+| S5 void is a state change with retained evidence | **DONE** | `S5 void is a state change with retained evidence` |
+| S6 complete lifecycle audit with enumerated change events | **DONE** | `S6 complete lifecycle audit with enumerated change events` |
+| S7 idempotency and conflict refusal | **DONE** | `S7 idempotent replay and conflict refusal` |
+| S8 numbering under concurrency, D-016 | **DONE** | `S8 concurrent numbering and non-reusable allocation` |
+| S9 no dishonest pass + mutation proof | **DONE** | `S9 refusals are specific and paired with permitted controls` + recorded red/green run |
+| Principal directive: S1–S9 assertion mapping in delivery | **DONE** | delivery §"S1–S9 assertion mapping" |
+| Principal directive: mutation red/green evidence | **DONE** | delivery §"Mutation red/green evidence" (S4 red `500 !== 422`, restored 9/9) |
+| Principal directive: actual runtime principal recorded | **DONE** | delivery §"Actual runtime database principal" (`p014_app_login` → `saven_customer_app`) |
+| Principal directive: confirmation no retry loop in the gate | **DONE** | delivery §"NO RETRY LOOP — explicit confirmation"; helper has one bounded readiness probe only |
+| PIVOT-006 review pin: catalog version 1 via active writer default for S3/S6 | **DONE** | `S6` asserts `AUTH_AUDIT_CATALOG_VERSION === PINNED_CATALOG_VERSION === 1`; composition fails closed on mismatch |
+
+**PARTIAL / UNTOUCHED:** none within the contract. Explicitly **not implemented** (contract
+exclusions, not gaps): approval-policy review workflow and AI-origin no-direct-post rules
+(refused `APPROVAL_REQUIRED`, never silently posted); UI, reports, tax, multi-currency,
+reconciliation, inventory/trade, PIVOT-013 parity, recovery tooling, operator support,
+production onboarding.
+
+## Disclosed limitations
+
+1. Post/read authority is evaluated in JavaScript mirroring the accepted 042 policy shape; the
+   void decision comes from the accepted 042 function. A later contract may share one function.
+2. 041 gives sequence-counter and number-row change events no entity id, so the app audit path
+   exposes both `commandId` (entity) and `since` (id window); the test asserts the complete
+   inventory through the window.
+3. `document_sequences` is per `(tenant, company, kind)`; the accepted schema has no branch
+   dimension, so numbering is not branch-scoped.
+4. 043 was required and is limited to `EXECUTE` on the accepted void primitive and `SELECT` on
+   the two accepted projections for `saven_customer_app`.
+
+## Where I stopped
+
+Delivered and pushed; no further work started. Awaiting engineer review, then the dispatcher's
+verdict relay. **Not merged.**
+
+## Cross-reference
+
+The PIVOT-006 allocator/restore inventory (D-016 base) lives on `opencode/pivot-006-audit` at
+`de1ecb0`; it is not on this branch. Any repository-wide inventory rebase after this
+tree-changing merge is D-017 follow-up work, not performed here.
+
+---
+
 # WORKER-B checkpoint — PIVOT-006 R3 delivered, ACCEPTED, awaiting human merge
 
 Date: 18 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
