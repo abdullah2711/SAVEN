@@ -95,8 +95,9 @@ function makeFindUser(pool) {
   };
 }
 
-function buildRoutes({pool, clock, audit = null, mail = null, operatorAccess = null, mfa = mfaConfig(), rateLimitPolicy = {}}) {
-  const store = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+function buildRoutes({pool, clock, audit = null, mail = null, operatorAccess = null, mfa = mfaConfig(), rateLimitPolicy = {}, wrapStore = null}) {
+  const base = createSessionStore({connect: () => pool.connect(), clock: clock.clock});
+  const store = wrapStore ? wrapStore(base) : base;
   const handler = createAuthRoutes({
     store,
     findUserByEmail: makeFindUser(pool),
@@ -498,11 +499,11 @@ test('AUTH-009 client-supplied actor fields never influence audit attribution', 
 
 test('AUTH-009 password_changed is produced by the authenticated credential-change flow', async () => {
   await withAuthDatabase(async db => {
-    const pool = new Pool(connectionConfig(db.database));
-    try {
-      const clock = testClock();
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'change@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
       const {handler} = buildRoutes({pool, clock});
-      const user = await insertUser(db, 'change@example.com', 'correct-horse-battery');
       const first = await login(handler, 'change@example.com', 'correct-horse-battery');
       const second = await login(handler, 'change@example.com', 'correct-horse-battery');
       assert.ok(first.token && second.token);
@@ -544,19 +545,17 @@ test('AUTH-009 password_changed is produced by the authenticated credential-chan
       const serialized = await db.adminQuery('SELECT row_to_json(a)::text AS json FROM auth.auth_audit a');
       assert.equal(serialized.rows.some(row => row.json.includes('new-correct-horse-battery')), false);
       assert.equal(serialized.rows.some(row => row.json.includes(first.token)), false);
-    } finally {
-      await pool.end();
-    }
+    });
   });
 });
 
 test('AUTH-009 a wrong current password is a durable, single refusal and changes nothing', async () => {
   await withAuthDatabase(async db => {
-    const pool = new Pool(connectionConfig(db.database));
-    try {
-      const clock = testClock();
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'wrong-change@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
       const {handler} = buildRoutes({pool, clock});
-      const user = await insertUser(db, 'wrong-change@example.com', 'correct-horse-battery');
       const session = await login(handler, 'wrong-change@example.com', 'correct-horse-battery');
 
       const attempt = await handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
@@ -574,17 +573,16 @@ test('AUTH-009 a wrong current password is a durable, single refusal and changes
       const after = await db.adminQuery('SELECT credential_version FROM auth.users WHERE id = $1::uuid', [user.id]);
       assert.equal(Number(after.rows[0].credential_version), user.credentialVersion);
       assert.equal((await handler(authedGet('/v1/auth/me', session.token))).status, 200, 'the session is not revoked');
-    } finally {
-      await pool.end();
-    }
+    });
   });
 });
 
 test('AUTH-009 a failed password_changed audit rolls the credential change and revokes back', async () => {
   await withAuthDatabase(async db => {
-    const pool = new Pool(connectionConfig(db.database));
-    try {
-      const clock = testClock();
+    await applyAuthorityGate(db);
+    const clock = testClock();
+    const user = await insertUser(db, 'change-atomic@example.com', 'correct-horse-battery');
+    await withAuthServicePool(db, async pool => {
       const writer = createAuditWriter(pool);
       const failingAudit = async (event, options) => {
         if (event.eventType === 'password_changed') throw new Error('audit store unavailable');
@@ -592,7 +590,6 @@ test('AUTH-009 a failed password_changed audit rolls the credential change and r
       };
       failingAudit.failure = writer.failure;
       const {handler} = buildRoutes({pool, clock, audit: failingAudit});
-      const user = await insertUser(db, 'change-atomic@example.com', 'correct-horse-battery');
       const session = await login(handler, 'change-atomic@example.com', 'correct-horse-battery');
 
       const response = await handler(authedPost('/v1/auth/password/change', session.token, session.csrf, {
@@ -607,9 +604,58 @@ test('AUTH-009 a failed password_changed audit rolls the credential change and r
       assert.equal((await policy.verify('correct-horse-battery', after.rows[0].password_hash)).valid, true);
       assert.equal((await ledger(db, "event_type = 'sessions_revoked' AND detail_jsonb->>'reason' = 'password_change'")).length, 0);
       assert.equal((await handler(authedGet('/v1/auth/me', session.token))).status, 200);
-    } finally {
-      await pool.end();
-    }
+    });
+  });
+});
+
+test('AUTH-009 password change revalidates required MFA assurance inside its owned boundary', async () => {
+  await withAuthDatabase(async db => {
+    await applyAuthorityGate(db);
+    await withAuthServicePool(db, async pool => {
+      const clock = testClock();
+      const {handler} = buildRoutes({pool, clock});
+      const enrolled = await enrolledAdmin({db, clock, handler, email: 'inside-gate@example.com'});
+
+      // A fresh sign-in after enrollment is a pending single-factor session. The
+      // pre-route gate is bypassed with a snapshot that claims mfa_verified; the owned
+      // boundary re-reads the locked session and must refuse.
+      const pending = await login(handler, 'inside-gate@example.com', 'correct-horse-battery');
+      assert.equal(pending.response.status, 200);
+      const {handler: raceHandler} = buildRoutes({
+        pool,
+        clock,
+        wrapStore: base => ({
+          ...base,
+          readSession: async (token, options) => {
+            const session = await base.readSession(token, options);
+            return session ? {...session, assuranceLevel: 'mfa_verified'} : null;
+          },
+        }),
+      });
+
+      const attempt = await raceHandler(authedPost('/v1/auth/password/change', pending.token, pending.csrf, {
+        currentPassword: 'correct-horse-battery',
+        newPassword: 'should-not-change-horse',
+      }));
+      assert.equal(attempt.status, 403);
+      assert.equal((await attempt.json()).error.code, 'MFA_REQUIRED');
+
+      const after = await db.adminQuery(
+        'SELECT password_hash, credential_version FROM auth.users WHERE id = $1::uuid',
+        [enrolled.userId],
+      );
+      assert.equal(Number(after.rows[0].credential_version), 1, 'no credential advancement occurred');
+      const policy = createPasswordPolicy();
+      assert.equal((await policy.verify('correct-horse-battery', after.rows[0].password_hash)).valid, true);
+      assert.equal((await ledger(db, "event_type = 'password_changed'")).length, 0);
+      assert.equal((await ledger(db, "event_type = 'sessions_revoked' AND detail_jsonb->>'reason' = 'password_change'")).length, 0);
+      const denied = await ledger(db, "event_type = 'assurance_denied'");
+      assert.equal(denied.length, 1, 'the inside-boundary refusal is recorded exactly once');
+      assert.equal(denied[0].detail_jsonb.reason, 'MFA_REQUIRED');
+      assert.equal(denied[0].detail_jsonb.route, '/v1/auth/password/change');
+      assert.equal(denied[0].user_id, enrolled.userId);
+      assert.equal(denied[0].detail_jsonb.actor_kind, 'authenticated');
+    });
   });
 });
 

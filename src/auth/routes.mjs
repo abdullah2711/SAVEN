@@ -4,7 +4,7 @@ import {createPasswordPolicy} from './password-policy.mjs';
 import {createMfaService} from './factors.mjs';
 import {createRecoveryService} from './recovery.mjs';
 import {createMailDispatcher} from './mail.mjs';
-import {createTenantSelection, TenantSelectionError} from './tenant-selection.mjs';
+import {createTenantSelection, TenantSelectionError, acquireAuthorityGate} from './tenant-selection.mjs';
 import {createRateLimiter, canonicalizeIp, AccountingUnavailableError} from './rate-limit.mjs';
 
 // AUTH-003 versioned auth routes.
@@ -301,6 +301,7 @@ export function createAuthRoutes({
 
   function classifyRefusal(path, error) {
     const code = typeof error?.code === 'string' ? error.code : null;
+    if (code === 'MFA_REQUIRED') return {eventType: 'assurance_denied', outcome: 'denied'};
     if (code === 'SESSION_REQUIRED' || code === 'CSRF_FAILED') {
       return {eventType: 'session_denied', outcome: 'denied'};
     }
@@ -726,7 +727,23 @@ export function createAuthRoutes({
           // password verification runs on the owned client with the lifecycle locks.
           const hashed = await policy.hash(body.newPassword);
           return lease.transaction(async tx => {
+            // Accepted authority order: shared authority gate first, then principal ->
+            // factor -> session lifecycle locks and authoritative reads. The gate is
+            // transaction-scoped and stays held through the credential change and audit
+            // commit, so a concurrent membership/role change either blocks or is observed.
+            await acquireAuthorityGate(tx);
             await mfaService.assertMutationAuthority({session, tx});
+            // Re-read the locked session after the blocking acquisitions: the earlier
+            // pre-route gate saw an unlocked snapshot and cannot authorize this mutation.
+            const current = await store.readSessionById(session.id, {tx, forUpdate: true, realm});
+            if (!current) return {rejected: true};
+            const requirement = await mfaService.status(session.userId, {tx});
+            if (!requirement.resolved) {
+              throw new AuthError(503, 'MFA_AUTHORITY_UNAVAILABLE', 'The MFA requirement could not be verified.');
+            }
+            if (requirement.required && (current.assuranceLevel !== 'mfa_verified' || !requirement.enrolled)) {
+              throw new AuthError(403, 'MFA_REQUIRED', 'Multi-factor verification is required before this request.');
+            }
             const user = await loadUserById(tx, session.userId);
             if (!user || user.status !== 'active') return {rejected: true};
             const verification = await policy.verify(body.currentPassword, user.passwordHash);

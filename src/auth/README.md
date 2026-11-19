@@ -732,8 +732,18 @@ password with the shared policy, advances `credential_version`, revokes every se
 (`reason = password_change`) and writes `password_changed` plus `sessions_revoked` in the
 same transaction. The current cookie is cleared. The attempt is throttled with the same
 durable reservation model as sign-in (`password_change` policy kind) before the KDF; a wrong
-current password commits one refusal reservation and changes nothing. The route is
-deliberately not pre-MFA allowed, so a pending administrator hits the assurance gate.
+current password commits one refusal reservation and changes nothing.
+
+The mutation does not rely on the generic pre-route MFA check. Inside its owned transaction it
+takes the accepted shared authority gate first, then the lifecycle locks in order
+(principal -> factor -> session), re-reads the locked session, and re-reads the current
+required-MFA authority and factor/enrollment state. Unresolved authority fails closed with
+`MFA_AUTHORITY_UNAVAILABLE`; insufficient assurance or an unenrolled required factor fails
+closed with `MFA_REQUIRED` (recorded as `assurance_denied` after rollback). The shared gate is
+held through the credential change and audit commit, so a concurrent membership/role change
+either blocks or is observed. No selected business tenant is required to change a password,
+and the operator realm is refused. The route is deliberately not pre-MFA allowed, so a
+pending administrator also hits the pre-route assurance gate.
 
 ### Early refusal coverage
 
