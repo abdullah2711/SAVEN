@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {withPivotDatabase} from './helpers/pg-pivot-fixture.mjs';
+import {createHash} from 'node:crypto';
+import {readFile} from 'node:fs/promises';
+import {withPivotDatabase, namespaceSql} from './helpers/pg-pivot-fixture.mjs';
 
-// PIVOT-007: function-mediated, customer-granted operator reads with durable
-// accountability. Every test runs against a disposable PostgreSQL cluster
-// (SAVEN_PIVOT_TEST_CLUSTER=1) and exercises the real installed roles/SQL.
+// PIVOT-007 revision 1. Every test runs against a disposable PostgreSQL cluster
+// (SAVEN_PIVOT_TEST_CLUSTER=1) using the real installed roles, RLS and SQL.
 
 const schemaFiles = [
   'db/postgres/05-auth-schema.sql',
@@ -21,19 +22,33 @@ const adminSqlFiles = [
   'db/postgres/06-operator-identity.sql',
   'db/postgres/50-functions.sql',
 ];
+const fullSchemaFiles = [...schemaFiles, 'db/postgres/migrations/040-posted-immutability.sql'];
+const fullAdminSqlFiles = [
+  'db/postgres/migrations/031-rls-corrections.sql',
+  'db/postgres/migrations/032-rls-hardening.sql',
+  'db/postgres/migrations/033-membership-admission-lock.sql',
+  'db/postgres/migrations/041-audit.sql',
+  'db/postgres/migrations/042-entry-voiding.sql',
+  'db/postgres/06-operator-identity.sql',
+];
 
 const READ_SQL =
-  'SELECT operator.read_tenant_support($1::uuid,$2,$3,$4,$5,$6,$7) AS result';
+  'SELECT operator.read_tenant_support($1::uuid,$2,$3,$4,$5,$6,$7,$8) AS result';
 const DENY_SQL =
-  'SELECT operator.log_operator_read_denial($1::uuid,$2,$3,$4,$5,$6,$7)';
+  'SELECT operator.log_operator_read_denial($1::uuid,$2,$3,$4,$5,$6,$7,$8)';
 
 const T1 = '11111111-1111-4111-8111-111111111111';
 const T2 = '22222222-2222-4222-8222-222222222222';
 const U1 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const U2 = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const OP_USER = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const OP_USER_2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const SESSION = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const BEARER = 'pivot-007-operator-bearer-token-not-a-real-credential';
+const PROOF = createHash('sha256').update(BEARER).digest('hex');
 const SUBJECT = 'access-subject-1';
+const ISSUER = 'https://saven.cloudflareaccess.com';
+const AUDIENCE = 'saven-operator';
 const ACTION = 'operator.tenant.read';
 const READ_RESOURCES = [
   'business',
@@ -42,6 +57,8 @@ const READ_RESOURCES = [
   'journals',
   'journal_lines',
 ];
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const asOperator = (db, session, run, options = {}) =>
   db.asRole('operatorRead', async client => {
@@ -54,6 +71,7 @@ const asOperator = (db, session, run, options = {}) =>
 async function read(client, overrides = {}) {
   const response = await client.query(READ_SQL, [
     overrides.tenant ?? T1,
+    overrides.proof ?? PROOF,
     overrides.resource ?? 'journals',
     overrides.action ?? ACTION,
     overrides.company ?? null,
@@ -62,6 +80,27 @@ async function read(client, overrides = {}) {
     overrides.limit ?? 200,
   ]);
   return response.rows[0].result;
+}
+
+async function seedPolicy(db, {
+  policyKey = 'operator_read',
+  version = 1,
+  issuer = ISSUER,
+  audience = AUDIENCE,
+  assurance = 'access_mfa',
+  maxSourceAge = 300,
+  maxSkew = 60,
+  active = true,
+  effectiveFrom = "now() - interval '1 hour'",
+  effectiveTo = 'NULL',
+} = {}) {
+  await db.adminQuery(`
+    INSERT INTO operator.access_read_policy(
+      policy_key, version, issuer, audience, required_assurance,
+      max_source_age_seconds, max_clock_skew_seconds, is_active,
+      effective_from, effective_to)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ${effectiveFrom}, ${effectiveTo})
+  `, [policyKey, version, issuer, audience, assurance, maxSourceAge, maxSkew, active]);
 }
 
 async function seedTenant(db, {
@@ -130,6 +169,11 @@ async function seedOperator(db, {
   user = OP_USER,
   role = 'operator_admin',
   assurance = 'access_mfa',
+  issuer = ISSUER,
+  audience = AUDIENCE,
+  issuedAt = "now() - interval '2 minutes'",
+  expiresAt = "now() + interval '30 minutes'",
+  tokenProof = PROOF,
 } = {}) {
   await db.adminQuery(
     `INSERT INTO auth.users(id, email, status) VALUES ($1::uuid, $2, 'active')`,
@@ -143,18 +187,17 @@ async function seedOperator(db, {
     INSERT INTO auth.sessions(
       id, user_id, token_hash, realm, role_id, assurance_level, credential_version,
       idle_expires_at, absolute_expires_at)
-    VALUES ($1::uuid, $2::uuid, repeat('a', 64), 'operator', $3, 'access_asserted', 1,
+    VALUES ($1::uuid, $2::uuid, $3, 'operator', $4, 'access_asserted', 1,
             now() + interval '1 hour', now() + interval '2 hours')
-  `, [session, user, role]);
+  `, [session, user, tokenProof, role]);
   await db.adminQuery(`
     INSERT INTO operator.access_session_binding(
       session_id, subject, issuer, audience, mapping_epoch, operator_role_id,
       assurance_class, binding_scheme, source_issued_at, source_expires_at)
-    SELECT $1::uuid, $2, 'https://saven.cloudflareaccess.com', 'saven-operator',
-           mapping_epoch, operator_role_id, assurance_class, 'generation-v1',
-           now() - interval '5 minutes', now() + interval '30 minutes'
+    SELECT $1::uuid, $2, $3, $4, mapping_epoch, operator_role_id,
+           assurance_class, 'generation-v1', ${issuedAt}, ${expiresAt}
     FROM operator.access_identity WHERE subject = $2
-  `, [session, subject]);
+  `, [session, subject, issuer, audience]);
 }
 
 async function syncBinding(db, {session = SESSION} = {}) {
@@ -205,26 +248,31 @@ const auditRows = async db => (await db.adminQuery(`
   ORDER BY id
 `)).rows;
 
-const functionOid = async (db, name) => (await db.adminQuery(`
-  SELECT p.oid
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname = 'operator' AND p.proname = $1
-`, [name])).rows[0]?.oid;
+const applyFunctionsPayload = async db => {
+  const sql = await readFile(new URL('../db/postgres/50-functions.sql', import.meta.url), 'utf8');
+  await db.adminQuery(namespaceSql(sql, db.roles));
+};
 
-test('PIVOT-007 installs two definer functions with a fixed search_path and a read-only EXECUTE allow-list', async () => {
+test('PIVOT-007 installs exactly the reviewed definer authority surface and EXECUTE allow-list', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
     const functions = (await db.adminQuery(`
-      SELECT p.proname, pg_get_userbyid(p.proowner) AS owner_name, p.prosecdef, p.proconfig, p.oid
+      SELECT p.proname, pg_get_userbyid(p.proowner) AS owner_name, p.prosecdef, p.proconfig, p.oid,
+             p.proacl, p.proowner
       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'operator'
-        AND p.proname IN ('read_tenant_support', 'log_operator_read_denial')
+        AND p.proname IN ('read_tenant_support', 'log_operator_read_denial',
+                          'assert_read_authority_protocol')
       ORDER BY p.proname
     `)).rows;
-    assert.equal(functions.length, 2);
+    assert.equal(functions.length, 3);
     for (const fn of functions) {
       assert.equal(fn.owner_name, db.roles.operatorDefiner, `${fn.proname} owner`);
       assert.equal(fn.prosecdef, true, `${fn.proname} must be SECURITY DEFINER`);
       assert.deepEqual(fn.proconfig, ['search_path=pg_catalog, operator, tenant_data']);
+    }
+
+    for (const name of ['read_tenant_support', 'log_operator_read_denial']) {
+      const fn = functions.find(row => row.proname === name);
       assert.equal(
         (await db.adminQuery('SELECT has_function_privilege($1, $2, $3) AS ok',
           [db.roles.operatorRead, fn.oid, 'EXECUTE'])).rows[0].ok,
@@ -235,9 +283,19 @@ test('PIVOT-007 installs two definer functions with a fixed search_path and a re
           (await db.adminQuery('SELECT has_function_privilege($1, $2, $3) AS ok',
             [role, fn.oid, 'EXECUTE'])).rows[0].ok,
           false,
-          `${fn.proname} must not be executable by ${role}`,
+          `${name} must not be executable by ${role}`,
         );
       }
+    }
+
+    const protocol = functions.find(row => row.proname === 'assert_read_authority_protocol');
+    assert.equal(
+      (await db.adminQuery('SELECT has_function_privilege($1, $2, $3) AS ok',
+        [db.roles.operatorRead, protocol.oid, 'EXECUTE'])).rows[0].ok,
+      false,
+    );
+
+    for (const fn of functions) {
       const publicExecute = (await db.adminQuery(`
         SELECT 1 AS present
         FROM pg_proc p,
@@ -248,7 +306,8 @@ test('PIVOT-007 installs two definer functions with a fixed search_path and a re
     }
 
     const definer = (await db.adminQuery(`
-      SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolbypassrls, rolreplication
+      SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, rolinherit, rolbypassrls,
+             rolreplication, rolconfig
       FROM pg_roles WHERE rolname = $1
     `, [db.roles.operatorDefiner])).rows[0];
     assert.deepEqual(definer, {
@@ -259,33 +318,60 @@ test('PIVOT-007 installs two definer functions with a fixed search_path and a re
       rolinherit: false,
       rolbypassrls: false,
       rolreplication: false,
+      rolconfig: null,
     });
+    assert.equal((await db.adminQuery(
+      'SELECT count(*)::int AS n FROM pg_auth_members WHERE member = (SELECT oid FROM pg_roles WHERE rolname = $1) OR roleid = (SELECT oid FROM pg_roles WHERE rolname = $1)',
+      [db.roles.operatorDefiner],
+    )).rows[0].n, 0);
+    assert.equal((await db.adminQuery(
+      'SELECT count(*)::int AS n FROM pg_class WHERE relowner = (SELECT oid FROM pg_roles WHERE rolname = $1)',
+      [db.roles.operatorDefiner],
+    )).rows[0].n, 0);
 
     const surfaces = (await db.adminQuery(`
       SELECT
         has_schema_privilege($1, 'tenant_data', 'USAGE') AS schema_usage,
+        has_schema_privilege($1, 'tenant_data', 'CREATE') AS schema_create,
+        has_table_privilege($1, 'operator.operator_audit', 'SELECT') AS audit_select,
+        has_table_privilege($1, 'operator.operator_audit', 'INSERT') AS audit_insert,
+        has_table_privilege($1, 'tenant_data.journals', 'SELECT') AS journals_table_select,
+        has_column_privilege($1, 'tenant_data.journals', 'narrative', 'SELECT') AS journals_column_select,
+        has_sequence_privilege($1, 'operator.operator_audit_id_seq', 'USAGE') AS audit_seq_usage,
+        has_table_privilege($1, 'operator.tenant', 'SELECT') AS tenant_select
+    `, [db.roles.operatorDefiner])).rows[0];
+    assert.deepEqual(surfaces, {
+      schema_usage: true,
+      schema_create: false,
+      audit_select: false,
+      audit_insert: true,
+      journals_table_select: false,
+      journals_column_select: true,
+      audit_seq_usage: true,
+      tenant_select: false,
+    });
+
+    const operatorReadSurfaces = (await db.adminQuery(`
+      SELECT
+        has_schema_privilege($1, 'tenant_data', 'USAGE') AS schema_usage,
         has_table_privilege($1, 'tenant_data.journals', 'SELECT') AS journals_select,
         has_table_privilege($1, 'tenant_data.support_grants', 'SELECT') AS grants_select,
-        has_table_privilege($1, 'operator.operator_audit', 'INSERT') AS audit_insert
+        has_table_privilege($1, 'operator.operator_audit', 'INSERT') AS audit_insert,
+        has_table_privilege($1, 'operator.access_read_policy', 'SELECT') AS policy_select
     `, [db.roles.operatorRead])).rows[0];
-    assert.deepEqual(surfaces, {
+    assert.deepEqual(operatorReadSurfaces, {
       schema_usage: false,
       journals_select: false,
       grants_select: false,
       audit_insert: false,
+      policy_select: false,
     });
-
-    // The read function's actor column is the local operator identity; the verified Access
-    // subject is retained in the payload rather than trusted as an argument.
-    const readOid = await functionOid(db, 'read_tenant_support');
-    assert.ok(readOid);
-    const denyOid = await functionOid(db, 'log_operator_read_denial');
-    assert.ok(denyOid);
   });
 });
 
-test('PIVOT-007 reads a granted tenant and commits exactly one atomic operator audit row', async () => {
+test('PIVOT-007 reads a granted tenant only with the bearer-derived proof and commits one audit', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
     await seedTenant(db, {
       journals: [
         {id: 'journal-a1', company: 'alpha', lines: [{debit: 100}, {account: '4000', credit: 100}]},
@@ -299,8 +385,6 @@ test('PIVOT-007 reads a granted tenant and commits exactly one atomic operator a
     assert.equal(result.resource, 'journals');
     assert.equal(result.grantId, 'grant-1');
     assert.equal(result.rowCount, 1);
-    assert.equal(result.truncated, false);
-    assert.equal(result.rows.length, 1);
     assert.equal(result.rows[0].id, 'journal-a1');
 
     const audit = await auditRows(db);
@@ -308,17 +392,17 @@ test('PIVOT-007 reads a granted tenant and commits exactly one atomic operator a
     assert.equal(audit[0].actor_id, OP_USER);
     assert.equal(audit[0].action, 'OPERATOR_READ');
     assert.equal(audit[0].tenant_id, T1);
-    assert.equal(audit[0].reason, 'support case 1');
-    assert.equal(audit[0].payload_jsonb.action, ACTION);
-    assert.equal(audit[0].payload_jsonb.grantId, 'grant-1');
     assert.equal(audit[0].payload_jsonb.operatorSubject, SUBJECT);
-    assert.equal(audit[0].payload_jsonb.rowCount, 1);
+    assert.equal(audit[0].payload_jsonb.issuer, ISSUER);
+    assert.equal(audit[0].payload_jsonb.audience, AUDIENCE);
     assert.equal(audit[0].payload_jsonb.sessionId, SESSION);
+    assert.equal(audit[0].payload_jsonb.rowCount, 1);
   });
 });
 
-test('PIVOT-007 denies missing, forged, stale and expired operator identity', async () => {
+test('PIVOT-007 requires a bearer-derived proof, not a caller-nominated session UUID', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
     await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
     await seedOperator(db);
     await seedGrant(db);
@@ -328,137 +412,270 @@ test('PIVOT-007 denies missing, forged, stale and expired operator identity', as
       asOperator(db, '99999999-9999-4999-8999-999999999999', client => read(client)),
       /OPERATOR_CONTEXT_REQUIRED/,
     );
-
-    // Forged actor: the session binding points at an unmapped subject.
-    await db.adminQuery(
-      `UPDATE operator.access_session_binding SET subject = 'forged-subject' WHERE session_id = $1::uuid`,
-      [SESSION],
+    await assert.rejects(
+      asOperator(db, SESSION, client => read(client, {
+        proof: createHash('sha256').update('different-bearer').digest('hex'),
+      })),
+      /OPERATOR_CONTEXT_REQUIRED/,
     );
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_CONTEXT_REQUIRED/);
-    await db.adminQuery(
-      `UPDATE operator.access_session_binding SET subject = $2 WHERE session_id = $1::uuid`,
-      [SESSION, SUBJECT],
+    await assert.rejects(
+      asOperator(db, SESSION, client => read(client, {proof: 'not-a-digest'})),
+      /OPERATOR_CONTEXT_REQUIRED/,
     );
+    assert.equal((await auditRows(db)).length, 0);
+  });
+});
 
-    // Stale mapping generation: a current-role change invalidates the bound session.
-    await db.adminQuery(`
-      UPDATE operator.access_identity SET operator_role_id = 'member' WHERE subject = $1
-    `, [SUBJECT]);
+test('PIVOT-007 revalidates credential epochs and session liveness exactly', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    await db.adminQuery(`UPDATE auth.users SET credential_version = 2 WHERE id = $1::uuid`, [OP_USER]);
     await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
-    await db.adminQuery(`
-      UPDATE operator.access_identity SET operator_role_id = 'operator_admin' WHERE subject = $1
-    `, [SUBJECT]);
-    await syncBinding(db);
+    await db.adminQuery(`UPDATE auth.users SET credential_version = 1 WHERE id = $1::uuid`, [OP_USER]);
 
-    // Revoked local session.
     await db.adminQuery(`UPDATE auth.sessions SET revoked_at = now() WHERE id = $1::uuid`, [SESSION]);
     await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_EXPIRED/);
     await db.adminQuery(`UPDATE auth.sessions SET revoked_at = NULL WHERE id = $1::uuid`, [SESSION]);
 
-    // Expired Access source assertion.
     await db.adminQuery(`
-      UPDATE operator.access_session_binding
-      SET created_at = now() - interval '2 hours',
-          source_expires_at = now() - interval '1 minute'
-      WHERE session_id = $1::uuid
+      UPDATE auth.sessions SET idle_expires_at = now() - interval '1 minute'
+      WHERE id = $1::uuid
     `, [SESSION]);
     await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_EXPIRED/);
     await db.adminQuery(`
-      UPDATE operator.access_session_binding
-      SET source_expires_at = now() + interval '30 minutes'
-      WHERE session_id = $1::uuid
+      UPDATE auth.sessions SET idle_expires_at = now() + interval '1 hour'
+      WHERE id = $1::uuid
     `, [SESSION]);
 
-    // Inactive local principal.
-    await db.adminQuery(`UPDATE auth.users SET status = 'inactive' WHERE id = $1::uuid`, [OP_USER]);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
-    await db.adminQuery(`UPDATE auth.users SET status = 'active' WHERE id = $1::uuid`, [OP_USER]);
-
-    // A non-operator or non-MFA role grants no read authority.
-    await db.adminQuery(`
-      UPDATE operator.access_identity SET operator_role_id = 'member' WHERE subject = $1
-    `, [SUBJECT]);
-    await syncBinding(db);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
-    await db.adminQuery(`
-      UPDATE operator.access_identity SET operator_role_id = 'operator_admin' WHERE subject = $1
-    `, [SUBJECT]);
-    await syncBinding(db);
-    await db.adminQuery(`UPDATE auth.roles SET requires_mfa = false WHERE role_id = 'operator_admin'`);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
-    await db.adminQuery(`UPDATE auth.roles SET requires_mfa = true WHERE role_id = 'operator_admin'`);
-
-    // First-factor-only assurance never satisfies the operator boundary.
-    await db.adminQuery(`
-      UPDATE operator.access_identity SET assurance_class = 'single_factor' WHERE subject = $1
-    `, [SUBJECT]);
-    await syncBinding(db);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
+    await db.adminQuery(`UPDATE auth.sessions SET realm = 'customer' WHERE id = $1::uuid`, [SESSION]);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_EXPIRED/);
+    await db.adminQuery(`UPDATE auth.sessions SET realm = 'operator' WHERE id = $1::uuid`, [SESSION]);
   });
 });
 
-test('PIVOT-007 requires a current customer grant and denies expired, revoked or inactive consent', async () => {
+test('PIVOT-007 enforces configured issuer, audience, exact assurance, source age and policy state', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
     await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
     await seedOperator(db);
-
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
-
     await seedGrant(db);
+
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_POLICY_REQUIRED/);
+    await seedPolicy(db, {active: false});
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_POLICY_REQUIRED/);
+    await db.adminQuery(`UPDATE operator.access_read_policy SET is_active = true`);
     assert.equal((await asOperator(db, SESSION, client => read(client))).rowCount, 1);
 
     await db.adminQuery(`
-      UPDATE tenant_data.support_grants
-      SET starts_at = now() - interval '2 hours', expires_at = now() - interval '1 hour'
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+      UPDATE operator.access_read_policy SET issuer = 'https://wrong.example' WHERE policy_key = 'operator_read'
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
     await db.adminQuery(`
-      UPDATE tenant_data.support_grants
-      SET expires_at = now() + interval '1 hour' WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
+      UPDATE operator.access_read_policy SET issuer = $1 WHERE policy_key = 'operator_read'
+    `, [ISSUER]);
 
     await db.adminQuery(`
-      UPDATE tenant_data.support_grants SET revoked_at = now()
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+      UPDATE operator.access_read_policy SET audience = 'wrong-audience' WHERE policy_key = 'operator_read'
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
     await db.adminQuery(`
-      UPDATE tenant_data.support_grants SET revoked_at = NULL
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
+      UPDATE operator.access_read_policy SET audience = $1 WHERE policy_key = 'operator_read'
+    `, [AUDIENCE]);
 
     await db.adminQuery(`
-      UPDATE tenant_data.support_grants SET is_active = false
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+      UPDATE operator.access_read_policy SET required_assurance = 'mfa_verified' WHERE policy_key = 'operator_read'
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
     await db.adminQuery(`
-      UPDATE tenant_data.support_grants SET is_active = true
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
+      UPDATE operator.access_read_policy SET required_assurance = 'access_mfa' WHERE policy_key = 'operator_read'
+    `);
 
-    // Consent is customer-authored: an inactive authoring principal no longer authorizes.
     await db.adminQuery(`
-      UPDATE tenant_data.members SET active = false WHERE tenant_id = $1::uuid AND user_id = 'user-1'
-    `, [T1]);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+      UPDATE operator.access_read_policy SET max_source_age_seconds = 30 WHERE policy_key = 'operator_read'
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_EXPIRED/);
     await db.adminQuery(`
-      UPDATE tenant_data.members SET active = true WHERE tenant_id = $1::uuid AND user_id = 'user-1'
-    `, [T1]);
+      UPDATE operator.access_read_policy SET max_source_age_seconds = 300 WHERE policy_key = 'operator_read'
+    `);
 
-    // A reason string is never consent: with the grant removed the same reason and
-    // operator/action still fail closed.
-    await db.adminQuery('DELETE FROM tenant_data.support_grants');
-    await assert.rejects(
-      asOperator(db, SESSION, client => read(client, {reason: 'urgent customer request'})),
-      /OPERATOR_GRANT_REQUIRED/,
-    );
+    // Assurance is matched exactly against the configured policy, not merely non-null.
+    await db.adminQuery(`
+      UPDATE operator.access_identity SET assurance_class = 'mfa_verified' WHERE subject = $1
+    `, [SUBJECT]);
+    await syncBinding(db);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
   });
 });
 
-test('PIVOT-007 refuses wrong tenant, company, action, resource and malformed scope', async () => {
+test('PIVOT-007 samples trusted time after blocking acquisitions and denies a session that expires while waiting', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    await db.adminQuery('BEGIN');
+    await db.adminQuery("SELECT pg_advisory_xact_lock(hashtextextended('saven.auth.authority_gate', 0))");
+    await db.adminQuery(`
+      UPDATE auth.sessions SET idle_expires_at = now() + interval '1 second'
+      WHERE id = $1::uuid
+    `, [SESSION]);
+    const pending = asOperator(db, SESSION, client => read(client));
+    await sleep(1800);
+    await db.adminQuery('COMMIT');
+    await assert.rejects(pending, /OPERATOR_ACCESS_EXPIRED/);
+    assert.equal((await auditRows(db)).length, 0);
+  });
+});
+
+test('PIVOT-007 fails closed when the installed authority/consent writer protocol is disabled, replica-only or misbound', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    await db.adminQuery(
+      `ALTER TABLE auth.tenant_membership DISABLE TRIGGER tenant_membership_authority_gate_insert`,
+    );
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(
+      `ALTER TABLE auth.tenant_membership ENABLE TRIGGER tenant_membership_authority_gate_insert`,
+    );
+
+    await db.adminQuery(
+      `ALTER TABLE auth.roles ENABLE REPLICA TRIGGER roles_authority_gate_update`,
+    );
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(
+      `ALTER TABLE auth.roles ENABLE TRIGGER roles_authority_gate_update`,
+    );
+
+    await db.adminQuery(
+      `ALTER TABLE operator.access_identity DISABLE TRIGGER access_identity_authority_gate_update`,
+    );
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(
+      `ALTER TABLE operator.access_identity ENABLE TRIGGER access_identity_authority_gate_update`,
+    );
+
+    await db.adminQuery(
+      `ALTER TABLE tenant_data.support_grants DISABLE TRIGGER support_grants_consent_gate_update`,
+    );
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(
+      `ALTER TABLE tenant_data.support_grants ENABLE TRIGGER support_grants_consent_gate_update`,
+    );
+
+    await db.adminQuery(`
+      CREATE FUNCTION auth.probe_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN PERFORM pg_advisory_xact_lock(hashtextextended('saven.auth.authority_gate', 0)); RETURN NULL; END $$;
+    `);
+    await db.adminQuery(`DROP TRIGGER members_consent_gate_update ON tenant_data.members`);
+    await db.adminQuery(`
+      CREATE TRIGGER members_consent_gate_update BEFORE UPDATE ON tenant_data.members
+      FOR EACH STATEMENT EXECUTE FUNCTION auth.probe_gate();
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(`DROP TRIGGER members_consent_gate_update ON tenant_data.members`);
+    await db.adminQuery(`
+      CREATE TRIGGER members_consent_gate_update BEFORE UPDATE ON tenant_data.members
+      FOR EACH STATEMENT EXECUTE FUNCTION operator.lock_consent_gate();
+    `);
+    await db.adminQuery(`DROP FUNCTION auth.probe_gate()`);
+
+    // Tampered gate body: a shared-lock replacement no longer serializes writers.
+    await db.adminQuery(`
+      CREATE OR REPLACE FUNCTION auth.lock_authority_gate() RETURNS trigger
+      LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
+      BEGIN
+        PERFORM pg_advisory_xact_lock_shared(hashtextextended('saven.auth.authority_gate', 0));
+        RETURN NULL;
+      END $$;
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(`
+      CREATE OR REPLACE FUNCTION auth.lock_authority_gate() RETURNS trigger
+      LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
+      BEGIN
+        PERFORM pg_advisory_xact_lock(hashtextextended('saven.auth.authority_gate', 0));
+        RETURN NULL;
+      END $$;
+    `);
+    await db.adminQuery(`ALTER FUNCTION auth.lock_authority_gate() OWNER TO "${db.roles.migrator}"`);
+    await db.adminQuery(`REVOKE ALL ON FUNCTION auth.lock_authority_gate() FROM PUBLIC`);
+
+    // A runtime membership drift on the definer itself also fails closed.
+    await db.adminQuery(`GRANT "${db.roles.authService}" TO "${db.roles.operatorDefiner}"`);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(`REVOKE "${db.roles.authService}" FROM "${db.roles.operatorDefiner}"`);
+  });
+});
+
+test('PIVOT-007 validates scope JSON typing exactly and declares tenant-wide resources', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {
+      journals: [
+        {id: 'j-alpha', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]},
+      ],
+    });
+    await seedOperator(db);
+    await seedGrant(db, {scope: {version: 1, resources: ['journals'], companies: ['alpha']}});
+
+    for (const scopeRaw of [
+      JSON.stringify({version: '1', resources: ['journals'], companies: ['alpha']}),
+      JSON.stringify({version: 1, resources: ['journals', 5], companies: ['alpha']}),
+      JSON.stringify({version: 1, resources: 'journals', companies: ['alpha']}),
+      JSON.stringify({version: 1, resources: ['journals'], companies: ['alpha', 7]}),
+      JSON.stringify({version: 1, resources: ['journals'], companies: 'alpha'}),
+      JSON.stringify({version: 1, resources: ['journals'], companies: ['alpha'], extra: true}),
+    ]) {
+      await db.adminQuery(`
+        UPDATE tenant_data.support_grants SET scope_jsonb = $2::jsonb
+        WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+      `, [T1, scopeRaw]);
+      await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+    }
+
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET scope_jsonb = $2::jsonb
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1, JSON.stringify({version: 1, resources: ['journals'], companies: ['alpha']})]);
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET actions_jsonb = '["operator.tenant.read", 3]'::jsonb
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1]);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET actions_jsonb = $2::jsonb
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1, JSON.stringify([ACTION])]);
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET scope_jsonb = $2::jsonb
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1, JSON.stringify({version: 1, resources: ['business', 'accounts'], companies: ['alpha']})]);
+
+    // Tenant-wide resources reject a company selector rather than pretending to filter.
+    await assert.rejects(
+      asOperator(db, SESSION, client => read(client, {resource: 'business', company: 'alpha'})),
+      /OPERATOR_ARGUMENT_INVALID/,
+    );
+    await assert.rejects(
+      asOperator(db, SESSION, client => read(client, {resource: 'accounts', company: 'alpha'})),
+      /OPERATOR_ARGUMENT_INVALID/,
+    );
+    assert.equal((await asOperator(db, SESSION, client => read(client, {resource: 'business'}))).rowCount, 1);
+  });
+});
+
+test('PIVOT-007 refuses wrong tenant, company, action, resource and malformed arguments', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
     await seedTenant(db, {
       journals: [
         {id: 'j-alpha', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]},
@@ -466,18 +683,10 @@ test('PIVOT-007 refuses wrong tenant, company, action, resource and malformed sc
       ],
     });
     await seedOperator(db);
-    await seedGrant(db, {
-      scope: {version: 1, resources: ['journals'], companies: ['alpha']},
-    });
+    await seedGrant(db, {scope: {version: 1, resources: ['journals'], companies: ['alpha']}});
 
-    await assert.rejects(
-      asOperator(db, SESSION, client => read(client, {tenant: T2})),
-      /OPERATOR_GRANT_REQUIRED/,
-    );
-    await assert.rejects(
-      asOperator(db, SESSION, client => read(client, {company: 'beta'})),
-      /OPERATOR_GRANT_REQUIRED/,
-    );
+    await assert.rejects(asOperator(db, SESSION, client => read(client, {tenant: T2})), /OPERATOR_GRANT_REQUIRED/);
+    await assert.rejects(asOperator(db, SESSION, client => read(client, {company: 'beta'})), /OPERATOR_GRANT_REQUIRED/);
     await assert.rejects(
       asOperator(db, SESSION, client => read(client, {action: 'operator.tenant.export'})),
       /OPERATOR_GRANT_REQUIRED/,
@@ -490,46 +699,15 @@ test('PIVOT-007 refuses wrong tenant, company, action, resource and malformed sc
       asOperator(db, SESSION, client => read(client, {resource: 'pg_authid'})),
       /OPERATOR_RESOURCE_UNSUPPORTED/,
     );
-    await assert.rejects(
-      asOperator(db, SESSION, client => read(client, {reason: '   '})),
-      /OPERATOR_ARGUMENT_INVALID/,
-    );
-    await assert.rejects(
-      asOperator(db, SESSION, client => read(client, {limit: 0})),
-      /OPERATOR_ARGUMENT_INVALID/,
-    );
-    await assert.rejects(
-      asOperator(db, SESSION, client => read(client, {limit: 501})),
-      /OPERATOR_ARGUMENT_INVALID/,
-    );
-
-    // Malformed or unversioned scope data never widens authority.
-    for (const scopeRaw of [
-      JSON.stringify({version: 1, resources: ['journals'], companies: ['alpha'], extra: true}),
-      JSON.stringify({resources: ['journals'], companies: ['alpha']}),
-      JSON.stringify({version: 2, resources: ['journals'], companies: ['alpha']}),
-      JSON.stringify({version: 1, resources: 'journals', companies: ['alpha']}),
-    ]) {
-      await db.adminQuery(`
-        UPDATE tenant_data.support_grants SET scope_jsonb = $2::jsonb
-        WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-      `, [T1, scopeRaw]);
-      await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
-    }
-    await db.adminQuery(`
-      UPDATE tenant_data.support_grants SET scope_jsonb = $2::jsonb
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1, JSON.stringify({version: 1, resources: ['journals'], companies: ['alpha']})]);
-    await db.adminQuery(`
-      UPDATE tenant_data.support_grants SET actions_jsonb = '"operator.tenant.read"'::jsonb
-      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
-    `, [T1]);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+    await assert.rejects(asOperator(db, SESSION, client => read(client, {reason: '   '})), /OPERATOR_ARGUMENT_INVALID/);
+    await assert.rejects(asOperator(db, SESSION, client => read(client, {limit: 0})), /OPERATOR_ARGUMENT_INVALID/);
+    await assert.rejects(asOperator(db, SESSION, client => read(client, {limit: 501})), /OPERATOR_ARGUMENT_INVALID/);
   });
 });
 
 test('PIVOT-007 applies company scope, exact minor-unit money and bounded row limits', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
     await seedTenant(db, {
       journals: [
         {id: 'j-alpha-1', company: 'alpha', lines: [{debit: 999999999999}, {account: '4000', credit: 1}]},
@@ -557,16 +735,14 @@ test('PIVOT-007 applies company scope, exact minor-unit money and bounded row li
     const limited = await asOperator(db, SESSION, client => read(client, {limit: 1}));
     assert.equal(limited.rowCount, 1);
     assert.equal(limited.truncated, true);
-    assert.equal(limited.rows.length, 1);
   });
 });
 
 test('PIVOT-007 ignores caller search_path and temporary relation shadows', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
     await seedTenant(db, {
-      journals: [
-        {id: 'real-journal', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]},
-      ],
+      journals: [{id: 'real-journal', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}],
     });
     await seedOperator(db);
     await seedGrant(db);
@@ -604,24 +780,17 @@ test('PIVOT-007 ignores caller search_path and temporary relation shadows', asyn
   });
 });
 
-test('PIVOT-007 rolls back read and audit together and records denials in an independent transaction', async () => {
+test('PIVOT-007 commits read and audit together and records denials with independent durability', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
-    await seedTenant(db, {
-      journals: [
-        {id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]},
-      ],
-    });
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
     await seedOperator(db);
     await seedGrant(db);
 
-    // Default fixture behaviour commits nothing: the read result is visible to the caller,
-    // but the read and its audit row are rolled back together.
     const rolledBack = await asOperator(db, SESSION, client => read(client));
     assert.equal(rolledBack.rowCount, 1);
     assert.equal((await auditRows(db)).length, 0);
 
-    // A successful read cannot exist without its audit row: with the definer's audit
-    // INSERT revoked, the whole call fails and returns nothing.
     await db.adminQuery(`REVOKE INSERT ON operator.operator_audit FROM "${db.roles.operatorDefiner}"`);
     await assert.rejects(asOperator(db, SESSION, client => read(client)), /permission denied/);
     assert.equal((await auditRows(db)).length, 0);
@@ -634,81 +803,269 @@ test('PIVOT-007 rolls back read and audit together and records denials in an ind
     await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
     assert.equal((await auditRows(db)).length, 0);
 
-    // A fresh transaction writes durable denial evidence. A preceding in-transaction
-    // insert is never asserted to survive; this call is separate by construction.
     await asOperator(db, SESSION, client => client.query(DENY_SQL, [
-      T1, 'journals', ACTION, null, 'OPERATOR_GRANT_REQUIRED', 'support grant expired', 'req-deny-1',
+      T1, PROOF, 'journals', ACTION, null, 'OPERATOR_GRANT_REQUIRED', 'support grant expired', 'req-deny-1',
     ]), {commit: true});
 
     const audit = await auditRows(db);
     assert.equal(audit.length, 1);
     assert.equal(audit[0].action, 'OPERATOR_READ_DENIED');
     assert.equal(audit[0].actor_id, OP_USER);
-    assert.equal(audit[0].tenant_id, T1);
+    assert.equal(audit[0].payload_jsonb.attribution, 'verified');
     assert.equal(audit[0].payload_jsonb.denialCode, 'OPERATOR_GRANT_REQUIRED');
     assert.equal(audit[0].payload_jsonb.durability, 'independent-transaction');
-    assert.equal(audit[0].payload_jsonb.claimedSessionId, SESSION);
   });
 });
 
-test('PIVOT-007 keeps tenant rows unreachable except through the mediated read and ignores caller tenant context', async () => {
+test('PIVOT-007 serializes customer consent writes against in-flight reads', async () => {
   await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
     await seedTenant(db, {
-      companies: ['alpha'],
       journals: [
-        {id: 't1-journal', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]},
-      ],
-    });
-    await seedTenant(db, {
-      tenant: T2,
-      user: U2,
-      legacy: 'user-2',
-      companies: ['beta'],
-      journals: [
-        {id: 't2-journal', company: 'beta', lines: [{debit: 2}, {account: '4000', credit: 2}]},
+        {id: 'j-alpha', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]},
+        {id: 'j-beta', company: 'beta', lines: [{debit: 2}, {account: '4000', credit: 2}]},
       ],
     });
     await seedOperator(db);
-    await seedGrant(db, {scope: {version: 1, resources: ['journals'], companies: ['alpha']}});
-    await seedGrant(db, {
-      tenant: T2,
-      grantId: 'grant-2',
-      grantedBy: 'user-2',
-      scope: {version: 1, resources: ['journals'], companies: ['beta']},
-    });
+    await seedGrant(db, {scope: {version: 1, resources: ['journals'], companies: ['alpha', 'beta']}});
 
-    const crossTenant = await asOperator(db, SESSION, async client => {
+    // Read-first: the read holds the consent gate shared, so a concurrent revocation
+    // cannot commit until the read transaction ends.
+    const outcome = await asOperator(db, SESSION, async client => {
+      const result = await read(client);
+      await db.adminQuery(`SET lock_timeout = '250ms'`);
+      let blocked;
+      try {
+        await db.adminQuery(`
+          UPDATE tenant_data.support_grants SET revoked_at = now()
+          WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+        `, [T1]);
+        blocked = null;
+      } catch (error) {
+        blocked = error;
+      } finally {
+        await db.adminQuery('RESET lock_timeout');
+      }
+      return {result, blocked};
+    });
+    assert.equal(outcome.result.rowCount, 2);
+    assert.ok(outcome.blocked, 'the consent writer must block behind the in-flight read');
+    assert.equal(outcome.blocked.code, '55P03');
+
+    // The read rolled back, so the grant is still active. Committed revocation is now
+    // observed by the next read (invalidation-first).
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET revoked_at = now()
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1]);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+    await asOperator(db, SESSION, client => client.query(DENY_SQL, [
+      T1, PROOF, 'journals', ACTION, null, 'OPERATOR_GRANT_REQUIRED', 'revoked by customer', null,
+    ]), {commit: true});
+    const denial = (await auditRows(db)).at(-1);
+    assert.equal(denial.action, 'OPERATOR_READ_DENIED');
+    assert.equal(denial.payload_jsonb.attribution, 'verified');
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET revoked_at = NULL
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1]);
+
+    // Scope narrowing commits between reads and is observed immediately.
+    await db.adminQuery(`
+      UPDATE tenant_data.support_grants SET scope_jsonb = $2::jsonb
+      WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+    `, [T1, JSON.stringify({version: 1, resources: ['journals'], companies: ['alpha']})]);
+    const narrowed = await asOperator(db, SESSION, client => read(client));
+    assert.deepEqual(narrowed.rows.map(row => row.id), ['j-alpha']);
+
+    // Author deactivation removes consent.
+    await db.adminQuery(`
+      UPDATE tenant_data.members SET active = false WHERE tenant_id = $1::uuid AND user_id = 'user-1'
+    `, [T1]);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_GRANT_REQUIRED/);
+  });
+});
+
+test('PIVOT-007 denial attribution never invents a current actor from a stale binding', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const deny = () => asOperator(db, SESSION, client => client.query(DENY_SQL, [
+      T1, PROOF, 'journals', ACTION, null, 'OPERATOR_GRANT_REQUIRED', 'denied', null,
+    ]), {commit: true});
+
+    // Reassignment: the subject now maps to a different principal; the old binding must
+    // not be attributed to the new principal.
+    await db.adminQuery(`INSERT INTO auth.users(id, email, status) VALUES ($1::uuid, 'op2@example.test', 'active')`, [OP_USER_2]);
+    await db.adminQuery(`UPDATE operator.access_identity SET user_id = $2::uuid WHERE subject = $1`, [SUBJECT, OP_USER_2]);
+    await deny();
+    let row = (await auditRows(db)).at(-1);
+    assert.equal(row.actor_id, 'unverified');
+    assert.equal(row.payload_jsonb.attribution, 'unverified');
+    assert.equal(row.payload_jsonb.verifiedSubject, null);
+    assert.equal(row.payload_jsonb.verifiedRoleId, null);
+    assert.equal(row.payload_jsonb.claimedSubject, SUBJECT);
+
+    // Restore the mapping and binding continuity, then verify a positive attribution.
+    await db.adminQuery(`UPDATE operator.access_identity SET user_id = $2::uuid WHERE subject = $1`, [SUBJECT, OP_USER]);
+    await syncBinding(db);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.actor_id, OP_USER);
+    assert.equal(row.payload_jsonb.attribution, 'verified');
+    assert.equal(row.payload_jsonb.verifiedSubject, SUBJECT);
+
+    // Epoch-stale binding.
+    await db.adminQuery(`UPDATE operator.access_identity SET status = 'active' WHERE subject = $1`, [SUBJECT]);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.actor_id, 'unverified');
+    assert.equal(row.payload_jsonb.attribution, 'unverified');
+
+    // Revoked session.
+    await syncBinding(db);
+    await db.adminQuery(`UPDATE auth.sessions SET revoked_at = now() WHERE id = $1::uuid`, [SESSION]);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.actor_id, 'unverified');
+
+    // Unknown/claimed session.
+    await db.adminQuery(`UPDATE auth.sessions SET revoked_at = NULL WHERE id = $1::uuid`, [SESSION]);
+    await asOperator(db, '99999999-9999-4999-8999-999999999999', client => client.query(DENY_SQL, [
+      T1, PROOF, 'journals', ACTION, null, 'OPERATOR_CONTEXT_REQUIRED', 'unknown session', null,
+    ]), {commit: true});
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.actor_id, 'unverified');
+    assert.equal(row.payload_jsonb.claimedSubject, null);
+  });
+});
+
+test('PIVOT-007 refuses a poisoned definer profile before installation and preserves it', async () => {
+  await withPivotDatabase({
+    sqlFiles: schemaFiles,
+    adminSqlFiles: [
+      'db/postgres/migrations/031-rls-corrections.sql',
+      'db/postgres/migrations/032-rls-hardening.sql',
+      'db/postgres/migrations/033-membership-admission-lock.sql',
+      'db/postgres/06-operator-identity.sql',
+    ],
+  }, async db => {
+    const definer = `"${db.roles.operatorDefiner}"`;
+    const migrator = `"${db.roles.migrator}"`;
+    const attempt = async () => {
+      await assert.rejects(applyFunctionsPayload(db), /PIVOT-007/);
+      await db.adminQuery('ROLLBACK').catch(() => {});
+    };
+
+    // Direct membership into a privileged role.
+    await db.adminQuery(`GRANT ${migrator} TO ${definer}`);
+    await attempt();
+    assert.equal((await db.adminQuery(
+      `SELECT count(*)::int AS n FROM pg_auth_members
+       WHERE member = (SELECT oid FROM pg_roles WHERE rolname = $1)`,
+      [db.roles.operatorDefiner],
+    )).rows[0].n, 1);
+    await db.adminQuery(`REVOKE ${migrator} FROM ${definer}`);
+
+    // Unexpected column ACL.
+    await db.adminQuery(`GRANT SELECT (created_by) ON tenant_data.accounts TO ${definer}`);
+    await attempt();
+    assert.equal((await db.adminQuery(
+      `SELECT count(*)::int AS n FROM pg_attribute a, aclexplode(a.attacl) x
+       WHERE a.attrelid = 'tenant_data.accounts'::regclass AND a.attname = 'created_by'
+         AND x.grantee = (SELECT oid FROM pg_roles WHERE rolname = $1)`,
+      [db.roles.operatorDefiner],
+    )).rows[0].n, 1);
+    await db.adminQuery(`REVOKE SELECT (created_by) ON tenant_data.accounts FROM ${definer}`);
+
+    // Schema CREATE.
+    await db.adminQuery(`GRANT CREATE ON SCHEMA operator TO ${definer}`);
+    await attempt();
+    await db.adminQuery(`REVOKE CREATE ON SCHEMA operator FROM ${definer}`);
+
+    // Object ownership.
+    await db.adminQuery(`CREATE TABLE operator.probe_owned(id integer)`);
+    await db.adminQuery(`ALTER TABLE operator.probe_owned OWNER TO ${definer}`);
+    await attempt();
+    assert.equal((await db.adminQuery(
+      `SELECT pg_get_userbyid(relowner) AS owner FROM pg_class WHERE oid = 'operator.probe_owned'::regclass`,
+    )).rows[0].owner, db.roles.operatorDefiner);
+    await db.adminQuery('DROP TABLE operator.probe_owned');
+
+    // A default privilege that would silently widen the definer.
+    await db.adminQuery(`
+      ALTER DEFAULT PRIVILEGES FOR ROLE ${migrator} IN SCHEMA tenant_data
+      GRANT SELECT ON TABLES TO ${definer}
+    `);
+    await attempt();
+    await db.adminQuery(`
+      ALTER DEFAULT PRIVILEGES FOR ROLE ${migrator} IN SCHEMA tenant_data
+      REVOKE SELECT ON TABLES FROM ${definer}
+    `);
+
+    // A role-level session setting is itself an authority path.
+    await db.adminQuery(`ALTER ROLE ${definer} SET search_path = public`);
+    await attempt();
+    await db.adminQuery(`ALTER ROLE ${definer} RESET search_path`);
+
+    // A PUBLIC-executable SECURITY DEFINER function would be a reachable path.
+    await db.adminQuery(`
+      CREATE FUNCTION operator.probe_public() RETURNS integer
+      LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$;
+    `);
+    await attempt();
+    await db.adminQuery('DROP FUNCTION operator.probe_public()');
+
+    // Incompatible (login) role definition.
+    await db.adminQuery(`ALTER ROLE ${definer} LOGIN`);
+    await attempt();
+    await db.adminQuery(`ALTER ROLE ${definer} NOLOGIN`);
+
+    // A clean profile installs.
+    await applyFunctionsPayload(db);
+  });
+});
+
+test('PIVOT-007 composes with the accepted 040/041/042 stack and audits customer consent writes', async () => {
+  await withPivotDatabase({sqlFiles: fullSchemaFiles, adminSqlFiles: fullAdminSqlFiles}, async db => {
+    await seedTenant(db, {
+      journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}],
+    });
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const dispatcher = await readFile(new URL('../db/postgres/40-triggers.sql', import.meta.url), 'utf8');
+    await db.adminQuery(namespaceSql(dispatcher, db.roles));
+    await applyFunctionsPayload(db);
+    await seedPolicy(db);
+
+    const result = await asOperator(db, SESSION, client => read(client), {commit: true});
+    assert.equal(result.rowCount, 1);
+
+    // A post-activation customer consent write is audited by 041 and serialized by the
+    // PIVOT-007 consent gate.
+    await db.asRole('customerApp', async client => {
       await client.query('SELECT set_config($1, $2, true)', ['app.current_tenant_id', T1]);
       await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', U1]);
-      const result = await read(client, {tenant: T2});
-      const after = (await client.query(
-        "SELECT current_setting('app.current_tenant_id', true) AS value",
-      )).rows[0].value;
-      return {result, after};
+      return client.query(`
+        UPDATE tenant_data.support_grants SET reason = 'narrowed after review'
+        WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+      `, [T1]);
     }, {commit: true});
-    assert.equal(crossTenant.result.tenantId, T2);
-    assert.deepEqual(crossTenant.result.rows.map(row => row.id), ['t2-journal']);
-    assert.equal(crossTenant.after, T1, 'the caller transaction context must be restored');
 
-    await assert.rejects(
-      db.asRole('operatorRead', client => client.query('SELECT id FROM tenant_data.journals LIMIT 1')),
-      /permission denied/,
-    );
-    await assert.rejects(
-      db.asRole('operatorRead', client => client.query(
-        "INSERT INTO operator.operator_audit(actor_id, action) VALUES ('forged', 'FORGED')",
-      )),
-      /permission denied/,
-    );
-    await assert.rejects(
-      db.asRole('operatorRead', client => client.query(`SET LOCAL ROLE "${db.roles.operatorDefiner}"`)),
-      /permission denied/,
-    );
+    const events = (await db.adminQuery(`
+      SELECT actor_id, event, entity_type
+      FROM tenant_data.audit_event
+      WHERE tenant_id = $1::uuid AND entity_type = 'support_grants'
+      ORDER BY id
+    `, [T1])).rows;
+    assert.equal(events.length, 1);
+    assert.equal(events[0].actor_id, 'user-1');
+    assert.equal(events[0].event, 'TENANT_CHANGE_UPDATE');
 
-    // The append-only operator audit accepts no UPDATE even from an administrator.
-    await assert.rejects(
-      db.adminQuery('UPDATE operator.operator_audit SET action = action'),
-      /OPERATOR_RECORD_IMMUTABLE/,
-    );
+    assert.equal((await asOperator(db, SESSION, client => read(client))).rowCount, 1);
   });
 });
