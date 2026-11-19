@@ -205,6 +205,7 @@ byte, auth source, 040/041/042 SQL or policy surface was modified.
 | Item | Value |
 |---|---|
 | Revision implementation SHA | `2af8fae254dc7f62e76156692d3b78ba9f31a020` |
+| Revision report / checkpoint SHAs | `550378cea01a376afc15311afc8b69287f29bb65` / `3766892e53bc3e873b48c1bd768df1a234157766` |
 | Base | `testing-1 @ e0fa9fb` |
 | Original implementation / review target | `37399da` / `be2f76b` |
 | Gate | `node scripts/check.mjs` → 178 files + **16/16** tests, exit 0 (Node 24.19.0, PostgreSQL 18.6, disposable loopback cluster, 3.1 s of the 240 s budget) |
