@@ -1,62 +1,80 @@
-# WORKER-A checkpoint — AUTH-009 delivered, awaiting review
+# WORKER-A checkpoint — AUTH-009 revision 2: PARTIAL (finding 1), findings 2-3 done
 
-Date: 19 November 2026 (Asia/Karachi). Written under the owner standing checkpoint
-directive; this file is outside any contract TOUCH.
+Date: 19 November 2026 (Asia/Karachi). Written under the owner checkpoint directive; this
+file is outside any contract TOUCH.
 
 ## Exact contract
 
-- Contract: `docs/contractor/contracts/AUTH-009-auth-audit.md` — complete append-only auth
-  event instrumentation with correct failed-event durability and redaction.
-- TOUCH: `src/auth/audit.mjs`; `src/auth/routes.mjs`; `src/auth/server.mjs`;
-  `src/auth/session-store.mjs`; `src/auth/password-policy.mjs`; `src/auth/rate-limit.mjs`;
-  `src/auth/factors.mjs`; `src/auth/recovery.mjs`; `src/auth/tenant-selection.mjs`;
-  `src/auth/access.mjs`; `src/auth/README.md`; `tests/auth-009-audit.test.mjs`.
-- DONE WHEN: `node scripts/check.mjs && node --test tests/auth-009-audit.test.mjs`.
-- Depends on AUTH-002..007 (all merged; AUTH-007 at `9b9d47f`). Base `testing-1`: `c543ef7`.
+- `docs/contractor/contracts/AUTH-009-auth-audit.md`
+- Base: `testing-1` @ `c543ef7`; prior delivery `eb6830a`; verdict `87b7977` (REVISE).
+- Branch/worktree: `opencode/auth-009-audit` @ `/home/esc/saven/wt-auth-009`.
+- Revision 2 implementation commit: `9b7bc425608b8f7430918a522693b628d90d4115`.
+- Status: **PARTIAL delivery, not complete, not merged.**
 
-## Round delivered
+Ruling context: the dispatcher's initial Q2 answer (defer the three role/membership
+producers) was withdrawn under D-010. Nothing in code/tests encodes that deferral. The three
+remain REQUIRED. Resolution must come from Codex amending the finding on the record or an
+explicit Principal acceptance.
 
-- Branch `opencode/auth-009-audit`, worktree `/home/esc/saven/wt-auth-009`.
-- Implementation commit: `857324cb902c1b64f951207fbd481d893515b645`
-  (`app: centralize append-only auth audit with durable failure recording
-  [contract:AUTH-009]`).
-- Delivery report: `docs/contractor/deliveries/AUTH-009-auth-audit.md` (this commit).
-- Status: **delivered, not merged**. No review verdict exists yet.
+## Three interlocking changes — separate status
 
-## TOUCH used
+### 1. Real producers for the four ADR03 events — PARTIAL
 
-`src/auth/audit.mjs` (new), `src/auth/routes.mjs`, `src/auth/server.mjs`,
-`src/auth/tenant-selection.mjs`, `src/auth/README.md`,
-`tests/auth-009-audit.test.mjs` (new), plus this checkpoint/report as protocol artifacts.
-Allowed-but-unused: `session-store.mjs`, `password-policy.mjs`, `rate-limit.mjs`,
-`factors.mjs`, `recovery.mjs`, `access.mjs`.
+- `password_changed` — **DONE.** Producer: `POST /v1/auth/password/change` (session + CSRF +
+  current password, Argon2id-policy hash, credential generation +1, revoke all sessions,
+  atomic `password_changed` + `sessions_revoked`, cookie cleared; not pre-MFA allowed).
+  Proving tests (exact runner names):
+  - `AUTH-009 password_changed is produced by the authenticated credential-change flow`
+  - `AUTH-009 a wrong current password is a durable, single refusal and changes nothing`
+  - `AUTH-009 a failed password_changed audit rolls the credential change and revokes back`
+- `role_changed` — **UNTOUCHED / NO PRODUCER / NO TEST.** Missing test: none exists; required
+  test would have to exercise a real role-change transition.
+- `membership_invited` — **UNTOUCHED / NO PRODUCER / NO TEST.** Missing test: none exists.
+- `membership_accepted` — **UNTOUCHED / NO PRODUCER / NO TEST.** Missing test: none exists.
+- They remain `status: 'required'` in `ADR03_REQUIRED_EVENTS`; catalog `producer: null`; no
+  synthetic rows. Implementing them would invent invitation/role policy that the review did
+  not authorize.
 
-## Failure evidence
+### 2. Early-refusal failure coverage — DONE
 
-- Active failures: **none**. Gate exit 0.
-- Exact gate output (Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster port 55439,
-  `SAVEN_AUTH_TEST_CLUSTER=1`):
-  `PASS: 172 JavaScript files parsed; package manifest valid.` then AUTH-009
-  `tests 13 / pass 13 / fail 0`.
-- Regression: AUTH-002 18/18, 003 27/27, 004 21/21, 005 27/27, 006 27/27, 007 22/22
-  (combined auth chain 155/155).
-- Environment caveat: host default Node was v22.23.5; Node v24.19.0 was fetched to
-  `/tmp/auth009-node` for the gate. PostgreSQL ran from a disposable cluster at
-  `/tmp/auth009-pg` (port 55439), not the system cluster.
+Every authentication/assurance/session decision that exits before a route's own recorder is
+recorded exactly once by the central safety net (verified actor only; otherwise NULL/unknown;
+`unknown` realm only for pre-realm origin refusals; malformed JSON unrecorded). Proving tests:
 
-## Known limits carried to review
+- `AUTH-009 pre-reservation login refusals are recorded once with the correct attribution`
+- `AUTH-009 assurance, CSRF and session refusals are classified and recorded exactly once`
+- `AUTH-009 email verification request/verify refusals are recorded without secrets`
+- `AUTH-009 composed refusals run under the real non-owner auth-service login`
+- `AUTH-009 MFA route guards that precede the factor try block are recorded`
+- `AUTH-009 operator guard refusals are audited before the assertion is exchanged`
 
-- `password_changed`, `role_changed`, `membership_invited`, `membership_accepted` have no
-  producing flow; catalogued with `producer: null`, no synthetic rows, listed in README,
-  report and tests.
-- `email_verification_failed` is instrumented but untested in this round.
-- MFA success atomicity uses the same in-transaction writer; only login/reset fault matrices
-  were injected.
-- Failure durability is best-effort under a total ledger outage (counted, not delivered).
+### 3. External JSON reference/configuration catalog — DONE
+
+New `src/auth/audit-catalog.v1.json` (approved remedy), validated/frozen by
+`validateAuditCatalog`, injected through `createAuditWriter`/`createAuthServer`; unknown event
+and invalid configuration fail closed; per-event actors/outcomes/detail allow-lists; clients
+cannot register schemas; the required map is independent. Proving tests:
+
+- `AUTH-009 event domain is an external, versioned, validated configuration`
+- `AUTH-009 the required-event map stays independent of the configurable catalog`
+
+## Gate / failure evidence
+
+- Active failures: **none** in the focused gate. `node scripts/check.mjs` → PASS (172 files).
+  `node --test tests/auth-009-audit.test.mjs` → 21 tests / 21 pass / 0 fail.
+- Serial regression: AUTH-002 18/18, 003 27/27, 004 21/21, 005 27/27, 006 27/27, 007 22/22.
+  Combined 163/163.
+- Known pre-existing transient: AUTH-004 intermittently reports
+  `terminating connection due to administrator command` in shared-fixture teardown. Reproduced
+  identically on unmodified base `c543ef7` in a separate worktree; serial reruns green. Not
+  attributed to AUTH-009; disclosed in the delivery report.
+- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster (port 55439),
+  `SAVEN_AUTH_TEST_CLUSTER=1`/`SAVEN_PIVOT_TEST_CLUSTER=1`.
 
 ## Exact next step
 
-1. Await Codex review of `857324c` against `docs/contractor/reviews/`.
-2. On REVISE: fix finding-by-finding in this worktree, re-run the gate, update the delivery
-   report and this checkpoint, commit, push.
+1. Codex reviews `9b7bc42` and must resolve finding 1 for the three missing producers
+   (amend the finding with reasons, or the Principal explicitly accepts the dependency).
+2. Do not describe AUTH-009 as complete/ACCEPT-ready while `role_changed`,
+   `membership_invited` and `membership_accepted` have no producer and no test.
 3. Never merge; the dispatcher relays the human-approved merge command.
