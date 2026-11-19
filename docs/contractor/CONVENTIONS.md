@@ -85,3 +85,7 @@ HARD PROHIBITIONS
   Cloudflare Tunnel carries only the app's HTTP/S endpoint.
 - Do not commit secrets, connection strings, or keys.
 
+
+## Partial deliveries and per-finding review
+
+A partial delivery must be labelled PARTIAL, not complete. Enumerate every prior finding separately as DONE, PARTIAL or UNTOUCHED; for each, name the exact proving tests, state what remains unimplemented or untested, and identify who owns the resolution. Where no producer or test exists, say NO PRODUCER or NO TEST rather than claiming coverage. Include exact failure evidence for unfinished fixes: failing test, error text and current hypothesis. The engineer reviews each finding separately, recording closure or remaining corrective work and ownership; a consolidated verdict must name all unresolved findings and must not treat the partial delivery as a whole ACCEPT. A scope or policy conflict is resolved on the record by the engineer or the Principal, never by an inferred dispatcher deferral.
