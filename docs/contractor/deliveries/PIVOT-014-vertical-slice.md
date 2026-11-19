@@ -355,7 +355,7 @@ missing and are named below rather than claimed. Finding 8 stays closed.
 
 | Item | Value |
 |---|---|
-| Implementation SHA | `b2f0a5a`-series (see `git log` on the branch; code commit immediately preceding this report) |
+| Implementation SHA | `ee6caf070336bf4db58114bf7db3985cc9145459` |
 | Base | `testing-1 @ e0fa9fb` |
 | Gate | `node scripts/check.mjs` → 178 files, 17/17 lifecycle, exit 0 |
 | Mutation re-run | balance guard removed → `S4` fails (15 pass / 2 fail); restored → 17/17 |

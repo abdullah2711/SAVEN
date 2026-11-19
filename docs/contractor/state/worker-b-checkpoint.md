@@ -2,7 +2,35 @@
 
 Date: 19 November 2026 (Asia/Karachi).
 
-## Current state — PIVOT-014 REVISION 3: both amendments implemented
+## Current state — PIVOT-014 REVISION 4 (R3 corrections): PARTIAL
+
+Date: 20 November 2026 (Asia/Karachi).
+
+| Item | Value |
+|---|---|
+| Branch | `opencode/pivot-014-vertical-slice` |
+| Implementation | `ee6caf070336bf4db58114bf7db3985cc9145459` |
+| Gate | `node scripts/check.mjs` → 178 files, 17/17 lifecycle, exit 0 |
+| Mutation | balance guard removed → `S4` red (15/2); restored → 17/17 |
+
+### Per-finding (review 782ed6b)
+| # | Status | Named proof / gap |
+|---|---|---|
+| 1 admission composition | PARTIAL | `S1`,`S3`,`S5`; accepted `tests/auth-006-context.test.mjs` **restored byte-identical** (1,943 lines/27 tests). Gap: env-gated suite not executed here; lock probes not appended to it. |
+| 2 resource authority reservation | OPEN | `S2b` only. No denial/period reservation protocol or invalidation-first/mutation-first tests. |
+| 3 consumed identities | PARTIAL (mechanism) | `S8`: nontransactional `nextval` source, rollback leaves a gap, hostile reuse conflict, 043 reapplication retains receipts/high-water. Gap: interrupted install, exhaustion, 043 profile validation. |
+| 4 uncertain checkout | PARTIAL | `R1` ×4; uncertainty now marked **before** BEGIN, observer isolated. Gap: BEGIN-ack-loss and throwing-observer probes, size-one borrower. |
+| 5 budget/cleanup | PARTIAL | setup-failure probe, stop verification, timeouts. Gap: one deadline incl. teardown. |
+| 6 in-transaction refusal | PARTIAL | `S4` balance now checked inside the owned tx. Gap: concurrent initial same-key post race. |
+| 7 truthful proof/cover | PARTIAL | cover re-issued; red/green re-run. Gap: overlap still request-counted, not lock-observed. |
+| 8 catalog pin | CLOSED | catalog probe. |
+| 9 accepted auth tests + 043 profile | PARTIAL | accepted suite restored; 043 payload/profile atomicity + receipt parents/provenance still missing. |
+
+No merge. Worker owns 2, 5, 9 gaps next unless re-routed.
+
+---
+
+## Superseded — REVISION 3: both amendments implemented
 
 Date: 20 November 2026 (Asia/Karachi).
 
