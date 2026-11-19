@@ -90,8 +90,9 @@ Command 2 — focused test alone: `node --test tests/pivot-014-vertical-slice.te
 - **Deterministic port allocation:** exactly one ephemeral bind on `127.0.0.1:0`; the port is
   closed and reused by the cluster. One allocation, no probing loop, no retry.
 - **Cleanup:** `finally` closes the admin client and every pool, then `pg_ctl -m immediate stop`
-  and removes the cluster directory. The test asserts nothing about residue because the helper
-  fails loudly if stop/rm fails.
+  and removes the cluster directory. **Setup failure** is also cleaned: the helper wraps
+  provisioning in `try/catch`, stops a started cluster and removes the directory before
+  rethrowing. Verified after the final run: `/tmp` contains no `pivot014-*` residue.
 - **NO RETRY LOOP — explicit confirmation:** the focused test and the helper contain **no**
   retry of any operation and **no** retry-to-green path. The only loop is a bounded
   readiness wait (`waitReady`, 30 s) that polls `SELECT 1` until the server is up; it is a

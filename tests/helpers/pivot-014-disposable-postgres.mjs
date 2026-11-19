@@ -95,7 +95,21 @@ export async function createDisposableCluster({label = 'pivot014'} = {}) {
   const socketDir = join(root, 'run');
   const port = await allocatePort();
   mkdirSync(socketDir, {recursive: true});
+  let started = false;
 
+  // Setup failure must not leave a cluster process or directory behind.
+  try {
+    return await provision();
+  } catch (error) {
+    try {
+      if (started) spawnSync(pgCtl, ['-D', dataDir, '-m', 'immediate', '-w', '-t', '30', 'stop']);
+    } finally {
+      rmSync(root, {recursive: true, force: true});
+    }
+    throw error;
+  }
+
+  async function provision() {
   run(initdb, ['-D', dataDir, '-U', process.env.USER || 'postgres', '--auth=trust', '--no-sync',
     '--encoding=UTF8', '--locale=C']);
 
@@ -113,6 +127,7 @@ export async function createDisposableCluster({label = 'pivot014'} = {}) {
   ].join('\n'));
 
   run(pgCtl, ['-D', dataDir, '-l', join(root, 'server.log'), '-w', '-t', '60', 'start']);
+  started = true;
   await waitReady(psql, port, root);
 
   const env = {PGHOST: '127.0.0.1', PGPORT: String(port)};
@@ -137,6 +152,7 @@ export async function createDisposableCluster({label = 'pivot014'} = {}) {
     try {
       run(pgCtl, ['-D', dataDir, '-m', 'immediate', '-w', '-t', '60', 'stop']);
     } finally {
+      started = false;
       rmSync(root, {recursive: true, force: true});
     }
   }
@@ -152,6 +168,7 @@ export async function createDisposableCluster({label = 'pivot014'} = {}) {
     },
     apply: applyFile,
   };
+  }
 }
 
 function waitReady(psql, port, root) {
