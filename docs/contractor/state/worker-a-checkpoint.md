@@ -1,65 +1,59 @@
-# WORKER-A checkpoint — AUTH-009 revision 5: bounded round-2 correction
+# WORKER-A checkpoint — AUTH-009 revision 6: boundary evidence completed
 
 Date: 19 November 2026 (Asia/Karachi). Checkpoint directive; outside any contract TOUCH.
 
 ## Exact contract
 
 - `docs/contractor/contracts/AUTH-009-auth-audit.md`
-- Base `testing-1` @ `c543ef7`; prior revisions `eb6830a`, `de7d470`, `606c4e3`, `08f335c`.
+- Base `testing-1` @ `c543ef7`; prior revisions through `ba948cf`.
 - Branch/worktree: `opencode/auth-009-audit` @ `/home/esc/saven/wt-auth-009`.
-- Round-2 implementation: `0afeb5002d57806c058daa793ad323538181820f`.
-- Review state: finding 2 CLOSED, finding 3 CLOSED, finding 1 AMENDED (D-018: three producers
-  mandatory, owned by future IAM contract, not an AUTH-009 blocker).
+- Round-3 test commit: `d3d595c0a7663016f59728fa276fe4e7e0504692`.
+- Review `121de7e`: implementation accepted as built; three boundary-evidence scenarios
+  required. D-018 and findings 2/3 remain closed.
 
-## Three interlocking changes — separate status
+## Per-finding enumeration (this round)
 
-### 1. Producers — AMENDED / CLOSED ON NARROWED SCOPE
+### Scenario 1 — invalidation-first — DONE
 
-- `password_changed` — live and tested (3 tests; unchanged).
-- `role_changed` / `membership_invited` / `membership_accepted` — REQUIRED, explicit
-  `producerDeferredTo: 'IAM/membership administration contract'`; legacy flows named
-  (`BUSINESS_ROLE_SAVED`; `src/operating.mjs invite()/membershipInvitation()`). No producer,
-  per Principal amendment. Test: `AUTH-009 producer/transition map is precise and records the
-  Principal-approved producer deferral`.
+- Named test: `AUTH-009 invalidation-first committed membership requirement denies password
+  change` (real committed membership INSERT after the early check).
+- Named test: `AUTH-009 invalidation-first committed session assurance loss denies password
+  change` (real stored session assurance UPDATE, not a false pre-read snapshot).
+- Asserted: exact `MFA_REQUIRED`, unchanged password/epoch, no revocation/success audit, one
+  durable non-duplicated `assurance_denied` + one reservation.
 
-### 2. Early-refusal coverage — CLOSED, no regression
+### Scenario 2 — mutation-first — DONE
 
-Tests: `pre-reservation login refusals...`, `assurance, CSRF and session refusals...`,
-`email verification request/verify refusals...`, `composed refusals run under the real
-non-owner auth-service login`, `MFA route guards...`, `operator guard refusals...`,
-`every route family records its early security decision exactly once`.
+- Named test: `AUTH-009 mutation-first writer cannot commit until the password transaction
+  ends` (barrier after final authority, before COMMIT; real writer blocks; proof via
+  `pg_stat_activity` advisory wait, not sleep; subsequent authority asserted).
+- Positive controls: `AUTH-009 authorized positive controls: ordinary user and current-MFA
+  administrator`.
 
-### 3. Catalog writer boundary — CLOSED, no regression
+### Scenario 3 — owned client and failure boundary — DONE
 
-Tests: `event domain is an external, versioned, validated configuration`, `server composition
-validates and forwards the configured catalog`, `required-event map stays independent`,
-`producer/transition map...`.
-
-## Round-2 bounded correction — DONE
-
-Password-change mutation now: acquires the shared authority gate first; locks principal ->
-factor -> session; re-reads the locked session and required-MFA authority/enrollment;
-fails closed (503 unresolved, 403 MFA_REQUIRED) and records `assurance_denied` after rollback;
-holds the gate through credential/audit commit; preserves no-selected-tenant, customer-only,
-pre-KDF durable accounting, epoch/expiry/realm checks, atomic success audit and denied
-evidence.
-
-Proving test: `AUTH-009 password change revalidates required MFA assurance inside its owned
-boundary` (bypasses the pre-route gate with a falsified snapshot; the owned boundary refuses;
-credential unchanged; exactly one `assurance_denied`; non-owner auth-service composition with
-033 installed).
+- `AUTH-009 password change runs on a size-one auth pool without a nested checkout` (max 1,
+  bounded race, two durable attempt rows).
+- `AUTH-009 password-change success COMMIT uncertainty destroys the client and serves a clean
+  borrower` (503 SESSION_TRANSACTION_UNCERTAIN, release(true), credential state unknown,
+  clean borrower).
+- `AUTH-009 password-change rollback uncertainty destroys the client and serves a clean
+  borrower` (503 AUTH_ACCOUNTING_UNAVAILABLE, release(true), unknown credential state, clean
+  borrower).
 
 ## Gate / failure evidence
 
-- `node scripts/check.mjs` PASS (172); focused `25/25` pass, 0 fail.
-- Serial regression: 002 18/18, 003 27/27, 005 27/27, 006 27/27, 007 22/22. AUTH-004 once hit
-  the pre-existing fixture transient `terminating connection due to administrator command`;
-  isolated rerun 21/21 and reproduced on unmodified base `c543ef7`.
-- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55439,
-  `SAVEN_AUTH_TEST_CLUSTER=1`/`SAVEN_PIVOT_TEST_CLUSTER=1`.
+- Focused: `node scripts/check.mjs` PASS (172); `node --test
+  tests/auth-009-audit.test.mjs` → **32/32** pass, 0 fail.
+- Serial regression this run: 002 18/18, 003 27/27, 004 21/21, 005 27/27, 006 27/27,
+  007 22/22 → combined **174/174**.
+- Known pre-existing transient `terminating connection due to administrator command`
+  (AUTH-004/006 fixture teardown) is disclosed; reproduced on unmodified base `c543ef7`; not
+  observed in this run.
+- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55439.
 
 ## Exact next step
 
-1. Codex reviews `0afeb50` for the bounded correction.
-2. Do not implement role/invitation policy; keep the producer-deferred markers.
+1. Codex reviews `d3d595c` for the three boundary-evidence scenarios.
+2. No runtime source changed this round; keep D-018 producer markers and closed findings.
 3. Never merge; the dispatcher relays the human-approved merge command.
