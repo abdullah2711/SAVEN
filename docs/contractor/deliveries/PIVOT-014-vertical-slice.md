@@ -192,3 +192,88 @@ EXTENSIBILITY: no new hardcoded enums (actions are configuration from the accept
 `action_type` domain; document kinds are a map; reference values are rows); module boundaries
 are the four ports; the one narrowing decision (043 grants) is recorded here and can be
 extended by a later reviewed grant without a rewrite.
+
+---
+
+# Revision 2 — R1 partial corrections (cfe9e0d findings)
+
+**LABEL: PARTIAL.** Not all findings are closed. This revision closes findings 4, 5 (partially)
+and 8 outright, and advances 2, 6, 7. Findings 1 and 3 are **blocked on engineer-owned
+amendments** with exact evidence below. No S1–S9 property was weakened and no accepted payload
+byte, auth source, 040/041/042 SQL or policy surface was modified.
+
+| Item | Value |
+|---|---|
+| Revision implementation SHA | `2af8fae254dc7f62e76156692d3b78ba9f31a020` |
+| Base | `testing-1 @ e0fa9fb` |
+| Original implementation / review target | `37399da` / `be2f76b` |
+| Gate | `node scripts/check.mjs` → 178 files + **16/16** tests, exit 0 (Node 24.19.0, PostgreSQL 18.6, disposable loopback cluster, 3.1 s of the 240 s budget) |
+
+## Per-finding disposition (1–8)
+
+| # | Severity | Status | Change in this revision | Proving tests | Still required |
+|---|---|---|---|---|---|
+| 1 | HIGH | **OPEN — blocked (amendment A)** | The accepted boundary was actually composed and exercised: `createTenantSelection().withAuthority` + `createTenantContext` (exact role/epoch, assurance, gate held to commit, commit-uncertainty destruction). Two independent blockers were then observed (see "Blocker evidence"). Reverted from the delivered tree rather than shipped broken. Accepted `006` corrections are now in the disposable lineage. | none green — composition is not shipped | **Amendment A** (below). |
+| 2 | HIGH | **PARTIAL** | create/post now revalidate authority + period + accounts **inside the mutating transaction**, after the allocation, so a period lock or role/denial change that wins between phases is observed. Post now binds its idempotency key and refuses a different key on the same target. | `S4 …`, `S6 …`, `S7 idempotent replay and conflict refusal` (same-key replay, different-key `409 IDEMPOTENCY_CONFLICT`) | Canonical read/list/audit authority, wrong-company/branch refusals, authorized different-author reads, invalidation-race test. |
+| 3 | HIGH | **PARTIAL — blocked (amendment B)** | Allocation remains advance-only in its own committed transaction with retained `document_numbers` evidence; same-id request recovery is preserved. | `S8 concurrent numbering and non-reusable allocation` | **Actor/tenant/company/kind/request-digest binding** requires a durable allocation-binding row: **Amendment B**. Hostile different-actor reuse is still possible today — disclosed, not fixed. |
+| 4 | HIGH | **DONE** | Checkout is owned exactly once; COMMIT uncertainty, failed ROLLBACK and RESET ROLE failure all destroy the checkout (`release(true)`); nothing returns from `finally`; the primary error always propagates; a post-commit reset fault is reported out-of-band so a committed result is not falsely failed. | `PIVOT-014 R1 uncertain checkout and composition fault probes` → 4 sub-tests (`RESET ROLE`, `COMMIT`, `ROLLBACK`, clean reuse) | — |
+| 5 | HIGH | **PARTIAL** | Ownership now starts at the first `mkdtemp`; shutdown is verified before any removal and the directory is preserved on an unconfirmed stop; every child process has a timeout; the retry-to-green readiness loop is gone (single verification after `pg_ctl -w`, failure is failure); a real setup-failure probe proves no leaked directory. | `… composition fault probes` → `cluster setup failure leaves no owned directory behind` | Whole-budget enforcement that includes child processes and teardown (elapsed assertion still precedes cleanup), and schema/start fault-injection breadth. |
+| 6 | MEDIUM | **PARTIAL** | Balance/authority/period/accounts are revalidated inside the mutating transaction on the accepted bytes; the post key is bound and enforced. | `S4 …`, `S7 …` | A true concurrent **first** post (both requests before POSTED) with a barrier; the current concurrent assertion is a same-key replay after POSTED. |
+| 7 | HIGH | **PARTIAL** | S5 guard attacks now run in isolated transactions and assert the exact guard text with a permitted control; S3 gained a tenant-A own-journal read control; S6 asserts actor/origin on **every** create, post and void event. | `S3 …`, `S5 …`, `S6 …` | S8 critical-section overlap proof (promise counting only), real reinstall/interruption install probe, complete redaction sweep across the declared inventory. |
+| 8 | MEDIUM | **DONE** | The adapter reads the writer's **active** catalog (`writer.catalog()` / `stats()`), fails closed when absent, and compares it with the pin. An injected mismatched writer and a versionless writer are both refused. | `… composition fault probes` → `security-audit pin compares the writer active catalog` | — |
+
+## Blocker evidence (finding 1) — engineer decision required
+
+**A. Void deadlock when the accepted admission is held across the business transaction.**
+With `withAuthority` + `createTenantContext` composed for every request, create/post/read/list
+work, but the void path blocks and then fails:
+
+```
+error: canceling statement due to statement timeout
+  at Object.callVoid (src/accounting/vertical-slice/pg-repository.mjs)
+  at Object.voidEntry (src/accounting/vertical-slice/journal-service.mjs)
+  at src/db/tenant-context.mjs:109
+```
+Cause: accepted AUTH-006 admission takes `SELECT … FROM auth.users … FOR UPDATE`
+(`src/auth/tenant-selection.mjs` `loadAuthority`), which conflicts with the **KEY SHARE** lock
+that the accepted 042 `entry_voids_actor_fkey` (→ `auth.users(id, legacy_id)`) must take inside
+the same business transaction. Holding admission open until commit therefore self-blocks the
+accepted void primitive. This needs an engineer decision: weaken admission's lock to
+`FOR NO KEY UPDATE`, remove/adjust that FK in an accepted migration, or approve a documented
+ordering exception. None is mine to choose, and working around it would weaken the boundary.
+
+**B. Accepted hardening hides the selection from the current read path.**
+Adding the accepted `031-rls-corrections.sql` + `032-rls-hardening.sql` to the disposable
+lineage (with `006`, which is fine on its own) makes every business request fail:
+
+```
+{"ok":false,"error":{"code":"TENANT_SELECTION_REQUIRED","message":"Select a business before using accounting."}}
+```
+i.e. the session's selected business is no longer observable through the current session read.
+That confirms the review's point: the replacement preflight is not the accepted protocol. Those
+two files were therefore removed from the delivered lineage rather than shipping a red gate; the
+accepted path (finding 1) must be completed under the amendment.
+
+## Amendment requests (engineer owns; not applied)
+
+- **Amendment A (AUTH-006 × 042 lock interaction).** A reviewed decision on how admission's
+  `auth.users` row lock coexists with the accepted void FK, so the accepted gate can be held for
+  the whole business transaction including void. Options and their blast radius are listed in
+  "Blocker evidence A".
+- **Amendment B (bounded 043 addition).** Add one narrow additive table
+  `tenant_data.document_allocations` — `(tenant_id, id, company, kind, sequence, number, actor,
+  request_digest, created_at)`, PK `(tenant_id, id)`, UNIQUE `(tenant_id, company, kind, sequence)`
+  — plus RLS policy and `SELECT/INSERT` grants to `saven_customer_app`. This binds the permanent
+  identity to the verified actor/content so a different party or content receives a specific
+  idempotency conflict instead of recovering someone else's number. It touches no accepted
+  payload, no fingerprinted table and grants no new authority beyond the lifecycle. I request
+  approval before writing it.
+
+## Corrections to my own earlier report
+
+The previous delivery stated the runtime composed AUTH-006 and that S2 cleanup was guaranteed.
+Both were overstated: the boundary was a replacement preflight, and cleanup did not start at the
+first allocation. This revision fixes the second and documents the first as blocked.
+
+The original S1–S9 assertion mapping and cover sheet are **not** offered as proof of these
+corrections; they describe the original delivery only.
