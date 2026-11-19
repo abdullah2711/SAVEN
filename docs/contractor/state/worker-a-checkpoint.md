@@ -1,59 +1,46 @@
-# WORKER-A checkpoint — AUTH-009 revision 6: boundary evidence completed
+# WORKER-A checkpoint — PIVOT-007 revision 3 (review 92f3e00)
 
-Date: 19 November 2026 (Asia/Karachi). Checkpoint directive; outside any contract TOUCH.
+Date: 20 November 2026 (Asia/Karachi). Round-end checkpoint.
 
 ## Exact contract
 
-- `docs/contractor/contracts/AUTH-009-auth-audit.md`
-- Base `testing-1` @ `c543ef7`; prior revisions through `ba948cf`.
-- Branch/worktree: `opencode/auth-009-audit` @ `/home/esc/saven/wt-auth-009`.
-- Round-3 test commit: `d3d595c0a7663016f59728fa276fe4e7e0504692`.
-- Review `121de7e`: implementation accepted as built; three boundary-evidence scenarios
-  required. D-018 and findings 2/3 remain closed.
+- `docs/contractor/contracts/PIVOT-007-operator-functions.md` (19–20 Nov amendments)
+- Base `testing-1` @ `e0fa9fb`; branch `opencode/pivot-007-operator-functions` @
+  `/home/esc/saven/wt-pivot-007`.
+- TOUCH: `db/postgres/50-functions.sql`, `db/postgres/README.md`,
+  `tests/pivot-007-operator-access.test.mjs`, `src/operator/support-read.mjs`,
+  `src/operator/README.md`, `src/auth/access.mjs` (metadata-only amendment).
+- Revision implementation SHA: `102e39a54e3bb129b7b0c0165b13dfe541396929`.
+- Delivery report: `docs/contractor/deliveries/PIVOT-007-operator-functions.md`.
 
-## Per-finding enumeration (this round)
+## Review findings — status
 
-### Scenario 1 — invalidation-first — DONE
+| # | Finding | Status | Named tests |
+| --- | --- | --- | --- |
+| 2a | Actual AUTH-007 source-age/skew policy | **DONE** — validator exposes captured immutable descriptor; adapter compares actual issuer/audience/access_mfa/age/skew with expected and SQL fingerprint; mismatch + boundary tests | `adapter compares the actual AUTH-007 age/skew descriptor, not expected values`; `adapter refuses post-preflight source-age boundary crossing with a permitted control` |
+| 2b | Policy effective window after final wait | **DONE** — policy-writer gate + triggers; policy selected with final `clock_timestamp()` after all gates; expiry-during-wait and writer-blocking tests | `revalidates policy expiry after the consent-gate wait and serializes policy writers`; policy-trigger disable in protocol test |
+| 2c | Early bearer refusals | **DONE** — missing/short/oversize bearer records unverified denial, no secret echo, outage observable | `adapter records early bearer refusals and exposes logging outage` |
+| 3 | Consent reservation | **CLOSED retained** — shared gate through COMMIT; writer blocking/revocation tests still pass | `serializes customer consent writes against in-flight reads`; `adapter reserves customer consent through publication COMMIT` |
+| 4 | Definer profile | **CLOSED retained** — no widening; validator/poison tests pass | `installs exactly the reviewed definer authority surface…`; `refuses a poisoned definer profile…` |
+| 5 | Denial attribution | **CLOSED retained** — current role/assurance/MFA/effective validation | `denial role evidence is current…`; `denial attribution never invents…` |
 
-- Named test: `AUTH-009 invalidation-first committed membership requirement denies password
-  change` (real committed membership INSERT after the early check).
-- Named test: `AUTH-009 invalidation-first committed session assurance loss denies password
-  change` (real stored session assurance UPDATE, not a false pre-read snapshot).
-- Asserted: exact `MFA_REQUIRED`, unchanged password/epoch, no revocation/success audit, one
-  durable non-duplicated `assurance_denied` + one reservation.
+## Gate evidence
 
-### Scenario 2 — mutation-first — DONE
+- `node scripts/check.mjs` → `PASS: 174 JavaScript files parsed; package manifest valid.`
+- `node --test tests/pivot-007-operator-access.test.mjs` → **31/31** pass, 0 fail.
+- `node --test tests/auth-007-access.test.mjs` → **22/22** pass (metadata-only regression).
+- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55435,
+  `SAVEN_PIVOT_TEST_CLUSTER=1`.
 
-- Named test: `AUTH-009 mutation-first writer cannot commit until the password transaction
-  ends` (barrier after final authority, before COMMIT; real writer blocks; proof via
-  `pg_stat_activity` advisory wait, not sleep; subsequent authority asserted).
-- Positive controls: `AUTH-009 authorized positive controls: ordinary user and current-MFA
-  administrator`.
+## Where I stopped
 
-### Scenario 3 — owned client and failure boundary — DONE
-
-- `AUTH-009 password change runs on a size-one auth pool without a nested checkout` (max 1,
-  bounded race, two durable attempt rows).
-- `AUTH-009 password-change success COMMIT uncertainty destroys the client and serves a clean
-  borrower` (503 SESSION_TRANSACTION_UNCERTAIN, release(true), credential state unknown,
-  clean borrower).
-- `AUTH-009 password-change rollback uncertainty destroys the client and serves a clean
-  borrower` (503 AUTH_ACCOUNTING_UNAVAILABLE, release(true), unknown credential state, clean
-  borrower).
-
-## Gate / failure evidence
-
-- Focused: `node scripts/check.mjs` PASS (172); `node --test
-  tests/auth-009-audit.test.mjs` → **32/32** pass, 0 fail.
-- Serial regression this run: 002 18/18, 003 27/27, 004 21/21, 005 27/27, 006 27/27,
-  007 22/22 → combined **174/174**.
-- Known pre-existing transient `terminating connection due to administrator command`
-  (AUTH-004/006 fixture teardown) is disclosed; reproduced on unmodified base `c543ef7`; not
-  observed in this run.
-- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55439.
+Revision delivered and pushed; not merged. No known failing test. Publication tests now use
+an entered-COMMIT barrier rather than fixed sleeps. Test logins are namespaced cluster roles
+created/dropped on the disposable cluster (not inside the database) and are not credentials.
 
 ## Exact next step
 
-1. Codex reviews `d3d595c` for the three boundary-evidence scenarios.
-2. No runtime source changed this round; keep D-018 producer markers and closed findings.
-3. Never merge; the dispatcher relays the human-approved merge command.
+1. Codex reviews `102e39a` against the two remaining policy-authority findings.
+2. PIVOT-008 follows on its own branch; no merge without the human-approved dispatcher command.
+3. Deployment must seed `operator.access_read_policy` and pass the same actual AUTH-007
+   issuer/audience/`access_mfa`/source-age/skew to the adapter; drift fails closed.
