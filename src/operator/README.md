@@ -22,7 +22,7 @@ import {createOperatorSupportRead} from './src/operator/support-read.mjs';
 
 const supportRead = createOperatorSupportRead({
   connectOperator,              // () => checked-out client from the restricted operator-read login
-  inspectSession,               // AUTH-007 access.inspectSession(token)
+  inspectSession,               // AUTH-007 access.inspectSession(token), including its captured policy descriptor
   expectedPolicy: {             // must match operator.access_read_policy exactly
     version: 1,
     issuer: 'https://<verified-issuer>',
@@ -46,18 +46,27 @@ const result = await supportRead.read({
 // result.rows is available only after COMMIT.
 ```
 
-`connectOperator` **must** come from a separate restricted login that inherits only the
+`inspectSession` must be the accepted AUTH-007 implementation. Its result includes the
+immutable `policy` descriptor captured by the real validator (`issuer`, `audience`,
+`requiredAssurance: 'access_mfa'`, `maxSourceAgeSeconds`, `maxClockSkewSeconds`). The adapter
+compares those actual values with `expectedPolicy` before relying on the preflight and with
+the SQL policy fingerprint after the constrained read; a descriptor copied from
+`expectedPolicy` is not accepted as proof. `connectOperator` **must** come from a separate restricted login that inherits only the
 `operator_read` role. Do not run it on the auth-service login and do not grant auth-service
 `EXECUTE` on the read functions. `inspectSession` uses the auth-service login and its own
 transaction; it must not share a client with the operator-read transaction.
 
 ## Transaction and failure protocol
 
-1. Validate the bearer shape and request arguments; compute the SHA-256 token digest that the
-   SQL boundary uses as bearer proof. The digest is bearer-equivalent and is never logged,
-   stored in results or included in errors.
-2. Run AUTH-007 `inspectSession(token)` as a completed preflight. Compare its binding
-   issuer/audience/assurance with `expectedPolicy`; a mismatch is a policy refusal.
+1. Validate the bearer shape. A missing/short/oversize bearer is an authentication refusal:
+   it is recorded through the independent denial recorder with unverified actor and no proof
+   before the caller sees the error. Compute the SHA-256 token digest that the SQL boundary
+   uses as bearer proof; the digest is bearer-equivalent and is never logged, stored in
+   results or included in errors.
+2. Run AUTH-007 `inspectSession(token)` as a completed preflight. Compare its captured
+   `policy` descriptor (issuer, audience, fixed assurance, source-age ceiling and skew) and
+   binding with `expectedPolicy`; any mismatch is a policy refusal logged before the
+   operator-read client is acquired.
 3. Check out one restricted operator-read client. `BEGIN`, set
    `app.operator_session_id` transaction-locally, call the constrained SQL function on the
    **same** client/transaction.
@@ -95,6 +104,8 @@ denial checkout, so denial logging cannot starve behind an owned client.
   configurable labels.
 - The adapter cannot widen SQL privileges, set a superuser/BYPASSRLS role, query tenant tables
   directly, or choose a table/column dynamically.
+- The SQL boundary samples the final trusted time after the consent and policy gates, and
+  selects the policy row with that time; a policy that expires during the wait fails closed.
 - Raw bearer values, token digests and tenant row payloads are never logged by this module.
 - No HTTP/UI activation, operator impersonation or production entry point is added.
 

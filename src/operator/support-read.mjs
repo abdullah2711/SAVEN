@@ -162,6 +162,30 @@ export function createOperatorSupportRead({
     }
   }
 
+  function safeText(value, max) {
+    return typeof value === 'string' && value.length > 0 && value.length <= max ? value : null;
+  }
+
+  function safeTenant(value) {
+    return typeof value === 'string' && UUID.test(value) ? value : null;
+  }
+
+  async function refuseEarly(input, message) {
+    const denial = await recordDenial({
+      code: 'OPERATOR_CONTEXT_REQUIRED',
+      tenantId: safeTenant(input?.tenantId),
+      resource: safeText(input?.resource, 80),
+      action: safeText(input?.action, 120),
+      company: safeText(input?.company, 120),
+      reason: safeText(input?.reason, 1000),
+      requestId: safeText(input?.requestId, 200),
+    });
+    throw new OperatorSupportReadError('OPERATOR_CONTEXT_REQUIRED', message, {
+      status: 401,
+      denialEvidence: denial,
+    });
+  }
+
   async function read(input = {}) {
     const {
       token,
@@ -174,8 +198,10 @@ export function createOperatorSupportRead({
       limit = maxRows,
     } = input;
 
+    // A missing/short/oversize bearer is an authentication refusal, not a successful
+    // logging boundary: record independent unverified denial evidence before throwing.
     if (typeof token !== 'string' || token.length < 16 || token.length > 16384) {
-      throw new OperatorSupportReadError('OPERATOR_CONTEXT_REQUIRED', 'A verified operator bearer is required.', {status: 401});
+      await refuseEarly(input, 'A verified operator bearer is required.');
     }
     if (typeof tenantId !== 'string' || !UUID.test(tenantId)) {
       throw new OperatorSupportReadError('OPERATOR_ARGUMENT_INVALID', 'A target tenant is required.', {status: 400});
@@ -229,7 +255,14 @@ export function createOperatorSupportRead({
         denialEvidence: denial,
       });
     }
-    if (admitted.assurance !== expectedPolicy.requiredAssurance
+    const actualPolicy = admitted.policy;
+    if (!actualPolicy
+        || actualPolicy.issuer !== expectedPolicy.issuer
+        || actualPolicy.audience !== expectedPolicy.audience
+        || actualPolicy.requiredAssurance !== REQUIRED_ASSURANCE
+        || actualPolicy.maxSourceAgeSeconds !== expectedPolicy.maxSourceAgeSeconds
+        || actualPolicy.maxClockSkewSeconds !== expectedPolicy.maxClockSkewSeconds
+        || admitted.assurance !== expectedPolicy.requiredAssurance
         || binding.issuer !== expectedPolicy.issuer
         || binding.audience !== expectedPolicy.audience
         || binding.assurance_class !== expectedPolicy.requiredAssurance) {

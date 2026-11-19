@@ -185,6 +185,34 @@ CREATE TRIGGER members_consent_gate_delete
 COMMENT ON FUNCTION operator.lock_consent_gate() IS
   'PIVOT-007: exclusive BEFORE STATEMENT consent-writer gate. support_grants revocation/scope edits and members.active changes serialize against a mediated read holding the same key shared. Trigger functions require no runtime EXECUTE grant.';
 
+CREATE FUNCTION operator.lock_policy_gate() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog
+AS $fn$
+BEGIN
+  -- Exclusive side of the read-policy lifecycle gate. Policy inserts/updates/deletes
+  -- serialize against a mediated read holding it shared through publication COMMIT.
+  PERFORM pg_advisory_xact_lock(hashtextextended('saven.operator.policy_gate', 0));
+  RETURN NULL;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION operator.lock_policy_gate() FROM PUBLIC;
+
+CREATE TRIGGER access_read_policy_policy_gate_insert
+  BEFORE INSERT ON operator.access_read_policy
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.lock_policy_gate();
+CREATE TRIGGER access_read_policy_policy_gate_update
+  BEFORE UPDATE ON operator.access_read_policy
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.lock_policy_gate();
+CREATE TRIGGER access_read_policy_policy_gate_delete
+  BEFORE DELETE ON operator.access_read_policy
+  FOR EACH STATEMENT EXECUTE FUNCTION operator.lock_policy_gate();
+
+COMMENT ON FUNCTION operator.lock_policy_gate() IS
+  'PIVOT-007: exclusive BEFORE STATEMENT read-policy writer gate. Policy activation/expiry edits serialize against a mediated read holding the same key shared through read/audit commit.';
+
 -- ---------------------------------------------------------------------------
 -- 3. Definer authority validation (exact surface, pre- and post-install)
 -- ---------------------------------------------------------------------------
@@ -580,6 +608,7 @@ AS $fn$
 DECLARE
   v_gate oid;
   v_consent oid;
+  v_policy_gate oid;
   v_definer oid;
   expected record;
 BEGIN
@@ -597,11 +626,19 @@ BEGIN
 
   SELECT p.oid INTO v_consent FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
    WHERE n.nspname = 'operator' AND p.proname = 'lock_consent_gate';
+  SELECT p.oid INTO v_policy_gate FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'operator' AND p.proname = 'lock_policy_gate';
   IF v_consent IS NULL
      OR (SELECT prosrc FROM pg_proc WHERE oid = v_consent) NOT LIKE '%pg_advisory_xact_lock(%'
      OR (SELECT prosrc FROM pg_proc WHERE oid = v_consent) LIKE '%pg_advisory_xact_lock_shared(%'
      OR (SELECT prosrc FROM pg_proc WHERE oid = v_consent) NOT LIKE '%saven.operator.consent_gate%' THEN
     RAISE EXCEPTION 'OPERATOR_AUTHORITY_PROTOCOL_INVALID: the consent-writer gate is missing or misbound';
+  END IF;
+  IF v_policy_gate IS NULL
+     OR (SELECT prosrc FROM pg_proc WHERE oid = v_policy_gate) NOT LIKE '%pg_advisory_xact_lock(%'
+     OR (SELECT prosrc FROM pg_proc WHERE oid = v_policy_gate) LIKE '%pg_advisory_xact_lock_shared(%'
+     OR (SELECT prosrc FROM pg_proc WHERE oid = v_policy_gate) NOT LIKE '%saven.operator.policy_gate%' THEN
+    RAISE EXCEPTION 'OPERATOR_AUTHORITY_PROTOCOL_INVALID: the policy-writer gate is missing or misbound';
   END IF;
 
   -- Exact function profile for both gates: no arguments, trigger return, invoker,
@@ -609,7 +646,8 @@ BEGIN
   FOR expected IN
     SELECT * FROM (VALUES
       ('saven_migrator', v_gate, 'auth.lock_authority_gate'),
-      ('saven_migrator', v_consent, 'operator.lock_consent_gate')
+      ('saven_migrator', v_consent, 'operator.lock_consent_gate'),
+      ('saven_migrator', v_policy_gate, 'operator.lock_policy_gate')
     ) AS f(expected_owner, function_oid, function_name)
   LOOP
     IF NOT EXISTS (
@@ -644,7 +682,10 @@ BEGIN
       ('tenant_data', 'support_grants', 'support_grants_consent_gate_delete', 10, v_consent),
       ('tenant_data', 'members', 'members_consent_gate_insert', 6, v_consent),
       ('tenant_data', 'members', 'members_consent_gate_update', 18, v_consent),
-      ('tenant_data', 'members', 'members_consent_gate_delete', 10, v_consent)
+      ('tenant_data', 'members', 'members_consent_gate_delete', 10, v_consent),
+      ('operator', 'access_read_policy', 'access_read_policy_policy_gate_insert', 6, v_policy_gate),
+      ('operator', 'access_read_policy', 'access_read_policy_policy_gate_update', 18, v_policy_gate),
+      ('operator', 'access_read_policy', 'access_read_policy_policy_gate_delete', 10, v_policy_gate)
     ) AS t(schema_name, table_name, trigger_name, expected_type, function_oid)
   LOOP
     IF NOT EXISTS (
@@ -850,6 +891,18 @@ BEGIN
     RAISE EXCEPTION 'OPERATOR_ACCESS_DENIED: the mapped operator role no longer exists';
   END IF;
 
+  -- Customer consent and the selected policy serialize against their writers. These are
+  -- the LAST blocking acquisitions before the final trusted-time checks.
+  v_previous_tenant := current_setting('app.current_tenant_id', true);
+  PERFORM set_config('app.current_tenant_id', p_tenant::text, true);
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('saven.operator.consent_gate', 0));
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('saven.operator.policy_gate', 0));
+
+  -- Trusted time is sampled only after every blocking authority/consent/policy acquisition.
+  v_now := clock_timestamp();
+
+  -- The selected policy's own effective window is evaluated with the final trusted time,
+  -- after the last blocking gate, so a policy that expires while waiting cannot authorize.
   SELECT p.version, p.issuer, p.audience, p.required_assurance,
          p.max_source_age_seconds, p.max_clock_skew_seconds,
          encode(sha256(convert_to(
@@ -861,8 +914,8 @@ BEGIN
   FROM operator.access_read_policy p
   WHERE p.policy_key = 'operator_read'
     AND p.is_active
-    AND p.effective_from <= clock_timestamp()
-    AND (p.effective_to IS NULL OR p.effective_to > clock_timestamp())
+    AND p.effective_from <= v_now
+    AND (p.effective_to IS NULL OR p.effective_to > v_now)
   ORDER BY p.version DESC
   LIMIT 1;
   IF NOT FOUND THEN
@@ -871,15 +924,6 @@ BEGIN
   IF v_policy_assurance IS DISTINCT FROM 'access_mfa' THEN
     RAISE EXCEPTION 'OPERATOR_POLICY_REQUIRED: the operator read policy must require access_mfa';
   END IF;
-
-  -- Customer consent serializes against its writers through the consent gate. This is
-  -- the LAST blocking acquisition before final trusted-time checks.
-  v_previous_tenant := current_setting('app.current_tenant_id', true);
-  PERFORM set_config('app.current_tenant_id', p_tenant::text, true);
-  PERFORM pg_advisory_xact_lock_shared(hashtextextended('saven.operator.consent_gate', 0));
-
-  -- Trusted time is sampled only after every blocking authority/consent acquisition.
-  v_now := clock_timestamp();
 
   IF v_subject IS NULL
      OR v_binding_scheme IS DISTINCT FROM 'generation-v1'

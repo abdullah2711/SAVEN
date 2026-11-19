@@ -286,6 +286,18 @@ export function createAccessValidator({
     });
   }
 
+  // Immutable, secret-free descriptor of the policy actually captured by this validator.
+  // Operator-read composition compares these real values (never an expected copy) with the
+  // final SQL policy and refuses drift. This is metadata only: it changes no validation,
+  // admission, replay or lifetime behavior.
+  const capturedPolicy = Object.freeze({
+    issuer,
+    audience,
+    requiredAssurance: REQUIRED_OPERATOR_ASSURANCE,
+    maxSourceAgeSeconds: maxTokenAgeSeconds,
+    maxClockSkewSeconds: skewSeconds,
+  });
+
   return {
     validate,
     assertFresh,
@@ -294,6 +306,7 @@ export function createAccessValidator({
     issuer,
     audience,
     requiredAssurance: REQUIRED_OPERATOR_ASSURANCE,
+    policy: capturedPolicy,
   };
 }
 
@@ -584,6 +597,7 @@ export function createOperatorAccess({validator, store, clock = () => new Date()
       assurance: binding.assurance_class,
       sourceExpiresAt: new Date(binding.source_expires_at),
       admittedAt: at,
+      policy: validator.policy,
     };
   }
 
@@ -594,5 +608,5 @@ export function createOperatorAccess({validator, store, clock = () => new Date()
     return store.withTransaction(tx => admitSession(session, {tx}));
   }
 
-  return {exchange, admitSession, inspectSession, requiredAssurance};
+  return {exchange, admitSession, inspectSession, requiredAssurance, policy: validator.policy};
 }
