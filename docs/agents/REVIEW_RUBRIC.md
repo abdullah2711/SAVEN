@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 1. Created: 19 November 2026 (Asia/Karachi).
+Version: 2. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -97,3 +97,5 @@ Tier derives mechanically from contract TOUCH at authoring; ambiguous work is Ti
 ## Append-only review updates after version 1
 
 Append future entries here only after the corresponding review is committed; include date, new rubric version, review SHA and the rule/new defect pattern or explicit no-new-pattern statement. No future review outcome or execution is claimed by this seed.
+
+- 19 November 2026 — v2 — review `16be2ae` (PIVOT-007, REVISE): R68 — Tenant rows already returned cannot be rolled back: the mediated application must verify current admission, commit successful read-accountability before publishing data, and independently log denials; a caller convention or a SQL read followed by rolled-back audit is not durable disclosure accountability; reapply R19–R23/R40–R45/R57 to equivalent admission, reserved consent, poisoned definers and truthful denial attribution.
