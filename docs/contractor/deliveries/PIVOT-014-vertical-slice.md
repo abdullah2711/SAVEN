@@ -345,3 +345,38 @@ Proved:
 The earlier failure of `031`/`032` was caused by the replacement preflight reading the session
 snapshot. With the accepted composed boundary and the narrowed lock, the full lineage installs
 and the whole suite is green — i.e. the correction is the composition, not a weaker profile.
+
+---
+
+# Revision 4 — R3 corrections (782ed6b)
+
+**LABEL: PARTIAL.** Corrections to the source are in; several proof obligations are still
+missing and are named below rather than claimed. Finding 8 stays closed.
+
+| Item | Value |
+|---|---|
+| Implementation SHA | `b2f0a5a`-series (see `git log` on the branch; code commit immediately preceding this report) |
+| Base | `testing-1 @ e0fa9fb` |
+| Gate | `node scripts/check.mjs` → 178 files, 17/17 lifecycle, exit 0 |
+| Mutation re-run | balance guard removed → `S4` fails (15 pass / 2 fail); restored → 17/17 |
+
+## Per-finding disposition (1–9)
+
+| # | Status | What changed | Named test / gap |
+|---|---|---|---|
+| 1 admission composition | **PARTIAL** | Accepted `withAuthority` + `createTenantContext` composition retained (held to business completion, pre-commit revalidation, principal on the executing client). **`tests/auth-006-context.test.mjs` restored byte-identical to the accepted version** (1,943 lines / 27 tests) — my earlier replacement is reverted. | `S1`, `S3`, `S5`. *Gap:* the accepted suite is environment-gated (`SAVEN_PIVOT_TEST_CLUSTER`) and was not executed here; my lock probes are not appended to it. |
+| 2 resource authority reservation | **PARTIAL / OPEN** | Unchanged from R3 (scoped read/list/audit, `S2b`). | *Gap:* no shared reservation protocol for denial/period authority through business COMMIT; no invalidation-first / mutation-first tests with a new denial or locked period. Not implemented — I did not find a design that does not weaken the accepted boundary, so it is left open rather than faked. |
+| 3 permanent consumed identities | **PARTIAL (mechanism done)** | `043` now provisions `tenant_data.document_number_consumption` (guarded profile check, migrator-owned, USAGE to runtime). Allocation takes the identity from `nextval` — nontransactional — and the per-scope counter is reduced to a monotonic high-water mirror. | `S8`: rollback probe (failure after `nextval` → sequence advances, no number row), hostile-reuse conflict, real 043 reapplication retaining receipts and high-water. *Gap:* interrupted-install and exhaustion probes; 043 payload/profile validation from finding 9. |
+| 4 uncertain checkout | **PARTIAL** | Uncertainty is marked **before** BEGIN is attempted; observer failures are isolated so they cannot skip destruction; the primary error always propagates. | `R1` four probes. *Gap:* executed-BEGIN acknowledgement-loss and throwing-observer probes, size-one-pool clean-borrower control. |
+| 5 whole-test budget/cleanup | **PARTIAL / OPEN** | Setup-failure cleanup, stop verification and child timeouts retained. | *Gap:* one deadline covering setup + children + teardown; start-acknowledgement uncertainty handling. Not implemented. |
+| 6 in-transaction refusal | **PARTIAL** | The authoritative balance check now runs **inside the owned transaction** (`assertEnvelope(payload)` on the raw bytes inside `repository.transaction`), before allocation. | `S4` (no surviving journal/line/audit). *Gap:* deterministic concurrent initial same-key post and conflicting-content race controls are still absent. |
+| 7 truthful proof + cover | **PARTIAL** | Cover sheet **re-issued** for this tree with explicit bounded gaps (budget/teardown, overlap method, first-post race). Guard-removal red/green re-run against this tree. | *Gap:* overlap is still measured by concurrent in-flight requests, not database lock instrumentation. |
+| 8 catalog pin | **CLOSED** | — | `security-audit pin compares the writer active catalog`. |
+| 9 accepted AUTH-006 tests + 043 payload profile | **PARTIAL** | The accepted auth suite is restored exactly (the destructive replacement is undone). | *Gap:* 043 does not yet validate a pre-existing receipt table's shape/owner/grants/policies, install its payload in one atomic activation, or add receipt parent FKs/provenance. |
+
+## Honest summary
+
+The allocator is now genuinely nontransactional and rollback-proof, the checkout uncertainty
+window is closed at the source, the balance refusal is inside the transaction, and the cover
+sheet no longer promises more than the tests show. Findings 2, 5 and 9 remain incomplete with
+concrete, named gaps; I am not claiming them closed.

@@ -1,77 +1,72 @@
-# PIVOT-014 — delivered cover sheet (S1–S9)
+# PIVOT-014 — delivered cover sheet (re-issued for revision 4)
 
-Neutral, plain-English explanation of what the permanent test proves and how it fails if the
-property is absent. Each sentence links to its permanent test and the assertion that enforces
-it. Engineer review of the SQL and source is still required; green tests alone are not
-acceptance.
+Re-issued against the current tree. It states only what the named permanent assertions show,
+and names the gap where evidence is bounded. Each sentence links to its test and assertion.
+Engineer review of SQL/source is still required; green tests alone are not acceptance.
 
-Test file: `tests/pivot-014-vertical-slice.test.mjs` (run by `node scripts/check.mjs`).
-Delivery: `docs/contractor/deliveries/PIVOT-014-vertical-slice.md`.
+Test files: `tests/pivot-014-vertical-slice.test.mjs` (17 subtests, run by
+`node scripts/check.mjs`). Delivery: `docs/contractor/deliveries/PIVOT-014-vertical-slice.md`.
 
-- **S1 — Real application path.** A visitor with no session cannot create an entry, a request
-  from an unapproved origin is refused, and every accepted request is served by
-  `p014_app_login` acting as `saven_customer_app` after session verification, tenant admission
-  and CSRF checks. *Test:* `S1 real application path and restricted principal`. *Fails if:*
-  the trace misses a stage, the principal is not the restricted role (`500 !== 201`), the
-  anonymous request is not `401 AUTH_REQUIRED`, or the foreign origin is not `421`.
+- **S1 — Real application path.** A request without a session is refused, a foreign origin is
+  refused, and every accepted request runs the real handler → session verification → the
+  **accepted AUTH-006 authority boundary** (held to business completion, pre-commit
+  revalidation) → service → repository on the restricted principal. *Test:* `S1 real
+  application path and restricted principal`. *Fails if:* a trace stage is missing, the
+  principal is not `saven_customer_app` on `p014_app_login`, or either refusal is not exact.
 
-- **S2 — Permanent automated test.** The lifecycle test runs inside the normal check command
-  on a freshly created disposable database, fails the check when any property fails, and has a
-  declared 240-second budget with one deterministic port allocation, no retry loop, and
-  guaranteed cleanup. *Test:* `scripts/check.mjs` + the helper. *Fails if:* the test errors or
-  the budget is exceeded (the check exits nonzero), a prerequisite is missing (actionable
-  error), or a retry would be needed to pass.
+- **S2 — Permanent automated test.** The lifecycle test runs inside the normal check command on
+  a freshly created disposable database and its failure fails the check; it declares a
+  240 s budget, allocates one port, never retries an operation, and cleans up from the first
+  temporary allocation. *Test:* `scripts/check.mjs` + helper. *Fails if:* the test errors, a
+  prerequisite is missing, or setup failure leaks an owned directory (proved). *Bounded gap:*
+  the deadline covers setup + lifecycle, but teardown time is measured after the assertion.
 
-- **S3 — Cross-tenant refusal with controls.** Tenant A can read its own entry and audit but
+- **S3 — Cross-tenant refusal with controls.** Tenant A reads its own posted entry and audit,
   is refused tenant B's entry (`TENANT_RESOURCE_DENIED`) and B's audit
-  (`AUDIT_TENANT_DENIED`), while B reads both successfully and B's data is provably unchanged.
-  *Test:* `S3 cross-tenant refusal with permitted controls`. *Fails if:* either forbidden
-  access succeeds, either permitted control fails, B's counts change, or the refusals are not
-  in the security-audit trail.
+  (`AUDIT_TENANT_DENIED`), B reads both, and B's counts are unchanged. *Test:* `S3 …`.
+  *Fails if:* either forbidden access succeeds, either control fails, or B's data changes.
 
-- **S4 — Balanced posts; unbalanced leaves no trace.** A balanced entry posts; an unbalanced
-  one is refused with `UNBALANCED_ENTRY` and leaves no journal, line, audit row, command,
-  outbox effect or consumed number. *Test:* `S4 unbalanced request leaves no trace and
-  consumes no number`. *Fails if:* the code is not `422 UNBALANCED_ENTRY` or any baseline
-  count changes.
+- **S4 — Balanced posts; unbalanced leaves no trace.** The authoritative balance check runs
+  **inside the owned transaction** (the envelope is re-derived there) and an unbalanced
+  request is refused `422 UNBALANCED_ENTRY` with no journal, line, audit row, command, outbox
+  effect or consumed number. *Test:* `S4 …`. *Fails if:* the code differs or any baseline count
+  changes.
 
-- **S5 — Void is a state change.** Voiding removes the entry from the active ledger, keeps it
-  in `voided_entries`, retains the original journal/lines/allocation byte-for-byte, writes
-  exactly one void event, and refuses edits, deletes, re-voids and second-key attempts.
-  *Test:* `S5 void is a state change with retained evidence`. *Fails if:* the entry stays
-  active, disappears, changes, lacks the void audit, or a retry adds rows.
+- **S5 — Void is a state change.** Void commits **while admission is held**, removes the entry
+  from `active_general_ledger`, retains it in `voided_entries` with byte-identical source rows,
+  writes exactly one void event, and refuses edits/deletes/re-voids. *Test:* `S5 …`.
+  *Fails if:* the entry stays active, changes, disappears, lacks the void audit, or a retry
+  adds rows.
 
-- **S6 — Complete lifecycle audit.** Each create, post and void produces exactly one canonical
-  lifecycle event with the verified actor and truthful origin, plus an exactly enumerated
-  physical row-change set, with no credential material, and a failed transaction leaves
-  neither the business change nor its success audit. *Test:* `S6 complete lifecycle audit with
-  enumerated change events`. *Fails if:* a count differs from the declared expectation, an
-  actor/origin is wrong, a sentinel appears, or the rollback probe leaves rows.
+- **S6 — Complete lifecycle audit.** One canonical lifecycle event per create/post/void plus an
+  exactly enumerated physical change set, verified actor and truthful origin on **every**
+  event, no credential material, and a rollback probe proving the business change and its
+  success audit are atomic. *Test:* `S6 …`. *Fails if:* an expectation, actor, origin or
+  sentinel fails, or the rollback leaves rows.
 
-- **S7 — Idempotency.** Replaying the same post (including concurrently) returns the receipt
-  with one journal, one posting event and no added rows, while the same key with different
-  content is refused with `IDEMPOTENCY_CONFLICT`. *Test:* `S7 idempotent replay and conflict
-  refusal`. *Fails if:* duplication occurs, the conflict code is wrong, or the original post
-  control fails.
+- **S7 — Idempotency.** Replaying a post with its key returns the receipt with no added rows; a
+  different key on the same target is `IDEMPOTENCY_CONFLICT`; same key with different content
+  is a conflict; a foreign session is refused. *Test:* `S7 …`. *Fails if:* any of those holds
+  is violated. *Bounded gap:* the concurrent case is a same-key replay after the entry is
+  POSTED, not a barrier-started initial race.
 
-- **S8 — Numbering under concurrency (D-016).** Two overlapping posts receive different,
-  ordered numbers from a locked counter (never `MAX+1`), an abandoned allocation is never
-  reused elsewhere, a later success advances past it, and the high-water mark cannot regress.
-  *Test:* `S8 concurrent numbering and non-reusable allocation`. *Fails if:* numbers collide
-  or go backwards, both requests did not actually overlap, the abandoned identity is reassigned,
-  or the regression `UPDATE` succeeds. Gaps are expressly permitted and never back-filled.
+- **S8 — Numbering under concurrency (D-016).** Numbers come from a **nontransactional consumed
+  identity** (sequence), so a rollback, a failed receipt or an interruption can never put a
+  value back; receipts bind actor/content/scope; hostile reuse is `IDEMPOTENCY_CONFLICT`;
+  re-applying 043 retains receipts and high-water and later allocations continue past them.
+  *Test:* `S8 …`. *Fails if:* a value repeats, the sequence does not advance on failure, or a
+  different actor recovers an allocation. *Bounded gap:* overlap is measured by concurrent
+  in-flight requests, not by database lock instrumentation.
 
-- **S9 — No dishonest pass.** Every refusal carries a specific code and a working permitted
-  control, and an actually performed guard-removal run made the permanent test fail (S4:
-  `500 !== 422`) before restoration made it pass (9/9). *Test:* `S9 refusals are specific and
-  paired with permitted controls` plus the recorded red/green run in the delivery. *Fails if:*
-  a refusal is generic, a control is vacuous, or the mutation does not turn the test red.
+- **S9 — No dishonest pass.** Every refusal has a specific code and a permitted control, and a
+  performed guard-removal made the permanent test fail before restoration made it pass.
+  *Test:* `S9 …` plus the recorded red/green run in the delivery. *Fails if:* a refusal is
+  generic, a control is vacuous, or the mutation does not turn the test red.
 
-**Counting disclosure.** The logical command audit (`tenant_data.audit`) and the physical
-row-change audit (`tenant_data.audit_event`) are independent retained streams: a journal with
-several lines has one logical posting event and separately counted row events, never a claim
-that the database holds only one audit row.
+**Counting disclosure.** `tenant_data.audit` (logical) and `tenant_data.audit_event` (physical)
+are independent retained streams; a multi-line journal has one logical posting event and
+separately counted row events.
 
-**Exclusion.** This slice exercises authorized **direct** posting only. The approval-policy
-review gate and AI-origin no-direct-post rules (D-004/D-005) are not exercised, and a green
-slice does not prove them.
+**Exclusion.** Only authorized **direct** posting is exercised. Approval-policy review and
+AI-origin no-direct-post rules are not proved; a review-required authority is refused
+`APPROVAL_REQUIRED`, never silently posted.

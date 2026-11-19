@@ -103,8 +103,10 @@ export function createPgRepository({
 
     try {
       await client.query(`SET ROLE ${principalRole}`);
-      await client.query('BEGIN');
+      // Uncertainty is recorded BEFORE transaction entry is attempted: an executed BEGIN
+      // whose acknowledgement is lost must never reach an ordinary release.
       entered = true;
+      await client.query('BEGIN');
       if (readOnly) await client.query('SET TRANSACTION READ ONLY');
       const result = await run(client);
       try {
@@ -140,7 +142,10 @@ export function createPgRepository({
         // A confirmed COMMIT stays reported as committed; the cleanup fault is surfaced
         // separately so a caller cannot mistake it for a failed business transaction and
         // retry it into a duplicate. The connection itself is never reused.
-        if (resetFailed) onCleanupFault(new Error('RESET ROLE failed; connection destroyed'));
+        if (resetFailed) {
+          try { onCleanupFault(new Error('RESET ROLE failed; connection destroyed')); }
+          catch { /* an observer must never override destruction or the outcome */ }
+        }
         client.release(true);
       } else {
         client.release();
@@ -432,13 +437,19 @@ export function createPgRepository({
         throw refuse.idempotencyConflict();
       }
 
-      const next = boundedInteger(locked.rows[0].next_number, 'next_number');
+      // Nontransactional consumption: this advance is never rolled back, so a failure
+      // after this point leaves a permanent gap and the value can never be reissued.
+      const consumed = await client.query(
+        'SELECT nextval($1::regclass) AS n', ['tenant_data.document_number_consumption']);
+      const next = boundedInteger(Number(consumed.rows[0].n), 'consumed identity');
       if (next > 999999999) throw refuse.allocatorExhausted();
+      // High-water mirror only: monotonic, guarded by the accepted 040 sequence guard.
       await client.query(
-        `UPDATE tenant_data.document_sequences SET next_number = next_number + 1,
-                updated_at = (extract(epoch FROM now()) * 1000)::bigint, updated_by = $4
+        `UPDATE tenant_data.document_sequences
+            SET next_number = GREATEST(next_number, $4::integer),
+                updated_at = (extract(epoch FROM now()) * 1000)::bigint, updated_by = $5
           WHERE tenant_id = $1 AND company = $2 AND kind = $3`,
-        [ctx.tenantId, company, kind, ctx.actor]);
+        [ctx.tenantId, company, kind, next + 1, ctx.actor]);
       const number = `${kind}${allocator.kindSeparator}${String(next).padStart(6, '0')}`;
       await client.query(
         `INSERT INTO tenant_data.document_numbers

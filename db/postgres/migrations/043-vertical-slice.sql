@@ -185,3 +185,42 @@ REVOKE ALL ON tenant_data.document_allocations FROM saven_auth_service, saven_au
 GRANT SELECT, INSERT ON tenant_data.document_allocations TO saven_customer_app;
 
 COMMIT;
+
+BEGIN;
+
+-- =====================================================================
+-- PIVOT-014 Amendment B — nontransactional consumed identity
+--
+-- A sequence is the only mechanism whose advance survives a rollback, so an identity
+-- consumed by a failed allocation can never be reissued (D-016: gaps stay gaps). The
+-- per-scope counter row becomes a monotonic high-water mirror and is no longer the
+-- source of the number. Existing profile is validated before activation.
+-- =====================================================================
+
+DO $sequence_profile$
+DECLARE
+  v_owner text;
+BEGIN
+  IF to_regclass('tenant_data.document_allocations') IS NULL THEN
+    RAISE EXCEPTION '043 refuses to activate the consumption sequence without the allocation receipt';
+  END IF;
+  IF to_regclass('tenant_data.document_number_consumption') IS NOT NULL THEN
+    SELECT pg_get_userbyid(relowner) INTO v_owner
+    FROM pg_class WHERE oid = to_regclass('tenant_data.document_number_consumption');
+    IF v_owner IS DISTINCT FROM 'saven_migrator' THEN
+      RAISE EXCEPTION '043 refuses an existing consumption sequence owned by %', v_owner;
+    END IF;
+  END IF;
+END
+$sequence_profile$;
+
+CREATE SEQUENCE IF NOT EXISTS tenant_data.document_number_consumption
+  AS integer START WITH 1 INCREMENT BY 1 MINVALUE 1 MAXVALUE 999999999 NO CYCLE;
+ALTER SEQUENCE tenant_data.document_number_consumption OWNER TO saven_migrator;
+REVOKE ALL ON SEQUENCE tenant_data.document_number_consumption FROM PUBLIC;
+GRANT USAGE, SELECT ON SEQUENCE tenant_data.document_number_consumption TO saven_customer_app;
+
+COMMENT ON SEQUENCE tenant_data.document_number_consumption IS
+  'PIVOT-014 Amendment B: nontransactional consumed-identity source. A rollback can never rewind an allocated value; document_sequences.next_number is retained only as a monotonic high-water mirror.';
+
+COMMIT;

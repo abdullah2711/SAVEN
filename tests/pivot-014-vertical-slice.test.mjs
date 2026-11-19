@@ -682,6 +682,23 @@ test('PIVOT-014 authenticated journal lifecycle (create → post → read → vo
         [TENANT_A, reserved.number]);
       assert.deepEqual(others.map(row => row.id), ['s8-abandoned-0001']);
 
+      // Allocation rollback (D-016): a failure after the identity is consumed must leave a
+      // gap and must never put that value back. The receipt NOT NULL constraint forces the
+      // failure after the nontransactional advance.
+      const seqRow = async () => Number((await shortcut(
+        'SELECT last_value FROM tenant_data.document_number_consumption'))[0].last_value);
+      const seqBefore = await seqRow();
+      const refused = await repository.reserveNumber(contextFor,
+        {id: 's8-rollback-0001', company: COMPANY, kind: 'JRN', requestDigest: null}
+      ).then(() => null, error => error);
+      assert.ok(refused, 'a reservation that cannot record its receipt must fail');
+      const seqAfter = await seqRow();
+      assert.ok(seqAfter > seqBefore, 'the consumed identity must not be rolled back');
+      const orphan = await shortcut(
+        `SELECT 1 FROM tenant_data.document_numbers WHERE tenant_id=$1 AND id='s8-rollback-0001'`,
+        [TENANT_A]);
+      assert.equal(orphan.length, 0, 'no number row may exist for the failed reservation');
+
       // Real reapplication probe: re-applying 043 must be idempotent and must retain both
       // the consumed-identity receipts and the counter high-water.
       const receiptsBefore = (await shortcut(

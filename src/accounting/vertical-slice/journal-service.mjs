@@ -92,8 +92,10 @@ export function createJournalService({repository, actions = CANONICAL_ACTIONS, k
     });
     if (replay) return replay;
 
-    // Validation before allocation, inside a business transaction.
+    // Authoritative validation runs inside an owned transaction; the envelope (balance)
+    // is re-derived there from the raw bytes, not accepted from an earlier parse.
     await repository.transaction(ctx, async tx => {
+      assertEnvelope(payload);
       if (post) await requireDirectPostAuthority(ctx, tx, journal);
       else await tx.requireAuthority({...authorityInput(ctx, journal), action: actions.prepare});
       await tx.requireOpenPeriod(journal);
