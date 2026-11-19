@@ -13,3 +13,13 @@ async function checkDirectory(dir){
 for(const dir of ['src','scripts','tests','public','reference'])await checkDirectory(resolve(root,dir));
 JSON.parse(await readFile(resolve(root,'package.json'),'utf8'));
 console.log(`PASS: ${count} JavaScript files parsed; package manifest valid.`);
+
+// PIVOT-014: mandatory execution of the permanent vertical-slice lifecycle test.
+// Existing checks above are preserved unchanged; this test is not skippable and its
+// exit status is the check's exit status. It provisions and destroys its own disposable
+// PostgreSQL cluster and fails nonzero with an actionable error if the local prerequisite
+// is missing. It never invokes this script again.
+const focused = spawnSync(process.execPath, ['--test', resolve(root, 'tests/pivot-014-vertical-slice.test.mjs')], {stdio: 'inherit'});
+if (focused.error) { process.stderr.write(`${focused.error.message}\n`); process.exit(1); }
+if (focused.status !== 0) process.exit(focused.status ?? 1);
+console.log('PASS: PIVOT-014 vertical-slice lifecycle test executed and passed.');
