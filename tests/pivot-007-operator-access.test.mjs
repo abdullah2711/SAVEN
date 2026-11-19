@@ -1,8 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash, generateKeyPairSync, randomBytes, sign} from 'node:crypto';
 import {readFile} from 'node:fs/promises';
+import pg from 'pg';
 import {withPivotDatabase, namespaceSql} from './helpers/pg-pivot-fixture.mjs';
+import {createSessionStore} from '../src/auth/session-store.mjs';
+import {createAccessValidator, createOperatorAccess} from '../src/auth/access.mjs';
+import {createOperatorSupportRead} from '../src/operator/support-read.mjs';
+
+const {Pool} = pg;
 
 // PIVOT-007 revision 1. Every test runs against a disposable PostgreSQL cluster
 // (SAVEN_PIVOT_TEST_CLUSTER=1) using the real installed roles, RLS and SQL.
@@ -485,13 +491,12 @@ test('PIVOT-007 enforces configured issuer, audience, exact assurance, source ag
       UPDATE operator.access_read_policy SET audience = $1 WHERE policy_key = 'operator_read'
     `, [AUDIENCE]);
 
-    await db.adminQuery(`
-      UPDATE operator.access_read_policy SET required_assurance = 'mfa_verified' WHERE policy_key = 'operator_read'
-    `);
-    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_ACCESS_DENIED/);
-    await db.adminQuery(`
-      UPDATE operator.access_read_policy SET required_assurance = 'access_mfa' WHERE policy_key = 'operator_read'
-    `);
+    // A coherent weaker-label policy is rejected at the schema boundary; the fixed
+    // access_mfa invariant is not configurable.
+    await assert.rejects(
+      db.adminQuery(`UPDATE operator.access_read_policy SET required_assurance = 'mfa_verified' WHERE policy_key = 'operator_read'`),
+      /access_read_policy_assurance_access_mfa|access_mfa/,
+    );
 
     await db.adminQuery(`
       UPDATE operator.access_read_policy SET max_source_age_seconds = 30 WHERE policy_key = 'operator_read'
@@ -1067,5 +1072,620 @@ test('PIVOT-007 composes with the accepted 040/041/042 stack and audits customer
     assert.equal(events[0].event, 'TENANT_CHANGE_UPDATE');
 
     assert.equal((await asOperator(db, SESSION, client => read(client))).rowCount, 1);
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// Adapter test harness (real AUTH-007 exchange + restricted logins)
+// ---------------------------------------------------------------------------
+
+function connectionConfig(database, overrides = {}) {
+  return {
+    host: process.env.PGHOST ?? '127.0.0.1',
+    port: Number(process.env.PGPORT ?? 5432),
+    user: process.env.PGUSER ?? 'postgres',
+    password: process.env.PGPASSWORD ?? '',
+    database,
+    max: 4,
+    application_name: 'saven-pivot-007-test',
+    ...overrides,
+  };
+}
+
+async function makeLoginPool(db, roleName, label, {max = 4} = {}) {
+  const login = `saven_p007_${label}_${randomBytes(5).toString('hex')}`;
+  const password = randomBytes(24).toString('base64url');
+  await db.adminQuery(
+    `CREATE ROLE "${login}" LOGIN PASSWORD '${password}' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT NOBYPASSRLS NOREPLICATION`,
+  );
+  await db.adminQuery(`GRANT "${roleName}" TO "${login}"`);
+  const pool = new Pool(connectionConfig(db.database, {user: login, password, max}));
+  return {
+    login,
+    pool,
+    async close() {
+      await pool.end().catch(() => {});
+      await db.adminQuery(`DROP ROLE IF EXISTS "${login}"`).catch(async () => {
+        await db.adminQuery(`REVOKE "${roleName}" FROM "${login}"`).catch(() => {});
+        await db.adminQuery(`DROP ROLE IF EXISTS "${login}"`).catch(() => {});
+      });
+    },
+  };
+}
+
+function makeKeys(kid = 'pivot-007-key') {
+  const {publicKey, privateKey} = generateKeyPairSync('rsa', {modulusLength: 2048});
+  return {kid, key: publicKey, publicKey, privateKey};
+}
+
+function encode(value) {
+  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function makeAssertion({key, subject = SUBJECT, claims = {}} = {}) {
+  const at = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: ISSUER,
+    aud: AUDIENCE,
+    sub: subject,
+    email: 'operator@example.test',
+    iat: at,
+    nbf: at - 1,
+    exp: at + 300,
+    type: 'app',
+    amr: ['mfa'],
+    identity_nonce: randomBytes(12).toString('hex'),
+    ...claims,
+  };
+  const head = {alg: 'RS256', kid: key.kid, typ: 'JWT'};
+  const signingInput = `${encode(head)}.${encode(payload)}`;
+  const signature = sign('RSA-SHA256', Buffer.from(signingInput, 'utf8'), key.privateKey);
+  return `${signingInput}.${signature.toString('base64url')}`;
+}
+
+async function buildAdapterHarness(db, {operatorPoolMax = 4} = {}) {
+  const auth = await makeLoginPool(db, db.roles.authService, 'auth', {max: 4});
+  const operator = await makeLoginPool(db, db.roles.operatorRead, 'op', {max: operatorPoolMax});
+  const clock = () => new Date();
+  const keys = makeKeys();
+  const validator = createAccessValidator({
+    issuer: ISSUER,
+    audience: AUDIENCE,
+    keys: [keys],
+    clock,
+    skewSeconds: 30,
+    maxTokenAgeSeconds: 300,
+  });
+  const store = createSessionStore({connect: () => auth.pool.connect(), clock});
+  const access = createOperatorAccess({
+    validator,
+    store,
+    clock,
+    policy: {requiredAssurance: 'access_mfa'},
+  });
+  const expectedPolicy = {
+    version: 1,
+    issuer: ISSUER,
+    audience: AUDIENCE,
+    requiredAssurance: 'access_mfa',
+    maxSourceAgeSeconds: 300,
+    maxClockSkewSeconds: 60,
+  };
+  const adapter = createOperatorSupportRead({
+    connectOperator: () => operator.pool.connect(),
+    inspectSession: access.inspectSession,
+    expectedPolicy,
+  });
+  return {
+    access,
+    adapter,
+    expectedPolicy,
+    keys,
+    auth,
+    operator,
+    async token() {
+      const exchanged = await access.exchange(makeAssertion({key: keys}));
+      return exchanged.token;
+    },
+    async close() {
+      await operator.close();
+      await auth.close();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Finding 2 residuals: final-clock revalidation and exact writer contract
+// ---------------------------------------------------------------------------
+
+test('PIVOT-007 revalidates the whole authority set after the consent-gate wait', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    // Expiry while blocked on the consent gate: the final clock is sampled after the wait.
+    await db.adminQuery('BEGIN');
+    await db.adminQuery("SELECT pg_advisory_xact_lock(hashtextextended('saven.operator.consent_gate', 0))");
+    await db.adminQuery(`
+      UPDATE auth.sessions SET idle_expires_at = now() + interval '1 second'
+      WHERE id = $1::uuid
+    `, [SESSION]);
+    const expiring = asOperator(db, SESSION, client => read(client));
+    await sleep(1800);
+    await db.adminQuery('COMMIT');
+    await assert.rejects(expiring, /OPERATOR_ACCESS_EXPIRED/);
+
+    // Permitted control: the same wait with a still-current session publishes.
+    await db.adminQuery(`
+      UPDATE auth.sessions SET idle_expires_at = now() + interval '1 hour'
+      WHERE id = $1::uuid
+    `, [SESSION]);
+    await db.adminQuery('BEGIN');
+    await db.adminQuery("SELECT pg_advisory_xact_lock(hashtextextended('saven.operator.consent_gate', 0))");
+    const permitted = asOperator(db, SESSION, client => read(client));
+    await sleep(600);
+    await db.adminQuery('COMMIT');
+    assert.equal((await permitted).rowCount, 1);
+  });
+});
+
+test('PIVOT-007 rejects conditional, column-scoped or re-profiled writer triggers/functions', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    // Same binding and function, but WHEN (false): no lock is acquired.
+    await db.adminQuery(`DROP TRIGGER support_grants_consent_gate_update ON tenant_data.support_grants`);
+    await db.adminQuery(`
+      CREATE TRIGGER support_grants_consent_gate_update
+      BEFORE UPDATE ON tenant_data.support_grants
+      FOR EACH STATEMENT WHEN (false)
+      EXECUTE FUNCTION operator.lock_consent_gate();
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(`DROP TRIGGER support_grants_consent_gate_update ON tenant_data.support_grants`);
+    await db.adminQuery(`
+      CREATE TRIGGER support_grants_consent_gate_update
+      BEFORE UPDATE ON tenant_data.support_grants
+      FOR EACH STATEMENT EXECUTE FUNCTION operator.lock_consent_gate();
+    `);
+
+    // Re-profiled gate function (changed search_path) is refused.
+    await db.adminQuery(`ALTER FUNCTION operator.lock_consent_gate() SET search_path = public`);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(`ALTER FUNCTION operator.lock_consent_gate() SET search_path = pg_catalog`);
+
+    // A conditional auth/identity trigger is refused as well.
+    await db.adminQuery(`DROP TRIGGER access_identity_authority_gate_update ON operator.access_identity`);
+    await db.adminQuery(`
+      CREATE TRIGGER access_identity_authority_gate_update
+      BEFORE UPDATE ON operator.access_identity
+      FOR EACH STATEMENT WHEN (false)
+      EXECUTE FUNCTION auth.lock_authority_gate();
+    `);
+    await assert.rejects(asOperator(db, SESSION, client => read(client)), /OPERATOR_AUTHORITY_PROTOCOL_INVALID/);
+    await db.adminQuery(`DROP TRIGGER access_identity_authority_gate_update ON operator.access_identity`);
+    await db.adminQuery(`
+      CREATE TRIGGER access_identity_authority_gate_update
+      BEFORE UPDATE ON operator.access_identity
+      FOR EACH STATEMENT EXECUTE FUNCTION auth.lock_authority_gate();
+    `);
+  });
+});
+
+test('PIVOT-007 denial role evidence is current, never historical authorization', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db, {expiresAt: "now() - interval '1 minute'", startsAt: "now() - interval '2 hours'"});
+
+    const deny = () => asOperator(db, SESSION, client => client.query(DENY_SQL, [
+      T1, PROOF, 'journals', ACTION, null, 'OPERATOR_GRANT_REQUIRED', 'expired grant', null,
+    ]), {commit: true});
+
+    await deny();
+    let row = (await auditRows(db)).at(-1);
+    assert.equal(row.payload_jsonb.attribution, 'verified');
+
+    await db.adminQuery(`UPDATE auth.roles SET is_active = false WHERE role_id = 'operator_admin'`);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.actor_id, 'unverified');
+    assert.equal(row.payload_jsonb.attribution, 'unverified');
+    await db.adminQuery(`UPDATE auth.roles SET is_active = true WHERE role_id = 'operator_admin'`);
+
+    await db.adminQuery(`UPDATE auth.roles SET is_operator = false WHERE role_id = 'operator_admin'`);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.payload_jsonb.attribution, 'unverified');
+    await db.adminQuery(`UPDATE auth.roles SET is_operator = true WHERE role_id = 'operator_admin'`);
+
+    await db.adminQuery(`UPDATE auth.roles SET requires_mfa = false WHERE role_id = 'operator_admin'`);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.payload_jsonb.attribution, 'unverified');
+    await db.adminQuery(`UPDATE auth.roles SET requires_mfa = true WHERE role_id = 'operator_admin'`);
+
+    await db.adminQuery(`
+      UPDATE auth.roles SET effective_from = now() - interval '1 hour', effective_to = now() - interval '1 minute'
+      WHERE role_id = 'operator_admin'
+    `);
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.payload_jsonb.attribution, 'unverified');
+    await db.adminQuery(`
+      UPDATE auth.roles SET effective_from = now(), effective_to = NULL WHERE role_id = 'operator_admin'
+    `);
+
+    await deny();
+    row = (await auditRows(db)).at(-1);
+    assert.equal(row.payload_jsonb.attribution, 'verified');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Finding 1: publication adapter
+// ---------------------------------------------------------------------------
+
+test('PIVOT-007 adapter publishes rows only after COMMIT through real AUTH-007 exchange', async () => {
+  await withPivotDatabase({sqlFiles: fullSchemaFiles, adminSqlFiles: fullAdminSqlFiles}, async db => {
+    await seedTenant(db, {journals: [{id: 'adapter-j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+    const dispatcher = await readFile(new URL('../db/postgres/40-triggers.sql', import.meta.url), 'utf8');
+    await db.adminQuery(namespaceSql(dispatcher, db.roles));
+    await applyFunctionsPayload(db);
+    await seedPolicy(db);
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const token = await harness.token();
+      const order = [];
+      let commitSeen = false;
+      const adapter = createOperatorSupportRead({
+        connectOperator: async () => {
+          const client = await harness.operator.pool.connect();
+          return {
+            query: async (sql, params) => {
+              order.push(sql.trim().split(/\s+/)[0].toUpperCase());
+              if (sql === 'COMMIT') commitSeen = true;
+              return client.query(sql, params);
+            },
+            release: destroy => client.release(destroy),
+          };
+        },
+        inspectSession: harness.access.inspectSession,
+        expectedPolicy: harness.expectedPolicy,
+      });
+
+      const result = await adapter.read({
+        token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'support case adapter',
+      });
+      assert.deepEqual(result.rows.map(row => row.id), ['adapter-j1']);
+      assert.equal(commitSeen, true);
+      assert.deepEqual(order, ['BEGIN', 'SELECT', 'SELECT', 'COMMIT']);
+
+      const audit = await auditRows(db);
+      assert.equal(audit.length, 1);
+      assert.equal(audit[0].action, 'OPERATOR_READ');
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test('PIVOT-007 adapter withholds rows until COMMIT and discards them on COMMIT failure', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const token = await harness.token();
+
+      // Hold COMMIT; the adapter promise must stay unresolved and rows private.
+      let releaseCommit;
+      const commitGate = new Promise(resolve => {
+        releaseCommit = resolve;
+      });
+      let resolved = false;
+      const gated = createOperatorSupportRead({
+        connectOperator: async () => {
+          const client = await harness.operator.pool.connect();
+          return {
+            query: async (sql, params) => {
+              if (sql === 'COMMIT') await commitGate;
+              return client.query(sql, params);
+            },
+            release: destroy => client.release(destroy),
+          };
+        },
+        inspectSession: harness.access.inspectSession,
+        expectedPolicy: harness.expectedPolicy,
+      });
+      const pending = gated.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'gate'})
+        .then(value => {
+          resolved = true;
+          return value;
+        });
+      await sleep(250);
+      assert.equal(resolved, false, 'rows must not be published before COMMIT');
+      releaseCommit();
+      assert.equal((await pending).rowCount, 1);
+
+      // COMMIT failure: rows are discarded, the client destroyed and the failure observable.
+      let commitAttempts = 0;
+      const failing = createOperatorSupportRead({
+        connectOperator: async () => {
+          const client = await harness.operator.pool.connect();
+          return {
+            query: async (sql, params) => {
+              if (sql === 'COMMIT' && commitAttempts++ === 0) {
+                throw new Error('simulated COMMIT uncertainty');
+              }
+              return client.query(sql, params);
+            },
+            release: destroy => client.release(destroy),
+          };
+        },
+        inspectSession: harness.access.inspectSession,
+        expectedPolicy: harness.expectedPolicy,
+      });
+      await assert.rejects(
+        failing.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'commit failure'}),
+        error => error.code === 'OPERATOR_PUBLICATION_UNCERTAIN' && Array.isArray(error.denialEvidence) === false,
+      );
+      const audit = await auditRows(db);
+      assert.equal(audit.filter(row => row.action === 'OPERATOR_READ').length, 1);
+      assert.equal(audit.filter(row => row.action === 'OPERATOR_READ_DENIED').length, 1);
+      assert.equal(audit.at(-1).payload_jsonb.denialCode, 'OPERATOR_PUBLICATION_UNCERTAIN');
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test('PIVOT-007 adapter logs refusals durably and reuses a size-one clean borrower', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const harness = await buildAdapterHarness(db, {operatorPoolMax: 1});
+    try {
+      const token = await harness.token();
+
+      await db.adminQuery(`
+        UPDATE tenant_data.support_grants SET revoked_at = now()
+        WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+      `, [T1]);
+      await assert.rejects(
+        harness.adapter.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'revoked'}),
+        error => error.code === 'OPERATOR_GRANT_REQUIRED' && error.denialEvidence?.committed === true,
+      );
+      let audit = await auditRows(db);
+      assert.equal(audit.length, 1);
+      assert.equal(audit[0].action, 'OPERATOR_READ_DENIED');
+      assert.equal(audit[0].payload_jsonb.attribution, 'verified');
+      const serialized = JSON.stringify(audit[0]);
+      assert.equal(serialized.includes(PROOF), false);
+      assert.equal(serialized.includes(BEARER), false);
+
+      await db.adminQuery(`
+        UPDATE tenant_data.support_grants SET revoked_at = NULL
+        WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+      `, [T1]);
+      const result = await harness.adapter.read({
+        token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'clean borrower',
+      });
+      assert.equal(result.rowCount, 1);
+      audit = await auditRows(db);
+      assert.equal(audit.filter(row => row.action === 'OPERATOR_READ').length, 1);
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test('PIVOT-007 adapter exposes denial-logging failure without suppressing the refusal', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db, {expiresAt: "now() - interval '1 minute'", startsAt: "now() - interval '2 hours'"});
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const token = await harness.token();
+      await db.adminQuery(`REVOKE INSERT ON operator.operator_audit FROM "${db.roles.operatorDefiner}"`);
+      await assert.rejects(
+        harness.adapter.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'denial failure'}),
+        error => error.code === 'OPERATOR_GRANT_REQUIRED'
+          && error.denialLoggingFailed === true
+          && error.denialEvidence?.committed === false,
+      );
+      assert.equal((await auditRows(db)).length, 0);
+      await db.adminQuery(`GRANT INSERT ON operator.operator_audit TO "${db.roles.operatorDefiner}"`);
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test('PIVOT-007 adapter refuses policy drift before COMMIT and keeps rows private', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const token = await harness.token();
+      const drifted = createOperatorSupportRead({
+        connectOperator: () => harness.operator.pool.connect(),
+        inspectSession: harness.access.inspectSession,
+        expectedPolicy: {...harness.expectedPolicy, maxSourceAgeSeconds: 60},
+      });
+      await assert.rejects(
+        drifted.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'drift'}),
+        error => error.code === 'OPERATOR_POLICY_DRIFT' && error.denialEvidence?.committed === true,
+      );
+      const audit = await auditRows(db);
+      assert.equal(audit.filter(row => row.action === 'OPERATOR_READ').length, 0);
+      assert.equal(audit.at(-1).payload_jsonb.denialCode, 'OPERATOR_POLICY_DRIFT');
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test('PIVOT-007 adapter rejects unverified bearers and never exposes bearer material', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const forged = 'forged-bearer-value-that-is-not-a-session';
+      let failure;
+      try {
+        await harness.adapter.read({token: forged, tenantId: T1, resource: 'journals', action: ACTION, reason: 'forged'});
+      } catch (error) {
+        failure = error;
+      }
+      assert.ok(failure);
+      assert.equal(failure.code, 'OPERATOR_ADMISSION_DENIED');
+      assert.equal(failure.denialEvidence?.committed, true);
+      assert.equal(failure.denialLoggingFailed, false);
+      const serialized = JSON.stringify({message: failure.message, code: failure.code});
+      assert.equal(serialized.includes(forged), false);
+      const audit = await auditRows(db);
+      assert.equal(audit.length, 1);
+      assert.equal(audit[0].actor_id, 'unverified');
+      assert.equal(audit[0].payload_jsonb.claimedSubject, null);
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+
+test('PIVOT-007 adapter reserves customer consent through publication COMMIT', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db);
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const token = await harness.token();
+      let releaseCommit;
+      const commitGate = new Promise(resolve => {
+        releaseCommit = resolve;
+      });
+      const adapter = createOperatorSupportRead({
+        connectOperator: async () => {
+          const client = await harness.operator.pool.connect();
+          return {
+            query: async (sql, params) => {
+              if (sql === 'COMMIT') await commitGate;
+              return client.query(sql, params);
+            },
+            release: destroy => client.release(destroy),
+          };
+        },
+        inspectSession: harness.access.inspectSession,
+        expectedPolicy: harness.expectedPolicy,
+      });
+
+      const pending = adapter.read({
+        token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'reservation through commit',
+      });
+      await sleep(300);
+
+      // The read holds the consent gate until COMMIT, so revocation must block.
+      await db.adminQuery(`SET lock_timeout = '250ms'`);
+      await assert.rejects(
+        db.adminQuery(`
+          UPDATE tenant_data.support_grants SET revoked_at = now()
+          WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+        `, [T1]),
+        /lock timeout/,
+      );
+      await db.adminQuery('RESET lock_timeout');
+
+      releaseCommit();
+      const result = await pending;
+      assert.equal(result.rowCount, 1);
+      assert.equal((await auditRows(db)).filter(row => row.action === 'OPERATOR_READ').length, 1);
+
+      // After publication COMMIT the writer proceeds and the next read observes it.
+      await db.adminQuery(`
+        UPDATE tenant_data.support_grants SET revoked_at = now()
+        WHERE tenant_id = $1::uuid AND grant_id = 'grant-1'
+      `, [T1]);
+      await assert.rejects(
+        harness.adapter.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'after revoke'}),
+        error => error.code === 'OPERATOR_GRANT_REQUIRED',
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test('PIVOT-007 adapter survives a rollback fault and still records the refusal', async () => {
+  await withPivotDatabase({sqlFiles: schemaFiles, adminSqlFiles}, async db => {
+    await seedPolicy(db);
+    await seedTenant(db, {journals: [{id: 'j1', company: 'alpha', lines: [{debit: 1}, {account: '4000', credit: 1}]}]});
+    await seedOperator(db);
+    await seedGrant(db, {expiresAt: "now() - interval '1 minute'", startsAt: "now() - interval '2 hours'"});
+
+    const harness = await buildAdapterHarness(db);
+    try {
+      const token = await harness.token();
+      let rollbackAttempts = 0;
+      const adapter = createOperatorSupportRead({
+        connectOperator: async () => {
+          const client = await harness.operator.pool.connect();
+          return {
+            query: async (sql, params) => {
+              if (sql === 'ROLLBACK' && rollbackAttempts++ === 0) {
+                throw new Error('simulated rollback failure');
+              }
+              return client.query(sql, params);
+            },
+            release: destroy => client.release(destroy),
+          };
+        },
+        inspectSession: harness.access.inspectSession,
+        expectedPolicy: harness.expectedPolicy,
+      });
+
+      await assert.rejects(
+        adapter.read({token, tenantId: T1, resource: 'journals', action: ACTION, reason: 'rollback fault'}),
+        error => error.code === 'OPERATOR_GRANT_REQUIRED'
+          && error.denialEvidence?.committed === true,
+      );
+      const audit = await auditRows(db);
+      assert.equal(audit.filter(row => row.action === 'OPERATOR_READ').length, 0);
+      assert.equal(audit.filter(row => row.action === 'OPERATOR_READ_DENIED').length, 1);
+      assert.equal(audit.at(-1).payload_jsonb.attribution, 'verified');
+    } finally {
+      await harness.close();
+    }
   });
 });

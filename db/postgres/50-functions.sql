@@ -134,6 +134,7 @@ CREATE TABLE operator.access_read_policy (
   CONSTRAINT access_read_policy_issuer_not_blank CHECK (length(btrim(issuer)) BETWEEN 1 AND 320),
   CONSTRAINT access_read_policy_audience_not_blank CHECK (length(btrim(audience)) BETWEEN 1 AND 320),
   CONSTRAINT access_read_policy_assurance_not_blank CHECK (length(btrim(required_assurance)) BETWEEN 1 AND 80),
+  CONSTRAINT access_read_policy_assurance_access_mfa CHECK (required_assurance = 'access_mfa'),
   CONSTRAINT access_read_policy_source_age_positive CHECK (max_source_age_seconds > 0),
   CONSTRAINT access_read_policy_skew_nonnegative CHECK (max_clock_skew_seconds >= 0),
   CONSTRAINT access_read_policy_window_order CHECK (effective_to IS NULL OR effective_to > effective_from)
@@ -603,6 +604,30 @@ BEGIN
     RAISE EXCEPTION 'OPERATOR_AUTHORITY_PROTOCOL_INVALID: the consent-writer gate is missing or misbound';
   END IF;
 
+  -- Exact function profile for both gates: no arguments, trigger return, invoker,
+  -- reviewed search_path, plpgsql and migrator ownership.
+  FOR expected IN
+    SELECT * FROM (VALUES
+      ('saven_migrator', v_gate, 'auth.lock_authority_gate'),
+      ('saven_migrator', v_consent, 'operator.lock_consent_gate')
+    ) AS f(expected_owner, function_oid, function_name)
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_proc p
+      JOIN pg_language l ON l.oid = p.prolang
+      WHERE p.oid = expected.function_oid
+        AND p.prorettype = 'trigger'::regtype
+        AND p.pronargs = 0
+        AND p.prosecdef = false
+        AND p.proconfig = ARRAY['search_path=pg_catalog']
+        AND l.lanname = 'plpgsql'
+        AND pg_get_userbyid(p.proowner) = expected.expected_owner
+    ) THEN
+      RAISE EXCEPTION 'OPERATOR_AUTHORITY_PROTOCOL_INVALID: % does not match the reviewed trigger-function profile', expected.function_name;
+    END IF;
+  END LOOP;
+
   FOR expected IN
     SELECT * FROM (VALUES
       ('auth', 'tenant_membership', 'tenant_membership_authority_gate_insert', 6, v_gate),
@@ -634,8 +659,14 @@ BEGIN
         AND t.tgenabled = 'O'
         AND t.tgfoid = expected.function_oid
         AND t.tgtype = expected.expected_type
+        AND t.tgqual IS NULL
+        AND t.tgnargs = 0
+        AND t.tgattr = ''::int2vector
+        AND t.tgdeferrable = false
+        AND t.tginitdeferred = false
+        AND t.tgconstraint = 0
     ) THEN
-      RAISE EXCEPTION 'OPERATOR_AUTHORITY_PROTOCOL_INVALID: required protection %.%.% is missing, disabled, replica-only or misbound',
+      RAISE EXCEPTION 'OPERATOR_AUTHORITY_PROTOCOL_INVALID: required protection %.%.% is missing, disabled, replica-only, conditional or misbound',
         expected.schema_name, expected.table_name, expected.trigger_name;
     END IF;
   END LOOP;
@@ -714,11 +745,13 @@ DECLARE
   v_session_user uuid;
   v_session_credential bigint;
   v_session_token text;
+  v_policy_version integer;
   v_policy_issuer text;
   v_policy_audience text;
   v_policy_assurance text;
   v_policy_source_age integer;
   v_policy_skew integer;
+  v_policy_fingerprint text;
   v_now timestamptz;
   v_previous_tenant text;
   v_grant_row record;
@@ -817,10 +850,14 @@ BEGIN
     RAISE EXCEPTION 'OPERATOR_ACCESS_DENIED: the mapped operator role no longer exists';
   END IF;
 
-  SELECT p.issuer, p.audience, p.required_assurance,
-         p.max_source_age_seconds, p.max_clock_skew_seconds
-    INTO v_policy_issuer, v_policy_audience, v_policy_assurance,
-         v_policy_source_age, v_policy_skew
+  SELECT p.version, p.issuer, p.audience, p.required_assurance,
+         p.max_source_age_seconds, p.max_clock_skew_seconds,
+         encode(sha256(convert_to(
+           'operator_read|v' || p.version::text || '|' || p.issuer || '|' || p.audience || '|' ||
+           p.required_assurance || '|' || p.max_source_age_seconds::text || '|' ||
+           p.max_clock_skew_seconds::text, 'UTF8')), 'hex')
+    INTO v_policy_version, v_policy_issuer, v_policy_audience, v_policy_assurance,
+         v_policy_source_age, v_policy_skew, v_policy_fingerprint
   FROM operator.access_read_policy p
   WHERE p.policy_key = 'operator_read'
     AND p.is_active
@@ -831,8 +868,17 @@ BEGIN
   IF NOT FOUND THEN
     RAISE EXCEPTION 'OPERATOR_POLICY_REQUIRED: no active operator read policy is configured';
   END IF;
+  IF v_policy_assurance IS DISTINCT FROM 'access_mfa' THEN
+    RAISE EXCEPTION 'OPERATOR_POLICY_REQUIRED: the operator read policy must require access_mfa';
+  END IF;
 
-  -- Trusted time is sampled only after all blocking authority acquisitions.
+  -- Customer consent serializes against its writers through the consent gate. This is
+  -- the LAST blocking acquisition before final trusted-time checks.
+  v_previous_tenant := current_setting('app.current_tenant_id', true);
+  PERFORM set_config('app.current_tenant_id', p_tenant::text, true);
+  PERFORM pg_advisory_xact_lock_shared(hashtextextended('saven.operator.consent_gate', 0));
+
+  -- Trusted time is sampled only after every blocking authority/consent acquisition.
   v_now := clock_timestamp();
 
   IF v_subject IS NULL
@@ -872,11 +918,6 @@ BEGIN
   IF v_binding_expires IS NULL OR v_binding_expires <= v_now THEN
     RAISE EXCEPTION 'OPERATOR_ACCESS_EXPIRED: the verified Access assertion has expired';
   END IF;
-
-  -- Customer consent serializes against its writers through the consent gate.
-  v_previous_tenant := current_setting('app.current_tenant_id', true);
-  PERFORM set_config('app.current_tenant_id', p_tenant::text, true);
-  PERFORM pg_advisory_xact_lock_shared(hashtextextended('saven.operator.consent_gate', 0));
 
   v_grant_id := NULL;
   v_grant_companies := NULL;
@@ -1072,6 +1113,22 @@ BEGIN
     'grantId', v_grant_id,
     'rowCount', v_count,
     'truncated', v_truncated,
+    'policy', jsonb_build_object(
+      'key', 'operator_read',
+      'version', v_policy_version,
+      'issuer', v_policy_issuer,
+      'audience', v_policy_audience,
+      'requiredAssurance', v_policy_assurance,
+      'maxSourceAgeSeconds', v_policy_source_age,
+      'maxClockSkewSeconds', v_policy_skew,
+      'fingerprint', v_policy_fingerprint
+    ),
+    'operator', jsonb_build_object(
+      'subject', v_subject,
+      'roleId', v_binding_role,
+      'mappingEpoch', v_binding_epoch,
+      'assurance', v_binding_assurance
+    ),
     'rows', v_rows
   );
 END;
@@ -1112,8 +1169,8 @@ DECLARE
   v_now timestamptz;
   v_binding record;
   v_user record;
-  v_session record;
   v_role record;
+  v_current_role record;
   v_policy record;
 BEGIN
   IF p_denial_code IS NULL OR btrim(p_denial_code) = '' OR length(p_denial_code) > 80 THEN
@@ -1158,11 +1215,16 @@ BEGIN
                ai.assurance_class, ai.effective_from, ai.effective_to
           INTO v_role
         FROM operator.access_identity ai WHERE ai.subject = v_binding.subject;
+        SELECT r.is_operator, r.is_active, r.requires_mfa,
+               r.effective_from, r.effective_to
+          INTO v_current_role
+        FROM auth.roles r WHERE r.role_id = v_role.operator_role_id;
         SELECT p.issuer, p.audience, p.required_assurance, p.max_source_age_seconds,
                p.max_clock_skew_seconds
           INTO v_policy
         FROM operator.access_read_policy p
         WHERE p.policy_key = 'operator_read' AND p.is_active
+          AND p.required_assurance = 'access_mfa'
           AND p.effective_from <= clock_timestamp()
           AND (p.effective_to IS NULL OR p.effective_to > clock_timestamp())
         ORDER BY p.version DESC LIMIT 1;
@@ -1175,6 +1237,11 @@ BEGIN
            AND v_binding.mapping_epoch = v_role.mapping_epoch
            AND v_binding.operator_role_id = v_role.operator_role_id
            AND v_binding.assurance_class = v_role.assurance_class
+           AND v_current_role.is_operator IS TRUE
+           AND v_current_role.is_active IS TRUE
+           AND v_current_role.requires_mfa IS TRUE
+           AND v_current_role.effective_from <= v_now
+           AND (v_current_role.effective_to IS NULL OR v_current_role.effective_to > v_now)
            AND v_binding.issuer = v_policy.issuer
            AND v_binding.audience = v_policy.audience
            AND v_binding.assurance_class = v_policy.required_assurance
