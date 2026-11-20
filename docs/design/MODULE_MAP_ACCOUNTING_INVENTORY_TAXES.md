@@ -1,5 +1,8 @@
 # SAVEN module map — Accounting, Inventory, Taxes
 
+> Readable, comment-friendly version: `MODULE_MAP.md`. This file keeps the
+> diagrams for visual reference.
+
 The three modules a service business or a trading business cannot run without.
 Everything else (Selling, Buying, POS, Manufacturing, Payroll) is workflow layered
 on top of the same documents: an invoice, a payment, a stock movement, a tax line.
