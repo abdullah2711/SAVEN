@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 10. Created: 19 November 2026 (Asia/Karachi).
+Version: 11. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -121,3 +121,7 @@ Review: `2c248ec` — PIVOT-007 revision 3, ACCEPT. No new defect pattern; apply
 ## Version 10 — 20 November 2026 (Asia/Karachi)
 
 Review: `719034b` — PIVOT-008 initial delivery, REVISE. R74 — A security coverage gate must enforce its installed-surface obligations at its own CLI/query boundary: absent objects cannot disappear from the obligation set, policy counts cannot replace command/role-specific effective isolation, and catalog mutation diagnostics cannot replace restricted-runtime behavioral controls. R75 — Resolve effective privilege defaults (NULL ACL is not no access), column privileges, associated login/SET ROLE authority and transitive view/child paths; compare accepted function/owner/writer-protocol profiles rather than names or generic flags alone. Reapply R07/R71 to owned temporary-database cleanup across failed creation, connection failure and cleanup failure, without process exit bypassing disposal or deletion of an unowned collision.
+
+## Version 11 — 20 November 2026 (Asia/Karachi)
+
+Review: `3b23f41` — PIVOT-008 R1, REVISE. No new defect class: reapply R74/R75 to object-kind/install-binding validation, canonical effective policy contracts rather than substring matches, runtime classification before unsafe-attribute rejection, full mixed-owner dependency paths and write-only child authority, and dedicated owner privilege/column profiles. Reapply R08 to preserve schema-CREATE detection during a coverage rewrite, and R09/R11 to require the actual target gate and normal isolation assertion to go red under a weak-policy mutation instead of treating an expected leak as closure. Finding 6 owned cleanup is closed for reported paths; do not erase that disposition in later reviews.
