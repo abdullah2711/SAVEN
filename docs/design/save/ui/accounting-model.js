@@ -16,38 +16,34 @@ const amt=(n)=>n.toFixed(2);
 const dayOf=i=>String(1+Math.floor(i*29/195)).padStart(2,'0');
 
 export const operatingJournals=(()=>{
-  const out=[];
-  const push=(doc)=>{out.push(doc);};
-  let seq={SI:100,PY:100,PI:100,JV:100};
   const customers=SAMPLE_CUSTOMERS, suppliers=SAMPLE_SUPPLIERS;
-
-  // 70 sales invoices: Dr receivables, Cr revenue + output tax
-  for(let i=0;i<70;i++){
-    const gross=r2(25000+seeded()*50000), net=r2(gross/1.1), tax=r2(gross-net);
-    const id='DEMO-SI-'+String(++seq.SI);
-    push({id,date:'2026-11-'+dayOf(out.length),narrative:'Service invoice',party:customers[i%customers.length],source:'Sales invoice',lines:[line('1100',amt(gross),'0.00'),line('4000','0.00',amt(net)),line('2200','0.00',amt(tax))]});
-  }
-  // 55 receipts: Dr bank, Cr receivables
-  for(let i=0;i<55;i++){
-    const value=r2(30000+seeded()*55000);
-    push({id:'DEMO-PY-'+String(++seq.PY),date:'2026-11-'+dayOf(out.length),narrative:'Invoice settlement',party:customers[i%customers.length],source:'Payment',lines:[line('1010',amt(value),'0.00'),line('1100','0.00',amt(value))]});
-  }
-  // 40 supplier bills: Dr operating expenses, Cr payables
-  for(let i=0;i<40;i++){
-    const value=r2(20000+seeded()*50000);
-    push({id:'DEMO-PI-'+String(++seq.PI),date:'2026-11-'+dayOf(out.length),narrative:'Purchased services',party:suppliers[i%suppliers.length],source:'Supplier bill',lines:[line('5000',amt(value),'0.00'),line('2100','0.00',amt(value))]});
-  }
-  // 24 supplier payments: Dr payables, Cr bank
-  for(let i=0;i<24;i++){
-    const value=r2(30000+seeded()*50000);
-    push({id:'DEMO-JV-'+String(++seq.JV),date:'2026-11-'+dayOf(out.length),narrative:'Supplier payment',party:suppliers[i%suppliers.length],source:'Journal',lines:[line('2100',amt(value),'0.00'),line('1010','0.00',amt(value))]});
-  }
-  // 6 running costs paid from the bank
-  for(let i=0;i<6;i++){
+  // Type tokens, then a deterministic shuffle so the month interleaves instead
+  // of posting all sales before all receipts.
+  const kinds=[...Array(70).fill('sale'),...Array(55).fill('receipt'),...Array(40).fill('bill'),...Array(24).fill('payment'),...Array(6).fill('expense')];
+  for(let i=kinds.length-1;i>0;i--){const j=Math.floor(seeded()*(i+1));[kinds[i],kinds[j]]=[kinds[j],kinds[i]];}
+  const docs=kinds.map((kind,i)=>{
+    const day=String(1+Math.floor(i*29/kinds.length)).padStart(2,'0');
+    const date='2026-11-'+day;
+    if(kind==='sale'){
+      const gross=r2(25000+seeded()*50000), net=r2(gross/1.1), tax=r2(gross-net);
+      return {id:'DEMO-SI-'+String(100+i),date,narrative:'Service invoice',party:customers[i%customers.length],source:'Sales invoice',lines:[line('1100',amt(gross),'0.00'),line('4000','0.00',amt(net)),line('2200','0.00',amt(tax))]};
+    }
+    if(kind==='receipt'){
+      const value=r2(30000+seeded()*55000);
+      return {id:'DEMO-PY-'+String(100+i),date,narrative:'Invoice settlement',party:customers[i%customers.length],source:'Payment',lines:[line('1010',amt(value),'0.00'),line('1100','0.00',amt(value))]};
+    }
+    if(kind==='bill'){
+      const value=r2(20000+seeded()*50000);
+      return {id:'DEMO-PI-'+String(100+i),date,narrative:'Purchased services',party:suppliers[i%suppliers.length],source:'Supplier bill',lines:[line('5000',amt(value),'0.00'),line('2100','0.00',amt(value))]};
+    }
+    if(kind==='payment'){
+      const value=r2(30000+seeded()*50000);
+      return {id:'DEMO-JV-'+String(100+i),date,narrative:'Supplier payment',party:suppliers[i%suppliers.length],source:'Journal',lines:[line('2100',amt(value),'0.00'),line('1010','0.00',amt(value))]};
+    }
     const value=r2(60000+seeded()*80000);
-    push({id:'DEMO-JV-'+String(++seq.JV),date:'2026-11-'+dayOf(out.length),narrative:['Office rent','Payroll','Utilities','Insurance','Freight','Maintenance'][i],party:'Internal',source:'Journal',lines:[line('5000',amt(value),'0.00'),line('1010','0.00',amt(value))]});
-  }
-  return out;
+    return {id:'DEMO-JV-'+String(500+i),date,narrative:['Office rent','Payroll','Utilities','Insurance','Freight','Maintenance'][i%6],party:'Internal',source:'Journal',lines:[line('5000',amt(value),'0.00'),line('1010','0.00',amt(value))]};
+  });
+  return docs.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
 })();
 
 export function fixture(company){return company==='Northstar Trading'?journals.concat(operatingJournals):[];}

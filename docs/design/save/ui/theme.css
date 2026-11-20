@@ -29,3 +29,26 @@ dialog{padding:0;border:0;border-radius:15px;background:var(--surface);color:var
 .crumbs .ui-icon{width:17px;height:17px}
 
 .setup-lines input,.setup-lines select{min-width:105px}.setup-lines td:first-child select{min-width:190px}.opening-control{display:grid;grid-template-columns:minmax(100px,1fr) repeat(2,minmax(90px,1fr)) auto;gap:16px;align-items:center;padding:16px 0;font-size:12px}.opening-control strong{text-transform:capitalize}.opening-control+.opening-control{border-top:1px solid var(--line)}@media(max-width:800px){.opening-control{grid-template-columns:1fr 1fr}}
+
+/* Keep every module reachable in the rail without scrolling on a 900px viewport. */
+.nav-item{min-height:36px;padding:8px 15px}
+.nav-label{margin:16px 0 6px}
+.sidebar nav{overscroll-behavior:contain}
+/* Sidebar collapse control carries the brand mark. */
+.desktop-collapse .brand-logo{mask-size:contain;mask-repeat:no-repeat;mask-position:center}
+
+/* --- Accounting overview additions. Same tokens, same rhythm. ------------- */
+.overview-actions{margin:0 0 18px}
+.action-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:26px}
+.action-groups .eyebrow{margin-bottom:6px}
+.quiet-row--tight{padding:9px 0}
+.eyebrow--section{margin:18px 0 8px}
+.card-actions{margin-top:10px}
+.grow{flex:1}
+.overview-panel{align-self:start}
+.rail-toggle-logo{width:22px;height:18px;background:var(--plum);mask-size:contain;mask-repeat:no-repeat;mask-position:center}
+@media(max-width:1100px){.action-groups{grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.action-groups{grid-template-columns:1fr}}
+
+/* Below 1420px the journal register needs the full width, so that row stacks. */
+@media(max-width:1420px){.overview-stack{grid-template-columns:minmax(0,1fr)}}

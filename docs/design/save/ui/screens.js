@@ -4,6 +4,8 @@
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
 import {fixture,trial,statements} from './accounting-model.js';
+import {icon} from './icons.js';
+import {catalog} from './catalog.js';
 
 const num = (v) => Number(String(v ?? '').replace(/[^0-9.-]/g, '')) || 0;
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -58,18 +60,114 @@ export function createScreens({getCompany, range, navigate, notify}) {
   const s = () => statements(fixture(getCompany()), range());
 
   /* ------------------------------------------------------------------ overview */
+  // A 30-day cash series computed from the same documents the ledger uses.
+  function cashSeries() {
+    const docs = fixture(getCompany()).filter((d) => d.date >= '2026-11-01' && d.date <= '2026-11-30');
+    const byDay = new Map();
+    for (const d of docs) {
+      const flow = d.lines.filter((l) => l.account === '1010' || l.account === '1000')
+        .reduce((n, l) => n + num(l.debit) - num(l.credit), 0);
+      byDay.set(d.date, (byDay.get(d.date) || 0) + flow);
+    }
+    const out = [];
+    let run = 0;
+    for (let i = 1; i <= 30; i++) {
+      const key = '2026-11-' + String(i).padStart(2, '0');
+      run = round2(run + (byDay.get(key) || 0));
+      out.push({ date: key, value: run });
+    }
+    return out;
+  }
+
+  function sparkline() {
+    const points = cashSeries();
+    const w = 560, h = 132, min = Math.min(...points.map((p) => p.value)), max = Math.max(...points.map((p) => p.value));
+    const span = max - min || 1;
+    const x = (i) => (i / (points.length - 1)) * w;
+    const y = (v) => h - ((v - min) / span) * (h - 12) - 6;
+    const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const area = `${line} L${w},${h} L0,${h} Z`;
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Cash movement for November 2026">
+      <path d="${area}" fill="var(--accent)" opacity="0.08"></path>
+      <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></path>
+      <circle cx="${x(points.length - 1)}" cy="${y(points[points.length - 1].value)}" r="3.2" fill="var(--accent)"></circle>
+    </svg>
+    <div class="ledger-basis"><span>1 Nov 2026</span><span>30 Nov 2026</span></div>`;
+  }
+
+  const MODULE_ACTIONS = {
+    accounting: [['Journal entry', 'accounting', 'editor'], ['General ledger', 'accounting', 'ledger'], ['Trial balance', 'accounting', 'trial'], ['Chart of accounts', 'accounting', 'coa']],
+    banking: [['Cash and bank', 'banking', 'workspace'], ['Reconciliation', 'banking', 'workspace']],
+    payments: [['Receipts', 'payments', 'workspace'], ['Supplier payments', 'payments', 'workspace'], ['Allocations', 'payments', 'workspace']],
+    sales: [['Invoices', 'sales', 'workspace'], ['Quotations', 'sales', 'workspace'], ['Customers', 'sales', 'workspace']],
+    purchases: [['Bills', 'purchases', 'workspace'], ['Orders', 'purchases', 'workspace'], ['Suppliers', 'purchases', 'workspace']],
+    tax: [['Withholding', 'tax', 'workspace'], ['Sales tax', 'tax', 'workspace'], ['Reconciliation', 'tax', 'workspace']],
+    inventory: [['Stock balances', 'inventory', 'workspace'], ['Items', 'inventory', 'workspace'], ['Movements', 'inventory', 'workspace']],
+    manufacturing: [['Work orders', 'manufacturing', 'workspace'], ['BOM', 'manufacturing', 'workspace']],
+    pos: [['Checkout', 'pos', 'workspace'], ['Till sessions', 'pos', 'workspace']],
+    assets: [['Asset register', 'assets', 'workspace'], ['Depreciation', 'assets', 'workspace']],
+    people: [['Employees', 'people', 'workspace'], ['Payroll', 'people', 'workspace']],
+    projects: [['Projects', 'projects', 'workspace'], ['Time and expenses', 'projects', 'workspace']],
+    crm: [['Leads', 'crm', 'workspace'], ['Opportunities', 'crm', 'workspace']],
+    finance: [['Cash position', 'finance', 'workspace'], ['Forecast', 'finance', 'workspace']],
+    reports: [['Standard reports', 'reports', 'workspace'], ['Statement packs', 'reports', 'workspace']],
+    drive: [['Folders', 'drive', 'workspace'], ['Evidence links', 'drive', 'workspace']],
+    apps: [['API contracts', 'apps', 'workspace'], ['App registry', 'apps', 'workspace']],
+    assistant: [['Ask a question', 'assistant', 'workspace'], ['Usage', 'assistant', 'workspace']],
+    settings: [['Business', 'settings', 'workspace'], ['People and roles', 'settings', 'workspace']],
+    admin: [['Audit', 'admin', 'workspace'], ['Access', 'admin', 'workspace']],
+    subscription: [['Your plan', 'subscription', 'workspace'], ['Invoices', 'subscription', 'workspace']],
+    offline: [['Connectivity', 'offline', 'workspace'], ['Queue', 'offline', 'workspace']],
+  };
+
+  function moduleGrid() {
+    const modules = catalog.modules.filter((m) => m.id !== 'operator' && m.id !== 'commerce' && m.id !== 'design');
+    return `<div class="module-grid">${modules.map((m) => {
+      const actions = MODULE_ACTIONS[m.id] || [['Open', m.id, 'workspace']];
+      return `<section class="module-card">
+        <div class="card-icon"><span aria-hidden="true">${icon(m.id)}</span>${m.interactive ? badge('Interactive example') : badge('Specification brief')}</div>
+        <h3>${e(m.title)}</h3>
+        <p>${e(m.description)}</p>
+        <div class="related card-actions">${actions.map(([label, module, tab]) => `<button class="text-button" data-module="${module}" data-tab="${tab}">${e(label)}</button>`).join('')}</div>
+      </section>`;
+    }).join('')}</div>`;
+  }
+
   function overview() {
     const st = s();
     const ar = AR(), ap = AP();
-    const recent = fixture(getCompany()).slice(0, 6);
-    return `<div class="stats">
-      <section class="stat"><span class="stat-label">Cash &amp; bank</span><strong class="value numeric">${money(CASH())}</strong><small>Sample bank and cash controls · PKR</small></section>
+    const recent = fixture(getCompany()).slice(-6).reverse();
+    const actions = [['Journal register', 'accounting', 'register'], ['Trial balance', 'accounting', 'trial'], ['Chart of accounts', 'accounting', 'coa'], ['Receivables', 'accounting', 'receivables'], ['Payables', 'accounting', 'payables'], ['Ageing', 'accounting', 'ageing']];
+    return `<div class="related overview-actions">${actions.map(([label, module, tab, primary]) => `<button class="button ${primary ? 'primary' : ''}" data-module="${module}" data-tab="${tab}">${e(label)}</button>`).join('')}</div>
+
+    <div class="stats">
+      <section class="stat"><span class="stat-label">Cash &amp; bank</span><strong class="value numeric">${money(CASH())}</strong><small>PKR · sample bank controls</small></section>
       <section class="stat"><span class="stat-label">Receivables</span><strong class="value numeric">${money(ar)}</strong><small>${CUSTOMERS.length} sample customers</small></section>
       <section class="stat"><span class="stat-label">Payables</span><strong class="value numeric">${money(ap)}</strong><small>${SUPPLIERS.length} sample suppliers</small></section>
       <section class="stat"><span class="stat-label">Profit for the period</span><strong class="value numeric">${money(num(st.profit))}</strong><small>${e(range().from)} to ${e(range().to)}</small></section>
     </div>
+
     <div class="two-column">
-      <section class="panel">
+      <section class="panel overview-panel">
+        <div class="panel-head"><h2>Cash movement</h2>${badge('November 2026')}</div>
+        <div class="panel-body">${sparkline()}
+          <div class="statement-line"><span>Revenue</span><strong class="numeric">${money(num(st.income))}</strong></div>
+          <div class="statement-line"><span>Expenses</span><strong class="numeric">${money(num(st.expenses))}</strong></div>
+          <div class="statement-line total"><span>Profit for the period</span><strong class="numeric">${money(num(st.profit))}</strong></div>
+          <p class="form-note">Cash movement and the period result both derive from the same posted sample documents as the ledger.</p>
+        </div>
+      </section>
+      <section class="panel overview-panel">
+        <div class="panel-head"><h2>Close readiness</h2>${badge('1 of 5 complete')}</div>
+        <div class="panel-body">
+          ${[['Trial balance','Closing debits equal credits',1],['Bank reconciliation','Outstanding items need evidence',0],['Receivables review','Items over 60 days need a plan',0],['Depreciation','Draft charge ready for review',0],['Statements','Not started',0]].map(([title, note, done]) => `<div class="quiet-row"><div><strong>${e(title)}</strong><small>${e(note)}</small></div>${done ? badge('Done', 'good') : badge('Open', 'warn')}</div>`).join('')}
+          <p class="form-note">A period lock requires reconciliation evidence, sign-off and an immutable snapshot.</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="two-column overview-stack">
+      <section class="panel overview-panel">
         <div class="panel-head"><h2>Recent journals</h2>${textButton('Open register','', 'data-module="accounting" data-tab="register"')}</div>
         <div class="table-scroll"><table><thead><tr><th>Date</th><th>Voucher</th><th>Narrative</th><th class="numeric">Debit PKR</th><th>State</th></tr></thead>
         <tbody>${recent.map((j) => `<tr>
@@ -77,28 +175,47 @@ export function createScreens({getCompany, range, navigate, notify}) {
           <td><button class="text-button" data-ac="source" data-value="${e(j.id)}">${e(j.id)}</button></td>
           <td>${e(j.narrative)}<small class="secondary">${e(j.party)}</small></td>
           <td class="numeric">${money(j.lines.reduce((n, l) => n + num(l.debit), 0))}</td>
-          <td>${badge('Posted fixture', 'good')}</td>
+          <td>${badge('Posted', 'good')}</td>
         </tr>`).join('')}</tbody></table></div>
-        <div class="table-footer">Sample posted sources only. Drafts and approvals have no ledger effect.</div>
       </section>
-      <section class="panel">
-        <div class="panel-head"><h2>Close readiness</h2>${badge('November 2026')}</div>
-        <div class="panel-body">
-          ${[['Trial balance','Closing debits equal credits',1],['Bank reconciliation','Outstanding items need evidence',0],['Receivables review','Overdue items over 60 days',0],['Depreciation','Draft charge ready for review',0],['Statements','Not started',0]].map(([title, note, done]) => `<div class="quiet-row"><div><strong>${e(title)}</strong><small>${e(note)}</small></div>${done ? badge('Done', 'good') : badge('Open', 'warn')}</div>`).join('')}
-          <p class="form-note">Checklist is illustrative. A period lock requires reconciliation evidence, sign-off and an immutable snapshot.</p>
-        </div>
+      <section class="panel overview-panel">
+        <div class="panel-head"><h2>Ageing</h2>${textButton('Open ageing','', 'data-module="accounting" data-tab="ageing"')}</div>
+        <div class="panel-body">${ageingTable(ar, ap)}</div>
       </section>
     </div>
-    <div class="two-column">
-      <section class="panel">
-        <div class="panel-head"><h2>Receivables ageing</h2>${textButton('Open ageing','', 'data-module="accounting" data-tab="ageing"')}</div>
-        <div class="panel-body">${ageingLines(ar, 'ar')}</div>
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>Payables ageing</h2>${textButton('Open ageing','', 'data-module="accounting" data-tab="ageing"')}</div>
-        <div class="panel-body">${ageingLines(ap, 'ap')}</div>
-      </section>
-    </div>`;
+
+    <section class="panel">
+      <div class="panel-head"><h2>Accounting actions</h2>${badge('Grouped like ERPNext card breaks')}</div>
+      <div class="panel-body">
+        <div class="action-groups">
+          ${[
+            ['Financial statements', [['Profit or loss', 'statements'], ['Financial position', 'statements'], ['Notes and schedules', 'statements'], ['Trial balance', 'trial']]],
+            ['Receivables and payables', [['Receivables', 'receivables'], ['Payables', 'payables'], ['Ageing', 'ageing'], ['Approvals', 'approvals']]],
+            ['Registers and close', [['Journal register', 'register'], ['Chart of accounts', 'coa'], ['General ledger', 'ledger'], ['Period close', 'close']]],
+          ].map(([title, links]) => `<div><div class="eyebrow">${e(title)}</div>${links.map(([label, tab]) => `<div class="quiet-row quiet-row--tight"><strong>${e(label)}</strong><button class="text-button" data-module="accounting" data-tab="${tab}">Open</button></div>`).join('')}</div>`).join('')}
+        </div>
+      </div>
+    </section>
+
+    <div class="home-section-title"><h2>Every module</h2><span class="muted">Actions open the module; accounting actions open the working screen</span></div>
+    ${moduleGrid()}`;
+  }
+
+  function ageingTable(ar, ap) {
+    const split = (value, names, kind) => {
+      const parts = spread(value, names, kind);
+      const out = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+      for (const p of parts) out[bucketOf(p.age)] = round2(out[bucketOf(p.age)] + p.balance);
+      return out;
+    };
+    const a = split(ar, CUSTOMERS, 'ar');
+    const p = split(ap, SUPPLIERS, 'ap');
+    return `<div class="table-scroll"><table>
+      <thead><tr><th>Bucket</th><th class="numeric">Receivable PKR</th><th class="numeric">Payable PKR</th></tr></thead>
+      <tbody>${BUCKETS.map((b) => `<tr><td>${b}</td><td class="numeric">${a[b] ? money(a[b]) : '—'}</td><td class="numeric">${p[b] ? money(p[b]) : '—'}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td><strong>Total</strong></td><td class="numeric"><strong>${money(ar)}</strong></td><td class="numeric"><strong>${money(ap)}</strong></td></tr></tfoot>
+    </table></div>
+    <p class="form-note">Party spread is illustrative; each column reconciles to its control account.</p>`;
   }
 
   function ageingLines(value, kind) {
@@ -179,7 +296,7 @@ export function createScreens({getCompany, range, navigate, notify}) {
     return `<div class="two-column">
       <section class="panel">
         <div class="panel-head"><h2>Waiting for review</h2>${badge(String(queue.length) + ' items', 'warn')}</div>
-        <div class="panel-body">${queue.map((j, i) => `<div class="activity-item"><span class="activity-dot"></span><div style="flex:1"><button class="text-button" data-ac="source" data-value="${e(j.id)}">${e(j.id)} · ${e(j.narrative)}</button><small>${e(j.party)} · ${money(j.lines.reduce((n, l) => n + num(l.debit), 0))} · ${i === 0 ? 'today' : (i + 1) + ' days ago'}</small></div>${badge(i % 2 ? 'Returned' : 'Awaiting review', i % 2 ? 'warn' : '')}</div>`).join('')}</div>
+        <div class="panel-body">${queue.map((j, i) => `<div class="activity-item"><span class="activity-dot"></span><div class="grow"><button class="text-button" data-ac="source" data-value="${e(j.id)}">${e(j.id)} · ${e(j.narrative)}</button><small>${e(j.party)} · ${money(j.lines.reduce((n, l) => n + num(l.debit), 0))} · ${i === 0 ? 'today' : (i + 1) + ' days ago'}</small></div>${badge(i % 2 ? 'Returned' : 'Awaiting review', i % 2 ? 'warn' : '')}</div>`).join('')}</div>
       </section>
       <section class="panel">
         <div class="panel-head"><h2>Review policy</h2>${badge('Illustrative')}</div>
