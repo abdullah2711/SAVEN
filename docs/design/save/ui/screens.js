@@ -3,7 +3,7 @@
 // no shader, no animation. Every total that duplicates a ledger figure is
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
-import {fixture,trial,statements} from './accounting-model.js';
+import {fixture,trial,statements,PROJECTS,COST_CENTRES} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
@@ -18,6 +18,68 @@ const money = (n) => {
 const badge = (label, kind = '') => `<span class="badge ${kind}">${e(label)}</span>`;
 const button = (label, action, extra = '', primary = false) => `<button type="button" class="button ${primary ? 'primary' : ''}" data-ac="${action}" ${extra}>${label}</button>`;
 const textButton = (label, action, extra = '') => `<button type="button" class="text-button" data-ac="${action}" ${extra}>${label}</button>`;
+
+
+/* ------------------------------------------------------------------ projects */
+export function projectTotals(company) {
+  const docs = fixture(company);
+  return PROJECTS.map((p) => {
+    let revenue = 0, cost = 0, postings = 0;
+    for (const d of docs) for (const l of d.lines) {
+      if ((l.project || d.project || 'HO') !== p.code) continue;
+      postings++;
+      if (String(l.account).startsWith('4')) revenue += num(l.credit) - num(l.debit);
+      if (String(l.account).startsWith('5') || String(l.account).startsWith('6')) cost += num(l.debit) - num(l.credit);
+    }
+    return {...p, revenue: round2(revenue), cost: round2(cost), net: round2(revenue - cost), postings};
+  });
+}
+
+export function projectsScreen(company) {
+  const rows = projectTotals(company);
+  return `<section class="panel">
+    <div class="panel-head"><h2>Projects</h2><span class="badge">${rows.length} projects</span></div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>Status</th><th class="numeric">Accounts</th><th class="numeric">Postings</th><th class="numeric">Revenue</th><th class="numeric">Cost</th><th class="numeric">Net</th></tr></thead>
+        <tbody>${rows.map((p) => `<tr>
+          <td><span class="mono">${e(p.code)}</span></td>
+          <td>${e(p.name)}</td>
+          <td>${e(p.manager)}</td>
+          <td><span class="badge ${p.status === 'active' ? 'good' : 'warn'}">${e(p.status)}</span></td>
+          <td class="numeric">${p.accounts.length}</td>
+          <td class="numeric">${p.postings}</td>
+          <td class="numeric">${money(p.revenue)}</td>
+          <td class="numeric">${money(p.cost)}</td>
+          <td class="numeric">${money(p.net)}</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="6">Total</td><td class="numeric">${money(rows.reduce((n, p) => n + p.revenue, 0))}</td><td class="numeric">${money(rows.reduce((n, p) => n + p.cost, 0))}</td><td class="numeric">${money(rows.reduce((n, p) => n + p.net, 0))}</td></tr></tfoot>
+      </table>
+    </div>
+    <div class="table-footer">Totals come from the ledger lines tagged with each project. Head office is a project, so company costs have a home.</div>
+  </section>
+  <details class="gl-columns">
+    <summary>New project</summary>
+    <form id="project-form" class="form-grid">
+      <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="PRJ-NORTH"></label>
+      <label>Name<input name="name" required maxlength="60" placeholder="North depot"></label>
+      <label>Manager<input name="manager" required maxlength="40" value="A. Rehman"></label>
+      <label>Status<select name="status"><option>active</option><option>on hold</option></select></label>
+      <div class="related"><button class="button primary">Add project</button></div>
+    </form>
+  </details>`;
+}
+
+export function bindProjectForm(rerender, notify) {
+  document.querySelector('#project-form')?.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const v = Object.fromEntries(new FormData(ev.target));
+    if (PROJECTS.some((p) => p.code === v.code)) { notify('That project code already exists.'); return; }
+    PROJECTS.push({code: v.code, name: v.name, status: v.status, manager: v.manager, accounts: []});
+    notify('Project added for this session. It has no postings yet.');
+    rerender();
+  });
+}
 
 /** Generic "being built" page for any module in the page map. */
 export function plannedPage(moduleId, pageId) {
@@ -324,143 +386,203 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   /* ---------------------------------------------------------- general ledger */
-  const filters = {from: '2026-11-01', to: '2026-11-30', account: '1010', party: '', type: '', q: '', open: ''};
+  const GL = {
+    from: '2026-11-01', to: '2026-11-30', account: '1010', party: '', type: '',
+    project: '', centre: '', q: '', open: '',
+    extras: new Set(['subtype', 'against', 'partyType', 'project', 'centre', 'againstVoucher', 'supplierRef']),
+  };
+
+  const subtypeOf = (d) => d.subtype || d.source;
+  const againstType = (id) => !id ? '' : id.includes('SI') ? 'Sales Invoice' : id.includes('PI') ? 'Purchase Invoice' : '';
+  const againstAccount = (d, l) => {
+    const wantDebit = num(l.credit) > 0;
+    const other = d.lines.find((x) => x !== l && (wantDebit ? num(x.debit) > 0 : num(x.credit) > 0));
+    return other ? other.account : '';
+  };
 
   function ledgerRows() {
-    const docs = fixture(getCompany()).filter((d) => d.date >= filters.from && d.date <= filters.to)
+    const docs = fixture(getCompany()).filter((d) => d.date >= GL.from && d.date <= GL.to)
       .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-    const rows = [];
+    const out = [];
     for (const d of docs) {
-      if (filters.party && d.party !== filters.party) continue;
-      if (filters.type && d.source !== filters.type) continue;
+      if (GL.party && d.party !== GL.party) continue;
+      if (GL.type && d.source !== GL.type) continue;
+      if (GL.project && (d.project || 'HO') !== GL.project) continue;
       for (const l of d.lines) {
-        if (filters.account !== 'all' && l.account !== filters.account) continue;
+        if (GL.account !== 'all' && l.account !== GL.account) continue;
+        if (GL.centre && l.costCentre !== GL.centre) continue;
         const acc = accounts().find((a) => a.code === l.account);
-        const hay = `${d.id} ${d.narrative} ${d.party} ${l.account} ${acc ? acc.name : ''}`.toLowerCase();
-        if (filters.q && !hay.includes(filters.q.toLowerCase())) continue;
-        rows.push({id: d.id, date: d.date, party: d.party, source: d.source, narrative: d.narrative,
+        const hay = `${d.id} ${d.narrative} ${d.party} ${l.account} ${acc ? acc.name : ''} ${l.project} ${l.costCentre}`.toLowerCase();
+        if (GL.q && !hay.includes(GL.q.toLowerCase())) continue;
+        out.push({
+          id: d.id, date: d.date, party: d.party,
+          partyType: d.partyType || (acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : ''),
+          source: d.source, subtype: subtypeOf(d), narrative: d.narrative, doc: d, line: l,
           account: l.account, accountName: acc ? acc.name : l.account,
-          debit: num(l.debit), credit: num(l.credit), doc: d});
+          against: againstAccount(d, l), againstVoucher: l.againstVoucher || d.againstVoucher || '',
+          supplierRef: d.supplierRef || '', project: l.project || d.project || '', centre: l.costCentre || '',
+          debit: num(l.debit), credit: num(l.credit), balance: 0,
+        });
       }
     }
-    return rows;
+    return out;
   }
 
   function openingBalance() {
-    if (filters.account === 'all') return 0;
-    return round2(fixture(getCompany()).filter((d) => d.date < filters.from)
-      .reduce((n, d) => n + d.lines.filter((l) => l.account === filters.account)
+    if (GL.account === 'all') return 0;
+    return round2(fixture(getCompany()).filter((d) => d.date < GL.from)
+      .reduce((n, d) => n + d.lines.filter((l) => l.account === GL.account)
         .reduce((m, l) => m + num(l.debit) - num(l.credit), 0), 0));
+  }
+
+  function glColumns() {
+    const single = GL.account !== 'all';
+    const cols = [
+      ['date', 'Posting date', (r) => e(r.date)],
+      ['account', 'Account', (r) => `<span class="mono">${e(r.account)}</span> ${e(r.accountName)}`],
+      ['description', 'Description', (r) => e(r.narrative), 'gl-desc'],
+      ['debit', 'Debit', (r) => r.debit ? money(r.debit) : '', 'numeric'],
+      ['credit', 'Credit', (r) => r.credit ? money(r.credit) : '', 'numeric'],
+    ];
+    if (single) cols.push(['balance', 'Balance', (r) => money(r.balance), 'numeric']);
+    cols.push(['type', 'Voucher type', (r) => e(r.source)]);
+    if (GL.extras.has('subtype')) cols.push(['subtype', 'Voucher subtype', (r) => e(r.subtype)]);
+    cols.push(['voucher', 'Voucher no', (r) => `<button class="text-button" data-ac="source" data-value="${e(r.id)}">${e(r.id)}</button>`]);
+    if (GL.extras.has('against')) cols.push(['against', 'Against account', (r) => e(r.against)]);
+    if (GL.extras.has('partyType')) cols.push(['partyType', 'Party type', (r) => e(r.partyType)]);
+    cols.push(['party', 'Party', (r) => e(r.party)]);
+    if (GL.extras.has('project')) cols.push(['project', 'Project', (r) => e(r.project)]);
+    if (GL.extras.has('centre')) cols.push(['centre', 'Cost centre', (r) => e(r.centre)]);
+    if (GL.extras.has('againstVoucher')) {
+      cols.push(['againstType', 'Against voucher type', (r) => e(againstType(r.againstVoucher))]);
+      cols.push(['againstVoucher', 'Against voucher', (r) => e(r.againstVoucher)]);
+    }
+    if (GL.extras.has('supplierRef')) cols.push(['supplierRef', 'Supplier invoice no', (r) => e(r.supplierRef)]);
+    return cols;
   }
 
   function gl() {
     const rows = ledgerRows();
     const opening = openingBalance();
+    const single = GL.account !== 'all';
+    let run = opening;
+    for (const r of rows) { if (single) { run = round2(run + r.debit - r.credit); r.balance = run; } }
     const debit = round2(rows.reduce((n, r) => n + r.debit, 0));
     const credit = round2(rows.reduce((n, r) => n + r.credit, 0));
-    const single = filters.account !== 'all';
-    const cols = single ? 8 : 9;
-    let run = opening;
+    const closing = round2(opening + debit - credit);
+    const cols = glColumns();
+
     const body = rows.map((r) => {
-      if (single) run = round2(run + r.debit - r.credit);
-      const open = filters.open === r.id + ':' + r.account;
+      const open = GL.open === r.id + ':' + r.account;
       return `<tr data-gl-row="${e(r.id)}:${e(r.account)}" class="${open ? 'gl-open' : ''}">
-          <td>${e(r.date)}</td>
-          ${single ? '' : `<td><button class="text-button" data-gl-account="${e(r.account)}">${e(r.account)}</button></td>`}
-          <td>${e(r.party)}</td>
-          <td>${e(r.source)}</td>
-          <td><button class="text-button" data-ac="source" data-value="${e(r.id)}">${e(r.id)}</button></td>
-          <td class="gl-desc">${e(r.narrative)}${single ? '' : `<small class="secondary">${e(r.accountName)}</small>`}</td>
-          <td class="numeric">${r.debit ? money(r.debit) : ''}</td>
-          <td class="numeric">${r.credit ? money(r.credit) : ''}</td>
-          ${single ? `<td class="numeric">${money(run)}</td>` : ''}
-        </tr>` + (open ? detailRow(r, single) : '');
+          ${cols.map(([, , cell, cls]) => `<td class="${cls || ''}">${cell(r)}</td>`).join('')}
+        </tr>` + (open ? detailRow(r, cols.length) : '');
     }).join('');
 
     const accountOptions = [['all', 'All accounts'], ...accounts().filter((a) => a.active).map((a) => [a.code, a.code + ' - ' + a.name])];
     const parties = [...new Set(fixture(getCompany()).map((d) => d.party))].sort();
     const types = [...new Set(fixture(getCompany()).map((d) => d.source))].sort();
+    const projects = [...new Set(fixture(getCompany()).map((d) => d.project || 'HO'))].sort();
+    const extras = [['subtype', 'Voucher subtype'], ['against', 'Against account'], ['partyType', 'Party type'], ['project', 'Project'], ['centre', 'Cost centre'], ['againstVoucher', 'Against voucher'], ['supplierRef', 'Supplier invoice no']];
 
     return `<form id="gl-filter" class="filterbar gl-filter">
-        <label>From<input name="from" type="date" value="${e(filters.from)}" required></label>
-        <label>To<input name="to" type="date" value="${e(filters.to)}" required></label>
-        <label>Account<select name="account">${accountOptions.map(([v, t]) => `<option value="${v}" ${v === filters.account ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></label>
-        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p2) => `<option ${p2 === filters.party ? 'selected' : ''}>${e(p2)}</option>`).join('')}</select></label>
-        <label>Voucher type<select name="type"><option value="">All types</option>${types.map((t) => `<option ${t === filters.type ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></label>
-        <label>Search<input name="q" type="search" value="${e(filters.q)}" placeholder="Voucher, party or description"></label>
+        <label>From<input name="from" type="date" value="${e(GL.from)}" required></label>
+        <label>To<input name="to" type="date" value="${e(GL.to)}" required></label>
+        <label>Account<select name="account">${accountOptions.map(([v, t]) => `<option value="${v}" ${v === GL.account ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></label>
+        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p2) => `<option ${p2 === GL.party ? 'selected' : ''}>${e(p2)}</option>`).join('')}</select></label>
+        <label>Project<select name="project"><option value="">All projects</option>${projects.map((p2) => `<option ${p2 === GL.project ? 'selected' : ''}>${e(p2)}</option>`).join('')}</select></label>
+        <label>Cost centre<select name="centre"><option value="">All centres</option>${COST_CENTRES.map((c) => `<option ${c === GL.centre ? 'selected' : ''}>${e(c)}</option>`).join('')}</select></label>
+        <label>Voucher type<select name="type"><option value="">All types</option>${types.map((t) => `<option ${t === GL.type ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></label>
+        <label>Search<input name="q" type="search" value="${e(GL.q)}" placeholder="Voucher, party or description"></label>
         <button class="button primary">Apply</button>
       </form>
 
+      <details class="gl-columns">
+        <summary>Columns · ${cols.length} shown</summary>
+        <div class="related">
+          ${extras.map(([k, label]) => `<label class="checkline"><input class="check" type="checkbox" data-gl-col="${k}" ${GL.extras.has(k) ? 'checked' : ''}>${e(label)}</label>`).join('')}
+          <span class="form-note">Posting date, account, description, amounts, voucher and party are always shown.</span>
+        </div>
+      </details>
+
       <div class="stats gl-stats">
-        <section class="stat"><span class="stat-label">Opening</span><strong class="value numeric">${money(opening)}</strong><small>${single ? 'Before ' + e(filters.from) : 'All accounts'}</small></section>
+        <section class="stat"><span class="stat-label">Opening</span><strong class="value numeric">${money(opening)}</strong><small>${single ? 'Before ' + e(GL.from) : 'All accounts'}</small></section>
         <section class="stat"><span class="stat-label">Debit</span><strong class="value numeric">${money(debit)}</strong><small>${rows.length} lines</small></section>
-        <section class="stat"><span class="stat-label">Credit</span><strong class="value numeric">${money(credit)}</strong><small>${e(filters.from)} to ${e(filters.to)}</small></section>
-        <section class="stat"><span class="stat-label">Closing</span><strong class="value numeric">${money(round2(opening + debit - credit))}</strong><small>Opening + debit − credit</small></section>
+        <section class="stat"><span class="stat-label">Credit</span><strong class="value numeric">${money(credit)}</strong><small>${e(GL.from)} to ${e(GL.to)}</small></section>
+        <section class="stat"><span class="stat-label">Closing</span><strong class="value numeric">${money(closing)}</strong><small>Opening + debit − credit</small></section>
       </div>
 
       <section class="panel">
-        <div class="panel-head"><h2>${filters.account === 'all' ? 'All accounts' : e((accounts().find((a) => a.code === filters.account) || {}).name || filters.account)}</h2><div class="related"><span class="badge">${rows.length} lines</span><button class="button" data-gl-export="csv">Export CSV</button><button class="button" data-gl-print>Print</button></div></div>
+        <div class="panel-head"><h2>${GL.account === 'all' ? 'All accounts' : e((accounts().find((a) => a.code === GL.account) || {}).name || GL.account)}</h2><div class="related"><span class="badge">${rows.length} lines</span><button class="button" data-gl-export="csv">Export CSV</button><button class="button" data-gl-print>Print</button></div></div>
         <div class="table-scroll gl-scroll">
           <table class="gl-table">
-            <thead><tr>
-              <th>Date</th>${single ? '' : '<th>Account</th>'}<th>Party</th><th>Voucher type</th><th>Voucher no</th><th class="gl-desc">Description</th>
-              <th class="numeric">Debit</th><th class="numeric">Credit</th>${single ? '<th class="numeric">Balance</th>' : ''}
-            </tr></thead>
-            <tbody id="gl-rows">${body || `<tr><td colspan="${cols}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
-            <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(debit)}</td><td class="numeric">${money(credit)}</td>${single ? `<td class="numeric">${money(round2(opening + debit - credit))}</td>` : ''}</tr></tfoot>
+            <thead><tr>${cols.map(([, label, , cls]) => `<th class="${cls || ''}">${label}</th>`).join('')}</tr></thead>
+            <tbody id="gl-rows">${body || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
+            <tfoot><tr>
+              <td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td>
+              <td class="numeric">${money(debit)}</td>
+              <td class="numeric">${money(credit)}</td>
+              <td colspan="${Math.max(0, cols.length - cols.findIndex(([k]) => k === 'debit') - 2)}"></td>
+            </tr></tfoot>
           </table>
         </div>
-        <div class="table-footer">Opening ${money(opening)} + debit ${money(debit)} − credit ${money(credit)} = ${money(round2(opening + debit - credit))}. Click any row for the full transaction.</div>
+        <div class="table-footer">Opening ${money(opening)} + debit ${money(debit)} − credit ${money(credit)} = ${money(closing)}. Click a row for the full transaction.</div>
       </section>`;
   }
 
-  function detailRow(r, single) {
+  function detailRow(r, span) {
     const d = r.doc;
-    return `<tr class="gl-detail"><td colspan="9">
+    return `<tr class="gl-detail"><td colspan="${span}">
       <div class="gl-detail-grid">
         <div>
           <div class="eyebrow">Source document</div>
           <div class="record-summary">
             <div><small>Voucher</small>${e(d.id)}</div>
             <div><small>Date</small>${e(d.date)}</div>
-            <div><small>Type</small>${e(d.source)}</div>
+            <div><small>Type</small>${e(r.subtype)}</div>
             <div><small>Party</small>${e(d.party)}</div>
+            <div><small>Project</small>${e(r.project || 'Head office')}</div>
+            <div><small>Cost centre</small>${e(r.centre || '—')}</div>
           </div>
           <p class="form-note">${e(d.narrative)}</p>
+          ${r.againstVoucher ? `<p class="form-note">Settles ${e(r.againstVoucher)} · ${e(againstType(r.againstVoucher))}</p>` : ''}
+          ${r.supplierRef ? `<p class="form-note">Supplier invoice ${e(r.supplierRef)}</p>` : ''}
         </div>
         <div>
           <div class="eyebrow">All lines in this document</div>
-          <table class="compact-table"><thead><tr><th>Account</th><th class="numeric">Debit</th><th class="numeric">Credit</th></tr></thead>
-          <tbody>${d.lines.map((l) => `<tr><td>${e(l.account)} ${e((accounts().find((a) => a.code === l.account) || {}).name || '')}</td><td class="numeric">${num(l.debit) ? money(num(l.debit)) : ''}</td><td class="numeric">${num(l.credit) ? money(num(l.credit)) : ''}</td></tr>`).join('')}</tbody>
-          <tfoot><tr><td>Total</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.debit), 0))}</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.credit), 0))}</td></tr></tfoot></table>
+          <table class="compact-table"><thead><tr><th>Account</th><th>Project</th><th class="numeric">Debit</th><th class="numeric">Credit</th></tr></thead>
+          <tbody>${d.lines.map((l) => `<tr><td>${e(l.account)} ${e((accounts().find((a) => a.code === l.account) || {}).name || '')}</td><td>${e(l.project || '—')}</td><td class="numeric">${num(l.debit) ? money(num(l.debit)) : ''}</td><td class="numeric">${num(l.credit) ? money(num(l.credit)) : ''}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="2">Total</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.debit), 0))}</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.credit), 0))}</td></tr></tfoot></table>
         </div>
       </div>
     </td></tr>`;
   }
 
   function bindGL(rerender) {
-    const form = document.querySelector('#gl-filter');
-    if (form) form.addEventListener('submit', (ev) => {
+    document.querySelector('#gl-filter')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
-      Object.assign(filters, Object.fromEntries(new FormData(ev.target)));
-      filters.open = '';
+      Object.assign(GL, Object.fromEntries(new FormData(ev.target)));
+      GL.open = '';
       rerender();
     });
+    document.querySelectorAll('[data-gl-col]').forEach((box) => box.addEventListener('change', () => {
+      const k = box.dataset.glCol;
+      box.checked ? GL.extras.add(k) : GL.extras.delete(k);
+      rerender();
+    }));
     document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {
-      const acc = ev.target.closest('[data-gl-account]');
-      if (acc) { filters.account = acc.dataset.glAccount; rerender(); return; }
       if (ev.target.closest('[data-ac]')) return;
       const tr = ev.target.closest('[data-gl-row]');
       if (!tr) return;
-      filters.open = filters.open === tr.dataset.glRow ? '' : tr.dataset.glRow;
+      GL.open = GL.open === tr.dataset.glRow ? '' : tr.dataset.glRow;
       rerender();
     });
     document.querySelector('[data-gl-print]')?.addEventListener('click', () => window.print());
     document.querySelector('[data-gl-export]')?.addEventListener('click', () => {
       const rows = ledgerRows();
-      const lines = [['Date', 'Account', 'Party', 'Voucher type', 'Voucher no', 'Description', 'Debit', 'Credit'],
-        ...rows.map((r) => [r.date, r.account, r.party, r.source, r.id, r.narrative, r.debit.toFixed(2), r.credit.toFixed(2)])];
-      const csv = lines.map((l) => l.map((c) => `"${String(c).replaceAll('"', '""')}"`).join(',')).join('\r\n');
+      const head = ['Posting date', 'Account', 'Description', 'Debit', 'Credit', 'Voucher type', 'Voucher subtype', 'Voucher no', 'Against account', 'Party type', 'Party', 'Project', 'Cost centre', 'Against voucher type', 'Against voucher', 'Supplier invoice no'];
+      const lines = [head, ...rows.map((r) => [r.date, r.account, r.narrative, r.debit.toFixed(2), r.credit.toFixed(2), r.source, r.subtype, r.id, r.against, r.partyType, r.party, r.project, r.centre, againstType(r.againstVoucher), r.againstVoucher, r.supplierRef])];
+      const csv = lines.map((l) => l.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
       const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
       const a = document.createElement('a');
       a.href = url; a.download = 'SA7EN-general-ledger.csv'; a.click();
@@ -468,7 +590,78 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     });
   }
 
-/* --------------------------------------------------------------- planned */
+    /* ------------------------------------------------------------------ setup */
+  function setup() {
+    const byControl = (kind) => accounts().filter((a) => a.control === kind).map((a) => `${a.code} ${a.name}`).join(', ') || 'Not set';
+    const taxAccounts = accounts().filter((a) => ['1300', '2200'].includes(a.code)).map((a) => `${a.code} ${a.name}`).join(', ');
+    const field = (label, value, hint = '') => `<label>${e(label)}<input value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
+    const row = (label, value) => `<div class="quiet-row"><div><strong>${e(label)}</strong></div><span>${e(value)}</span></div>`;
+    return `<div class="two-column">
+      <section class="panel">
+        <div class="panel-head"><h2>Organisation</h2><span class="badge">Saved in this session only</span></div>
+        <div class="panel-body form-grid">
+          ${field('Legal name', 'Northstar Trading (Pvt) Ltd')}
+          ${field('Base currency', 'PKR')}
+          ${field('Fiscal year', 'Jul 2026 – Jun 2027')}
+          ${field('Current period', 'Nov 2026')}
+          ${field('Default payment terms', '30')}
+          ${field('Credit limit behaviour', 'Warn, allow with approval')}
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Numbering</h2></div>
+        <div class="panel-body form-grid">
+          ${field('Journal prefix', 'JE-2026-')}
+          ${field('Sales invoice prefix', 'SI-')}
+          ${field('Purchase invoice prefix', 'PI-')}
+          ${field('Payment prefix', 'PMT-')}
+          ${field('Receipt prefix', 'RCT-')}
+          ${field('Next journal number', '0201')}
+        </div>
+      </section>
+    </div>
+
+    <div class="two-column">
+      <section class="panel">
+        <div class="panel-head"><h2>Default accounts</h2><span class="badge">From chart flags</span></div>
+        <div class="panel-body">
+          ${row('Trade receivables control', byControl('receivable'))}
+          ${row('Trade payables control', byControl('payable'))}
+          ${row('Tax accounts', taxAccounts)}
+          ${row('Inventory account', '1200 Inventory — finished goods')}
+          ${row('Bank account', '1010 Operating bank')}
+          ${row('Cash account', '1000 Cash')}
+          ${row('Rounding account', '6500 Bank charges')}
+          <p class="form-note">Control and tax accounts are set on the account itself, so a new account of that type appears here automatically.</p>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Dimensions</h2></div>
+        <div class="panel-body">
+          <div class="section-title">Projects</div>
+          <ul class="contract-list">${PROJECTS.map((p) => `<li>${e(p.code)} · ${e(p.name)} <span class="badge ${p.status === 'active' ? 'good' : ''}">${e(p.status)}</span></li>`).join('')}</ul>
+          <div class="section-title">Cost centres</div>
+          <ul class="contract-list">${COST_CENTRES.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
+          <p class="form-note">Every journal, invoice and payment line carries a project and a cost centre. Head office is a project, not the absence of one.</p>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Approvals and periods</h2></div>
+      <div class="panel-body form-grid">
+        ${field('Review required above', '100,000.00', 'Debits above this need an independent reviewer')}
+        ${field('Self approval', 'Not permitted')}
+        ${field('Period lock', 'Requires checklist and sign-off')}
+        ${field('Reopen authority', 'Business administrator only')}
+        ${field('Post into closed period', 'Administrator, with reason')}
+        ${field('Correction route', 'Reversal document, or soft delete by an administrator')}
+      </div>
+    </section>`;
+  }
+
+  const projectsView = () => projectsScreen(getCompany());
+
   const PLANNED = {
     parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
     registers: ['Registers', 'Document registers by type — sales invoices, purchase invoices, payments and journals — filtered by party, date range, amount and state. This answers “every transaction with this party in this period” without opening the ledger.', ['Filter by party, type, period, amount, state', 'Column totals and export', 'Row opens the document']],
@@ -494,6 +687,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, setup, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

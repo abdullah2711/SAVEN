@@ -13,14 +13,14 @@ States: **built** working screen · **partial** working, covers part of the page
 | # | Page | State | Specification |
 |---|---|---|---|
 | 1 | Dashboard `dashboard` | built | Position and work waiting: four figures with their basis, what needs action, one real trend, recent journals. |
-| 2 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
-| 3 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
-| 4 | Cash & bank `cash` | partial | Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab. |
-| 5 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |
-| 6 | Items `items` | planned | Item register and item page with accounts, tax defaults, costing and item-wise statistics. |
-| 7 | Sales invoices `sales-invoices` | planned | Customer invoices that create receivable open items, with source references into Selling. |
-| 8 | Purchase invoices `purchase-invoices` | planned | Supplier bills that create payable open items, with source references into Buying. |
-| 9 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
+| 2 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
+| 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
+| 4 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
+| 5 | Cash & bank `cash` | partial | Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab. |
+| 6 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |
+| 7 | Items `items` | planned | Item register and item page with accounts, tax defaults, costing and item-wise statistics. |
+| 8 | Sales invoices `sales-invoices` | planned | Customer invoices that create receivable open items, with source references into Selling. |
+| 9 | Purchase invoices `purchase-invoices` | planned | Supplier bills that create payable open items, with source references into Buying. |
 | 10 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
 | 11 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
 | 12 | Reports `reports` | partial | Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger. |
@@ -29,7 +29,8 @@ States: **built** working screen · **partial** working, covers part of the page
 | 15 | Withholding `withholding` | planned | Sales and purchase VAT and income-tax withholding, expected against actual. |
 | 16 | Tax returns `tax-returns` | planned | Period return per tax type, locked with a snapshot and its evidence. |
 | 17 | Tax certificates `tax-certificates` | planned | Issue and receive withholding certificates, linked to the documents they cover. |
-| 18 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
+| 18 | Setup `setup` | planned | Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods. |
+| 19 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
 
 ## Inventory (inventory)
 
@@ -112,13 +113,11 @@ States: **built** working screen · **partial** working, covers part of the page
 
 | # | Page | State | Specification |
 |---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Active projects, budget consumed, overdue tasks, unbilled time. |
-| 2 | Projects `projects` | planned | Project header, team, dates, budget and status. |
-| 3 | Tasks `tasks` | planned | Work breakdown with assignments and progress. |
-| 4 | Timesheets `time` | planned | Time booked to a task, approved and billable or not. |
-| 5 | Expenses `expenses` | planned | Costs booked to a project, with evidence and reimbursement. |
-| 6 | Budgets & commitments `budgets` | planned | Budget lines, committed cost and variance. |
-| 7 | Billing & margin `billing` | planned | Bill time and cost, then show margin per project. |
+| 1 | Projects `projects` | built | Every project with its code, status, manager, accounts and ledger totals. |
+| 2 | Dashboard `dashboard` | planned | Project profit, cost against budget, unbilled work, overdue deliverables. |
+| 3 | Project accounts `accounts` | planned | Which accounts belong to which project, and which are head office. |
+| 4 | Budget `budget` | planned | Cost and revenue budget per project against actual. |
+| 5 | Project access `access` | planned | Which people may see or post to which projects. |
 
 ## CRM (crm)
 
@@ -267,4 +266,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 157 pages · 5 built · 3 partial · 149 planned.**
+**20 modules · 156 pages · 6 built · 3 partial · 147 planned.**

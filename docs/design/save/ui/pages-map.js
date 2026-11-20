@@ -8,6 +8,7 @@
 export const PAGE_MAP = {
   accounting: [
     ['dashboard', 'Dashboard', 'Position and work waiting: four figures with their basis, what needs action, one real trend, recent journals.', 'built'],
+    ['ledger', 'General ledger', 'One account or all accounts, running balance, column view and full record, import.', 'built'],
     ['journals', 'Journal entries', 'Register of every journal with state, source, party and totals; new journal opens a full page form.', 'built'],
     ['parties', 'Parties', 'Customers and suppliers with terms, credit limits, balances and status; a row opens the party page.', 'planned'],
     ['cash', 'Cash & bank', 'Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab.', 'partial'],
@@ -15,7 +16,6 @@ export const PAGE_MAP = {
     ['items', 'Items', 'Item register and item page with accounts, tax defaults, costing and item-wise statistics.', 'planned'],
     ['sales-invoices', 'Sales invoices', 'Customer invoices that create receivable open items, with source references into Selling.', 'planned'],
     ['purchase-invoices', 'Purchase invoices', 'Supplier bills that create payable open items, with source references into Buying.', 'planned'],
-    ['ledger', 'General ledger', 'One account or all accounts, running balance, column view and full record, import.', 'built'],
     ['coa', 'Chart of accounts', 'The full chart with nature, groups, control and tax flags, add, regroup, archive, import.', 'built'],
     ['trial', 'Trial balance', 'Opening, movement and closing debit and credit, with a difference that must read zero.', 'built'],
     ['reports', 'Reports', 'Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger.', 'partial'],
@@ -24,6 +24,7 @@ export const PAGE_MAP = {
     ['withholding', 'Withholding', 'Sales and purchase VAT and income-tax withholding, expected against actual.', 'planned'],
     ['tax-returns', 'Tax returns', 'Period return per tax type, locked with a snapshot and its evidence.', 'planned'],
     ['tax-certificates', 'Tax certificates', 'Issue and receive withholding certificates, linked to the documents they cover.', 'planned'],
+    ['setup', 'Setup', 'Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods.', 'planned'],
     ['close', 'Period close', 'Checklist with evidence, trial balance proof, sign-off and an evidenced period lock.', 'partial'],
   ],
   inventory: [
@@ -89,13 +90,11 @@ export const PAGE_MAP = {
     ['reports', 'Reports', 'Cost by department, headcount movement, statutory returns.', 'planned'],
   ],
   projects: [
-    ['dashboard', 'Dashboard', 'Active projects, budget consumed, overdue tasks, unbilled time.', 'planned'],
-    ['projects', 'Projects', 'Project header, team, dates, budget and status.', 'planned'],
-    ['tasks', 'Tasks', 'Work breakdown with assignments and progress.', 'planned'],
-    ['time', 'Timesheets', 'Time booked to a task, approved and billable or not.', 'planned'],
-    ['expenses', 'Expenses', 'Costs booked to a project, with evidence and reimbursement.', 'planned'],
-    ['budgets', 'Budgets & commitments', 'Budget lines, committed cost and variance.', 'planned'],
-    ['billing', 'Billing & margin', 'Bill time and cost, then show margin per project.', 'planned'],
+    ['projects', 'Projects', 'Every project with its code, status, manager, accounts and ledger totals.', 'built'],
+    ['dashboard', 'Dashboard', 'Project profit, cost against budget, unbilled work, overdue deliverables.', 'planned'],
+    ['accounts', 'Project accounts', 'Which accounts belong to which project, and which are head office.', 'planned'],
+    ['budget', 'Budget', 'Cost and revenue budget per project against actual.', 'planned'],
+    ['access', 'Project access', 'Which people may see or post to which projects.', 'planned'],
   ],
   crm: [
     ['dashboard', 'Dashboard', 'Pipeline value, win rate, activities due.', 'planned'],

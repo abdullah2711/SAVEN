@@ -102,7 +102,12 @@ original and carries the opposite effects.
 ### 2.5 Document line
 
 `id, document_id, line_no, account_id, item_id, description, quantity, rate,
-discount, net, tax_group_id, tax_override, cost_centre, warehouse_id, custom fields`.
+discount, net, tax_group_id, tax_override, project_id, cost_centre_id, warehouse_id,
+against_voucher_id, supplier_invoice_no, custom fields`.
+
+`project_id` is mandatory on every posting line; head office is a project record like
+any other, so "no project" does not exist. `against_voucher_id` records what a payment
+settles; `supplier_invoice_no` records the supplier's own number on a bill.
 
 Invariants: a line posts to exactly one account; a stock line requires a warehouse;
 tax is computed per line from base, rate and account, and stored on the tax line.
@@ -142,6 +147,15 @@ value, source_document_id, reason, posted_at`.
 Invariants: value = quantity × cost at the item's method; a movement always has a
 source document and a reason; balance equals the sum of movements.
 
+### 2.9A Project and cost centre
+
+`project: id, code, name, manager_id, status (active, on hold, closed), opens_on,
+closes_on`. `cost_centre: id, code, name, active`.
+
+`account.project_id` is nullable: an account belongs to a project or to head office.
+Access is `user_project_scope(user_id, project_id[])`, applied to every query, not
+only to lists: a ledger row from another project must never leave the server.
+
 ### 2.10 Tax code, group, period, approval, attachment
 
 `tax_code: code, rate, inclusive, kind, output_account, input_account, valid_from,
@@ -178,8 +192,10 @@ For every page: what it reads, what it writes, and what it must refuse.
 | Payments | documents of type payment, allocations | payment, allocation, ledger, party effects | allocation above outstanding, cross-party allocation |
 | Items | item master, stock balances | item master | changing tracked flag with stock |
 | Sales / purchase invoices | items, tax codes, parties, source documents | invoice, tax lines, open item, ledger, stock movement | credit limit exceeded without override, closed period, untracked stock line |
-| Chart of accounts | accounts with balance and flags | account master, opening balances | changing nature with postings, deleting with postings |
-| General ledger | ledger lines, accounts, parties | nothing | — |
+| Chart of accounts | accounts with balance, flags and project | account master, opening balances | changing nature with postings, deleting with postings, moving a project with postings |
+| Projects | ledger grouped by project dimension | project master | deleting a project with postings, duplicate code |
+| Setup | account flags, numbering, periods | configuration | numbering an already-used series backwards |
+| General ledger | ledger lines with account, party, project, cost centre, voucher and against voucher | nothing | — |
 | Trial balance | ledger grouped by account | nothing | — |
 | Reports | ledger, open items, stock, tax lines | nothing (exports only) | — |
 | Period close | checklist evidence, trial balance, reconciliation | period state, sign-off | lock with open steps unless waived with reason |

@@ -51,6 +51,22 @@ totals. Collapsing returns the list unchanged.
 **Export.** CSV of exactly the rows in the current filter, with the same columns.
 **Print** uses the print stylesheet, not the screen.
 
+**Columns.** Posting date, account, description, debit, credit, balance, voucher
+type, voucher subtype, voucher no, against account, party type, party, project, cost
+centre, against voucher type, against voucher, supplier invoice no. The balance
+column exists only for a single account. Description and the money columns are
+always shown; the rest can be switched off and the table and CSV follow.
+
+**Derived columns**
+
+| Column | Rule |
+|---|---|
+| Against account | the first line of the same document on the opposite side (a credit line for a debit row, and the reverse) |
+| Party type | the document's party type, else derived from the control flag of the account (receivable → Customer, payable → Supplier) |
+| Voucher subtype | `subtype` on the document, falling back to the voucher type |
+| Against voucher type | inferred from the referenced voucher prefix (SI → Sales Invoice, PI → Purchase Invoice) |
+| Project / cost centre | taken from the line, falling back to the document |
+
 **Filters persist** while the page is open; they reset on reload. No server-side
 state yet.
 
@@ -99,6 +115,17 @@ Every block has one source and one link:
 No figure appears without its period. No block shows a number it cannot link to.
 
 ---
+
+## 4A. Projects and cost centres
+
+- Every generated line carries `project` and `costCentre`; documents carry too.
+- Head office is project `HO`, so nothing is unassigned.
+- Project totals sum revenue (`4xxx`) and cost (`5xxx`/`6xxx`) per project; the
+  projects page shows postings, revenue, cost and net, and the totals reconcile to
+  the unfiltered ledger.
+- Cost centre is a free dimension on the line; it filters the ledger and the export.
+- Access by project is a permission, not a filter: a user restricted to a project
+  must not receive rows from another project at all.
 
 ## 5. Navigation and page map
 

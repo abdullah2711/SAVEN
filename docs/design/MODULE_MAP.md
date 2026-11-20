@@ -37,6 +37,18 @@ bank account register with a running balance.
 - Cash flow moves to **Reports**.
 - The payment register lives in **Payments**, not here.
 
+### This round
+
+- General ledger moved directly under Dashboard in the rail.
+- The ledger now carries the full column set, including description, against
+  account, party type, project, cost centre, against voucher and supplier invoice
+  number, with a column picker.
+- Project and cost centre are dimensions on every posting line.
+- Projects became its own module with a working list and per-project totals.
+- Setup became an accounting page holding organisation, numbering, default
+  accounts, dimensions, approvals and periods.
+- Payments, Cash & bank, Sales, Purchases and Taxes stay inside Accounting.
+
 ### Rules
 
 | Your comment | Decision |
@@ -110,6 +122,7 @@ Journal          -> ledger
 ```
 Accounting
 ├── Dashboard
+├── General ledger             (the detailed book of every posting)
 ├── Journal entries            (register; "New journal" is a button here)
 ├── Parties                    (register; a row opens the party page)
 ├── Cash & bank                (Accounts · Reconciliation)
@@ -117,10 +130,15 @@ Accounting
 ├── Items                      (register, item page, item reports)
 ├── Sales invoices             (register; a row opens the invoice)
 ├── Purchase invoices          (register; a row opens the bill)
-├── General ledger
 ├── Chart of accounts
 ├── Trial balance
 ├── Reports                    (ageing, schedules, P&L, position, cash flow, equity)
+├── Tax codes
+├── Tax registers
+├── Withholding
+├── Tax returns
+├── Tax certificates
+├── Setup                      (accounting configuration)
 └── Period close
 ```
 
@@ -201,7 +219,18 @@ withholding variants), inventory account, bank or cash. New-account form reveals
 the fields for the chosen type, including bank details and reconciliation settings.
 Add, rename, regroup, archive (blocked with history), import a chart.
 
-**2.2.12 General ledger — built, import planned**
+**2.2.12 General ledger — built**
+Two modes: **column view** and **full record**. The column set follows the
+reference book: posting date, account, description, debit, credit, balance,
+voucher type, voucher subtype, voucher no, against account, party type, party,
+project, cost centre, against voucher type, against voucher, supplier invoice no.
+Columns beyond the core can be switched off; the choice re-renders the table and
+the export. Filters: date range, account (one or all), party, project, cost centre,
+voucher type, free text. Opening, debit, credit and closing sit above the table and
+the footer states the arithmetic. Clicking a row expands the source document with
+all of its lines, project and cost centre per line.
+
+**2.2.13 General ledger (previous note) — superseded**
 Account (one or all), period, party, text search. Opening, every posted line with
 running balance, closing, and the proof line. Two modes: **column view** (choose the
 columns) and **full record** (expand a line to every field of the source document).
@@ -522,6 +551,45 @@ connected:
 
 The rule for both documents: if a screen is built that they do not cover, the
 document is updated first.
+
+## 9A. Projects module
+
+A project is a costing and access boundary, not a document type. Head office is a
+project (`HO`), so company overhead has a home and nothing is "unassigned".
+
+| Page | What it is |
+|---|---|
+| Projects | Every project with code, name, manager, status, its accounts, posting count, revenue, cost and net — derived from ledger lines tagged with that project. New project can be added in-session. |
+| Project accounts | Which accounts belong to which project and which are head office. An account can be created here or from the chart, and carries its project. |
+| Dashboard | Profit per project, cost against budget, unbilled work, overdue deliverables. Planned. |
+| Budget | Revenue and cost budget per project against actual. Planned. |
+| Access | Which people may see or post to which project. Planned. |
+
+**Rules**
+
+- Every journal, invoice, payment and stock line carries `project` and `cost_centre`.
+- A user's project scope is a permission: an accountant may hold every permission in
+  every module and still be restricted to one or more projects. Head office access is
+  a scope like any other.
+- Reports and the ledger filter by project; totals must reconcile to the same ledger
+  with no project filter applied.
+- A project is never deleted while it has postings; it is closed.
+
+## 9B. Setup page
+
+Configuration that belongs to accounting, not to the chart of accounts:
+
+| Group | Contents |
+|---|---|
+| Organisation | legal name, base currency, fiscal year, current period, payment terms, credit-limit behaviour |
+| Numbering | series prefixes and next number for journals, sales invoices, purchase invoices, payments, receipts |
+| Default accounts | receivables control, payables control, tax accounts, inventory, bank, cash, rounding — all read from the flags on the accounts themselves |
+| Dimensions | projects and cost centres |
+| Approvals and periods | review threshold, self-approval rule, lock requirements, reopen authority, posting into a closed period, correction route |
+| Documents | default terms, print layout per document type, attachment limits |
+
+Nothing here duplicates the chart of accounts: control and tax accounts are declared
+on the account, and Setup only shows the result.
 
 ## 10. Dashboards
 
