@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 11. Created: 19 November 2026 (Asia/Karachi).
+Version: 12. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -125,3 +125,7 @@ Review: `719034b` — PIVOT-008 initial delivery, REVISE. R74 — A security cov
 ## Version 11 — 20 November 2026 (Asia/Karachi)
 
 Review: `3b23f41` — PIVOT-008 R1, REVISE. No new defect class: reapply R74/R75 to object-kind/install-binding validation, canonical effective policy contracts rather than substring matches, runtime classification before unsafe-attribute rejection, full mixed-owner dependency paths and write-only child authority, and dedicated owner privilege/column profiles. Reapply R08 to preserve schema-CREATE detection during a coverage rewrite, and R09/R11 to require the actual target gate and normal isolation assertion to go red under a weak-policy mutation instead of treating an expected leak as closure. Finding 6 owned cleanup is closed for reported paths; do not erase that disposition in later reviews.
+
+## Version 12 — 20 November 2026 (Asia/Karachi)
+
+Review: `7dee232` — PIVOT-008 R2 partial, REVISE. R76 — Normalize privilege labels and catalog command codes once before comparing policy applicability; an uppercase INSERT/UPDATE/DELETE versus lowercase a/w/d mismatch can skip predicate validation or reject a valid operation-specific control. Apply the same effective isolation contract to direct children as to parent tables, and compare complete policy role sets rather than any matching target. Reapply R09/R11/R74/R75 to normal no-leak assertion red/restored-green evidence and actual target CLI refusal. Preserve the bounded exclusions and prior closed cleanup disposition; a disclosed transient followed by a passing rerun is not a diagnosis or a flake-free claim.
