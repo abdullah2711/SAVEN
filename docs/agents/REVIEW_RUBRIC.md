@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 9. Created: 19 November 2026 (Asia/Karachi).
+Version: 10. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -117,3 +117,7 @@ Review: `782ed6b` — PIVOT-014 revision 3, REVISE. No new defect class: apply R
 ## Version 9 — 20 November 2026 (Asia/Karachi)
 
 Review: `2c248ec` — PIVOT-007 revision 3, ACCEPT. No new defect pattern; apply R69/R40/R43 to actual captured validator policy, final effective-policy selection after blocking gates and cooperating policy writers; R61/R09 to early unverified bearer refusal evidence with authorized positive and observable logging outage; R68 to commit-before-publication. Distinguish source inspection and worker-reported gates, shortened age/skew boundary tests, time-based wait scenarios and actual entered-COMMIT barriers.
+
+## Version 10 — 20 November 2026 (Asia/Karachi)
+
+Review: `719034b` — PIVOT-008 initial delivery, REVISE. R74 — A security coverage gate must enforce its installed-surface obligations at its own CLI/query boundary: absent objects cannot disappear from the obligation set, policy counts cannot replace command/role-specific effective isolation, and catalog mutation diagnostics cannot replace restricted-runtime behavioral controls. R75 — Resolve effective privilege defaults (NULL ACL is not no access), column privileges, associated login/SET ROLE authority and transitive view/child paths; compare accepted function/owner/writer-protocol profiles rather than names or generic flags alone. Reapply R07/R71 to owned temporary-database cleanup across failed creation, connection failure and cleanup failure, without process exit bypassing disposal or deletion of an unowned collision.
