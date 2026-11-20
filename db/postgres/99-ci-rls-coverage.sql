@@ -359,10 +359,14 @@ membership_policy_contract(policy_name, is_permissive, polcmd, role_class, using
 ),
 membership_policy_actual AS (
   SELECT m.oid AS rel_oid, m.relname, p.polname, p.polpermissive, p.polcmd,
-         coalesce(
-           (SELECT rr.class FROM required_roles rr WHERE rr.oid = ANY(p.polroles) LIMIT 1),
-           'other'
-         ) AS target_kind,
+         CASE
+           WHEN p.polroles = ARRAY[(SELECT rr.oid FROM required_roles rr WHERE rr.class = 'auth_service' LIMIT 1)]::oid[]
+             THEN 'auth_service'
+           WHEN p.polroles = ARRAY[(SELECT rr.oid FROM required_roles rr WHERE rr.class = 'tenant_admission_definer' LIMIT 1)]::oid[]
+             THEN 'tenant_admission_definer'
+           WHEN p.polroles = ARRAY[0]::oid[] THEN 'public'
+           ELSE 'other'
+         END AS target_kind,
          md5(regexp_replace(coalesce(pg_get_expr(p.polqual, p.polrelid), ''), '\s+', '', 'g')) AS using_hash,
          md5(regexp_replace(coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''), '\s+', '', 'g')) AS check_hash
   FROM tenant_scoped_auth m
@@ -465,7 +469,9 @@ runtime_read_endpoints AS (
   WHERE a.actor_kind = 'runtime' AND ca.privilege = 'SELECT'
 ),
 runtime_write_endpoints AS (
-  SELECT ra.rel_oid, ra.privilege AS cmd
+  SELECT ra.rel_oid,
+         CASE ra.privilege WHEN 'INSERT' THEN 'a' WHEN 'UPDATE' THEN 'w' WHEN 'DELETE' THEN 'd' END AS code,
+         ra.privilege AS label
   FROM actors a
   JOIN reachable_relation_acls ra
     ON ra.grantee = a.actor_oid
@@ -473,7 +479,8 @@ runtime_write_endpoints AS (
   WHERE a.actor_kind = 'runtime' AND ra.privilege IN ('INSERT', 'UPDATE', 'DELETE')
   UNION
   SELECT ca.rel_oid,
-         CASE ca.privilege WHEN 'INSERT' THEN 'INSERT' WHEN 'UPDATE' THEN 'UPDATE' END AS cmd
+         CASE ca.privilege WHEN 'INSERT' THEN 'a' WHEN 'UPDATE' THEN 'w' END AS code,
+         ca.privilege AS label
   FROM actors a
   JOIN reachable_column_acls ca
     ON ca.grantee = a.actor_oid
@@ -494,34 +501,90 @@ endpoint_ancestors(oid, path) AS (
   JOIN pg_class v ON v.oid = rw.ev_class AND v.relkind IN ('v', 'm')
   WHERE NOT v.oid = ANY(e.path)
 ),
-child_policy_rows AS (
-  SELECT rd.oid AS rel_oid, rd.relname, p.polcmd, p.polpermissive,
-         coalesce(pg_get_expr(p.polqual, p.polrelid), '') AS using_expr,
-         coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS check_expr
+child_policy_actual AS (
+  SELECT rd.oid AS rel_oid, p.polcmd, p.polpermissive,
+         CASE
+           WHEN p.polroles = ARRAY[0]::oid[] THEN 'public'
+           WHEN p.polroles = ARRAY[rr.oid] THEN 'customer_app'
+           ELSE 'other'
+         END AS target_kind,
+         md5(regexp_replace(coalesce(pg_get_expr(p.polqual, p.polrelid), ''), '\s+', '', 'g')) AS using_hash,
+         md5(regexp_replace(coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''), '\s+', '', 'g')) AS check_hash
   FROM reachable_relation_details rd
   JOIN pg_policy p ON p.polrelid = rd.oid
+  LEFT JOIN runtime_roles rr ON rr.actor_class = 'customer_app'
   WHERE rd.kind = 'child'
 ),
-child_write_gaps AS (
-  SELECT rd.oid AS rel_oid, rd.nspname || '.' || rd.relname AS object_name, cmd
+child_runtime_commands AS (
+  SELECT rel_oid, 'r' AS cmd_code, 'SELECT' AS cmd_label FROM runtime_read_endpoints
+  UNION
+  SELECT rel_oid, code, label FROM runtime_write_endpoints
+),
+child_customer_commands AS (
+  SELECT ra.rel_oid, 'r' AS cmd_code
+  FROM actors a
+  JOIN reachable_relation_acls ra
+    ON ra.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ra.grantee)
+  WHERE a.actor_kind = 'runtime' AND a.actor_class = 'customer_app' AND ra.privilege = 'SELECT'
+  UNION
+  SELECT ca.rel_oid, 'r'
+  FROM actors a
+  JOIN reachable_column_acls ca
+    ON ca.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ca.grantee)
+  WHERE a.actor_kind = 'runtime' AND a.actor_class = 'customer_app' AND ca.privilege = 'SELECT'
+  UNION
+  SELECT ra.rel_oid, CASE ra.privilege WHEN 'INSERT' THEN 'a' WHEN 'UPDATE' THEN 'w' WHEN 'DELETE' THEN 'd' END
+  FROM actors a
+  JOIN reachable_relation_acls ra
+    ON ra.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ra.grantee)
+  WHERE a.actor_kind = 'runtime' AND a.actor_class = 'customer_app'
+    AND ra.privilege IN ('INSERT', 'UPDATE', 'DELETE')
+  UNION
+  SELECT ca.rel_oid, CASE ca.privilege WHEN 'INSERT' THEN 'a' WHEN 'UPDATE' THEN 'w' END
+  FROM actors a
+  JOIN reachable_column_acls ca
+    ON ca.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ca.grantee)
+  WHERE a.actor_kind = 'runtime' AND a.actor_class = 'customer_app'
+    AND ca.privilege IN ('INSERT', 'UPDATE')
+),
+child_policy_gaps AS (
+  SELECT rd.oid AS rel_oid, rd.nspname || '.' || rd.relname AS object_name,
+         cc.cmd_code, cc.cmd_label
   FROM reachable_relation_details rd
-  JOIN (SELECT DISTINCT rel_oid, cmd FROM runtime_write_endpoints) w ON w.rel_oid = rd.oid
+  JOIN child_runtime_commands cc ON cc.rel_oid = rd.oid
   WHERE rd.kind = 'child'
     AND (
       NOT rd.relrowsecurity OR NOT rd.relforcerowsecurity
       OR NOT EXISTS (
-        SELECT 1 FROM child_policy_rows cp
-        WHERE cp.rel_oid = rd.oid AND cp.polpermissive
-          AND (cp.polcmd = '*' OR cp.polcmd = w.cmd)
-          AND (w.cmd NOT IN ('r', 'w', 'd') OR (cp.using_expr LIKE '%tenant_id%' AND cp.using_expr LIKE '%current_tenant_id%'))
-          AND (w.cmd NOT IN ('a', 'w') OR (cp.check_expr LIKE '%tenant_id%' AND cp.check_expr LIKE '%current_tenant_id%'))
+        SELECT 1 FROM child_policy_actual a
+        WHERE a.rel_oid = rd.oid AND a.polpermissive AND a.target_kind = 'public'
+          AND (a.polcmd = '*' OR a.polcmd = cc.cmd_code)
+          AND (cc.cmd_code NOT IN ('r', 'w', 'd') OR a.using_hash = '4fb3d3ef32001effa43774da702ae9b4')
+          AND (cc.cmd_code NOT IN ('a', 'w') OR a.check_hash = '4fb3d3ef32001effa43774da702ae9b4')
       )
       OR NOT EXISTS (
-        SELECT 1 FROM child_policy_rows cp
-        WHERE cp.rel_oid = rd.oid AND NOT cp.polpermissive
-          AND (cp.polcmd = '*' OR cp.polcmd = w.cmd)
-          AND (w.cmd NOT IN ('r', 'w', 'd') OR (cp.using_expr LIKE '%tenant_id%' AND cp.using_expr LIKE '%current_tenant_id%'))
-          AND (w.cmd NOT IN ('a', 'w') OR (cp.check_expr LIKE '%tenant_id%' AND cp.check_expr LIKE '%current_tenant_id%'))
+        SELECT 1 FROM child_policy_actual a
+        WHERE a.rel_oid = rd.oid AND NOT a.polpermissive AND a.target_kind = 'public'
+          AND (a.polcmd = '*' OR a.polcmd = cc.cmd_code)
+          AND (cc.cmd_code NOT IN ('r', 'w', 'd') OR a.using_hash = '4fb3d3ef32001effa43774da702ae9b4')
+          AND (cc.cmd_code NOT IN ('a', 'w') OR a.check_hash = '4fb3d3ef32001effa43774da702ae9b4')
+      )
+      OR (
+        EXISTS (
+          SELECT 1 FROM child_customer_commands ccc
+          WHERE ccc.rel_oid = rd.oid AND ccc.cmd_code = cc.cmd_code
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM child_policy_actual a
+          WHERE a.rel_oid = rd.oid AND NOT a.polpermissive AND a.target_kind = 'customer_app'
+            AND (a.polcmd = '*' OR a.polcmd = cc.cmd_code)
+            AND (cc.cmd_code NOT IN ('r', 'w', 'd') OR a.using_hash = '204940156f611262004e5fcb9fe0c26b')
+            AND (cc.cmd_code NOT IN ('a', 'w') OR a.check_hash = '204940156f611262004e5fcb9fe0c26b')
+        )
       )
     )
 ),
@@ -1098,17 +1161,10 @@ violations (kind, object, detail) AS (
   WHERE ro.kind IN ('view', 'matview') AND ro.tainted
     AND ro.oid IN (SELECT oid FROM endpoint_ancestors)
   UNION ALL
-  SELECT 'UNSAFE_PARTITION_PATH', cr.nspname || '.' || cr.relname,
-         'runtime-reachable child of tenant data lacks its own forced RLS and policy'
-  FROM reachable_relation_details cr
-  WHERE cr.kind = 'child'
-    AND cr.oid IN (SELECT rel_oid FROM runtime_read_endpoints)
-    AND (NOT cr.relrowsecurity OR NOT cr.relforcerowsecurity
-         OR NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = cr.oid AND p.polpermissive))
-  UNION ALL
-  SELECT 'UNSAFE_PARTITION_WRITE_PATH', g.object_name || ':' || g.cmd,
-         'runtime can write a cross-schema child whose forced RLS or command-specific USING/WITH CHECK is missing'
-  FROM child_write_gaps g
+  SELECT CASE WHEN g.cmd_label = 'SELECT' THEN 'UNSAFE_PARTITION_PATH' ELSE 'UNSAFE_PARTITION_WRITE_PATH' END,
+         g.object_name || ':' || g.cmd_label,
+         'runtime-reachable child lacks forced RLS or the exact canonical tenant/admission contract for this operation'
+  FROM child_policy_gaps g
 
   -- ---- 8.4 Definer authority and accepted EXECUTE surface ----------------
   UNION ALL

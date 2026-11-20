@@ -113,6 +113,12 @@ async function seedTwoTenants(db) {
   `);
 }
 
+async function assertNoForeignRows(db) {
+  const foreign = await asUser(db, T1, U1, async client =>
+    (await client.query(`SELECT count(*)::int AS n FROM tenant_data.accounts WHERE tenant_id = '${T2}'`)).rows[0].n);
+  assert.equal(foreign, 0, 'foreign rows must remain invisible');
+}
+
 const asUser = (db, tenant, user, run, options = {}) => db.asRole('customerApp', async client => {
   if (tenant !== undefined) await client.query('SELECT set_config($1, $2, true)', ['app.current_tenant_id', tenant]);
   if (user !== undefined) await client.query('SELECT set_config($1, $2, true)', ['app.current_user_id', user]);
@@ -294,6 +300,14 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
     ]);
     assert.ok(rowsContain(membershipGap, 'AUTH_MEMBERSHIP_POLICY_GAP', /auth\.tenant_membership:tenant_membership_preselect/), kinds(membershipGap));
 
+    const multiTarget = await probe(db, [
+      `ALTER POLICY tenant_membership_preselect ON auth.tenant_membership TO ${quoteRole(db.roles.authService)}, ${quoteRole(db.roles.tenantAdmissionDefiner)}`,
+    ]);
+    assert.ok(
+      rowsContain(multiTarget, 'AUTH_MEMBERSHIP_POLICY_INVALID', /auth\.tenant_membership\.tenant_membership_preselect/),
+      kinds(multiTarget),
+    );
+
     // An added permissive policy is outside the exact reviewed contract, and the
     // accepted restrictive partner still prevents it from widening real runtime reads.
     const widening = await probe(db, [
@@ -389,6 +403,7 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
     // but the real login immediately sees foreign rows. Restore and prove green.
     const customer = quoteRole(db.roles.customerApp);
     const alwaysTrue = `tenant_id = tenant_id AND tenant_data.current_tenant_id() IS NOT NULL`;
+    await assertNoForeignRows(db);
     try {
       await db.adminQuery(`
         DROP POLICY accounts_tenant_isolation ON tenant_data.accounts;
@@ -402,11 +417,17 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
           USING (${alwaysTrue} AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()))
           WITH CHECK (${alwaysTrue} AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()));
       `);
+      // Run the same normal no-foreign-row assertion used on the healthy stack; it
+      // must fail under the mutation. This is recorded, not replaced by a leak count.
+      await assert.rejects(
+        () => assertNoForeignRows(db),
+        /foreign rows must remain invisible/,
+        'the normal no-foreign-row assertion must go red under the weakened policy',
+      );
       const leaked = await asUser(db, T1, U1, async client =>
         (await client.query(`SELECT count(*)::int AS n FROM tenant_data.accounts WHERE tenant_id = '${T2}'`)).rows[0].n);
-      assert.equal(leaked, 1, 'the behavioral probe demonstrates the widened predicate');
-      // The actual target gate must refuse the weakened installation; this is the
-      // required red/green proof, not the expected-leak demonstration alone.
+      assert.equal(leaked, 1, 'actual foreign rows observed under the mutation');
+      // The actual target gate must refuse the weakened installation.
       const refused = runCli(['--database', db.database]);
       assert.notEqual(refused.status, 0);
       assert.match(refused.stderr, /POLICY_OPERATION_GAP|POLICY_EXPRESSION_MISMATCH|UNEXPECTED_POLICY/);
@@ -428,12 +449,7 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
                  AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()));
       `);
     }
-    assert.equal(
-      await asUser(db, T1, U1, async client =>
-        (await client.query(`SELECT count(*)::int AS n FROM tenant_data.accounts WHERE tenant_id = '${T2}'`)).rows[0].n),
-      0,
-      'restoring the accepted guard restores isolation',
-    );
+    await assertNoForeignRows(db);
     assert.deepEqual(await coverage(db), []);
     assert.equal(runCli(['--database', db.database]).status, 0);
   });
@@ -562,6 +578,7 @@ test('PIVOT-008 effective authority: column ACLs, operator/auth boundary, EXECUT
 test('PIVOT-008 transitive paths, default ACLs, owner excess and installed authority protocol', async () => {
   await withPivotDatabase(stack, async db => {
     const customer = quoteRole(db.roles.customerApp);
+    await seedTwoTenants(db);
 
     const viewRows = await probe(db, [
       'CREATE VIEW public.p8_inner AS SELECT * FROM tenant_data.accounts',
@@ -605,6 +622,119 @@ test('PIVOT-008 transitive paths, default ACLs, owner excess and installed autho
       rowsContain(writeColumnChildRows, 'UNSAFE_PARTITION_WRITE_PATH', /public\.p8_write_col_child:INSERT/),
       kinds(writeColumnChildRows),
     );
+
+    // Concrete reviewed blocker: forced-RLS child with both FOR ALL predicates true and
+    // a customer INSERT grant must fail, not merely have policies.
+    const unsafeTrueChildRows = await probe(db, [
+      'CREATE TABLE public.p8_true_child () INHERITS (tenant_data.accounts)',
+      'ALTER TABLE public.p8_true_child ENABLE ROW LEVEL SECURITY',
+      'ALTER TABLE public.p8_true_child FORCE ROW LEVEL SECURITY',
+      'CREATE POLICY p8_true_permissive ON public.p8_true_child AS PERMISSIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true)',
+      'CREATE POLICY p8_true_restrictive ON public.p8_true_child AS RESTRICTIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true)',
+      `GRANT INSERT ON public.p8_true_child TO ${customer}`,
+    ]);
+    assert.ok(rowsContain(unsafeTrueChildRows, 'UNSAFE_PARTITION_WRITE_PATH', /public\.p8_true_child:INSERT/), kinds(unsafeTrueChildRows));
+
+    const unsafeTrueReadRows = await probe(db, [
+      'CREATE TABLE public.p8_true_read () INHERITS (tenant_data.accounts)',
+      'ALTER TABLE public.p8_true_read ENABLE ROW LEVEL SECURITY',
+      'ALTER TABLE public.p8_true_read FORCE ROW LEVEL SECURITY',
+      'CREATE POLICY p8_true_read_p ON public.p8_true_read AS PERMISSIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true)',
+      'CREATE POLICY p8_true_read_s ON public.p8_true_read AS RESTRICTIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true)',
+      `GRANT SELECT ON public.p8_true_read TO ${customer}`,
+    ]);
+    assert.ok(rowsContain(unsafeTrueReadRows, 'UNSAFE_PARTITION_PATH', /public\.p8_true_read:SELECT/), kinds(unsafeTrueReadRows));
+
+    // Exact canonical child policies (FOR ALL) are a permitted control.
+    const canonicalChildPolicy = [
+      'CREATE TABLE public.p8_canonical_child () INHERITS (tenant_data.accounts)',
+      'ALTER TABLE public.p8_canonical_child ENABLE ROW LEVEL SECURITY',
+      'ALTER TABLE public.p8_canonical_child FORCE ROW LEVEL SECURITY',
+      'CREATE POLICY p8_c_i ON public.p8_canonical_child AS PERMISSIVE FOR ALL TO PUBLIC USING (tenant_id = tenant_data.current_tenant_id()) WITH CHECK (tenant_id = tenant_data.current_tenant_id())',
+      'CREATE POLICY p8_c_s ON public.p8_canonical_child AS RESTRICTIVE FOR ALL TO PUBLIC USING (tenant_id = tenant_data.current_tenant_id()) WITH CHECK (tenant_id = tenant_data.current_tenant_id())',
+      `CREATE POLICY p8_c_a ON public.p8_canonical_child AS RESTRICTIVE FOR ALL TO ${customer} USING (tenant_id = tenant_data.current_tenant_id() AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id())) WITH CHECK (tenant_id = tenant_data.current_tenant_id() AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()))`,
+      `GRANT SELECT, INSERT ON public.p8_canonical_child TO ${customer}`,
+    ];
+    const canonicalChildRows = await probe(db, canonicalChildPolicy);
+    assert.deepEqual(canonicalChildRows, [], kinds(canonicalChildRows));
+
+    // Exact operation-specific policies are accepted for the operation they cover and
+    // rejected when a write is granted without the corresponding write contract.
+    const operationSpecificPolicy = [
+      'CREATE TABLE public.p8_op_child () INHERITS (tenant_data.accounts)',
+      'ALTER TABLE public.p8_op_child ENABLE ROW LEVEL SECURITY',
+      'ALTER TABLE public.p8_op_child FORCE ROW LEVEL SECURITY',
+      'CREATE POLICY p8_op_i ON public.p8_op_child AS PERMISSIVE FOR SELECT TO PUBLIC USING (tenant_id = tenant_data.current_tenant_id())',
+      'CREATE POLICY p8_op_s ON public.p8_op_child AS RESTRICTIVE FOR SELECT TO PUBLIC USING (tenant_id = tenant_data.current_tenant_id())',
+      `CREATE POLICY p8_op_a ON public.p8_op_child AS RESTRICTIVE FOR SELECT TO ${customer} USING (tenant_id = tenant_data.current_tenant_id() AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()))`,
+      `GRANT SELECT ON public.p8_op_child TO ${customer}`,
+    ];
+    assert.deepEqual(await probe(db, operationSpecificPolicy), []);
+    const operationWriteRows = await probe(db, [
+      'CREATE TABLE public.p8_op_child () INHERITS (tenant_data.accounts)',
+      'ALTER TABLE public.p8_op_child ENABLE ROW LEVEL SECURITY',
+      'ALTER TABLE public.p8_op_child FORCE ROW LEVEL SECURITY',
+      'CREATE POLICY p8_op_i ON public.p8_op_child AS PERMISSIVE FOR SELECT TO PUBLIC USING (tenant_id = tenant_data.current_tenant_id())',
+      'CREATE POLICY p8_op_s ON public.p8_op_child AS RESTRICTIVE FOR SELECT TO PUBLIC USING (tenant_id = tenant_data.current_tenant_id())',
+      `CREATE POLICY p8_op_a ON public.p8_op_child AS RESTRICTIVE FOR SELECT TO ${customer} USING (tenant_id = tenant_data.current_tenant_id() AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()))`,
+      `GRANT SELECT, INSERT ON public.p8_op_child TO ${customer}`,
+    ]);
+    assert.ok(rowsContain(operationWriteRows, 'UNSAFE_PARTITION_WRITE_PATH', /public\.p8_op_child:INSERT/), kinds(operationWriteRows));
+
+    // Committed child controls: canonical policy isolates own/foreign rows and the
+    // CLI accepts it; the true-policy profile leaks foreign rows and the CLI rejects it.
+    await db.adminQuery(`
+      CREATE TABLE public.p8_canonical_live () INHERITS (tenant_data.accounts);
+      ALTER TABLE public.p8_canonical_live ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE public.p8_canonical_live FORCE ROW LEVEL SECURITY;
+      CREATE POLICY p8_live_i ON public.p8_canonical_live AS PERMISSIVE FOR ALL TO PUBLIC
+        USING (tenant_id = tenant_data.current_tenant_id())
+        WITH CHECK (tenant_id = tenant_data.current_tenant_id());
+      CREATE POLICY p8_live_s ON public.p8_canonical_live AS RESTRICTIVE FOR ALL TO PUBLIC
+        USING (tenant_id = tenant_data.current_tenant_id())
+        WITH CHECK (tenant_id = tenant_data.current_tenant_id());
+      CREATE POLICY p8_live_a ON public.p8_canonical_live AS RESTRICTIVE FOR ALL TO ${customer}
+        USING (tenant_id = tenant_data.current_tenant_id()
+               AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()))
+        WITH CHECK (tenant_id = tenant_data.current_tenant_id()
+               AND tenant_data.session_admitted(tenant_data.current_tenant_id(), tenant_data.current_user_id()));
+      GRANT SELECT ON public.p8_canonical_live TO ${customer};
+      INSERT INTO public.p8_canonical_live(tenant_id, code, title) VALUES
+        ('${T1}', '1000', 'Cash A'), ('${T1}', '4000', 'Revenue A'), ('${T2}', '1000', 'Cash B');
+    `);
+    try {
+      const canonicalBehavior = await asUser(db, T1, U1, async client => ({
+        own: (await client.query('SELECT count(*)::int AS n FROM public.p8_canonical_live')).rows[0].n,
+        foreign: (await client.query(`SELECT count(*)::int AS n FROM public.p8_canonical_live WHERE tenant_id = '${T2}'`)).rows[0].n,
+      }));
+      assert.deepEqual(canonicalBehavior, {own: 2, foreign: 0});
+      assert.equal(runCli(['--database', db.database]).status, 0);
+    } finally {
+      await db.adminQuery('DROP TABLE IF EXISTS public.p8_canonical_live CASCADE');
+    }
+
+    await db.adminQuery(`
+      CREATE TABLE public.p8_true_live () INHERITS (tenant_data.accounts);
+      ALTER TABLE public.p8_true_live ENABLE ROW LEVEL SECURITY;
+      ALTER TABLE public.p8_true_live FORCE ROW LEVEL SECURITY;
+      CREATE POLICY p8_true_live_p ON public.p8_true_live AS PERMISSIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true);
+      CREATE POLICY p8_true_live_s ON public.p8_true_live AS RESTRICTIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true);
+      GRANT SELECT, INSERT ON public.p8_true_live TO ${customer};
+      INSERT INTO public.p8_true_live(tenant_id, code, title) VALUES
+        ('${T1}', '1000', 'Cash A'), ('${T1}', '4000', 'Revenue A'), ('${T2}', '1000', 'Cash B');
+    `);
+    try {
+      const unsafeBehavior = await asUser(db, T1, U1, async client => ({
+        own: (await client.query('SELECT count(*)::int AS n FROM public.p8_true_live')).rows[0].n,
+        foreign: (await client.query(`SELECT count(*)::int AS n FROM public.p8_true_live WHERE tenant_id = '${T2}'`)).rows[0].n,
+      }));
+      assert.deepEqual(unsafeBehavior, {own: 3, foreign: 1}, 'the true-policy child must expose foreign rows');
+      const refused = runCli(['--database', db.database]);
+      assert.notEqual(refused.status, 0);
+      assert.match(refused.stderr, /UNSAFE_PARTITION_WRITE_PATH public\.p8_true_live:INSERT/);
+    } finally {
+      await db.adminQuery('DROP TABLE IF EXISTS public.p8_true_live CASCADE');
+    }
 
     const mixedOwnerRows = await probe(db, [
       'CREATE VIEW public.p8_mixed_inner AS SELECT * FROM tenant_data.accounts',
