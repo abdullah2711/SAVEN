@@ -486,11 +486,67 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         .reduce((m, l) => m + num(l.debit) - num(l.credit), 0), 0));
   }
 
-  function multi(name, label, options, selected) {
-    const summary = selected.length ? `${selected.length} selected` : 'All';
-    return `<details class="ms-filter"><summary>${e(label)} · ${summary}</summary>
-      <div class="ms-panel">${options.map(([value, text]) => `<label class="checkline"><input class="check" type="checkbox" name="${name}" value="${e(value)}" ${selected.includes(value) ? 'checked' : ''}>${e(text)}</label>`).join('')}</div>
-    </details>`;
+  /* One multi-select control, used by every filter and by the column chooser. */
+  function ms(name, label, options, selected, attr) {
+    const chosen = options.filter(([v]) => selected.includes(v));
+    const text = attr
+      ? (chosen.length === options.length ? 'All columns' : `${chosen.length} of ${options.length}`)
+      : (chosen.length === 0 ? 'All' : chosen.length === 1 ? chosen[0][1] : `${chosen.length} selected`);
+    const inputAttr = attr ? `data-${attr}` : `name="${name}"`;
+    return `<div class="ms" data-ms="${name}"${attr ? ' data-ms-columns="1"' : ''}>
+      <span class="ms-label">${e(label)}</span>
+      <button type="button" class="ms-trigger" aria-expanded="false">
+        <span class="ms-text">${e(text)}</span><span class="ms-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="ms-panel" hidden>
+        <div class="ms-head">
+          <button type="button" class="text-button" data-ms-all>Select all</button>
+          <button type="button" class="text-button" data-ms-none>Clear</button>
+        </div>
+        <div class="ms-list">${options.map(([value, label2]) => `<label class="ms-row"><input class="check" type="checkbox" ${inputAttr} value="${e(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${e(label2)}</span></label>`).join('')}</div>
+      </div>
+    </div>`;
+  }
+
+  let msBound = false;
+  function bindMS() {
+    if (msBound) return;
+    msBound = true;
+    const closeAll = (except) => document.querySelectorAll('.ms').forEach((box) => {
+      if (box === except) return;
+      box.querySelector('.ms-panel').hidden = true;
+      box.querySelector('.ms-trigger').setAttribute('aria-expanded', 'false');
+    });
+    document.addEventListener('click', (ev) => {
+      const trigger = ev.target.closest('.ms-trigger');
+      if (trigger) {
+        const box = trigger.closest('.ms');
+        const panel = box.querySelector('.ms-panel');
+        const open = panel.hidden;
+        closeAll(box);
+        panel.hidden = !open;
+        trigger.setAttribute('aria-expanded', String(open));
+        return;
+      }
+      const all = ev.target.closest('[data-ms-all]');
+      const none = ev.target.closest('[data-ms-none]');
+      if (all || none) {
+        const box = (all || none).closest('.ms');
+        box.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = Boolean(all); b.dispatchEvent(new Event('change', {bubbles: true})); });
+        return;
+      }
+      if (!ev.target.closest('.ms-panel')) closeAll();
+    });
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeAll(); });
+    document.addEventListener('change', (ev) => {
+      const box = ev.target.closest('.ms');
+      if (!box) return;
+      const boxes = [...box.querySelectorAll('input[type=checkbox]')];
+      const chosen = boxes.filter((b) => b.checked);
+      const text = chosen.length === 0 ? 'All' : chosen.length === 1 ? (chosen[0].parentElement.textContent || '').trim() : `${chosen.length} selected`;
+      const el = box.querySelector('.ms-text');
+      if (el && !box.dataset.msColumns) el.textContent = text;
+    });
   }
 
   function glColumns() {
@@ -550,23 +606,20 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     return `<form id="gl-filter" class="filterbar gl-filter">
         <label>From<input name="from" type="date" value="${e(GL.from)}" required></label>
         <label>To<input name="to" type="date" value="${e(GL.to)}" required></label>
-        ${multi('account', 'Accounts', accountOpts, GL.accounts)}
-        ${multi('party', 'Parties', partyOpts, GL.parties)}
-        ${multi('project', 'Projects', projectOpts, GL.projects)}
-        ${multi('location', 'Locations', locOpts, GL.locations)}
-        ${multi('centre', 'Cost centres', centreOpts, GL.centres)}
-        ${multi('type', 'Voucher types', typeOpts, GL.types)}
+        ${ms('account', 'Accounts', accountOpts, GL.accounts)}
+        ${ms('party', 'Parties', partyOpts, GL.parties)}
+        ${ms('project', 'Projects', projectOpts, GL.projects)}
+        ${ms('location', 'Locations', locOpts, GL.locations)}
+        ${ms('centre', 'Cost centres', centreOpts, GL.centres)}
+        ${ms('type', 'Voucher types', typeOpts, GL.types)}
         <label>Search<input name="q" type="search" value="${e(GL.q)}" placeholder="Voucher, party or description"></label>
         <button class="button primary">Apply</button>
       </form>
 
-      <details class="gl-columns">
-        <summary>Columns · ${cols.length} shown</summary>
-        <div class="related">
-          ${extras.map(([k, label]) => `<label class="checkline"><input class="check" type="checkbox" data-gl-col="${k}" ${GL.extras.has(k) ? 'checked' : ''}>${e(label)}</label>`).join('')}
-          <span class="form-note">Posting date, account, description, amounts, voucher and party are always shown.</span>
-        </div>
-      </details>
+      <div class="gl-toolrow">
+        ${ms('columns', 'Columns', extras, [...GL.extras], 'gl-col')}
+        <span class="form-note">${cols.length} of 17 columns. Posting date, account, description, amounts, voucher and party are always shown.</span>
+      </div>
 
       <section class="panel">
         <div class="panel-head"><h2>${GL.accounts.length === 1 ? e((accounts().find((a) => a.code === GL.accounts[0]) || {}).name || GL.accounts[0]) : GL.accounts.length ? GL.accounts.length + ' accounts' : 'All accounts'}</h2><div class="related"><span class="badge">${rows.length} lines</span><button class="button" data-gl-export="csv">Export CSV</button><button class="button" data-gl-print>Print</button></div></div>
@@ -623,6 +676,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   function bindGL(rerender) {
+    bindMS();
     document.querySelector('#gl-filter')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       readMulti(ev.target);
@@ -720,22 +774,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const extras = [['subtype', 'Subtype'], ['party', 'Party'], ['project', 'Project'], ['location', 'Location'], ['centre', 'Cost centre']];
 
     return `<form id="jr-filter" class="filterbar gl-filter">
-        ${multi('party', 'Parties', partyOpts, J.parties)}
-        ${multi('subtype', 'Subtypes', subtypeOpts, J.subtypes)}
-        ${multi('project', 'Projects', projectOpts, J.projects)}
-        ${multi('location', 'Locations', locOpts, J.locations)}
-        ${multi('centre', 'Cost centres', centreOpts, J.centres)}
+        ${ms('party', 'Parties', partyOpts, J.parties)}
+        ${ms('subtype', 'Subtypes', subtypeOpts, J.subtypes)}
+        ${ms('project', 'Projects', projectOpts, J.projects)}
+        ${ms('location', 'Locations', locOpts, J.locations)}
+        ${ms('centre', 'Cost centres', centreOpts, J.centres)}
         <label>Search<input name="q" type="search" value="${e(J.q)}" placeholder="Voucher, party or description"></label>
         <button class="button primary">Apply</button>
       </form>
 
-      <details class="gl-columns">
-        <summary>Columns · ${cols.length} shown</summary>
-        <div class="related">
-          ${extras.map(([k, label]) => `<label class="checkline"><input class="check" type="checkbox" data-jr-col="${k}" ${J.extras.has(k) ? 'checked' : ''}>${e(label)}</label>`).join('')}
-          <span class="form-note">Date, voucher, description, amounts and state are always shown. Fields added to the entry form appear here as columns automatically.</span>
-        </div>
-      </details>
+      <div class="gl-toolrow">
+        ${ms('columns', 'Columns', extras, [...J.extras], 'jr-col')}
+        <span class="form-note">${cols.length} columns. Date, voucher, description, amounts and state are always shown; fields added to the entry form appear here automatically.</span>
+      </div>
 
       <section class="panel">
         <div class="panel-head"><h2>Journals</h2><div class="related"><span class="badge">${rows.length} entries</span><button class="button" data-jr-print>Print</button></div></div>
@@ -792,6 +843,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   function bindJournal(rerender, notify) {
+    bindMS();
     const form = document.querySelector('#jr-filter');
     if (form) form.addEventListener('submit', (ev) => {
       ev.preventDefault();

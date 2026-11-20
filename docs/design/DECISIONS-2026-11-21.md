@@ -8,6 +8,7 @@ reason.
 | # | Decision | Status | Where |
 |---|---|---|---|
 | 1 | Ledger filters are dropdowns, and every dropdown is a **multi-select with tick boxes** (five accounts, three parties, two projects, three cost centres at once) | done | §1 |
+| 1a | The column chooser uses the same dropdown control, not a settings strip | done | §1 |
 | 2 | Tax page is one rail entry with horizontal tabs | done | §2 |
 | 3 | Certificates and Returns dropped; **Reconciliation & adjustments** replaces them | done | §2 |
 | 4 | Tax rules replace "codes and rates", with scope (all items, a group, a single item) and per-line override | done | §2 |
@@ -33,7 +34,20 @@ reason.
 
 ## 1. Multi-select ledger filters
 
-Each filter is a dropdown of tick boxes; empty means **all**. Combinations are AND
+The control is one component used by every filter **and** by the column chooser:
+
+- A label above, like every other field in the bar, so it lines up with the date
+  inputs.
+- A trigger styled exactly like the other inputs, showing the current state:
+  `All` · a single value · `3 selected` · `All columns` · `4 of 8`.
+- The panel opens below the trigger: a header with **Select all** and **Clear**, then
+  a scrollable list of rows with plum checkboxes, and a hover state per row.
+- Opens on click, closes on outside click or Escape, and only one panel is open at a
+  time. The trigger keeps a visible focus ring and `aria-expanded`.
+- The column chooser is the same control, labelled **Columns**, and it never changes
+  what is filtered — only what is displayed.
+
+Empty means **all**. Combinations are AND
 across filters and OR inside one filter:
 
 ```
