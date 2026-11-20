@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Accounting · SA7EN</title>
+<link rel="stylesheet" href="../shared/ui.css">
+<link rel="stylesheet" href="./app.css">
+</head>
+<body>
+<div id="boot" style="padding:64px;font:14px/1.6 system-ui;color:#6C646D">Loading the accounting workspace…</div>
+<noscript><p style="padding:24px">This workspace needs JavaScript. No data leaves the browser.</p></noscript>
+<script type="module" src="./app.js"></script>
+<script>
+  // Remove the boot line as soon as the shell paints.
+  new MutationObserver((m, o) => {
+    if (document.querySelector('#view')) { document.querySelector('#boot')?.remove(); o.disconnect(); }
+  }).observe(document.body, { childList: true, subtree: true });
+</script>
+</body>
+</html>
