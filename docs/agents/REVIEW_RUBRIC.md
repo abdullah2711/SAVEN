@@ -1,6 +1,6 @@
 # Review rubric
 
-Version: 12. Created: 19 November 2026 (Asia/Karachi).
+Version: 13. Created: 19 November 2026 (Asia/Karachi).
 Source review base: `codex/pivot-003-rulings @ 27e91905a5271521b98328313265bd3cfaf03752`.
 This v1 seeds rules from every review file present under docs/contractor/reviews at that SHA; references below identify the originating review families, including their correction/ACCEPT rounds. This is a review-history synthesis, not a current runtime inventory or a claim that all defects remain open. Principal decisions, scope amendments and later corrections govern over superseded findings; in particular D-018 preserves live legacy IAM flows and D-016 permits gaps but prohibits reuse. The source set has AUTH-006 through R4, not a separately named R5; do not invent a missing review.
 
@@ -129,3 +129,7 @@ Review: `3b23f41` — PIVOT-008 R1, REVISE. No new defect class: reapply R74/R75
 ## Version 12 — 20 November 2026 (Asia/Karachi)
 
 Review: `7dee232` — PIVOT-008 R2 partial, REVISE. R76 — Normalize privilege labels and catalog command codes once before comparing policy applicability; an uppercase INSERT/UPDATE/DELETE versus lowercase a/w/d mismatch can skip predicate validation or reject a valid operation-specific control. Apply the same effective isolation contract to direct children as to parent tables, and compare complete policy role sets rather than any matching target. Reapply R09/R11/R74/R75 to normal no-leak assertion red/restored-green evidence and actual target CLI refusal. Preserve the bounded exclusions and prior closed cleanup disposition; a disclosed transient followed by a passing rerun is not a diagnosis or a flake-free claim.
+
+## Version 13 — 20 November 2026 (Asia/Karachi)
+
+Review: `e4736a5` — PIVOT-008 R3, REVISE. R77 — Evaluate reachable relation/view/child authority for associated connection logins as well as switched runtime roles; a direct login grant outside the primary schemas must not disappear between a three-schema direct-grant check and runtime-role-only endpoint traversal. Test NOINHERIT direct login table/column read/write authority against populated foreign rows, actual CLI refusal and restored normal SET ROLE controls. R2 command-code, exact policy target and normal-assertion mutation corrections are addressed; preserve finding 6 cleanup closure and the prior bounded exclusions.
