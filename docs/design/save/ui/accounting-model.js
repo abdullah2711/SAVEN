@@ -1,7 +1,7 @@
 // Independent synthetic UI fixtures. No business storage or posting endpoint.
 import {cents,decimal} from './model.js';
 export const chart=[['1000','Cash','asset','Assets'],['1010','Operating bank','asset','Assets'],['1100','Trade receivables','asset','Assets','receivable'],['1300','Recoverable input tax','asset','Assets'],['2100','Trade payables','liability','Liabilities','payable'],['2200','Output tax payable','liability','Liabilities'],['3000','Owner capital','equity','Equity'],['4000','Service revenue','income','Income'],['5000','Operating expenses','expense','Expenses']].map(([code,name,type,group,control])=>({code,name,type,group,control:control||'',currency:'PKR',active:true}));
-const line=(account,debit,credit,meta={})=>({account,debit,credit,project:'',costCentre:'',againstVoucher:'',supplierRef:'',...meta});
+const line=(account,debit,credit,meta={})=>({account,debit,credit,project:'',location:'',costCentre:'',againstVoucher:'',supplierRef:'',...meta});
 export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital introduced',party:'Owner',source:'Journal',lines:[line('1010','5000.00','0.00'),line('3000','0.00','5000.00')]},{id:'DEMO-SI-001',date:'2026-11-03',narrative:'Service invoice',party:'Atlas Studio',source:'Sales invoice',lines:[line('1100','110.00','0.00'),line('4000','0.00','100.00'),line('2200','0.00','10.00')]},{id:'DEMO-PY-001',date:'2026-11-05',narrative:'Invoice settlement',party:'Atlas Studio',source:'Payment',lines:[line('1010','110.00','0.00'),line('1100','0.00','110.00')]},{id:'DEMO-PI-001',date:'2026-11-07',narrative:'Purchased services',party:'Willow Supplies',source:'Supplier bill',lines:[line('5000','50.00','0.00'),line('1300','5.00','0.00'),line('2100','0.00','55.00')]}];
 
 // ---------------------------------------------------------------------------
@@ -10,13 +10,20 @@ export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital in
 // trial balance, statements and the newer screens cannot disagree.
 // Dimensions carried by every posting line, so the ledger can be sliced by them.
 export const PROJECTS = [
-  {code: 'HO', name: 'Head office', status: 'active', manager: 'A. Rehman', accounts: ['1010', '4000', '5000']},
   {code: 'PRJ-FALCON', name: 'Falcon warehouse fit-out', status: 'active', manager: 'S. Iqbal', accounts: ['1010', '4000', '5000']},
   {code: 'PRJ-MERIDIAN', name: 'Meridian clinic rollout', status: 'active', manager: 'N. Farooq', accounts: ['4000', '5000']},
   {code: 'PRJ-INDUS', name: 'Indus retail refit', status: 'on hold', manager: 'A. Rehman', accounts: ['4000', '5000']},
 ];
+// Locations are a dimension on every posting, like project. Books stay company-wide.
+export const LOCATIONS = [
+  {code: 'HQ', name: 'Head office — Karachi', kind: 'office'},
+  {code: 'OUT-KHI-01', name: 'Clifton outlet', kind: 'outlet'},
+  {code: 'OUT-LHE-02', name: 'Gulberg outlet', kind: 'outlet'},
+  {code: 'WH-KHI', name: 'Central warehouse', kind: 'warehouse'},
+];
+const locationFor = (i) => LOCATIONS[i % LOCATIONS.length].code;
 export const COST_CENTRES = ['Administration', 'Operations', 'Sales', 'Warehouse'];
-const projectFor = (i) => PROJECTS[i % PROJECTS.length].code;
+const projectFor = (i) => (i % 5 === 0 ? '' : PROJECTS[i % PROJECTS.length].code);
 const centreFor = (i) => COST_CENTRES[i % COST_CENTRES.length];
 
 const SAMPLE_CUSTOMERS=['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality','Zenith Electrical','Falcon Chemicals'];
@@ -35,25 +42,25 @@ export const operatingJournals=(()=>{
   const docs=kinds.map((kind,i)=>{
     const day=String(1+Math.floor(i*29/kinds.length)).padStart(2,'0');
     const date='2026-11-'+day;
-    const project=projectFor(i), centre=centreFor(i), against='DEMO-'+(kind==='payment'?'PI':'SI')+'-'+String(100+((i*7)%70));
+    const project=projectFor(i), location=locationFor(i), centre=centreFor(i), against='DEMO-'+(kind==='payment'?'PI':'SI')+'-'+String(100+((i*7)%70));
     if(kind==='sale'){
       const gross=r2(25000+seeded()*50000), net=r2(gross/1.1), tax=r2(gross-net);
-      return {id:'DEMO-SI-'+String(100+i),date,subtype:'Invoice',project,party:customers[i%customers.length],partyType:'Customer',source:'Sales invoice',supplierRef:'',againstVoucher:'',lines:[line('1100',amt(gross),'0.00',{project,costCentre:centre}),line('4000','0.00',amt(net),{project,costCentre:centre}),line('2200','0.00',amt(tax),{project,costCentre:centre})]};
+      return {id:'DEMO-SI-'+String(100+i),date,subtype:'Invoice',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Sales invoice',supplierRef:'',againstVoucher:'',lines:[line('1100',amt(gross),'0.00',{project,costCentre:centre,location}),line('4000','0.00',amt(net),{project,costCentre:centre,location}),line('2200','0.00',amt(tax),{project,costCentre:centre,location})]};
     }
     if(kind==='receipt'){
       const value=r2(30000+seeded()*55000);
-      return {id:'DEMO-PY-'+String(100+i),date,subtype:'Receipt',project,party:customers[i%customers.length],partyType:'Customer',source:'Payment',supplierRef:'',againstVoucher:'DEMO-SI-'+String(100+i),lines:[line('1010',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)}),line('1100','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)})]};
+      return {id:'DEMO-PY-'+String(100+i),date,subtype:'Receipt',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Payment',supplierRef:'',againstVoucher:'DEMO-SI-'+String(100+i),lines:[line('1010',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)}),line('1100','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)})]};
     }
     if(kind==='bill'){
       const value=r2(20000+seeded()*50000);
-      return {id:'DEMO-PI-'+String(100+i),date,subtype:'Bill',project,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Supplier bill',supplierRef:'SUP-'+String(4100+i),againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre}),line('2100','0.00',amt(value),{project,costCentre:centre})]};
+      return {id:'DEMO-PI-'+String(100+i),date,subtype:'Bill',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Supplier bill',supplierRef:'SUP-'+String(4100+i),againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre,location}),line('2100','0.00',amt(value),{project,costCentre:centre,location})]};
     }
     if(kind==='payment'){
       const value=r2(30000+seeded()*50000);
-      return {id:'DEMO-JV-'+String(100+i),date,subtype:'Payment',project,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Payment',supplierRef:'',againstVoucher:'DEMO-PI-'+String(100+i),lines:[line('2100',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)}),line('1010','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)})]};
+      return {id:'DEMO-JV-'+String(100+i),date,subtype:'Payment',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Payment',supplierRef:'',againstVoucher:'DEMO-PI-'+String(100+i),lines:[line('2100',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)}),line('1010','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)})]};
     }
     const value=r2(60000+seeded()*80000);
-    return {id:'DEMO-JV-'+String(500+i),date,subtype:'Expense',project:'HO',party:'Internal',partyType:'',source:'Journal',supplierRef:'',againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project:'HO',costCentre:centre}),line('1010','0.00',amt(value),{project:'HO',costCentre:centre})]};
+    return {id:'DEMO-JV-'+String(500+i),date,subtype:'Expense',project:'',location,party:'Internal',partyType:'',source:'Journal',supplierRef:'',againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre,location}),line('1010','0.00',amt(value),{project,costCentre:centre,location})]};
   });
   return docs.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
 })();

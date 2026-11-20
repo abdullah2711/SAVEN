@@ -24,8 +24,9 @@ timestamps ISO 8601 UTC.
 `updated_at`, `updated_by`, `version` (integer, optimistic concurrency). Document
 numbers are separate from ids and never reused.
 
-**Scope.** Every business record carries `tenant_id`, `company_id` and, where
-relevant, `branch_id`. A query without scope is a bug, not a convenience.
+**Scope.** Every business record carries `tenant_id` and `company_id`; postings carry
+`location_id` and optional `project_id`. The books are company-wide: location is a
+dimension, never a separate ledger.
 
 **Immutability.** A posted document is immutable. Corrections are new documents
 that reference the original. The ledger is append-only.
@@ -102,8 +103,8 @@ original and carries the opposite effects.
 ### 2.5 Document line
 
 `id, document_id, line_no, account_id, item_id, description, quantity, rate,
-discount, net, tax_group_id, tax_override, project_id, cost_centre_id, warehouse_id,
-against_voucher_id, supplier_invoice_no, custom fields`.
+discount, net, tax_group_id, tax_override, project_id, location_id, cost_centre_id,
+warehouse_id, against_voucher_id, supplier_invoice_no, custom fields`.
 
 `project_id` is mandatory on every posting line; head office is a project record like
 any other, so "no project" does not exist. `against_voucher_id` records what a payment
@@ -152,7 +153,9 @@ source document and a reason; balance equals the sum of movements.
 `project: id, code, name, manager_id, status (active, on hold, closed), opens_on,
 closes_on`. `cost_centre: id, code, name, active`.
 
-`account.project_id` is nullable: an account belongs to a project or to head office.
+`account.project_id` is nullable. `project` on a line is nullable: empty means no
+project. `location_id` is mandatory on a line and is a branch, outlet or warehouse, so
+"where" is always known even when "for which project" is not.
 Access is `user_project_scope(user_id, project_id[])`, applied to every query, not
 only to lists: a ledger row from another project must never leave the server.
 

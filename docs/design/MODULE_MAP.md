@@ -49,7 +49,8 @@ bank account register with a running balance.
   accounts, dimensions, approvals and periods.
 - Payments, Cash & bank, Sales and Purchases stay inside Accounting.
 - Taxes is one Accounting page with five tabs, not five rail entries:
-  codes & rates, registers, withholding, returns, certificates.
+  rules, registers, withholding, advance tax, reconciliation & adjustments.
+- Certificates and Returns are removed from scope.
 
 ### Rules
 
@@ -135,7 +136,7 @@ Accounting
 ├── Chart of accounts
 ├── Trial balance
 ├── Reports                    (ageing, schedules, P&L, position, cash flow, equity)
-├── Taxes                      (5 horizontal tabs: codes & rates, registers, withholding, returns, certificates)
+├── Taxes                      (5 horizontal tabs: rules, registers, withholding, advance tax, adjustments)
 ├── Setup                      (accounting configuration)
 └── Period close
 ```
@@ -377,11 +378,11 @@ Taxes is **one page with five horizontal tabs**, not five sidebar entries:
 
 ```
 Taxes
-├── Codes & rates
+├── Rules
 ├── Registers
-├── Withholding
-├── Returns
-└── Certificates
+├── Withholding          (purchase side: we withhold, we owe the authority)
+├── Advance tax          (sales side: customer deducts, our asset)
+└── Reconciliation & adjustments
 ```
 
 ### 4.2 Pages
@@ -580,6 +581,21 @@ Configuration that belongs to accounting, not to the chart of accounts:
 
 Nothing here duplicates the chart of accounts: control and tax accounts are declared
 on the account, and Setup only shows the result.
+
+## 9C. Locations, projects and access
+
+- **Project is a dimension and may be empty.** There is no Head Office project.
+- **Location** (branch, outlet, warehouse) is a dimension on every posting line.
+- Books are company-wide: there is no branch selector in the header; a branch is a
+  field on the entry.
+- Items, warehouses and locations may belong to one or more projects, so an item for
+  a new brand can be scoped to that project. A location may serve several projects; a
+  project is never owned by one location.
+- Access scoping is applied per project on every query, and is a permission, not a
+  filter. An accountant with every accounting permission may still be restricted to
+  one or more projects.
+- See `DECISIONS-2026-11-21.md` §§9–10 for the cash & bank scope and the full
+  decision list.
 
 ## 10. Dashboards
 
