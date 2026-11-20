@@ -135,12 +135,18 @@ test('PIVOT-008 static contract: manifest, effective checks and fail-closed runn
     'MISSING_REQUIRED_COLUMN', 'MISSING_REQUIRED_CONSTRAINT',
     'AUTHORITY_HELPER_INVALID', 'PROTOCOL_VALIDATOR_INVALID',
     'MISSING_ENABLE_RLS', 'MISSING_FORCE_RLS', 'MISSING_POLICY',
-    'POLICY_OPERATION_GAP', 'RUNTIME_ADMISSION_GAP', 'POLICY_CONSTANT_TRUE',
-    'POLICY_PREDICATE_UNBOUND', 'CLIENT_CONTEXT_IN_TENANT_POLICY', 'FORBIDDEN_POLICY_ROLE',
+    'POLICY_OPERATION_GAP', 'RUNTIME_ADMISSION_GAP', 'POLICY_EXPRESSION_MISMATCH',
+    'UNEXPECTED_POLICY',
     'AUTH_MEMBERSHIP_MISSING_ENABLE_RLS', 'AUTH_MEMBERSHIP_MISSING_FORCE_RLS',
     'AUTH_MEMBERSHIP_UNAUTHORIZED_WRITE_POLICY', 'AUTH_MEMBERSHIP_POLICY_GAP',
-    'AUTH_MEMBERSHIP_POLICY_INVALID', 'AUTH_MEMBERSHIP_RESTRICTIVE_GAP',
-    'UNSAFE_VIEW_OWNER', 'UNSAFE_MATERIALIZED_VIEW', 'UNSAFE_PARTITION_PATH',
+    'AUTH_MEMBERSHIP_POLICY_INVALID',
+    'REQUIRED_OBJECT_KIND_MISMATCH', 'INSTALLATION_BINDING_MISMATCH',
+    'RUNTIME_SCHEMA_CREATE', 'RUNTIME_SCHEMA_PRIVILEGE', 'LOGIN_DIRECT_SCHEMA_PRIVILEGE',
+    'PUBLIC_SCHEMA_PRIVILEGE', 'SCHEMA_OWNERSHIP_MISMATCH',
+    'ROLE_SWITCH_TO_PRIVILEGED_CAPABILITY', 'DEFINER_OWNER_PRIVILEGE_MISSING',
+    'DEFINER_OWNER_SCHEMA_PRIVILEGE',
+    'UNSAFE_VIEW_PATH', 'UNSAFE_VIEW_OWNER', 'UNSAFE_MATERIALIZED_VIEW',
+    'UNSAFE_PARTITION_PATH', 'UNSAFE_PARTITION_WRITE_PATH',
     'UNSAFE_FUNCTION_OWNER', 'UNSAFE_FUNCTION_SEARCH_PATH', 'UNSAFE_FUNCTION_PUBLIC_EXECUTE',
     'UNSAFE_FUNCTION_RUNTIME_ASSUMPTION', 'UNSAFE_FUNCTION_ROW_SECURITY',
     'FORBIDDEN_RUNTIME_EXECUTE', 'MISSING_REQUIRED_EXECUTE', 'DEFINER_OWNER_EXCESS_AUTHORITY',
@@ -233,7 +239,37 @@ test('PIVOT-008 installed surface: complete stack passes, empty or single-missin
       await db.adminQuery('ALTER FUNCTION tenant_data.current_user_id_p8_missing() RENAME TO current_user_id');
     }
 
+    // The manifest enforces the declared kind, not mere name existence.
+    await db.adminQuery('ALTER TABLE tenant_data.warehouses RENAME TO warehouses_p8_kind');
+    await db.adminQuery('CREATE VIEW tenant_data.warehouses AS SELECT 1 AS id');
+    try {
+      const mismatch = runCli(['--database', db.database]);
+      assert.notEqual(mismatch.status, 0);
+      assert.match(mismatch.stderr, /REQUIRED_OBJECT_KIND_MISMATCH tenant_data\.warehouses/);
+    } finally {
+      await db.adminQuery('DROP VIEW tenant_data.warehouses');
+      await db.adminQuery('ALTER TABLE tenant_data.warehouses_p8_kind RENAME TO warehouses');
+    }
+
+    // A conflicting installed program must not satisfy the reviewed checksum.
+    const originalDefinition = (
+      await db.adminQuery("SELECT pg_get_functiondef('tenant_data.current_user_id()'::regprocedure) AS definition")
+    ).rows[0].definition;
+    await db.asRole('migrator', client => client.query(
+      `CREATE OR REPLACE FUNCTION tenant_data.current_user_id() RETURNS uuid
+         LANGUAGE sql STABLE SET search_path = pg_catalog
+         AS $fn$ SELECT NULL::uuid $fn$`,
+    ), {commit: true});
+    try {
+      const checksum = runCli(['--database', db.database]);
+      assert.notEqual(checksum.status, 0);
+      assert.match(checksum.stderr, /INSTALLATION_BINDING_MISMATCH tenant_data\.current_user_id\(\)/);
+    } finally {
+      await db.adminQuery(originalDefinition);
+    }
+
     assert.deepEqual(await coverage(db), []);
+    assert.equal(runCli(['--database', db.database]).status, 0);
   });
 });
 
@@ -256,14 +292,27 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
       'DROP POLICY tenant_membership_preselect ON auth.tenant_membership',
       'DROP POLICY tenant_membership_preselect_scope ON auth.tenant_membership',
     ]);
-    assert.ok(rowsContain(membershipGap, 'AUTH_MEMBERSHIP_POLICY_GAP', /auth\.tenant_membership:auth_service/), kinds(membershipGap));
+    assert.ok(rowsContain(membershipGap, 'AUTH_MEMBERSHIP_POLICY_GAP', /auth\.tenant_membership:tenant_membership_preselect/), kinds(membershipGap));
 
-    // An added permissive USING (true) is a constant-true finding, and the accepted
-    // restrictive partner still prevents it from widening real runtime reads.
+    // An added permissive policy is outside the exact reviewed contract, and the
+    // accepted restrictive partner still prevents it from widening real runtime reads.
     const widening = await probe(db, [
       'CREATE POLICY p8_widen ON tenant_data.accounts AS PERMISSIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true)',
     ]);
-    assert.ok(rowsContain(widening, 'POLICY_CONSTANT_TRUE', /accounts\.p8_widen/), kinds(widening));
+    assert.ok(rowsContain(widening, 'UNEXPECTED_POLICY', /accounts\.p8_widen/), kinds(widening));
+    await db.adminQuery(
+      'CREATE POLICY p8_widen ON tenant_data.accounts AS PERMISSIVE FOR ALL TO PUBLIC USING (true) WITH CHECK (true)',
+    );
+    try {
+      assert.equal(
+        await asUser(db, T1, U1, async client =>
+          (await client.query(`SELECT count(*)::int AS n FROM tenant_data.accounts WHERE tenant_id = '${T2}'`)).rows[0].n),
+        0,
+        'a widening permissive policy cannot bypass the restrictive partner',
+      );
+    } finally {
+      await db.adminQuery('DROP POLICY p8_widen ON tenant_data.accounts');
+    }
 
     // Real customer login: own tenant works, foreign and missing context fail.
     const counts = await asUser(db, T1, U1, async client => ({
@@ -355,7 +404,12 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
       `);
       const leaked = await asUser(db, T1, U1, async client =>
         (await client.query(`SELECT count(*)::int AS n FROM tenant_data.accounts WHERE tenant_id = '${T2}'`)).rows[0].n);
-      assert.equal(leaked, 1, 'the behavioral test must expose a widened predicate the catalog cannot prove');
+      assert.equal(leaked, 1, 'the behavioral probe demonstrates the widened predicate');
+      // The actual target gate must refuse the weakened installation; this is the
+      // required red/green proof, not the expected-leak demonstration alone.
+      const refused = runCli(['--database', db.database]);
+      assert.notEqual(refused.status, 0);
+      assert.match(refused.stderr, /POLICY_OPERATION_GAP|POLICY_EXPRESSION_MISMATCH|UNEXPECTED_POLICY/);
     } finally {
       await db.adminQuery(`
         DROP POLICY IF EXISTS p8_isolation ON tenant_data.accounts;
@@ -381,6 +435,7 @@ test('PIVOT-008 effective isolation: per-command catalog gaps and real restricte
       'restoring the accepted guard restores isolation',
     );
     assert.deepEqual(await coverage(db), []);
+    assert.equal(runCli(['--database', db.database]).status, 0);
   });
 });
 
@@ -448,6 +503,34 @@ test('PIVOT-008 effective authority: column ACLs, operator/auth boundary, EXECUT
         ],
         kind: 'UNKNOWN_PRIVILEGED_PRINCIPAL',
       },
+      {
+        name: 'runtime schema CREATE',
+        statements: [`GRANT CREATE ON SCHEMA tenant_data TO ${customer}`],
+        kind: 'RUNTIME_SCHEMA_CREATE',
+      },
+      {
+        name: 'runtime extra schema usage',
+        statements: [`GRANT USAGE ON SCHEMA auth TO ${customer}`],
+        kind: 'RUNTIME_SCHEMA_PRIVILEGE',
+      },
+      {
+        name: 'capability-based role switch',
+        statements: [
+          'CREATE ROLE p8_capability_target NOLOGIN BYPASSRLS',
+          `GRANT p8_capability_target TO ${customer}`,
+        ],
+        kind: 'ROLE_SWITCH_TO_PRIVILEGED_CAPABILITY',
+      },
+      {
+        name: 'external-schema definer',
+        statements: [
+          `CREATE FUNCTION public.p8_external_definer() RETURNS integer LANGUAGE sql
+             SECURITY DEFINER SET search_path = pg_catalog AS 'SELECT 1'`,
+          `ALTER FUNCTION public.p8_external_definer() OWNER TO ${quoteRole(db.roles.auditDefiner)}`,
+          `GRANT EXECUTE ON FUNCTION public.p8_external_definer() TO ${customer}`,
+        ],
+        kind: 'FORBIDDEN_RUNTIME_EXECUTE',
+      },
     ];
 
     for (const item of columnCases) {
@@ -463,6 +546,16 @@ test('PIVOT-008 effective authority: column ACLs, operator/auth boundary, EXECUT
     ]);
     assert.ok(has(loginRows, 'LOGIN_DIRECT_COVERED_PRIVILEGE'), kinds(loginRows));
     assert.ok(!has(loginRows, 'FORBIDDEN_LOGIN_EXECUTE'), 'membership-derived EXECUTE is intended, not a direct grant');
+
+    const elevated = await probe(db, [
+      'CREATE ROLE p8_elevated_login LOGIN SUPERUSER',
+      `GRANT ${customer} TO p8_elevated_login`,
+    ]);
+    assert.ok(rowsContain(elevated, 'LOGIN_ROLE_ATTRIBUTE', /p8_elevated_login/), kinds(elevated));
+    assert.ok(
+      !elevated.some(row => row.kind === 'UNKNOWN_PRIVILEGED_PRINCIPAL' && row.object === process.env.PGUSER),
+      'an unrelated offline administrator is not rejected merely for existing',
+    );
   });
 });
 
@@ -498,6 +591,31 @@ test('PIVOT-008 transitive paths, default ACLs, owner excess and installed autho
     ]);
     assert.ok(rowsContain(childRows, 'UNSAFE_PARTITION_PATH', /public\.p8_child2/), kinds(childRows));
 
+    const writeChildRows = await probe(db, [
+      'CREATE TABLE public.p8_write_child () INHERITS (tenant_data.accounts)',
+      `GRANT INSERT ON public.p8_write_child TO ${customer}`,
+    ]);
+    assert.ok(rowsContain(writeChildRows, 'UNSAFE_PARTITION_WRITE_PATH', /public\.p8_write_child:INSERT/), kinds(writeChildRows));
+
+    const writeColumnChildRows = await probe(db, [
+      'CREATE TABLE public.p8_write_col_child () INHERITS (tenant_data.accounts)',
+      `GRANT INSERT (code) ON public.p8_write_col_child TO ${customer}`,
+    ]);
+    assert.ok(
+      rowsContain(writeColumnChildRows, 'UNSAFE_PARTITION_WRITE_PATH', /public\.p8_write_col_child:INSERT/),
+      kinds(writeColumnChildRows),
+    );
+
+    const mixedOwnerRows = await probe(db, [
+      'CREATE VIEW public.p8_mixed_inner AS SELECT * FROM tenant_data.accounts',
+      `GRANT SELECT ON public.p8_mixed_inner TO ${quoteRole(db.roles.migrator)}`,
+      'CREATE VIEW public.p8_mixed_outer AS SELECT * FROM public.p8_mixed_inner',
+      `ALTER VIEW public.p8_mixed_outer OWNER TO ${quoteRole(db.roles.migrator)}`,
+      `GRANT SELECT ON public.p8_mixed_outer TO ${customer}`,
+    ]);
+    assert.ok(rowsContain(mixedOwnerRows, 'UNSAFE_VIEW_PATH', /public\.p8_mixed_inner/), kinds(mixedOwnerRows));
+    assert.ok(rowsContain(mixedOwnerRows, 'UNSAFE_VIEW_PATH', /public\.p8_mixed_outer/), kinds(mixedOwnerRows));
+
     // A constrained security-invoker view owned by the migrator is a safe path.
     const safeRows = await probe(db, [
       'SET LOCAL ROLE ' + quoteRole(db.roles.migrator),
@@ -519,6 +637,22 @@ test('PIVOT-008 transitive paths, default ACLs, owner excess and installed autho
     // Widened definer owner authority is not hidden by NOLOGIN/no-BYPASS flags.
     const ownerRows = await probe(db, [`GRANT SELECT ON tenant_data.trade_documents TO ${quoteRole(db.roles.operatorDefiner)}`]);
     assert.ok(has(ownerRows, 'DEFINER_OWNER_EXCESS_AUTHORITY'), kinds(ownerRows));
+
+    const ownerColumnRows = await probe(db, [
+      `GRANT UPDATE (detail_jsonb) ON tenant_data.audit_event TO ${quoteRole(db.roles.auditDefiner)}`,
+    ]);
+    assert.ok(has(ownerColumnRows, 'DEFINER_OWNER_EXCESS_AUTHORITY'), kinds(ownerColumnRows));
+
+    const ownerMissingRows = await probe(db, [
+      `REVOKE SELECT (code) ON tenant_data.accounts FROM ${quoteRole(db.roles.operatorDefiner)}`,
+    ]);
+    assert.ok(has(ownerMissingRows, 'DEFINER_OWNER_PRIVILEGE_MISSING'), kinds(ownerMissingRows));
+
+    const ownerFunctionRows = await probe(db, [
+      `CREATE FUNCTION public.p8_owned_by_auth() RETURNS integer LANGUAGE sql AS 'SELECT 1'`,
+      `ALTER FUNCTION public.p8_owned_by_auth() OWNER TO ${quoteRole(db.roles.authDefiner)}`,
+    ]);
+    assert.ok(rowsContain(ownerFunctionRows, 'DEFINER_OWNER_EXCESS_AUTHORITY', /p8_owned_by_auth/), kinds(ownerFunctionRows));
 
     // Disabled, replica-only and reprofiled authority gates turn coverage red.
     const disabledRows = await probe(db, [

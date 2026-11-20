@@ -107,7 +107,24 @@ covered_functions AS (
          p.prorettype, p.pronargs, p.prolang
   FROM pg_proc p
   JOIN pg_namespace n ON n.oid = p.pronamespace
-  WHERE n.nspname IN ('tenant_data', 'auth', 'operator') AND p.prokind = 'f'
+  WHERE p.prokind = 'f'
+    AND (
+      -- Reviewed application schemas.
+      n.nspname IN ('tenant_data', 'auth', 'operator')
+      -- Authority/dependency-based coverage: a function owned by a required
+      -- principal, executable by one, or a definer executable by PUBLIC must not
+      -- disappear by living outside the three schemas.
+      OR p.proowner IN (SELECT r.oid FROM required_roles r WHERE r.oid IS NOT NULL)
+      OR EXISTS (
+        SELECT 1 FROM required_roles r
+        CROSS JOIN LATERAL aclexplode(coalesce(p.proacl, acldefault('f'::"char", p.proowner))) a
+        WHERE r.oid IS NOT NULL AND a.grantee = r.oid
+      )
+      OR (p.prosecdef AND EXISTS (
+        SELECT 1 FROM aclexplode(coalesce(p.proacl, acldefault('f'::"char", p.proowner))) a
+        WHERE a.grantee = 0
+      ))
+    )
 ),
 relation_acls AS (
   SELECT a.grantee, cr.oid AS rel_oid, cr.nspname, cr.relname, cr.relkind,
@@ -132,6 +149,28 @@ function_acls AS (
   FROM covered_functions f
   CROSS JOIN LATERAL aclexplode(coalesce(f.proacl, acldefault('f'::"char", f.proowner))) a
   WHERE a.grantee <> 0
+),
+schema_acls AS (
+  SELECT n.nspname, n.nspowner, a.grantee, a.privilege_type AS privilege
+  FROM pg_namespace n
+  CROSS JOIN LATERAL aclexplode(coalesce(n.nspacl, acldefault('n'::"char", n.nspowner))) a
+  WHERE n.nspname IN ('tenant_data', 'auth', 'operator')
+),
+schema_privilege_contract(actor_class, nspname, privilege) AS (
+  VALUES
+    ('customer_app', 'tenant_data', 'USAGE'),
+    ('auth_service', 'auth', 'USAGE'),
+    ('auth_service', 'operator', 'USAGE'),
+    ('operator_read', 'operator', 'USAGE'),
+    ('operator_admin', 'operator', 'USAGE'),
+    ('operator_definer', 'operator', 'USAGE'),
+    ('operator_definer', 'auth', 'USAGE'),
+    ('operator_definer', 'tenant_data', 'USAGE'),
+    ('auth_definer', 'auth', 'USAGE'),
+    ('tenant_admission_definer', 'auth', 'USAGE'),
+    ('tenant_admission_definer', 'tenant_data', 'USAGE'),
+    ('audit_definer', 'tenant_data', 'USAGE'),
+    ('void_definer', 'tenant_data', 'USAGE')
 ),
 public_relation_acls AS (
   SELECT cr.oid AS rel_oid, cr.nspname, cr.relname, cr.relkind, a.privilege_type AS privilege
@@ -169,7 +208,7 @@ login_membership AS (
   LEFT JOIN role_closure rc ON rc.member = r.oid
   LEFT JOIN runtime_roles rr ON rr.oid = rc.granted
   LEFT JOIN owner_roles own ON own.oid = rc.granted
-  WHERE r.rolcanlogin AND NOT r.rolsuper
+  WHERE r.rolcanlogin
   GROUP BY r.oid, r.rolname, r.rolcanlogin, r.rolsuper, r.rolbypassrls,
            r.rolcreatedb, r.rolcreaterole, r.rolinherit
 ),
@@ -223,106 +262,151 @@ direct_login_function_privileges AS (
   JOIN function_acls fa ON fa.grantee = rl.oid
   JOIN covered_functions f ON f.oid = fa.function_oid
 ),
+direct_login_schema_privileges AS (
+  SELECT rl.oid, rl.rolname, sa.nspname, sa.privilege
+  FROM runtime_logins rl
+  JOIN schema_acls sa ON sa.grantee = rl.oid
+),
+actor_schema_privileges AS (
+  SELECT a.actor_kind, a.actor_class, a.actor_name, sa.nspname, sa.privilege
+  FROM actors a
+  JOIN schema_acls sa
+    ON sa.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = sa.grantee)
+),
+privileged_capability_roles AS (
+  SELECT r.oid, r.rolname
+  FROM pg_roles r
+  WHERE (
+      r.rolsuper OR r.rolbypassrls OR r.rolcreatedb OR r.rolcreaterole
+      OR EXISTS (SELECT 1 FROM covered_relations cr WHERE cr.relowner = r.oid)
+      OR EXISTS (SELECT 1 FROM covered_functions f WHERE f.proowner = r.oid)
+      OR EXISTS (SELECT 1 FROM relation_acls ra WHERE ra.grantee = r.oid)
+      OR EXISTS (SELECT 1 FROM column_acls ca WHERE ca.grantee = r.oid)
+      OR EXISTS (SELECT 1 FROM function_acls fa WHERE fa.grantee = r.oid)
+      OR EXISTS (SELECT 1 FROM schema_acls sa WHERE sa.grantee = r.oid AND sa.privilege = 'CREATE')
+    )
+    AND NOT EXISTS (SELECT 1 FROM required_roles rr WHERE rr.oid = r.oid)
+    AND NOT EXISTS (SELECT 1 FROM runtime_logins rl WHERE rl.oid = r.oid)
+    AND NOT EXISTS (SELECT 1 FROM offline_logins ol WHERE ol.oid = r.oid)
+),
 -- ---------------------------------------------------------------------------
 -- 4. Effective policy contract per command and principal
 -- ---------------------------------------------------------------------------
-policy_rows AS (
-  SELECT t.oid AS rel_oid, t.relname, p.polname, p.polcmd, p.polpermissive,
-         0 = ANY(p.polroles) AS public_target,
-         EXISTS (
-           SELECT 1 FROM runtime_roles rr WHERE rr.oid = ANY(p.polroles) AND rr.actor_class = 'customer_app'
-         ) AS customer_target,
-         EXISTS (
-           SELECT 1 FROM pg_roles r WHERE r.oid = ANY(p.polroles)
-             AND r.rolname !~ '(^|_)customer_app$'
-         ) AS foreign_role_target,
-         coalesce(pg_get_expr(p.polqual, p.polrelid), '') AS using_expr,
-         coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS check_expr
+tenant_policy_contract(policy_suffix, is_permissive, polcmd, target_kind, using_hash, check_hash) AS (
+  VALUES
+    ('_tenant_isolation', true, '*', 'public',
+     '4fb3d3ef32001effa43774da702ae9b4', '4fb3d3ef32001effa43774da702ae9b4'),
+    ('_tenant_scope', false, '*', 'public',
+     '4fb3d3ef32001effa43774da702ae9b4', '4fb3d3ef32001effa43774da702ae9b4'),
+    ('_runtime_admission', false, '*', 'customer_app',
+     '204940156f611262004e5fcb9fe0c26b', '204940156f611262004e5fcb9fe0c26b')
+),
+tenant_policy_actual AS (
+  SELECT t.oid AS rel_oid, t.relname, p.polname, p.polpermissive, p.polcmd,
+         CASE
+           WHEN p.polroles = ARRAY[0]::oid[] THEN 'public'
+           WHEN p.polroles = ARRAY[rr.oid] THEN 'customer_app'
+           ELSE 'other'
+         END AS target_kind,
+         md5(regexp_replace(coalesce(pg_get_expr(p.polqual, p.polrelid), ''), '\s+', '', 'g')) AS using_hash,
+         md5(regexp_replace(coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''), '\s+', '', 'g')) AS check_hash
   FROM tenant_tables t
   JOIN pg_policy p ON p.polrelid = t.oid
+  LEFT JOIN runtime_roles rr ON rr.actor_class = 'customer_app'
 ),
-policy_judged AS (
-  SELECT *,
-         -- The accepted tenant predicate is tenant_id = the verified context helper.
-         using_expr LIKE '%tenant_id%' AND using_expr LIKE '%current_tenant_id%'
-           AND using_expr NOT LIKE '%current_setting%' AS using_bound,
-         check_expr LIKE '%tenant_id%' AND check_expr LIKE '%current_tenant_id%'
-           AND check_expr NOT LIKE '%current_setting%' AS check_bound,
-         using_expr LIKE '%session_admitted%' AND check_expr LIKE '%session_admitted%'
-           AS admission_bound,
-         lower(regexp_replace(using_expr, '\s', '', 'g')) IN ('true', '1=1')
-           OR lower(regexp_replace(using_expr, '\s', '', 'g')) LIKE '%ortrue%'
-           OR lower(regexp_replace(using_expr, '\s', '', 'g')) LIKE '%trueor%'
-           OR lower(regexp_replace(check_expr, '\s', '', 'g')) IN ('true', '1=1')
-           OR lower(regexp_replace(check_expr, '\s', '', 'g')) LIKE '%ortrue%'
-           OR lower(regexp_replace(check_expr, '\s', '', 'g')) LIKE '%trueor%'
-           AS constant_true
-  FROM policy_rows
+tenant_policy_status AS (
+  SELECT t.oid AS rel_oid, t.relname, c.*,
+         EXISTS (
+           SELECT 1 FROM tenant_policy_actual a
+           WHERE a.rel_oid = t.oid AND a.polname = t.relname || c.policy_suffix
+         ) AS policy_exists,
+         EXISTS (
+           SELECT 1 FROM tenant_policy_actual a
+           WHERE a.rel_oid = t.oid AND a.polname = t.relname || c.policy_suffix
+             AND a.polpermissive = c.is_permissive AND a.polcmd = c.polcmd
+             AND a.target_kind = c.target_kind
+             AND a.using_hash = c.using_hash AND a.check_hash = c.check_hash
+         ) AS policy_matches
+  FROM tenant_tables t
+  CROSS JOIN tenant_policy_contract c
 ),
 commands(cmd) AS (VALUES ('r'), ('a'), ('w'), ('d')),
-tenant_policy_matrix AS (
-  SELECT t.oid AS rel_oid, t.relname, c.cmd,
-         count(*) FILTER (
-           WHERE pj.polpermissive AND (pj.polcmd = '*' OR pj.polcmd = c.cmd)
-             AND (c.cmd NOT IN ('r', 'w', 'd') OR pj.using_bound)
-             AND (c.cmd NOT IN ('a', 'w') OR pj.check_bound)
-         ) AS permissive_count,
-         count(*) FILTER (
-           WHERE NOT pj.polpermissive AND (pj.polcmd = '*' OR pj.polcmd = c.cmd)
-             AND (c.cmd NOT IN ('r', 'w', 'd') OR pj.using_bound)
-             AND (c.cmd NOT IN ('a', 'w') OR pj.check_bound)
-         ) AS restrictive_count,
-         count(*) FILTER (
-           WHERE NOT pj.polpermissive AND pj.customer_target
-             AND (pj.polcmd = '*' OR pj.polcmd = c.cmd)
-             AND pj.admission_bound
-             AND (c.cmd NOT IN ('r', 'w', 'd') OR pj.using_bound)
-             AND (c.cmd NOT IN ('a', 'w') OR pj.check_bound)
-         ) AS admission_count
-  FROM tenant_tables t
-  JOIN commands c ON true
-  LEFT JOIN policy_judged pj ON pj.rel_oid = t.oid
-  GROUP BY t.oid, t.relname, c.cmd
+tenant_policy_gaps AS (
+  SELECT st.rel_oid, st.relname, cmd, st.policy_suffix, st.is_permissive
+  FROM tenant_policy_status st
+  CROSS JOIN commands c
+  WHERE NOT st.policy_matches
 ),
-membership_policy_rows AS (
-  SELECT m.oid AS rel_oid, m.relname, p.polname, p.polcmd, p.polpermissive,
-         r.rolname AS target_role, r.oid AS target_oid,
-         coalesce(pg_get_expr(p.polqual, p.polrelid), '') AS using_expr,
-         coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS check_expr
+tenant_unexpected_policies AS (
+  SELECT a.rel_oid, a.relname, a.polname
+  FROM tenant_policy_actual a
+  WHERE NOT EXISTS (
+    SELECT 1 FROM tenant_policy_contract c
+    WHERE a.polname = a.relname || c.policy_suffix
+  )
+),
+membership_policy_contract(policy_name, is_permissive, polcmd, role_class, using_hash, check_hash) AS (
+  VALUES
+    ('tenant_membership_preselect', true, 'r', 'auth_service',
+     'dd8036bc91993b08cd413c303db5ce2b', 'd41d8cd98f00b204e9800998ecf8427e'),
+    ('tenant_membership_preselect_scope', false, '*', 'auth_service',
+     'dd8036bc91993b08cd413c303db5ce2b', 'dd8036bc91993b08cd413c303db5ce2b'),
+    ('tenant_membership_admission_lookup', true, 'r', 'tenant_admission_definer',
+     'ae5c2646201b4aa7316eaf37d3aac8d0', 'd41d8cd98f00b204e9800998ecf8427e'),
+    ('tenant_membership_admission_scope', false, '*', 'tenant_admission_definer',
+     'ae5c2646201b4aa7316eaf37d3aac8d0', 'ae5c2646201b4aa7316eaf37d3aac8d0')
+),
+membership_policy_actual AS (
+  SELECT m.oid AS rel_oid, m.relname, p.polname, p.polpermissive, p.polcmd,
+         coalesce(
+           (SELECT rr.class FROM required_roles rr WHERE rr.oid = ANY(p.polroles) LIMIT 1),
+           'other'
+         ) AS target_kind,
+         md5(regexp_replace(coalesce(pg_get_expr(p.polqual, p.polrelid), ''), '\s+', '', 'g')) AS using_hash,
+         md5(regexp_replace(coalesce(pg_get_expr(p.polwithcheck, p.polrelid), ''), '\s+', '', 'g')) AS check_hash
   FROM tenant_scoped_auth m
   JOIN pg_policy p ON p.polrelid = m.oid
-  CROSS JOIN LATERAL unnest(p.polroles) polrole
-  JOIN pg_roles r ON r.oid = polrole
-  WHERE polrole <> 0
 ),
-membership_judged AS (
-  SELECT *,
-         (using_expr LIKE '%app.current_user_id%' OR using_expr LIKE '%current_user_id%')
-           AND using_expr NOT LIKE '%app.current_tenant_id%' AS preselect_bound,
-         (using_expr LIKE '%app.current_user_id%' OR using_expr LIKE '%current_user_id%')
-           AND (using_expr LIKE '%app.current_tenant_id%' OR using_expr LIKE '%current_tenant_id%')
-           AS pair_bound,
-         using_expr <> '' AS has_using,
-         check_expr <> '' AS has_check,
-         lower(regexp_replace(using_expr, '\s', '', 'g')) IN ('true', '1=1')
-           OR lower(regexp_replace(using_expr, '\s', '', 'g')) LIKE '%ortrue%'
-           OR lower(regexp_replace(using_expr, '\s', '', 'g')) LIKE '%trueor%'
-           OR lower(regexp_replace(check_expr, '\s', '', 'g')) IN ('true', '1=1')
-           OR lower(regexp_replace(check_expr, '\s', '', 'g')) LIKE '%ortrue%'
-           OR lower(regexp_replace(check_expr, '\s', '', 'g')) LIKE '%trueor%'
-           AS constant_true
-  FROM membership_policy_rows
+membership_policy_status AS (
+  SELECT m.oid AS rel_oid, m.relname, c.*,
+         EXISTS (
+           SELECT 1 FROM membership_policy_actual a
+           WHERE a.rel_oid = m.oid AND a.polname = c.policy_name
+         ) AS policy_exists,
+         EXISTS (
+           SELECT 1 FROM membership_policy_actual a
+           WHERE a.rel_oid = m.oid AND a.polname = c.policy_name
+             AND a.polpermissive = c.is_permissive AND a.polcmd = c.polcmd
+             AND a.target_kind = c.role_class
+             AND a.using_hash = c.using_hash AND a.check_hash = c.check_hash
+         ) AS policy_matches
+  FROM tenant_scoped_auth m
+  CROSS JOIN membership_policy_contract c
+),
+membership_unexpected_policies AS (
+  SELECT a.rel_oid, a.relname, a.polname, a.polpermissive, a.polcmd
+  FROM membership_policy_actual a
+  WHERE NOT EXISTS (
+    SELECT 1 FROM membership_policy_contract c WHERE a.polname = c.policy_name
+  )
 ),
 -- ---------------------------------------------------------------------------
 -- 5. Transitive reachability: tenant tables -> views/matviews/children
 -- ---------------------------------------------------------------------------
-reachable(kind, oid, path) AS (
-  SELECT 'table', t.oid, ARRAY[t.oid] FROM tenant_tables t
+reachable(kind, oid, path, tainted) AS (
+  SELECT 'table', t.oid, ARRAY[t.oid], false FROM tenant_tables t
   UNION ALL
-  SELECT nxt.kind, nxt.oid, r.path || nxt.oid
+  SELECT nxt.kind, nxt.oid, r.path || nxt.oid,
+         r.tainted OR nxt.owner_tainted
   FROM reachable r
   CROSS JOIN LATERAL (
-    SELECT CASE v.relkind WHEN 'm' THEN 'matview' ELSE 'view' END AS kind, v.oid
+    SELECT CASE v.relkind WHEN 'm' THEN 'matview' ELSE 'view' END AS kind, v.oid,
+           CASE
+             WHEN v.relkind = 'm' THEN true
+             WHEN coalesce(array_to_string(v.reloptions, ','), '') LIKE '%security_invoker=true%' THEN false
+             ELSE coalesce(owner.rolsuper OR owner.rolbypassrls, false)
+           END AS owner_tainted
     FROM pg_rewrite rw
     JOIN pg_depend d
       ON d.classid = 'pg_rewrite'::regclass
@@ -330,9 +414,10 @@ reachable(kind, oid, path) AS (
      AND d.refclassid = 'pg_class'::regclass
      AND d.refobjid = r.oid
     JOIN pg_class v ON v.oid = rw.ev_class AND v.relkind IN ('v', 'm')
+    JOIN pg_roles owner ON owner.oid = v.relowner
     WHERE rw.ev_class <> r.oid
     UNION ALL
-    SELECT 'child', ch.oid
+    SELECT 'child', ch.oid, false
     FROM pg_inherits i
     JOIN pg_class ch ON ch.oid = i.inhrelid AND ch.relkind IN ('r', 'p')
     WHERE i.inhparent = r.oid
@@ -340,7 +425,9 @@ reachable(kind, oid, path) AS (
   WHERE NOT nxt.oid = ANY(r.path)
 ),
 reachable_objects AS (
-  SELECT DISTINCT ON (oid) oid, kind FROM reachable ORDER BY oid, kind
+  SELECT oid, min(kind) AS kind, bool_or(tainted) AS tainted
+  FROM reachable
+  GROUP BY oid
 ),
 reachable_relation_details AS (
   SELECT ro.oid, ro.kind, c.relname, n.nspname, c.relkind, c.relowner,
@@ -376,6 +463,67 @@ runtime_read_endpoints AS (
     ON ca.grantee = a.actor_oid
     OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ca.grantee)
   WHERE a.actor_kind = 'runtime' AND ca.privilege = 'SELECT'
+),
+runtime_write_endpoints AS (
+  SELECT ra.rel_oid, ra.privilege AS cmd
+  FROM actors a
+  JOIN reachable_relation_acls ra
+    ON ra.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ra.grantee)
+  WHERE a.actor_kind = 'runtime' AND ra.privilege IN ('INSERT', 'UPDATE', 'DELETE')
+  UNION
+  SELECT ca.rel_oid,
+         CASE ca.privilege WHEN 'INSERT' THEN 'INSERT' WHEN 'UPDATE' THEN 'UPDATE' END AS cmd
+  FROM actors a
+  JOIN reachable_column_acls ca
+    ON ca.grantee = a.actor_oid
+    OR EXISTS (SELECT 1 FROM role_closure rc WHERE rc.member = a.actor_oid AND rc.granted = ca.grantee)
+  WHERE a.actor_kind = 'runtime' AND ca.privilege IN ('INSERT', 'UPDATE')
+),
+endpoint_ancestors(oid, path) AS (
+  SELECT rel_oid AS oid, ARRAY[rel_oid] FROM runtime_read_endpoints
+  UNION ALL
+  SELECT v.oid, e.path || v.oid
+  FROM endpoint_ancestors e
+  JOIN pg_rewrite rw ON rw.ev_class <> e.oid
+  JOIN pg_depend d
+    ON d.classid = 'pg_rewrite'::regclass
+   AND d.objid = rw.oid
+   AND d.refclassid = 'pg_class'::regclass
+   AND d.refobjid = e.oid
+  JOIN pg_class v ON v.oid = rw.ev_class AND v.relkind IN ('v', 'm')
+  WHERE NOT v.oid = ANY(e.path)
+),
+child_policy_rows AS (
+  SELECT rd.oid AS rel_oid, rd.relname, p.polcmd, p.polpermissive,
+         coalesce(pg_get_expr(p.polqual, p.polrelid), '') AS using_expr,
+         coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS check_expr
+  FROM reachable_relation_details rd
+  JOIN pg_policy p ON p.polrelid = rd.oid
+  WHERE rd.kind = 'child'
+),
+child_write_gaps AS (
+  SELECT rd.oid AS rel_oid, rd.nspname || '.' || rd.relname AS object_name, cmd
+  FROM reachable_relation_details rd
+  JOIN (SELECT DISTINCT rel_oid, cmd FROM runtime_write_endpoints) w ON w.rel_oid = rd.oid
+  WHERE rd.kind = 'child'
+    AND (
+      NOT rd.relrowsecurity OR NOT rd.relforcerowsecurity
+      OR NOT EXISTS (
+        SELECT 1 FROM child_policy_rows cp
+        WHERE cp.rel_oid = rd.oid AND cp.polpermissive
+          AND (cp.polcmd = '*' OR cp.polcmd = w.cmd)
+          AND (w.cmd NOT IN ('r', 'w', 'd') OR (cp.using_expr LIKE '%tenant_id%' AND cp.using_expr LIKE '%current_tenant_id%'))
+          AND (w.cmd NOT IN ('a', 'w') OR (cp.check_expr LIKE '%tenant_id%' AND cp.check_expr LIKE '%current_tenant_id%'))
+      )
+      OR NOT EXISTS (
+        SELECT 1 FROM child_policy_rows cp
+        WHERE cp.rel_oid = rd.oid AND NOT cp.polpermissive
+          AND (cp.polcmd = '*' OR cp.polcmd = w.cmd)
+          AND (w.cmd NOT IN ('r', 'w', 'd') OR (cp.using_expr LIKE '%tenant_id%' AND cp.using_expr LIKE '%current_tenant_id%'))
+          AND (w.cmd NOT IN ('a', 'w') OR (cp.check_expr LIKE '%tenant_id%' AND cp.check_expr LIKE '%current_tenant_id%'))
+      )
+    )
 ),
 -- ---------------------------------------------------------------------------
 -- 6. Function authority
@@ -456,6 +604,23 @@ required_functions AS (
     'tenant_data.session_admitted(uuid,uuid)',
     'tenant_data.void_posted_entry(uuid,text,text,text,text,text,text)'
   ]) AS object_name
+),
+required_installation_bindings(name, expected_md5) AS (
+  VALUES
+    ('auth.lock_authority_gate()', '2bafa1f4ac34b1f017cecb465c09af0b'),
+    ('operator.assert_operator_definer_authority(text,boolean)', '5612f88c09dbfe1b591d7bccfbcfe3ad'),
+    ('operator.assert_read_authority_protocol()', '5587acdc973ae6ecdc820a5e6378b918'),
+    ('operator.lock_consent_gate()', '6252bab66ee901a1b8962d06de3f9e4e'),
+    ('operator.lock_policy_gate()', '412f9d3ebb4226d5c27fbb81ccf3338f'),
+    ('operator.log_operator_read_denial(uuid,text,text,text,text,text,text,text)', 'bd077653443e3a15d0e6f2287ff6623c'),
+    ('operator.read_tenant_support(uuid,text,text,text,text,text,text,integer)', 'e3d175c512f781376a89286cd8369b78'),
+    ('tenant_data.current_tenant_id()', 'c3a5ee441ad8f2eaf2be33529989c791'),
+    ('tenant_data.current_user_id()', '4d9a5ad53b10a258a70827a72bea8388'),
+    ('tenant_data.immutability_040_journal_guard()', '0030c9c6a6541e796e87b126ae1a70d5'),
+    ('tenant_data.immutability_041_audit_row()', 'ffb0966523acc4abe4c7463b8a61dd3a'),
+    ('tenant_data.immutability_042_void_guard()', 'ae67263c077a0b6f43aacb44a761e5ba'),
+    ('tenant_data.session_admitted(uuid,uuid)', '883da8f0713216fea3917c7307508f4f'),
+    ('tenant_data.void_posted_entry(uuid,text,text,text,text,text,text)', 'd439adf267946f92b94e82b7ce37dd38')
 ),
 required_triggers(schema_name, table_name, trigger_name, expected_type, function_schema, function_name) AS (
   VALUES
@@ -578,6 +743,122 @@ owner_allowed_relations(actor_class, relation_name) AS (
     ('audit_definer', 'tenant_data.audit_event_id_seq'),
     ('operator_definer', 'operator.operator_audit_id_seq')
 ),
+owner_privilege_contract(actor_class, relation_name, privilege, columns) AS (
+  SELECT split_part(line, '|', 1), split_part(line, '|', 2),
+         split_part(line, '|', 3), split_part(line, '|', 4)
+  FROM regexp_split_to_table($owner_manifest$audit_definer|tenant_data.audit_event_id_seq|USAGE|*
+audit_definer|tenant_data.audit_event|INSERT|actor_id,detail_jsonb,entity_id,entity_type,event,happened_at,origin_model,origin_model_version,origin_type,origin_user_id,request_id,tenant_id
+audit_definer|tenant_data.members|SELECT|tenant_id,user_id,user_uuid
+audit_definer|tenant_data.reference_values|SELECT|domain,is_active,tenant_id,value
+auth_definer|auth.accounts|SELECT|*
+auth_definer|auth.auth_audit_id_seq|SELECT|*
+auth_definer|auth.auth_audit_id_seq|USAGE|*
+auth_definer|auth.auth_audit|INSERT|*
+auth_definer|auth.auth_audit|SELECT|*
+auth_definer|auth.oauth_state|SELECT|*
+auth_definer|auth.recovery_codes|SELECT|*
+auth_definer|auth.reference_value|SELECT|*
+auth_definer|auth.roles|SELECT|*
+auth_definer|auth.sessions|SELECT|*
+auth_definer|auth.tenant_membership|SELECT|*
+auth_definer|auth.two_factor|SELECT|*
+auth_definer|auth.users|SELECT|*
+auth_definer|auth.verification|SELECT|*
+operator_definer|auth.roles|SELECT|assurance_class,effective_from,effective_to,is_active,is_operator,requires_mfa,role_id
+operator_definer|auth.sessions|SELECT|absolute_expires_at,credential_version,id,idle_expires_at,realm,revoked_at,token_hash,user_id
+operator_definer|auth.sessions|UPDATE|revoked_at
+operator_definer|auth.users|SELECT|credential_version,id,status
+operator_definer|auth.users|UPDATE|status
+operator_definer|operator.access_identity|SELECT|assurance_class,effective_from,effective_to,mapping_epoch,operator_role_id,status,subject,user_id
+operator_definer|operator.access_read_policy|SELECT|audience,effective_from,effective_to,is_active,issuer,max_clock_skew_seconds,max_source_age_seconds,policy_key,required_assurance,version
+operator_definer|operator.access_session_binding|SELECT|assurance_class,audience,binding_scheme,issuer,mapping_epoch,operator_role_id,session_id,source_expires_at,source_issued_at,subject
+operator_definer|operator.operator_audit_id_seq|USAGE|*
+operator_definer|operator.operator_audit|INSERT|*
+operator_definer|tenant_data.accounts|SELECT|code,tenant_id,title
+operator_definer|tenant_data.business|SELECT|id,state,tenant_id
+operator_definer|tenant_data.company_profiles|SELECT|branch,currency,id,name,tenant_id
+operator_definer|tenant_data.journal_lines|SELECT|account,credit,debit,journal_id,line_no,tenant_id
+operator_definer|tenant_data.journals|SELECT|branch,company,id,narrative,posting_date,tenant_id
+operator_definer|tenant_data.members|SELECT|active,tenant_id,user_id
+operator_definer|tenant_data.support_grants|SELECT|actions_jsonb,expires_at,grant_id,granted_by_user_id,grantee_actor_id,is_active,reason,revoked_at,scope_jsonb,starts_at,tenant_id
+tenant_admission_definer|auth.tenant_membership|SELECT|revoked_at,status,suspended_at,tenant_id,user_id
+tenant_admission_definer|auth.users|SELECT|id,status
+tenant_admission_definer|tenant_data.members|SELECT|active,tenant_id,user_uuid
+void_definer|tenant_data.approval_policy|SELECT|action_type,approval_threshold_amount,currency,effective_from,effective_to,is_active,policy_key,requires_different_approver,role_id,tenant_id,version
+void_definer|tenant_data.approval_requests|SELECT|command_id,decided_by,payload_digest,policy_snapshot,state,tenant_id
+void_definer|tenant_data.assignments|SELECT|role_id,tenant_id,user_id
+void_definer|tenant_data.audit_event|INSERT|actor_id,detail_jsonb,entity_id,entity_type,event,origin_type,origin_user_id,request_id,tenant_id
+void_definer|tenant_data.audit|INSERT|actor,command_id,detail,event,happened_at,tenant_id
+void_definer|tenant_data.audit|SELECT|command_id,event,tenant_id
+void_definer|tenant_data.command_decisions|SELECT|command_id,tenant_id
+void_definer|tenant_data.command_inbox|INSERT|actor,approved_by,created_at,digest,id,payload,state,tenant_id,updated_at
+void_definer|tenant_data.command_inbox|SELECT|actor,approved_by,digest,id,payload,state,tenant_id,updated_at
+void_definer|tenant_data.command_inbox|UPDATE|approved_by,state,updated_at
+void_definer|tenant_data.company_profiles|SELECT|currency,id,tenant_id
+void_definer|tenant_data.denials|SELECT|action,tenant_id,user_id
+void_definer|tenant_data.entry_voids|INSERT|actor,actor_uuid,approval_command_id,approval_digest,approval_version,approver_actor,correlation_id,created_at,effective_state,entry_id,idempotency_key,original_state,period_locked,policy_decision,policy_digest,policy_version,reason,request_digest,source_debit,source_digest,source_line_count,source_version,tenant_id,updated_at,void_command_id,voided_at
+void_definer|tenant_data.entry_voids|SELECT|entry_id,idempotency_key,request_digest,tenant_id,void_command_id
+void_definer|tenant_data.journal_corrections|SELECT|command_id,original_id,tenant_id
+void_definer|tenant_data.journal_lines|SELECT|account,credit,debit,journal_id,line_no,tenant_id
+void_definer|tenant_data.journals|SELECT|branch,company,id,posting_date,tenant_id
+void_definer|tenant_data.members|SELECT|active,tenant_id,user_id,user_uuid
+void_definer|tenant_data.outbox|INSERT|attempts,event,id,state,tenant_id
+void_definer|tenant_data.outbox|SELECT|id,tenant_id
+void_definer|tenant_data.periods|SELECT|company,end_date,locked,start_date,tenant_id
+void_definer|tenant_data.roles|SELECT|id,permissions,protected,tenant_id
+void_definer|tenant_data.stock_operations|SELECT|command_id,tenant_id
+void_definer|tenant_data.trade_credits|SELECT|original_id,tenant_id
+void_definer|tenant_data.trade_operations|SELECT|command_id,tenant_id
+$owner_manifest$, E'\n') line
+  WHERE line <> ''
+),
+owner_allowed_owned_functions(actor_class, signature) AS (
+  VALUES
+    ('audit_definer', 'tenant_data.immutability_041_audit_native_guard()'),
+    ('audit_definer', 'tenant_data.immutability_041_audit_origin(uuid,text,jsonb,text)'),
+    ('audit_definer', 'tenant_data.immutability_041_audit_row()'),
+    ('audit_definer', 'tenant_data.immutability_041_expected_fingerprint(regclass)'),
+    ('audit_definer', 'tenant_data.immutability_041_resolve_type(oid,integer)'),
+    ('audit_definer', 'tenant_data.immutability_041_row_key(regclass,jsonb)'),
+    ('audit_definer', 'tenant_data.immutability_041_schema_fingerprint(regclass)'),
+    ('audit_definer', 'tenant_data.immutability_041_serialize(regclass,jsonb)'),
+    ('audit_definer', 'tenant_data.immutability_041_type_supported(oid)'),
+    ('operator_definer', 'operator.assert_read_authority_protocol()'),
+    ('operator_definer', 'operator.log_operator_read_denial(uuid,text,text,text,text,text,text,text)'),
+    ('operator_definer', 'operator.read_tenant_support(uuid,text,text,text,text,text,text,integer)'),
+    ('tenant_admission_definer', 'tenant_data.session_admitted(uuid,uuid)'),
+    ('void_definer', 'tenant_data.void_posted_entry(uuid,text,text,text,text,text,text)')
+),
+owner_schema_contract(actor_class, nspname, privilege) AS (
+  VALUES
+    ('operator_definer', 'operator', 'USAGE'),
+    ('operator_definer', 'auth', 'USAGE'),
+    ('operator_definer', 'tenant_data', 'USAGE'),
+    ('auth_definer', 'auth', 'USAGE'),
+    ('tenant_admission_definer', 'auth', 'USAGE'),
+    ('tenant_admission_definer', 'tenant_data', 'USAGE'),
+    ('audit_definer', 'tenant_data', 'USAGE'),
+    ('void_definer', 'tenant_data', 'USAGE')
+),
+owner_actual_privileges AS (
+  SELECT o.actor_class, o.rolname,
+         ra.nspname || '.' || ra.relname AS relation_name,
+         ra.privilege, '*' AS columns
+  FROM owner_roles o
+  JOIN relation_acls ra ON ra.grantee = o.oid
+  UNION ALL
+  SELECT o.actor_class, o.rolname, cr.nspname || '.' || cr.relname, ca.privilege,
+         string_agg(ca.attname, ',' ORDER BY ca.attname)
+  FROM owner_roles o
+  JOIN column_acls ca ON ca.grantee = o.oid
+  JOIN covered_relations cr ON cr.oid = ca.rel_oid
+  GROUP BY o.actor_class, o.rolname, cr.nspname, cr.relname, ca.privilege
+),
+owner_actual_schema_privileges AS (
+  SELECT o.actor_class, o.rolname, sa.nspname, sa.privilege
+  FROM owner_roles o
+  JOIN schema_acls sa ON sa.grantee = o.oid
+),
 owner_relation_grants AS (
   SELECT o.actor_class, o.rolname, ra.nspname, ra.relname, ra.relkind, ra.privilege
   FROM owner_roles o
@@ -634,15 +915,40 @@ violations (kind, object, detail) AS (
   FROM required_relations rr
   WHERE to_regclass(rr.object_name) IS NULL
   UNION ALL
+  SELECT 'REQUIRED_OBJECT_KIND_MISMATCH', rr.object_name,
+         'required ' || rr.object_type || ' name is occupied by relkind ' || c.relkind::text
+  FROM required_relations rr
+  JOIN pg_class c ON c.oid = to_regclass(rr.object_name)
+  WHERE (rr.object_type = 'table' AND c.relkind::text NOT IN ('r', 'p'))
+     OR (rr.object_type = 'view' AND c.relkind::text <> 'v')
+  UNION ALL
   SELECT 'MISSING_REQUIRED_SEQUENCE', rs.object_name,
          'required sequence is not installed'
   FROM required_sequences rs
   WHERE to_regclass(rs.object_name) IS NULL
   UNION ALL
+  SELECT 'REQUIRED_OBJECT_KIND_MISMATCH', rs.object_name,
+         'required sequence name is occupied by relkind ' || c.relkind::text
+  FROM required_sequences rs
+  JOIN pg_class c ON c.oid = to_regclass(rs.object_name)
+  WHERE c.relkind <> 'S'
+  UNION ALL
   SELECT 'MISSING_REQUIRED_FUNCTION', rf.object_name,
          'required function signature is not installed'
   FROM required_functions rf
   WHERE to_regprocedure(rf.object_name) IS NULL
+  UNION ALL
+  SELECT 'REQUIRED_OBJECT_KIND_MISMATCH', rf.object_name,
+         'required function name is occupied by a non-function object'
+  FROM required_functions rf
+  JOIN pg_proc p ON p.oid = to_regprocedure(rf.object_name)
+  WHERE p.prokind <> 'f'
+  UNION ALL
+  SELECT 'INSTALLATION_BINDING_MISMATCH', b.name,
+         'installed source checksum differs from the reviewed immutable installation binding'
+  FROM required_installation_bindings b
+  JOIN pg_proc p ON p.oid = to_regprocedure(b.name)
+  WHERE md5(replace(p.prosrc, (SELECT prefix FROM effective_prefixes LIMIT 1), '')) <> b.expected_md5
   UNION ALL
   SELECT 'MISSING_REQUIRED_TRIGGER', rt.schema_name || '.' || rt.table_name || '.' || rt.trigger_name,
          'required protection is missing, disabled, replica-only, conditional or misbound'
@@ -729,38 +1035,20 @@ violations (kind, object, detail) AS (
   FROM tenant_tables t
   WHERE NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = t.oid)
   UNION ALL
-  SELECT 'POLICY_OPERATION_GAP', 'tenant_data.' || m.relname || ':' || m.cmd || ':' ||
-         CASE WHEN m.permissive_count = 0 THEN 'permissive' ELSE 'restrictive' END,
-         'no effective ' || CASE WHEN m.permissive_count = 0 THEN 'permissive' ELSE 'restrictive' END ||
-         ' policy covers this command with the required USING/WITH CHECK'
-  FROM tenant_policy_matrix m
-  WHERE m.permissive_count = 0 OR m.restrictive_count = 0
+  SELECT CASE WHEN g.policy_suffix = '_runtime_admission' THEN 'RUNTIME_ADMISSION_GAP' ELSE 'POLICY_OPERATION_GAP' END,
+         'tenant_data.' || g.relname || ':' || g.cmd || ':' ||
+         CASE WHEN g.is_permissive THEN 'permissive' ELSE 'restrictive' END,
+         'no exact reviewed policy covers this command with the accepted command, role and USING/WITH CHECK contract'
+  FROM tenant_policy_gaps g
   UNION ALL
-  SELECT 'RUNTIME_ADMISSION_GAP', 'tenant_data.' || m.relname || ':' || m.cmd,
-         'no restrictive customer runtime admission policy covers this command'
-  FROM tenant_policy_matrix m
-  WHERE m.admission_count = 0
+  SELECT 'POLICY_EXPRESSION_MISMATCH', 'tenant_data.' || st.relname || '.' || st.relname || st.policy_suffix,
+         'reviewed policy name exists but command, role, USING or WITH CHECK differs from the accepted contract'
+  FROM tenant_policy_status st
+  WHERE st.policy_exists AND NOT st.policy_matches
   UNION ALL
-  SELECT 'POLICY_CONSTANT_TRUE', 'tenant_data.' || relname || '.' || polname,
-         'policy predicate is constantly true or contains an unconditional true branch'
-  FROM policy_judged WHERE constant_true
-  UNION ALL
-  SELECT 'POLICY_PREDICATE_UNBOUND', 'tenant_data.' || relname || '.' || polname,
-         'policy is missing the accepted tenant context predicate or its USING/WITH CHECK binding'
-  FROM policy_judged pj
-  WHERE (pj.polcmd IN ('*', 'r', 'w', 'd') AND pj.using_expr = '')
-     OR (pj.polcmd IN ('*', 'a', 'w') AND pj.check_expr = '')
-     OR (pj.using_expr <> '' AND NOT pj.using_bound)
-     OR (pj.check_expr <> '' AND NOT pj.check_bound)
-  UNION ALL
-  SELECT 'CLIENT_CONTEXT_IN_TENANT_POLICY', 'tenant_data.' || relname || '.' || polname,
-         'policy reads a client-settable GUC directly instead of the verified context helper'
-  FROM policy_judged
-  WHERE using_expr LIKE '%current_setting%' OR check_expr LIKE '%current_setting%'
-  UNION ALL
-  SELECT 'FORBIDDEN_POLICY_ROLE', 'tenant_data.' || relname || '.' || polname,
-         'policy addresses a role other than PUBLIC or the customer runtime'
-  FROM policy_judged WHERE foreign_role_target
+  SELECT 'UNEXPECTED_POLICY', 'tenant_data.' || up.relname || '.' || up.polname,
+         'policy is not part of the reviewed tenant isolation contract'
+  FROM tenant_unexpected_policies up
   UNION ALL
   SELECT 'AUTH_MEMBERSHIP_MISSING_ENABLE_RLS', 'auth.' || relname,
          'tenant-scoped membership table does not ENABLE ROW LEVEL SECURITY'
@@ -770,40 +1058,24 @@ violations (kind, object, detail) AS (
          'tenant-scoped membership table does not FORCE ROW LEVEL SECURITY'
   FROM tenant_scoped_auth WHERE relrowsecurity AND NOT relforcerowsecurity
   UNION ALL
-  SELECT 'AUTH_MEMBERSHIP_UNAUTHORIZED_WRITE_POLICY', 'auth.' || relname || '.' || polname,
-         'membership writes must fail closed; only reviewed SELECT policies are accepted'
-  FROM membership_judged
-  WHERE polpermissive AND polcmd IN ('a', 'w', 'd', '*')
+  SELECT 'AUTH_MEMBERSHIP_POLICY_GAP', 'auth.' || st.relname || ':' || st.policy_name,
+         'missing reviewed membership policy from the accepted principal-bound contract'
+  FROM membership_policy_status st
+  WHERE NOT st.policy_matches
   UNION ALL
-  SELECT 'AUTH_MEMBERSHIP_POLICY_GAP', 'auth.' || m.relname || ':' || c.actor_class,
-         'missing reviewed membership policy for this principal'
-  FROM tenant_scoped_auth m
-  CROSS JOIN (VALUES ('auth_service'), ('tenant_admission_definer')) c(actor_class)
-  WHERE NOT EXISTS (
-    SELECT 1 FROM membership_judged mj
-    JOIN membership_principals mp ON mp.oid = mj.target_oid AND mp.actor_class = c.actor_class
-    WHERE mj.rel_oid = m.oid
-  )
+  SELECT 'AUTH_MEMBERSHIP_POLICY_INVALID', 'auth.' || st.relname || '.' || st.policy_name,
+         'membership policy name exists but command, role, USING or WITH CHECK differs from the accepted contract'
+  FROM membership_policy_status st
+  WHERE st.policy_exists AND NOT st.policy_matches
   UNION ALL
-  SELECT 'AUTH_MEMBERSHIP_POLICY_INVALID', 'auth.' || relname || '.' || polname,
-         'membership policy is not bound to the accepted principal/context semantics'
-  FROM membership_judged mj
-  WHERE mj.constant_true
-     OR NOT mj.has_using
-     OR (mj.polpermissive AND mj.polcmd IN ('r') AND NOT mj.preselect_bound AND NOT mj.pair_bound)
-     OR (NOT mj.polpermissive AND (NOT mj.has_check OR NOT (mj.preselect_bound OR mj.pair_bound)))
+  SELECT 'UNEXPECTED_POLICY', 'auth.' || up.relname || '.' || up.polname,
+         'policy is not part of the reviewed membership preselection contract'
+  FROM membership_unexpected_policies up
   UNION ALL
-  SELECT 'AUTH_MEMBERSHIP_RESTRICTIVE_GAP', 'auth.' || p.relname || ':' || p.target_role,
-         'each privileged membership principal needs a restrictive scope partner'
-  FROM (
-    SELECT DISTINCT rel_oid, relname, target_oid, target_role
-    FROM membership_judged WHERE polpermissive
-  ) p
-  WHERE NOT EXISTS (
-    SELECT 1 FROM membership_judged r
-    WHERE r.rel_oid = p.rel_oid AND r.target_oid = p.target_oid AND NOT r.polpermissive
-  )
-
+  SELECT 'AUTH_MEMBERSHIP_UNAUTHORIZED_WRITE_POLICY', 'auth.' || up.relname || '.' || up.polname,
+         'membership writes must fail closed; an unexpected permissive write policy is present'
+  FROM membership_unexpected_policies up
+  WHERE up.polpermissive AND up.polcmd IN ('a', 'w', 'd', '*')
   -- ---- 8.3 Transitive views, materialized views and children -------------
   UNION ALL
   SELECT 'UNSAFE_VIEW_OWNER', cr.nspname || '.' || cr.relname,
@@ -819,6 +1091,13 @@ violations (kind, object, detail) AS (
   FROM reachable_relation_details cr
   WHERE cr.kind = 'matview'
   UNION ALL
+  SELECT 'UNSAFE_VIEW_PATH', cr.nspname || '.' || cr.relname,
+         'a tainted view on the path to a runtime-readable endpoint can publish rows outside row-level security'
+  FROM reachable_objects ro
+  JOIN reachable_relation_details cr ON cr.oid = ro.oid
+  WHERE ro.kind IN ('view', 'matview') AND ro.tainted
+    AND ro.oid IN (SELECT oid FROM endpoint_ancestors)
+  UNION ALL
   SELECT 'UNSAFE_PARTITION_PATH', cr.nspname || '.' || cr.relname,
          'runtime-reachable child of tenant data lacks its own forced RLS and policy'
   FROM reachable_relation_details cr
@@ -826,6 +1105,10 @@ violations (kind, object, detail) AS (
     AND cr.oid IN (SELECT rel_oid FROM runtime_read_endpoints)
     AND (NOT cr.relrowsecurity OR NOT cr.relforcerowsecurity
          OR NOT EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = cr.oid AND p.polpermissive))
+  UNION ALL
+  SELECT 'UNSAFE_PARTITION_WRITE_PATH', g.object_name || ':' || g.cmd,
+         'runtime can write a cross-schema child whose forced RLS or command-specific USING/WITH CHECK is missing'
+  FROM child_write_gaps g
 
   -- ---- 8.4 Definer authority and accepted EXECUTE surface ----------------
   UNION ALL
@@ -953,6 +1236,43 @@ violations (kind, object, detail) AS (
   FROM required_roles r
   WHERE r.role_kind = 'runtime' AND r.oid IS NOT NULL AND (r.rolcreatedb OR r.rolcreaterole)
   UNION ALL
+  SELECT 'RUNTIME_SCHEMA_CREATE', asp.actor_name || ' -> ' || asp.nspname,
+         'runtime principal holds CREATE on a covered schema'
+  FROM actor_schema_privileges asp
+  WHERE asp.privilege = 'CREATE'
+  UNION ALL
+  SELECT 'RUNTIME_SCHEMA_PRIVILEGE', asp.actor_name || ' -> ' || asp.nspname || ':' || asp.privilege,
+         'runtime principal holds a covered-schema privilege outside its accepted profile'
+  FROM actor_schema_privileges asp
+  WHERE NOT EXISTS (
+    SELECT 1 FROM schema_privilege_contract sc
+    WHERE sc.actor_class = asp.actor_class AND sc.nspname = asp.nspname AND sc.privilege = asp.privilege
+  )
+  UNION ALL
+  SELECT 'LOGIN_DIRECT_SCHEMA_PRIVILEGE', dsp.rolname || ' -> ' || dsp.nspname || ':' || dsp.privilege,
+         'runtime login holds a direct covered-schema privilege instead of using its target role'
+  FROM direct_login_schema_privileges dsp
+  UNION ALL
+  SELECT 'PUBLIC_SCHEMA_PRIVILEGE', sa.nspname || ':' || sa.privilege,
+         'PUBLIC holds a covered-schema privilege'
+  FROM schema_acls sa
+  WHERE sa.grantee = 0
+  UNION ALL
+  SELECT 'SCHEMA_OWNERSHIP_MISMATCH', n.nspname,
+         'covered schema is not owned by the reviewed migrator role'
+  FROM pg_namespace n
+  WHERE n.nspname IN ('tenant_data', 'auth', 'operator')
+    AND NOT EXISTS (
+      SELECT 1 FROM required_roles rr
+      WHERE rr.oid = n.nspowner AND rr.class = 'migrator'
+    )
+  UNION ALL
+  SELECT 'ROLE_SWITCH_TO_PRIVILEGED_CAPABILITY', a.actor_name || ' -> ' || pcr.rolname,
+         'runtime principal can assume a role with dangerous attributes or covered authority'
+  FROM actors a
+  JOIN role_closure rc ON rc.member = a.actor_oid
+  JOIN privileged_capability_roles pcr ON pcr.oid = rc.granted
+  UNION ALL
   SELECT 'RUNTIME_OWNS_OBJECT', cr.nspname || '.' || cr.relname,
          'runtime role owns a covered relation'
   FROM runtime_roles rr JOIN covered_relations cr ON cr.relowner = rr.oid
@@ -1028,30 +1348,51 @@ violations (kind, object, detail) AS (
       OR EXISTS (SELECT 1 FROM pg_auth_members m JOIN owner_roles o ON o.oid = m.roleid WHERE m.member = r.oid)
     )
   UNION ALL
-  SELECT 'DEFINER_OWNER_EXCESS_AUTHORITY', og.rolname || ' -> ' || og.nspname || '.' || og.relname || ':' || og.privilege,
-         'definer owner holds a relation privilege outside its reviewed relation manifest'
-  FROM owner_relation_grants og
-  WHERE og.actor_class <> 'migrator'
-    AND NOT EXISTS (SELECT 1 FROM owner_allowed_relations ar
-                    WHERE ar.actor_class = og.actor_class
-                      AND ar.relation_name = og.nspname || '.' || og.relname)
-  UNION ALL
-  SELECT 'DEFINER_OWNER_EXCESS_AUTHORITY', og.rolname || ' -> ' || og.nspname || '.' || og.relname || ':' || og.privilege,
-         'definer owner holds a destructive or table-wide grant outside the accepted surface'
-  FROM owner_relation_grants og
-  WHERE og.actor_class <> 'migrator'
-    AND (
-      og.privilege IN ('DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER')
-      OR (og.actor_class IN ('tenant_admission_definer', 'audit_definer', 'void_definer')
-          AND og.nspname = 'tenant_data' AND og.relkind IN ('r', 'p', 'v', 'm')
-          AND EXISTS (
-            SELECT 1 FROM relation_acls ra
-            WHERE ra.grantee = (SELECT oid FROM owner_roles WHERE actor_class = og.actor_class LIMIT 1)
-              AND ra.nspname = og.nspname AND ra.relname = og.relname
-              AND ra.privilege = og.privilege
-          ))
+  SELECT 'DEFINER_OWNER_EXCESS_AUTHORITY', a.rolname || ' -> ' || a.relation_name || ':' || a.privilege,
+         'definer owner holds a privilege, operation or column set outside its exact reviewed profile'
+  FROM owner_actual_privileges a
+  WHERE a.actor_class <> 'migrator'
+    AND NOT EXISTS (
+      SELECT 1 FROM owner_privilege_contract c
+      WHERE c.actor_class = a.actor_class AND c.relation_name = a.relation_name
+        AND c.privilege = a.privilege AND c.columns = a.columns
     )
-
+  UNION ALL
+  SELECT 'DEFINER_OWNER_PRIVILEGE_MISSING', c.actor_class || ' -> ' || c.relation_name || ':' || c.privilege,
+         'reviewed definer owner privilege or column set is missing'
+  FROM owner_privilege_contract c
+  WHERE NOT EXISTS (
+    SELECT 1 FROM owner_actual_privileges a
+    WHERE a.actor_class = c.actor_class AND a.relation_name = c.relation_name
+      AND a.privilege = c.privilege AND a.columns = c.columns
+  )
+  UNION ALL
+  SELECT 'DEFINER_OWNER_SCHEMA_PRIVILEGE', a.rolname || ' -> ' || a.nspname || ':' || a.privilege,
+         'definer owner holds a schema privilege outside its exact reviewed profile'
+  FROM owner_actual_schema_privileges a
+  WHERE a.actor_class <> 'migrator'
+    AND NOT EXISTS (
+      SELECT 1 FROM owner_schema_contract c
+      WHERE c.actor_class = a.actor_class AND c.nspname = a.nspname AND c.privilege = a.privilege
+    )
+  UNION ALL
+  SELECT 'DEFINER_OWNER_SCHEMA_PRIVILEGE', c.actor_class || ' -> ' || c.nspname || ':' || c.privilege,
+         'reviewed definer owner schema privilege is missing'
+  FROM owner_schema_contract c
+  WHERE NOT EXISTS (
+    SELECT 1 FROM owner_actual_schema_privileges a
+    WHERE a.actor_class = c.actor_class AND a.nspname = c.nspname AND a.privilege = c.privilege
+  )
+  UNION ALL
+  SELECT 'DEFINER_OWNER_EXCESS_AUTHORITY', o.rolname || ' owns ' || f.signature,
+         'definer owner owns a function outside its exact reviewed ownership profile'
+  FROM owner_roles o
+  JOIN covered_functions f ON f.proowner = o.oid
+  WHERE o.actor_class <> 'migrator'
+    AND NOT EXISTS (
+      SELECT 1 FROM owner_allowed_owned_functions af
+      WHERE af.actor_class = o.actor_class AND af.signature = f.signature
+    )
   -- ---- 8.7 PUBLIC exposure ------------------------------------------------
   UNION ALL
   SELECT 'PUBLIC_RELATION_PRIVILEGE', pa.nspname || '.' || pa.relname || ':' || pa.privilege,
