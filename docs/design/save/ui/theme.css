@@ -52,3 +52,33 @@ dialog{padding:0;border:0;border-radius:15px;background:var(--surface);color:var
 
 /* Below 1420px the journal register needs the full width, so that row stacks. */
 @media(max-width:1420px){.overview-stack{grid-template-columns:minmax(0,1fr)}}
+
+/* Sidebar collapse affordances: arrow to collapse, mark to expand. */
+.brand{position:relative}
+.brand-mark{display:grid;place-items:center;border:0;background:none;padding:4px;border-radius:8px;cursor:pointer;color:inherit}
+.brand-mark:hover{background:#ffffff14}
+.sidebar-arrow{display:grid;place-items:center;margin-left:auto;width:26px;height:26px;border:0;border-radius:7px;background:#ffffff0f;color:var(--rail-muted);cursor:pointer}
+.sidebar-arrow:hover{background:#ffffff1f;color:var(--rail-ink)}
+.sidebar-arrow .ui-icon{width:14px;height:14px;transform:rotate(90deg)}
+
+/* Collapsed rail: keep the logo mark, hide labels, 76px wide. */
+.shell.sidebar-collapsed{grid-template-columns:76px minmax(0,1fr)}
+.sidebar-collapsed .sidebar{visibility:visible;padding:22px 10px 16px;overflow:hidden}
+.sidebar-collapsed .brand{justify-content:center;padding:0 0 10px}
+.sidebar-collapsed .brand>div{display:none}
+.sidebar-collapsed .brand-logo{width:30px;height:25px}
+.sidebar-collapsed .nav-label,
+.sidebar-collapsed .nav-text,
+.sidebar-collapsed .nav-item small,
+.sidebar-collapsed .sidebar-foot,
+.sidebar-collapsed .sidebar-arrow{display:none}
+.sidebar-collapsed .nav-item{justify-content:center;padding:11px 0;gap:0}
+.sidebar-collapsed .nav-symbol{margin:0}
+@media(max-width:720px){.shell.sidebar-collapsed{grid-template-columns:none}}
+
+/* Accounting sub-navigation inside the rail. */
+.nav-children{margin:2px 0 8px}
+.nav-child{display:block;width:100%;text-align:left;padding:7px 12px 7px 36px;border:0;border-radius:7px;background:none;color:var(--rail-muted);font-size:11.5px;line-height:1.35;cursor:pointer}
+.nav-child:hover{background:#ffffff0b;color:var(--rail-ink)}
+.nav-child[aria-current="page"]{background:#ffffff14;color:var(--rail-ink);font-weight:600}
+.sidebar-collapsed .nav-children{display:none}

@@ -312,5 +312,31 @@ export function createScreens({getCompany, range, navigate, notify}) {
     </div>`;
   }
 
-  return {overview, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals};
+/* --------------------------------------------------------------- planned */
+  const PLANNED = {
+    parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
+    registers: ['Registers', 'Document registers by type — sales invoices, purchase invoices, payments and journals — filtered by party, date range, amount and state. This answers “every transaction with this party in this period” without opening the ledger.', ['Filter by party, type, period, amount, state', 'Column totals and export', 'Row opens the document']],
+    payments: ['Payments', 'Money in and money out with a party, a bank or cash account, a reference and an allocation table. Allocation can follow oldest first, newest first or a manual selection across several documents, with any remainder kept as an advance.', ['Receipts and supplier payments', 'Allocation against open invoices or bills', 'Advance and on-account balances', 'Posts the ledger entry and the allocation together']],
+    banking: ['Banking & cash', 'Bank and cash accounts with balances and a cash-flow strip, a register per account, and reconciliation with statement import, suggested matches and unmatched lines. A reconciliation cannot be closed with a difference.', ['Bank and cash account list', 'Cash-flow summary', 'Account register', 'Statement import and reconciliation']],
+    items: ['Items', 'Light item master for accounting: code, name, unit, income account, expense account, tax treatment and an “inventory tracked” flag. Tracked items are the only ones the Inventory module will value.', ['Sell and buy accounts per item', 'Tax treatment', 'Inventory-tracked flag', 'No quantities or valuation here']],
+    sales: ['Sales invoices', 'Customer invoice with item or free-text lines, tax, due date and payment terms. Posting creates a receivable open item, updates the party balance and writes the ledger entry.', ['Line items with tax', 'Due date and terms', 'Submit, cancel with reversal, print', 'Credit note against the original']],
+    purchases: ['Purchase invoices', 'Supplier bill mirroring the sales invoice, posting to payables and to expense or inventory-clearing. Used for expenses when the Buying module is off, and as the accounting record of a bill when it is on.', ['Line items with tax', 'Due date and terms', 'Expense or inventory clearing', 'Cancel with reversal']],
+  };
+
+  function planned(id) {
+    const [title, text, contains] = PLANNED[id] || ['Being built', 'This page is mapped but not built yet.', []];
+    return `<section class="panel">
+      <div class="panel-head"><h2>${e(title)}</h2>${badge('Being built')}</div>
+      <div class="panel-body">
+        <p>${e(text)}</p>
+        <div class="section-title">What it will contain</div>
+        <ul class="contract-list">${contains.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
+        <div class="callout"><strong>Not connected yet.</strong> This page is part of the agreed accounting map. It does not post, allocate or change any balance.</div>
+        <p class="form-note">Full page map: docs/design/ACCOUNTING_MODULE_MAP.md.</p>
+      </div>
+    </section>`;
+  }
+
+  return {overview, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+
 }
