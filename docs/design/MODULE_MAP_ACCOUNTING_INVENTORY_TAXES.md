@@ -1,6 +1,6 @@
 # SAVEN module map — Accounting, Inventory, Taxes
 
-> Readable, comment-friendly version: `MODULE_MAP.md`. This file keeps the
+> Readable, comment-friendly version: `MODULE_MAP.md` (revision 2 is authoritative). This file keeps the
 > diagrams for visual reference.
 
 The three modules a service business or a trading business cannot run without.

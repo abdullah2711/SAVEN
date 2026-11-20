@@ -1,4 +1,7 @@
-# Accounting module — page map
+# Accounting module — page map (revision 1, superseded)
+
+> Superseded by `MODULE_MAP.md` revision 2, which folds this into the accounting,
+inventory and tax map and answers the review comments.
 
 > Expanded with diagrams for Inventory and Taxes in
 > `MODULE_MAP_ACCOUNTING_INVENTORY_TAXES.md`. This file keeps the accounting detail.

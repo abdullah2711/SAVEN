@@ -1,10 +1,72 @@
-# Module map — Accounting, Inventory, Taxes
+# Module map — Accounting, Inventory, Taxes (revision 2)
 
-Plain-text version, for reviewing and commenting. Section numbers are stable, so
-comment as “2.6” or “3.4”.
+Plain text for review. Section numbers are stable; comment as “2.4”.
+Every comment from your review is answered in §0, then the map is rewritten to
+match.
 
-States: **built** (working screen in the design build) · **partial** (works, covers
-part of the page) · **planned** (mapped, not built).
+States: **built** · **partial** · **planned**.
+
+---
+
+## 0. What changed from your comments
+
+### Navigation
+
+| Your comment | Decision |
+|---|---|
+| Dashboard and “Accounting” open the same screen but differ | Bug, fixed. Clicking the module now normalises to `dashboard` before the first render, so the heading, the highlighted sub-item and the content always agree. |
+| New journal should not be in the sidebar | Removed. It is a button on **Journal entries**; the form is a full page reached from there, not a nav item. |
+| Party detail is not a nav item | Correct. **Parties** is a register. Opening a row opens the party page. The register is reachable by filtering, never duplicated as a sub-item. |
+| What would Receivables and Payables even have? | Removed as pages. Their balances live in the **party register** (balance, overdue, oldest) and their ageing lives in **Reports**. The dashboard keeps the two totals. |
+| Ageing belongs in reports; by-document not needed | Ageing moves into **Reports → Ageing & schedules**. It is party-wise with an expandable per-party document detail, so you get invoice-level detail inside the one report without a second page. |
+| Why a separate Registers page? | Removed. Each list is its own register: journal entries, payments, sales invoices, purchase invoices, stock movements. Cross-type “everything with this party” is the party page. |
+| Statements should be a Reports sub-module | Coffee replaced by **Reports** inside Accounting: ageing, schedules, P&L, financial position, cash flow (direct and indirect), equity, trial-derived packs. Custom reports stay in the separate Reports & BI module. |
+| Approvals should be its own module | Agreed. Approvals leaves Accounting and becomes a top-level module, because any module can raise one. |
+| Period close must be complete | Expanded in 2.2.16, with the full checklist and the reopening rules. |
+
+### Banking & cash — my recommendation
+
+You asked for a view. My recommendation: keep **Cash & bank** as one page with two
+tabs — **Accounts** (list, balances, cash position) and **Reconciliation** — and do
+not build a separate “account register” page, because the ledger already gives the
+bank account register with a running balance.
+
+- Account creation stays in **Chart of accounts**, and the new-account form reveals
+  bank-specific fields when the type is Cash or Bank (bank name, account number,
+  branch, currency, reconciliation on/off). Nothing is created twice.
+- Cash flow moves to **Reports**.
+- The payment register lives in **Payments**, not here.
+
+### Rules
+
+| Your comment | Decision |
+|---|---|
+| Control account flag on the account form | Added. An account carries a control type (none, receivable, payable). A control account requires a party on every posting **unless** the entry type is *Adjusting*, which is itself permission-gated. |
+| When is a party/control difference an error? | Defined in 2.3: it is an error only when the subledger total and the control balance differ with no documented bridge (opening migration, adjusting entry, or posted-but-unallocated item). The bridge is visible, not silent. |
+| Closed period posting by administrator | Allowed for an administrator, with a permanent log entry naming the period, the reason and the actor. The document stays dated in the period it belongs to. |
+| Corrections and deletion | Reversal is the normal route for both journals and invoices. A soft delete exists for administrators: the document stays in the database and the audit log, and is hidden from screens. |
+| Reversing an invoice | Opening the invoice and choosing Reverse/Cancel creates the reversing document, reverses its allocations, reverses its tax lines, and returns stock where the invoice moved it. |
+
+### Inventory
+
+- Dashboard shows statistics, not just a heading.
+- Warehouses show their balances.
+- Stock count produces an adjustment with a reason (count discrepancy, expiry,
+  damage), the reason maps to a GL account, and the adjustment appears in the
+  adjustment register.
+- Valuation & costing covers NRV write-down and impairment.
+- One item master shared by Accounting and Inventory; each module shows the fields
+  it owns.
+
+### Taxes
+
+- Withholding split four ways: sales VAT withholding, purchase VAT withholding,
+  sales income-tax withholding, purchase income-tax withholding.
+- Tax rules attached to items are **defaults only**; any invoice line can override
+  the rate, switch tax off, or add a custom tax line with a chosen account.
+- The module works without the Tax module: chart-of-accounts flags mark tax
+  accounts, and a line can carry a manual tax amount.
+- Certificates explained in 4.2.10.
 
 ---
 
@@ -12,29 +74,31 @@ part of the page) · **planned** (mapped, not built).
 
 - A **document** (sales invoice, purchase invoice, journal, payment) is the only
   thing that moves money.
-- Accounting owns the ledger. Nothing else writes to it directly; inventory and tax
-  post through journals so every balance has a document behind it.
-- Inventory owns quantity and cost. It posts the value it consumed or added.
-- Taxes own the tax lines. A return is a query over those lines, not a rebuild.
-
-Flow in words:
+- Accounting owns the ledger. Inventory and taxes post through journals, so every
+  balance has a document behind it.
+- Inventory owns quantity and cost. Taxes own tax lines; a return is a query over
+  them.
+- The chart of accounts is the configuration hub: an account declares whether it is
+  a control account, a tax account (and which kind), or an inventory account. That
+  is what lets the business run without the Inventory or Tax module at all.
 
 ```
-Sales invoice   -> receivable open item  -> party balance -> ageing
-                -> income                -> ledger
-                -> output tax line       -> tax register -> return
-                -> stock issue (if item is tracked) -> COGS
+Sales invoice    -> receivable open item -> party balance -> ageing
+                 -> income              -> ledger
+                 -> output tax line     -> tax register -> return
+                 -> stock issue         -> COGS (if item tracked)
 
 Purchase invoice -> payable open item    -> party balance -> ageing
-                 -> expense or clearing  -> ledger
-                 -> input tax line       -> tax register -> return
-                 -> stock receipt        -> inventory value
+                 -> expense / clearing  -> ledger
+                 -> input tax line      -> tax register -> return
+                 -> stock receipt       -> inventory value
 
 Payment          -> bank or cash         -> ledger
-                 -> allocation           -> consumes open items
+                 -> allocation          -> consumes open items
+                 -> components          -> discount, withholding, retention, write-off
 
 Journal          -> ledger
-                 -> if the account is a control account: party balance + oldest open item
+                 -> control account: party balance + oldest open item
 ```
 
 ---
@@ -46,145 +110,139 @@ Journal          -> ledger
 ```
 Accounting
 ├── Dashboard
-├── Journal entries
-│   ├── Register
-│   └── New journal (full page, not a dialog)
-├── Parties
-│   ├── Party register
-│   └── Party detail (ledger, documents, limits)
-├── Receivables
-├── Payables
-├── Aging
-│   ├── By party
-│   └── By document
-├── Registers
+├── Journal entries            (register; "New journal" is a button here)
+├── Parties                    (register; a row opens the party page)
+├── Cash & bank                (Accounts · Reconciliation)
+├── Payments                   (register; "New payment" is a button here)
+├── Items                      (register, item page, item reports)
+├── Sales invoices             (register; a row opens the invoice)
+├── Purchase invoices          (register; a row opens the bill)
 ├── General ledger
 ├── Chart of accounts
 ├── Trial balance
-├── Statements
-├── Payments
-├── Banking & cash
-│   ├── Accounts and cash flow
-│   ├── Account register
-│   └── Reconciliation
-├── Items
-├── Sales invoices
-├── Purchase invoices
-├── Approvals
+├── Reports                    (ageing, schedules, P&L, position, cash flow, equity)
 └── Period close
 ```
+
+Approvals is a separate top-level module. Receivables, Payables, Ageing, Registers
+and Statements are no longer pages.
 
 ### 2.2 Pages
 
 **2.2.1 Dashboard — built, being reworked**
-Position and work waiting. Four figures with their basis, what needs action,
-one real trend, recent journals, shortcut links. No decoration. See §8.
+Position and work waiting: four figures with their basis, what needs action, one
+real trend, recent journals. Specified in §8.2.
 
-**2.2.2 Journal entries (register) — built**
-Every journal with date, number, narrative, source, state, debit, credit and net.
-Filter by state, source, period and text; totals in the footer. Row opens the entry
-with its lines; "New journal" opens the form.
+**2.2.2 Journal entries — built**
+Register of every journal: date, number, narrative, source, state, debit, credit,
+net. Filters: state, source, period, party, text. Footer totals. A row opens the
+entry with its lines; the page-level action is **New journal**.
 
-**2.2.3 New journal (form) — built, needs the party field**
-Full page. Header: date, journal, reference, narrative, currency, branch, workflow.
-Lines: account, party (only on control accounts), description, debit, credit. Running
-totals, imbalance warning, posting blocked until balanced. Evidence attachment.
-Posting writes the ledger, the party balance and consumes the oldest open item.
+**2.2.3 New journal — built, needs the party field**
+Full page. Header: date, journal, reference, narrative, currency, branch, entry
+type (Normal / Adjusting / Opening), workflow. Lines: account, party (required on
+control accounts), description, debit, credit, cost centre. Running totals,
+imbalance warning, posting blocked until balanced, evidence attachment. Posting
+writes the ledger, the party balance and consumes the oldest open item.
 
 **2.2.4 Parties — planned**
-One register for customers and suppliers: type, group, tax identity, currency,
-payment terms, credit limit, opening balance, current balance, overdue, status.
-Filters by type, group, balance and overdue. Opening a party opens 2.2.5.
+Register of customers and suppliers: type, group, tax identity, currency, terms,
+credit limit, opening balance, current balance, overdue, oldest item, status.
+Filters by type, group, balance, overdue. Opening a row opens 2.2.5. This is the
+only party list; there is no separate receivables or payables list.
 
-**2.2.5 Party detail — planned**
-Statement view: opening balance, then every document and allocation in date order,
-running balance, closing. Actions: new invoice, new payment, edit terms, hold or
-block. A credit-limit breach is shown before a new document is saved.
+**2.2.5 Party page — planned**
+Header: identity, terms, limit, status. Body: statement-style ledger with opening,
+documents, allocations and closing; ageing strip; outstanding documents; credit
+limit usage. Actions: new invoice, new payment, edit terms, hold, block, print
+statement.
 
-**2.2.6 Receivables — built**
-Exposure by customer: current, overdue, oldest item, balance, share of total.
-Actions: open party ledger, record receipt, send statement. Total equals the
-receivables control account.
+**2.2.6 Cash & bank — partial**
+**Accounts** tab: every bank and cash account with balance, currency, last
+reconciliation and a cash-position strip; physical cash locations shown as cash
+accounts. **Reconciliation** tab: statement import, suggested matches, unmatched
+lines, difference; cannot close with a difference. Account creation happens in
+2.2.11 and returns here.
 
-**2.2.7 Payables — built**
-Supplier mirror of 2.2.6, focused on due dates rather than collection. Actions:
-prepare payment, hold payment, open party ledger.
+**2.2.7 Payments — planned**
+Register of receipts and payments: date, reference, party, account, amount,
+allocated, unallocated, state. Filters by party, direction, account, period,
+amount. **New payment** opens the allocation form: party, date, bank or cash
+account, amount, then an allocation table across one or many documents with
+components per line — settlement, discount, withholding, retention, write-off — so
+a 100 invoice settled with 90 cash, 5 discount and 5 withheld is three visible
+rows, not a hidden difference. Unallocated remainder stays as an advance.
 
-**2.2.8 Aging — built for parties, planned by document**
-Two views. By party: the bucket matrix (current, 1–30, 31–60, 61–90, 90+). By
-document: every open invoice or bill with its own due date, age and bucket.
-Filters by party, type, bucket, date and amount; export.
+**2.2.8 Items — planned**
+Item register with code, name, type (service / stock / non-stock), unit, item
+group, income account, expense account, inventory account, tax defaults, costing
+method, reorder point, status. Item page adds stock balances per warehouse, last
+movements, price history, tax defaults and per-item statistics. Item reports
+(sales by item, purchase by item, margin by item, movement history) live here, not
+in Reports. The same item master is shown in Inventory with the stock fields.
 
-**2.2.9 Registers — planned**
-Document registers by type (sales, purchase, payment, journal) filtered by party,
-date range, amount and state. This is where "show me every transaction with this
-party in this period" is answered without opening the ledger.
+**2.2.9 Sales invoices — planned**
+Register then document. Register: number, date, customer, amount, outstanding,
+days overdue, state, source reference. Document: lines (item or free text), tax per
+line with override, due date, terms, reference to a quotation or order when the
+Selling module is on. Posting creates the receivable open item, party balance,
+ledger and tax lines. Submit, reverse/cancel with a full reversal, print, credit
+note.
 
-**2.2.10 General ledger — built, import planned**
-Account selector (one or all), period, party, text search. Opening balance, every
-posted line with a running balance, closing balance, and a line that proves
-opening + debits − credits = closing. Import for opening balances and history, with
-a dry-run preview before commit.
+**2.2.10 Purchase invoices — planned**
+Supplier mirror of 2.2.9, including the outstanding-days column, the source
+reference to an order or receipt, and posting to expense or inventory clearing.
+Works with Buying off (direct entry) or on (referenced to a purchase order).
 
 **2.2.11 Chart of accounts — built, import planned**
-The full tree by statement section, with code, name, nature (asset, liability,
-equity, income, expense), control flag and balance. Add, rename, regroup, set
-nature, archive (blocked when the account has history), import a chart. Control
-accounts are marked and cannot be posted to directly.
+Tree by statement section with code, name, nature, group, flags and balance. Flags:
+control account (receivable / payable), tax account (output tax, input tax,
+withholding variants), inventory account, bank or cash. New-account form reveals
+the fields for the chosen type, including bank details and reconciliation settings.
+Add, rename, regroup, archive (blocked with history), import a chart.
 
-**2.2.12 Trial balance — built**
-Opening debit/credit, movement during the period, closing debit/credit, group
-subtotals, and a difference that must read 0.00. Period filter, hide-zero, drill
-through to the ledger, export.
+**2.2.12 General ledger — built, import planned**
+Account (one or all), period, party, text search. Opening, every posted line with
+running balance, closing, and the proof line. Import for opening balances and
+history with a dry-run preview.
 
-**2.2.13 Statements — built**
-Profit or loss and statement of financial position from the same ledger, with a
-percentage-of-revenue column, a balance check, and links from each line to its
-accounts.
+**2.2.13 Trial balance — built**
+Opening Dr/Cr, movement, closing Dr/Cr, group subtotals, difference must read 0.00.
+Period filter, hide-zero, drill-through, export.
 
-**2.2.14 Payments — planned**
-Money in and money out: party, date, bank or cash account, reference, amount, and
-an allocation table. Allocation can follow oldest first, newest first, or a manual
-selection across several invoices, with the remainder kept as an advance. Posting
-writes the ledger entry and the allocation together.
+**2.2.14 Reports — partial**
+Built-in reporting for this module: ageing and schedules (receivables, payables,
+with per-party document detail), profit or loss, statement of financial position,
+cash flow (direct and indirect), changes in equity, and a report pack with the
+trial balance proof. Each report has a period selector, a comparison column where
+it makes sense, drill-through to the ledger and export. Custom reports belong to
+the separate Reports & BI module.
 
-**2.2.15 Banking & cash — partial**
-Bank and cash accounts with balances and a cash-flow strip; a register per account;
-reconciliation with statement import, suggested matches and unmatched lines. A
-reconciliation cannot be closed with a difference. Physical cash locations map to
-cash accounts.
-
-**2.2.16 Items — planned**
-Light item master used by invoices: code, name, unit, income account, expense
-account, tax treatment, and an "inventory tracked" flag. No quantities here.
-
-**2.2.17 Sales invoices — planned**
-Customer invoice with item or free-text lines, tax, due date, terms. Posting creates
-the receivable open item, updates the party balance and writes the ledger and tax
-lines. Submit, cancel with reversal, print, credit note.
-
-**2.2.18 Purchase invoices — planned**
-Supplier bill mirroring sales, posting to payables and to expense or
-inventory-clearing. Used for expenses when Buying is off, and as the accounting
-record of a bill when Buying is on.
-
-**2.2.19 Approvals — built**
-Queue of documents waiting for review with reason, amount, preparer and lines.
-Approve posts; return and reject do not.
-
-**2.2.20 Period close — partial**
-Checklist (journals, bank, receivables, depreciation, statements), trial balance
-proof, and a lock that requires evidence and sign-off. Reopening is a separate
-authorised action and is recorded.
+**2.2.15 Period close — partial**
+Checklist with evidence per step: all journals posted, bank reconciled, receivables
+and payables reviewed, depreciation and accruals posted, tax position agreed,
+statements produced, sign-off. A lock requires every step either complete or
+explicitly waived with a reason. Reopening needs an administrator, a reason and a
+permanent log entry; documents posted afterwards keep their original dates.
 
 ### 2.3 Cross-page rules
 
-- A control account cannot be posted without a party; documents cannot post to it
-  directly.
-- Party balance equals the sum of its open items. A difference against the control
-  account is surfaced as an error on the dashboard.
-- A journal dated into a closed period is refused with the reason, never moved.
-- Corrections are reversals. A posted document is never edited.
+- **Control accounts.** Set on the account. A posting to a control account requires
+  a party, except when the entry type is *Adjusting*, which needs a stronger
+  permission and a reason. Documents never post to a control account directly —
+  they post through their own subledger entry.
+- **Party balance versus control account.** The two must agree. A difference is an
+  error only when there is no bridge that explains it; valid bridges are an opening
+  balance migration, an adjusting entry with a reason, or a posted amount not yet
+  allocated. The reconciliation report lists the bridge lines, so a real gap is
+  visible rather than averaged away.
+- **Closed periods.** Posting is refused, except for an administrator, who must give
+  a reason; the log records the actor, the period and the document.
+- **Corrections.** Reversal is the normal route. Administrators may soft-delete a
+  document: it disappears from lists but stays in the database and the audit log.
+- **Reversing an invoice.** From the document: Reverse/Cancel creates the reversing
+  document, reverses allocations, reverses tax lines and returns stock. The
+  original and the reversal both remain visible.
 
 ---
 
@@ -214,68 +272,71 @@ Inventory
 ### 3.2 Pages
 
 **3.2.1 Dashboard — planned**
-Stock value, low-stock items, movements today, slow movers, and value by warehouse.
-Every figure links to the report that explains it.
+Stock value, value by warehouse, items below reorder point, movements today, top
+movers, slow movers, pending counts. Every tile links into the list or report that
+produced it.
 
 **3.2.2 Items — planned**
-Code, name, unit, category, income account, expense account, inventory account, tax
-treatment, reorder point, costing method, tracked flag. Untracked items never enter
-stock balances.
+The same item master as 2.2.8, with the stock fields visible: tracked flag, costing
+method, reorder point, default warehouse, batch or serial policy.
 
 **3.2.3 Item groups — planned**
-Tree used for reporting, default accounts and tax defaults. Changing a group does
-not silently repost history.
+Tree for reporting, default accounts and tax defaults. Changing a group never
+reposts history.
 
 **3.2.4 Warehouses & locations — planned**
-Stores, bins, branch mapping, default inventory account. Transfers between them do
-not change total value.
+Stores and bins with their balances, branch mapping, default inventory account, and
+a per-warehouse stock value. Transfers do not change total value.
 
 **3.2.5 Stock balances — planned**
-Quantity and value per item and warehouse, with last movement date and average cost.
-Reconciles to the inventory control account.
+Quantity and value per item and warehouse, last movement, average cost. Reconciles
+to the inventory control account.
 
 **3.2.6 Stock movements — planned**
 Every in and out line: date, item, warehouse, quantity, value, source document,
-reason. Filter by item, warehouse, type and period.
+reason. Filters by item, warehouse, type, period.
 
 **3.2.7 Goods receipt — planned**
-Receive against a purchase invoice or order, with batch or serial optional. Posts
-the movement and the clearing entry.
+Receive against a bill or order, batch or serial optional. Posts the movement and
+the clearing entry.
 
 **3.2.8 Delivery note — planned**
-Issue against a sales invoice. Cost leaves at the item's costing method and posts to
+Issue against an invoice. Cost leaves at the item's costing method and posts to
 cost of sales.
 
 **3.2.9 Transfers — planned**
-Move quantity between warehouses without changing total value; a two-line movement.
+Move quantity between warehouses at unchanged total value; a two-line movement.
 
 **3.2.10 Stock count — planned**
-Count sheet, variance, approval, adjustment posting. The count never edits balances
-directly.
+Count sheet, variance per item, approval. A variance never edits balances directly:
+it creates an **adjustment** with the reason *stock count discrepancy*, which
+appears in 3.2.11 and posts to the account configured for that reason.
 
 **3.2.11 Adjustments & write-offs — planned**
-Damage, expiry, net-realizable-value write-down, each with a reason code, approval
-and evidence.
+Register of every adjustment: date, item, warehouse, quantity, value, reason
+(discrepancy, expiry, damage, sample, write-off), account, approval, evidence. Each
+reason maps to a GL account, so the expense is deliberate rather than implied.
 
 **3.2.12 Valuation & costing — planned**
-Costing method per item (weighted average or FIFO), revaluation, landed-cost
-allocation across items.
+Costing method per item (weighted average or FIFO), revaluation, NRV write-down,
+impairment, landed-cost allocation across items.
 
 **3.2.13 Reorder & alerts — planned**
-Items below their reorder point with suggested quantities and last supplier.
+Items below their reorder point with suggested quantity and last supplier.
 
 **3.2.14 Reports — planned**
-Stock ledger, movement summary, valuation, ageing, gross margin by item.
+Stock ledger, movement summary, valuation, stock ageing, gross margin by item.
 
 **3.2.15 Settings — planned**
-Default accounts, units, costing default, negative-stock policy.
+Default accounts per movement type, units, costing default, negative-stock policy,
+reason codes and their accounts.
 
 ### 3.3 Rules
 
-- Quantities are whole or three decimals; value is always money with two decimals.
+- Quantities whole or three decimals; value always money with two decimals.
 - Inventory control account equals the sum of item balances; a gap is an error.
-- Negative stock is refused unless explicitly allowed, and then flagged everywhere.
-- Only inventory-tracked items are valued.
+- Negative stock is refused unless explicitly allowed, then flagged everywhere.
+- Only tracked items are valued; untracked items post straight to expense or income.
 
 ---
 
@@ -289,9 +350,13 @@ Taxes
 ├── Registrations & jurisdictions
 ├── Tax codes & rates
 ├── Tax groups
-├── Output tax register
-├── Input tax register
+├── Output tax register          (sales VAT)
+├── Input tax register           (purchase VAT)
 ├── Withholding
+│   ├── Sales VAT withholding
+│   ├── Purchase VAT withholding
+│   ├── Sales income-tax withholding
+│   └── Purchase income-tax withholding
 ├── Reconciliation & returns
 ├── Adjustments & corrections
 ├── Certificates
@@ -301,54 +366,68 @@ Taxes
 ### 4.2 Pages
 
 **4.2.1 Dashboard — planned**
-Liability or credit by period, next filing date, unreconciled tax lines, and the
-accounts the position sits in.
+Position by period and by tax type: output tax due, input tax recoverable,
+withholding receivable and payable, next filing date, unreconciled lines. Each
+figure links to its register. Specified in §8.4.
 
 **4.2.2 Registrations & jurisdictions — planned**
 Tax identities per company and branch, jurisdiction, effective dates, filing
 frequency, return template.
 
 **4.2.3 Tax codes & rates — planned**
-Code, rate, inclusive or exclusive, base amount rule, output and input accounts,
-effective range. A code cannot be deleted once used.
+Code, rate, inclusive or exclusive, base rule, output and input accounts, kind
+(VAT, income tax, withholding receivable, withholding payable), effective range.
+Not deletable once used.
 
 **4.2.4 Tax groups — planned**
-Combine codes for a document, for example standard rate plus withholding, with the
-order in which they apply.
+Combine codes for a document — for example standard VAT plus income-tax
+withholding — with the order in which they apply. Groups are defaults for items and
+parties; a line can still override.
 
 **4.2.5 Output tax register — planned**
-Every sales tax line: date, document, party, base, rate, tax, code. Filter by period
-and code; totals must agree with the tax control account.
+Every sales tax line: date, document, party, base, rate, amount, code. Filter by
+period, code, party. Totals agree with the tax control account.
 
 **4.2.6 Input tax register — planned**
-Every purchase tax line, with the recoverable and blocked portions separated.
+Every purchase tax line, with recoverable and blocked portions separated.
 
 **4.2.7 Withholding — planned**
-Withheld from suppliers and by customers, expected versus actual, certificates due.
-Links to the documents that caused each line.
+Four registers under one page: tax withheld by customers from us (VAT and income
+tax) and tax we withhold from suppliers (VAT and income tax), with expected versus
+actual and the document behind each line. Certificates due or received are shown
+against the relevant line.
 
 **4.2.8 Reconciliation & returns — planned**
-Period return: output, input, carried forward, payable. Locks the period with a
-snapshot and the evidence that produced it.
+Period return per tax type: output, input, carried forward, payable or refundable.
+Locks the period with a snapshot and the evidence that produced it.
 
 **4.2.9 Adjustments & corrections — planned**
-Manual adjustment with reason, approval, evidence and an effective date. Posts to
-the tax control accounts.
+Manual adjustment with reason, approval, evidence and effective date. Posts to the
+tax control accounts.
 
 **4.2.10 Certificates — planned**
-Issue and receive withholding certificates; link each to the documents it covers.
+Purpose: a withholding certificate is the document that proves tax was deducted at
+source. When a customer withholds income tax from your invoice, their certificate is
+what lets you claim the credit; when you withhold from a supplier, you issue one so
+they can claim against it. The page issues, receives and links each certificate to
+the documents and amounts it covers. If a business never uses withholding, this page
+stays empty.
 
 **4.2.11 Settings — planned**
 Rounding, inclusive pricing, default accounts, filing periods, whether input tax is
-recoverable by default.
+recoverable by default, and whether withholding is enabled per direction.
 
 ### 4.3 Rules
 
-- A tax line stores base, rate and amount. Totals derive from lines, never the
-  reverse.
-- Inclusive prices are back-calculated and the residual posts to rounding.
+- A tax line always stores base, rate, amount and account. Totals derive from lines.
+- Inclusive prices are back-calculated; the residual posts to rounding.
 - The tax control account equals the sum of unreconciled tax lines for the period.
 - A filed return is locked; later corrections are new adjustments with evidence.
+- **Running without this module:** accounts flagged as tax accounts in the chart
+  (output tax, input tax, withholding variants) still work. A journal or invoice line
+  can carry a manual tax line with a rate and one of those accounts, and the return
+  is produced from the ledger. The module adds rules, registers, certificates and
+  filing — not the ability to record tax.
 
 ---
 
@@ -357,15 +436,16 @@ recoverable by default.
 | Entity | Key fields |
 |---|---|
 | Party | id, type, name, group, tax id, currency, terms, credit limit, status |
-| Document | id, type, date, party, currency, due date, state, source |
-| Document line | account, item, description, quantity, rate, amount, tax group |
-| Tax line | code, base, rate, amount, jurisdiction, recoverable |
+| Document | id, type, date, party, currency, due date, state, source, source reference |
+| Document line | account, item, description, quantity, rate, amount, tax group, tax override |
+| Tax line | code, base, rate, amount, account, jurisdiction, recoverable, withholding kind |
 | Open item | document, party, amount, due date, outstanding, bucket |
-| Allocation | open item, payment, amount, date, mode (oldest / newest / manual) |
-| Journal entry | number, date, source, state, lines, reversal of |
+| Allocation | open item, payment, amount, date, component (settlement, discount, withholding, retention, write-off), mode |
+| Journal entry | number, date, source, entry type, state, lines, reversal of |
 | Ledger line | account, party, debit, credit, period, entry |
-| Item | code, name, unit, accounts, tax, tracked, reorder point, costing |
-| Stock movement | item, warehouse, quantity, value, direction, source |
+| Account | code, name, nature, group, control type, tax kind, inventory flag, bank details |
+| Item | code, name, type, unit, accounts, tax defaults, tracked, reorder point, costing |
+| Stock movement | item, warehouse, quantity, value, direction, source, reason |
 
 ---
 
@@ -373,46 +453,78 @@ recoverable by default.
 
 | Action | Accounting | Inventory | Taxes |
 |---|---|---|---|
-| Sales invoice | receivable, income, party item | stock issue and COGS if tracked | output tax line |
-| Purchase invoice | payable, expense or clearing | stock receipt at cost | input tax line |
-| Payment | bank, allocation, party balance | — | withholding if applicable |
-| Journal | ledger, party on control accounts | — | tax adjustment lines |
-| Stock count | COGS or write-off | quantity and value | — |
+| Sales invoice | receivable, income, party item | stock issue and COGS if tracked | output tax, withholding receivable |
+| Purchase invoice | payable, expense or clearing | stock receipt at cost | input tax, withholding payable |
+| Payment | bank, allocation, party balance | — | withholding components |
+| Journal | ledger, party on control accounts | — | manual tax lines |
+| Stock count | adjustment expense | quantity and value | — |
 | Tax return | tax control accounts | — | return snapshot and proof |
 
 ---
 
 ## 7. Build order
 
-1. Journal entry form with the party field (unblocks everything).
-2. Chart of accounts: nature, groups, control flags.
-3. Parties and party detail.
-4. Receivables, payables, ageing by party and by document.
-5. General ledger and trial balance with filters.
-6. Payments with allocation.
-7. Sales and purchase invoices.
-8. Items, then inventory movements and valuation.
-9. Taxes: codes, registers, return.
-10. Banking reconciliation.
+1. Chart of accounts with flags (control, tax kind, inventory, bank) — the config
+   hub everything else reads.
+2. Journal entry form with the party field and entry types.
+3. Parties and party page.
+4. Payments with allocation components.
+5. Sales and purchase invoices (direct entry first, source reference later).
+6. General ledger, trial balance and Reports (ageing, P&L, position, cash flow,
+   equity).
+7. Cash & bank: accounts and reconciliation.
+8. Items, then inventory movements, counts, adjustments and valuation.
+9. Taxes: codes, registers, withholding, return, certificates.
+10. Period close.
 
 ---
 
-## 8. Dashboard contract
+## 8. Dashboards
 
-**Must show above the fold at 1280×800**
+### 8.1 Shared design rules
 
-- Four figures with their basis: cash and bank, receivables, payables, result for
-  the period. Each links to the page that explains it.
-- What needs action: approvals waiting, drafts returned, unreconciled bank lines,
-  overdue receivables — each with a count and a link.
-- One real trend: cash movement for the period, from posted entries.
-- Recent activity: the last journals with amounts and state.
+- One page, no hero, no decorative imagery, no gradients behind text.
+- Every number states its period and links to the page that explains it.
+- Maximum two rows of content above the fold at 1280×800; a third row only if it is
+  work, not navigation.
+- Cards use one surface, one hairline, no shadow stack. Figures are tabular.
+- No chart without a source on the same page. No empty chart placeholder.
 
-**Rules**
+### 8.2 Accounting dashboard
 
-- No hero band, no decorative images, no marketing cards, no gradient behind text.
-- No chart without a data source on the same page; no number without a period.
-- Nothing may look like a primary action unless it is one.
-- Everything on the dashboard is a link into a page that can explain it.
-- Two rows of content, not five. If it scrolls, the second screen is work, not
-  modules.
+**Row 1 — position (four figures)**
+Cash & bank · Receivables · Payables · Result for the period. Each with the basis
+(“PKR, 3 accounts”, “14 customers”, “Nov 2026”) and a link.
+
+**Row 2 — work waiting**
+- Documents awaiting approval, with the oldest age.
+- Drafts returned for correction.
+- Bank accounts not reconciled, with unmatched line count.
+- Invoices past due, with the amount over 60 days.
+- Period-close steps outstanding.
+
+**Row 3 — evidence**
+- Cash movement for the period, from posted entries only.
+- Last six journals with amount and state.
+- Ageing strip for receivables and payables, five buckets.
+
+Empty state: when there is no data, each block says what it will show and links to
+the page that creates the first record. No fake numbers.
+
+### 8.3 Inventory dashboard
+
+Stock value total and by warehouse · items below reorder point · movements today
+(in and out) · pending counts · top five movers · slow movers · value change this
+period.
+
+### 8.4 Taxes dashboard
+
+Output tax due · input tax recoverable · net position for the period · withholding
+receivable · withholding payable · next filing date and period · unreconciled tax
+lines. Each links to its register.
+
+### 8.5 Never on a dashboard
+
+Marketing copy, module promo cards, decorative icons at large size, charts without
+axes or labels, numbers without a period, anything that looks like a button but does
+nothing.
