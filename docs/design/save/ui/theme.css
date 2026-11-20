@@ -91,3 +91,32 @@ dialog{padding:0;border:0;border-radius:15px;background:var(--surface);color:var
 .journal-lines td:nth-child(6){width:86px}
 .journal-lines select,.journal-lines input{width:100%}
 .journal-lines select:disabled{color:var(--muted);opacity:.65}
+
+/* ---- Accounting dashboard blocks ---------------------------------------- */
+.dash-stats .stat{flex:1 1 220px}
+.dash-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:24px;margin-bottom:24px;align-items:start}
+.dash-span2{grid-column:span 1}
+.dash-chart{padding-top:10px}
+.dash-actions{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 8px}
+.dash-actions .button{min-height:38px}
+.compact-table{padding:0}
+.compact-table table{font-size:12px}
+.compact-table th{font-size:9px;padding:8px 14px}
+.compact-table td{padding:8px 14px}
+@media(max-width:1200px){.dash-grid{grid-template-columns:minmax(0,1fr)}}
+
+/* ---- General ledger ------------------------------------------------------ */
+.gl-filter{margin-bottom:0}
+.gl-filter label{flex:1 1 140px}
+.gl-filter label:last-of-type{flex:2 1 220px}
+.gl-stats{margin:6px 0 18px}
+.gl-stats .stat{flex:1 1 200px}
+.gl-scroll{max-height:620px}
+.gl-table{font-size:12px}
+.gl-table th{position:sticky;top:0;z-index:2}
+.gl-table td{padding:9px 12px;vertical-align:top}
+.gl-desc{white-space:normal;min-width:220px;max-width:360px}
+.gl-table tr.gl-open td{background:var(--tint)}
+.gl-detail td{background:var(--soft);padding:18px 22px}
+.gl-detail-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:26px}
+@media(max-width:900px){.gl-detail-grid{grid-template-columns:minmax(0,1fr)}}

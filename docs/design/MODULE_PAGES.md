@@ -24,70 +24,12 @@ States: **built** working screen · **partial** working, covers part of the page
 | 10 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
 | 11 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
 | 12 | Reports `reports` | partial | Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger. |
-| 13 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
-
-## Cash & bank (banking)
-
-| # | Page | State | Specification |
-|---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Account balances, cash position and what is awaiting reconciliation. |
-| 2 | Accounts `accounts` | planned | Bank and cash accounts with currency, branch, last reconciliation and balance. |
-| 3 | Statement imports `imports` | planned | Upload, parse and match a bank statement; unmatched lines stay visible. |
-| 4 | Reconciliation `reconciliation` | planned | Match statement lines to the ledger; cannot be closed with a difference. |
-| 5 | Transfers `transfers` | planned | Move funds between accounts with a two-line entry and no net change to cash. |
-
-## Payments (payments)
-
-| # | Page | State | Specification |
-|---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Unallocated receipts, payments due, advances outstanding, holds. |
-| 2 | Receipts `receipts` | planned | Money received from customers, with allocation against open invoices. |
-| 3 | Supplier payments `supplier-payments` | planned | Money paid to suppliers, with allocation against open bills. |
-| 4 | Allocations `allocations` | planned | Every allocation line: which document, which component, which date. |
-| 5 | Advances `advances` | planned | Unallocated amounts held on account, customer or supplier. |
-| 6 | Refunds `refunds` | planned | Return money that was received or paid in error, with evidence. |
-
-## Sales (sales)
-
-| # | Page | State | Specification |
-|---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Pipeline, invoiced, collected, overdue and credit-limit exposure. |
-| 2 | Customers `customers` | planned | Customer records with terms, limits, balances and history. |
-| 3 | Quotations `quotations` | planned | Quotes with validity, revision history and conversion to an order. |
-| 4 | Sales orders `orders` | planned | Confirmed orders, delivery schedule and back orders. |
-| 5 | Invoices `invoices` | planned | Invoices raised from an order, a delivery or directly. |
-| 6 | Delivery notes `delivery` | planned | Goods leaving the business, linked to the invoice and the stock movement. |
-| 7 | Returns & credits `returns` | planned | Returned goods, credit notes and their ledger and stock effect. |
-| 8 | Recurring billing `recurring` | planned | Templates that raise invoices on a schedule, with review before posting. |
-
-## Purchases (purchases)
-
-| # | Page | State | Specification |
-|---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Orders outstanding, receipts due, bills unmatched, payables due. |
-| 2 | Suppliers `suppliers` | planned | Supplier records with terms, balances and performance. |
-| 3 | Requisitions `requisitions` | planned | Internal requests with approval before an order is placed. |
-| 4 | Purchase orders `orders` | planned | Orders to suppliers with delivery terms and receipt expectations. |
-| 5 | Goods receipt `receipts` | planned | What actually arrived, with quantity, condition and batch. |
-| 6 | Bills `bills` | planned | Supplier invoices, linked to a receipt or entered directly. |
-| 7 | Matching `matching` | planned | Two- and three-way matching between order, receipt and bill. |
-| 8 | Returns & debits `returns` | planned | Goods returned to a supplier and the debit note that follows. |
-
-## Taxes (tax)
-
-| # | Page | State | Specification |
-|---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Output due, input recoverable, net position, withholding, next filing. |
-| 2 | Registrations & jurisdictions `registrations` | planned | Tax identities, jurisdictions, effective dates and filing frequency. |
-| 3 | Tax codes & rates `codes` | planned | Rates with inclusive or exclusive pricing, accounts and effective ranges. |
-| 4 | Tax groups `groups` | planned | Combine codes for a document, in application order. |
-| 5 | Output tax register `output` | planned | Every sales tax line with base, rate, amount and party. |
-| 6 | Input tax register `input` | planned | Every purchase tax line, recoverable and blocked portions separated. |
-| 7 | Withholding `withholding` | planned | Four registers: sales and purchase VAT, sales and purchase income tax. |
-| 8 | Reconciliation & returns `returns` | planned | Period return per tax type, locked with a snapshot and evidence. |
-| 9 | Adjustments & corrections `adjustments` | planned | Manual tax adjustment with reason, approval and evidence. |
-| 10 | Certificates `certificates` | planned | Issue and receive withholding certificates and link them to documents. |
-| 11 | Settings `settings` | planned | Rounding, inclusive pricing, default accounts and filing periods. |
+| 13 | Tax codes `tax-codes` | planned | Rates with inclusive or exclusive pricing, accounts and effective ranges. |
+| 14 | Tax registers `tax-registers` | planned | Output and input tax lines by period, party and code, agreeing with the control accounts. |
+| 15 | Withholding `withholding` | planned | Sales and purchase VAT and income-tax withholding, expected against actual. |
+| 16 | Tax returns `tax-returns` | planned | Period return per tax type, locked with a snapshot and its evidence. |
+| 17 | Tax certificates `tax-certificates` | planned | Issue and receive withholding certificates, linked to the documents they cover. |
+| 18 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
 
 ## Inventory (inventory)
 
@@ -325,4 +267,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**25 modules · 190 pages · 5 built · 3 partial · 182 planned.**
+**20 modules · 157 pages · 5 built · 3 partial · 149 planned.**

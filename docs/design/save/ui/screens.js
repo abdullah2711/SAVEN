@@ -64,7 +64,7 @@ function spread(total, names, kind) {
 const bucketOf = (age) => (age <= 0 ? 'Current' : age <= 30 ? '1–30' : age <= 60 ? '31–60' : age <= 90 ? '61–90' : '90+');
 const BUCKETS = ['Current', '1–30', '31–60', '61–90', '90+'];
 
-export function createScreens({getCompany, range, navigate, notify}) {
+export function createScreens({getCompany, range, navigate, notify, accounts}) {
   const rows = () => trial(fixture(getCompany()), range());
   const accountBalance = (code) => {
     const row = rows().find((r) => r.code === code);
@@ -78,8 +78,7 @@ export function createScreens({getCompany, range, navigate, notify}) {
   const CASH = () => round2(total('1010') + total('1000') + total('1020'));
   const s = () => statements(fixture(getCompany()), range());
 
-  /* ------------------------------------------------------------------ overview */
-  // A 30-day cash series computed from the same documents the ledger uses.
+  /* --------------------------------------------------------------- dashboard */
   function cashSeries() {
     const docs = fixture(getCompany()).filter((d) => d.date >= '2026-11-01' && d.date <= '2026-11-30');
     const byDay = new Map();
@@ -98,143 +97,136 @@ export function createScreens({getCompany, range, navigate, notify}) {
     return out;
   }
 
-  function sparkline() {
+  function chart() {
     const points = cashSeries();
-    const w = 560, h = 132, min = Math.min(...points.map((p) => p.value)), max = Math.max(...points.map((p) => p.value));
-    const span = max - min || 1;
-    const x = (i) => (i / (points.length - 1)) * w;
-    const y = (v) => h - ((v - min) / span) * (h - 12) - 6;
+    const w = 720, h = 176, padL = 74, padR = 16, padT = 14, padB = 26;
+    const values = points.map((p) => p.value);
+    const min = Math.min(...values), max = Math.max(...values);
+    const x = (i) => padL + (i / (points.length - 1)) * (w - padL - padR);
+    const y = (v) => h - padB - ((v - min) / ((max - min) || 1)) * (h - padT - padB);
+    const short = (v) => Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + 'm' : Math.abs(v) >= 1000 ? Math.round(v / 1000) + 'k' : Math.round(v);
     const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-    const area = `${line} L${w},${h} L0,${h} Z`;
-    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none" role="img" aria-label="Cash movement for November 2026">
-      <path d="${area}" fill="var(--accent)" opacity="0.08"></path>
+    const area = `${line} L${x(points.length - 1)},${h - padB} L${padL},${h - padB} Z`;
+    const grid = [0, 0.5, 1].map((f) => {
+      const value = max - f * (max - min);
+      const gy = y(value).toFixed(1);
+      return `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="var(--line)" stroke-width="1"></line>
+        <text x="${padL - 10}" y="${Number(gy) + 3}" font-size="10" text-anchor="end" fill="var(--muted)">${money(value)}</text>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" role="img" aria-label="Cash movement for November">
+      ${grid}
+      <path d="${area}" fill="var(--accent)" opacity="0.07"></path>
       <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></path>
       <circle cx="${x(points.length - 1)}" cy="${y(points[points.length - 1].value)}" r="3.2" fill="var(--accent)"></circle>
-    </svg>
-    <div class="ledger-basis"><span>1 Nov 2026</span><span>30 Nov 2026</span></div>`;
+      <text x="${padL}" y="${h - 8}" font-size="10" fill="var(--muted)">1 Nov</text>
+      <text x="${w - padR}" y="${h - 8}" font-size="10" text-anchor="end" fill="var(--muted)">30 Nov</text>
+      <text x="${w - padR}" y="${y(points[points.length - 1].value) - 8}" font-size="10" text-anchor="end" fill="var(--accent)">${short(points[points.length - 1].value)}</text>
+    </svg>`;
   }
 
-  const MODULE_ACTIONS = {
-    accounting: [['Journal entry', 'accounting', 'editor'], ['General ledger', 'accounting', 'ledger'], ['Trial balance', 'accounting', 'trial'], ['Chart of accounts', 'accounting', 'coa']],
-    banking: [['Cash and bank', 'banking', 'workspace'], ['Reconciliation', 'banking', 'workspace']],
-    payments: [['Receipts', 'payments', 'workspace'], ['Supplier payments', 'payments', 'workspace'], ['Allocations', 'payments', 'workspace']],
-    sales: [['Invoices', 'sales', 'workspace'], ['Quotations', 'sales', 'workspace'], ['Customers', 'sales', 'workspace']],
-    purchases: [['Bills', 'purchases', 'workspace'], ['Orders', 'purchases', 'workspace'], ['Suppliers', 'purchases', 'workspace']],
-    tax: [['Withholding', 'tax', 'workspace'], ['Sales tax', 'tax', 'workspace'], ['Reconciliation', 'tax', 'workspace']],
-    inventory: [['Stock balances', 'inventory', 'workspace'], ['Items', 'inventory', 'workspace'], ['Movements', 'inventory', 'workspace']],
-    manufacturing: [['Work orders', 'manufacturing', 'workspace'], ['BOM', 'manufacturing', 'workspace']],
-    pos: [['Checkout', 'pos', 'workspace'], ['Till sessions', 'pos', 'workspace']],
-    assets: [['Asset register', 'assets', 'workspace'], ['Depreciation', 'assets', 'workspace']],
-    people: [['Employees', 'people', 'workspace'], ['Payroll', 'people', 'workspace']],
-    projects: [['Projects', 'projects', 'workspace'], ['Time and expenses', 'projects', 'workspace']],
-    crm: [['Leads', 'crm', 'workspace'], ['Opportunities', 'crm', 'workspace']],
-    finance: [['Cash position', 'finance', 'workspace'], ['Forecast', 'finance', 'workspace']],
-    reports: [['Standard reports', 'reports', 'workspace'], ['Statement packs', 'reports', 'workspace']],
-    drive: [['Folders', 'drive', 'workspace'], ['Evidence links', 'drive', 'workspace']],
-    apps: [['API contracts', 'apps', 'workspace'], ['App registry', 'apps', 'workspace']],
-    assistant: [['Ask a question', 'assistant', 'workspace'], ['Usage', 'assistant', 'workspace']],
-    settings: [['Business', 'settings', 'workspace'], ['People and roles', 'settings', 'workspace']],
-    admin: [['Audit', 'admin', 'workspace'], ['Access', 'admin', 'workspace']],
-    subscription: [['Your plan', 'subscription', 'workspace'], ['Invoices', 'subscription', 'workspace']],
-    offline: [['Connectivity', 'offline', 'workspace'], ['Queue', 'offline', 'workspace']],
-  };
-
-  function moduleGrid() {
-    const modules = catalog.modules.filter((m) => m.id !== 'operator' && m.id !== 'commerce' && m.id !== 'design');
-    return `<div class="module-grid">${modules.map((m) => {
-      const actions = MODULE_ACTIONS[m.id] || [['Open', m.id, 'workspace']];
-      return `<section class="module-card">
-        <div class="card-icon"><span aria-hidden="true">${icon(m.id)}</span>${m.interactive ? badge('Interactive example') : badge('Specification brief')}</div>
-        <h3>${e(m.title)}</h3>
-        <p>${e(m.description)}</p>
-        <div class="related card-actions">${actions.map(([label, module, tab]) => `<button class="text-button" data-module="${module}" data-tab="${tab}">${e(label)}</button>`).join('')}</div>
-      </section>`;
-    }).join('')}</div>`;
+  function bucketsOf(value, names, kind) {
+    const parts = spread(value, names, kind);
+    const out = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
+    for (const p of parts) out[bucketOf(p.age)] = round2(out[bucketOf(p.age)] + p.balance);
+    return { parts, out };
   }
 
-  function overview() {
+  function dashboard() {
     const st = s();
     const ar = AR(), ap = AP();
+    const arB = bucketsOf(ar, CUSTOMERS, 'ar');
+    const apB = bucketsOf(ap, SUPPLIERS, 'ap');
     const recent = fixture(getCompany()).slice(-6).reverse();
-    const actions = [['Journal register', 'accounting', 'register'], ['Trial balance', 'accounting', 'trial'], ['Chart of accounts', 'accounting', 'coa'], ['Receivables', 'accounting', 'receivables'], ['Payables', 'accounting', 'payables'], ['Ageing', 'accounting', 'ageing']];
-    return `<div class="related overview-actions">${actions.map(([label, module, tab, primary]) => `<button class="button ${primary ? 'primary' : ''}" data-module="${module}" data-tab="${tab}">${e(label)}</button>`).join('')}</div>
+    const overdueAr = round2(arB.parts.reduce((n, p) => n + p.overdue, 0));
+    const overdueAp = round2(apB.parts.reduce((n, p) => n + p.overdue, 0));
+    const over60 = round2(arB.out['61–90'] + arB.out['90+']);
+    const balanced = Math.abs(cashSeries().at(-1).value - CASH()) < 0.01;
 
-    <div class="stats">
-      <section class="stat"><span class="stat-label">Cash &amp; bank</span><strong class="value numeric">${money(CASH())}</strong><small>PKR · sample bank controls</small></section>
-      <section class="stat"><span class="stat-label">Receivables</span><strong class="value numeric">${money(ar)}</strong><small>${CUSTOMERS.length} sample customers</small></section>
-      <section class="stat"><span class="stat-label">Payables</span><strong class="value numeric">${money(ap)}</strong><small>${SUPPLIERS.length} sample suppliers</small></section>
-      <section class="stat"><span class="stat-label">Profit for the period</span><strong class="value numeric">${money(num(st.profit))}</strong><small>${e(range().from)} to ${e(range().to)}</small></section>
-    </div>
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
 
-    <div class="two-column">
-      <section class="panel overview-panel">
-        <div class="panel-head"><h2>Cash movement</h2>${badge('November 2026')}</div>
-        <div class="panel-body">${sparkline()}
-          <div class="statement-line"><span>Revenue</span><strong class="numeric">${money(num(st.income))}</strong></div>
-          <div class="statement-line"><span>Expenses</span><strong class="numeric">${money(num(st.expenses))}</strong></div>
-          <div class="statement-line total"><span>Profit for the period</span><strong class="numeric">${money(num(st.profit))}</strong></div>
-          <p class="form-note">Cash movement and the period result both derive from the same posted sample documents as the ledger.</p>
-        </div>
-      </section>
-      <section class="panel overview-panel">
-        <div class="panel-head"><h2>Close readiness</h2>${badge('1 of 5 complete')}</div>
-        <div class="panel-body">
-          ${[['Trial balance','Closing debits equal credits',1],['Bank reconciliation','Outstanding items need evidence',0],['Receivables review','Items over 60 days need a plan',0],['Depreciation','Draft charge ready for review',0],['Statements','Not started',0]].map(([title, note, done]) => `<div class="quiet-row"><div><strong>${e(title)}</strong><small>${e(note)}</small></div>${done ? badge('Done', 'good') : badge('Open', 'warn')}</div>`).join('')}
-          <p class="form-note">A period lock requires reconciliation evidence, sign-off and an immutable snapshot.</p>
-        </div>
-      </section>
-    </div>
-
-    <div class="two-column overview-stack">
-      <section class="panel overview-panel">
-        <div class="panel-head"><h2>Recent journals</h2>${textButton('Open register','', 'data-module="accounting" data-tab="register"')}</div>
-        <div class="table-scroll"><table><thead><tr><th>Date</th><th>Voucher</th><th>Narrative</th><th class="numeric">Debit PKR</th><th>State</th></tr></thead>
-        <tbody>${recent.map((j) => `<tr>
-          <td>${e(j.date)}</td>
-          <td><button class="text-button" data-ac="source" data-value="${e(j.id)}">${e(j.id)}</button></td>
-          <td>${e(j.narrative)}<small class="secondary">${e(j.party)}</small></td>
-          <td class="numeric">${money(j.lines.reduce((n, l) => n + num(l.debit), 0))}</td>
-          <td>${badge('Posted', 'good')}</td>
-        </tr>`).join('')}</tbody></table></div>
-      </section>
-      <section class="panel overview-panel">
-        <div class="panel-head"><h2>Ageing</h2>${textButton('Open ageing','', 'data-module="accounting" data-tab="ageing"')}</div>
-        <div class="panel-body">${ageingTable(ar, ap)}</div>
-      </section>
-    </div>
-
-    <section class="panel">
-      <div class="panel-head"><h2>Accounting actions</h2>${badge('Grouped like ERPNext card breaks')}</div>
-      <div class="panel-body">
-        <div class="action-groups">
-          ${[
-            ['Financial statements', [['Profit or loss', 'statements'], ['Financial position', 'statements'], ['Notes and schedules', 'statements'], ['Trial balance', 'trial']]],
-            ['Receivables and payables', [['Receivables', 'receivables'], ['Payables', 'payables'], ['Ageing', 'ageing'], ['Approvals', 'approvals']]],
-            ['Registers and close', [['Journal register', 'register'], ['Chart of accounts', 'coa'], ['General ledger', 'ledger'], ['Period close', 'close']]],
-          ].map(([title, links]) => `<div><div class="eyebrow">${e(title)}</div>${links.map(([label, tab]) => `<div class="quiet-row quiet-row--tight"><strong>${e(label)}</strong><button class="text-button" data-module="accounting" data-tab="${tab}">Open</button></div>`).join('')}</div>`).join('')}
-        </div>
+    return `<div class="stats dash-stats">
+        ${kpi('Cash & bank', money(CASH()), 'PKR · 3 accounts · posted only')}
+        ${kpi('Receivables', money(ar), `${CUSTOMERS.length} customers · ${money(overdueAr)} overdue`)}
+        ${kpi('Payables', money(ap), `${SUPPLIERS.length} suppliers · ${money(overdueAp)} overdue`)}
+        ${kpi('Result for the period', money(num(st.profit)), `${e(range().from)} to ${e(range().to)}`)}
       </div>
-    </section>
 
-    <div class="home-section-title"><h2>Every module</h2><span class="muted">Actions open the module; accounting actions open the working screen</span></div>
-    ${moduleGrid()}`;
-  }
+      <div class="dash-grid">
+        <section class="panel dash-span2">
+          <div class="panel-head"><h2>Cash movement</h2><span class="badge">${e(range().from)} to ${e(range().to)}</span></div>
+          <div class="panel-body dash-chart">${chart()}</div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Ageing</h2><button class="text-button" data-module="accounting" data-tab="reports">Open reports ↗</button></div>
+          <div class="panel-body compact-table">
+            <table>
+              <thead><tr><th>Bucket</th><th class="numeric">Receivable</th><th class="numeric">Payable</th></tr></thead>
+              <tbody>${BUCKETS.map((b) => `<tr><td>${b}</td><td class="numeric">${arB.out[b] ? money(arB.out[b]) : '—'}</td><td class="numeric">${apB.out[b] ? money(apB.out[b]) : '—'}</td></tr>`).join('')}</tbody>
+              <tfoot><tr><td>Total</td><td class="numeric">${money(ar)}</td><td class="numeric">${money(ap)}</td></tr></tfoot>
+            </table>
+          </div>
+        </section>
+      </div>
 
-  function ageingTable(ar, ap) {
-    const split = (value, names, kind) => {
-      const parts = spread(value, names, kind);
-      const out = Object.fromEntries(BUCKETS.map((b) => [b, 0]));
-      for (const p of parts) out[bucketOf(p.age)] = round2(out[bucketOf(p.age)] + p.balance);
-      return out;
-    };
-    const a = split(ar, CUSTOMERS, 'ar');
-    const p = split(ap, SUPPLIERS, 'ap');
-    return `<div class="table-scroll"><table>
-      <thead><tr><th>Bucket</th><th class="numeric">Receivable PKR</th><th class="numeric">Payable PKR</th></tr></thead>
-      <tbody>${BUCKETS.map((b) => `<tr><td>${b}</td><td class="numeric">${a[b] ? money(a[b]) : '—'}</td><td class="numeric">${p[b] ? money(p[b]) : '—'}</td></tr>`).join('')}</tbody>
-      <tfoot><tr><td><strong>Total</strong></td><td class="numeric"><strong>${money(ar)}</strong></td><td class="numeric"><strong>${money(ap)}</strong></td></tr></tfoot>
-    </table></div>
-    <p class="form-note">Party spread is illustrative; each column reconciles to its control account.</p>`;
+      <div class="dash-grid">
+        <section class="panel dash-span2">
+          <div class="panel-head"><h2>Recent journals</h2><button class="text-button" data-module="accounting" data-tab="journals">Open register ↗</button></div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Date</th><th>Voucher</th><th>Party</th><th>Narrative</th><th class="numeric">Amount PKR</th></tr></thead>
+              <tbody>${recent.map((j) => `<tr>
+                <td>${e(j.date)}</td>
+                <td><button class="text-button" data-ac="source" data-value="${e(j.id)}">${e(j.id)}</button></td>
+                <td>${e(j.party)}</td>
+                <td>${e(j.narrative)}</td>
+                <td class="numeric">${money(j.lines.reduce((n, l) => n + num(l.debit), 0))}</td>
+              </tr>`).join('')}</tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>What needs attention</h2><span class="badge ${[overdueAr, over60, overdueAp, balanced ? 0 : 1].filter(Boolean).length ? 'warn' : 'good'}">${[overdueAr, over60, overdueAp, balanced ? 0 : 1].filter(Boolean).length || 'Clear'}${[overdueAr, over60, overdueAp, balanced ? 0 : 1].filter(Boolean).length ? ' items' : ''}</span></div>
+          <div class="panel-body">
+            <div class="quiet-row"><div><strong>${money(overdueAr)} receivable overdue</strong><small>${arB.parts.filter((p) => p.overdue > 0).length} customers past due</small></div><button class="text-button" data-module="accounting" data-tab="reports">Open</button></div>
+            <div class="quiet-row"><div><strong>${money(over60)} over 60 days</strong><small>Escalate or provide for</small></div><button class="text-button" data-module="accounting" data-tab="reports">Open</button></div>
+            <div class="quiet-row"><div><strong>${money(overdueAp)} payable overdue</strong><small>${apB.parts.filter((p) => p.overdue > 0).length} suppliers past due</small></div><button class="text-button" data-module="accounting" data-tab="reports">Open</button></div>
+            <div class="quiet-row"><div><strong>Trial balance ${balanced ? 'agrees' : 'does not agree'}</strong><small>Closing debits against credits</small></div><button class="text-button" data-module="accounting" data-tab="trial">Open</button></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="dash-grid">
+        <section class="panel">
+          <div class="panel-head"><h2>Largest customers</h2><button class="text-button" data-module="accounting" data-tab="parties">All parties ↗</button></div>
+          <div class="panel-body compact-table">
+            <table><thead><tr><th>Customer</th><th class="numeric">Balance</th><th>Oldest</th></tr></thead>
+            <tbody>${arB.parts.slice(0, 5).map((p) => `<tr><td>${e(p.name)}</td><td class="numeric">${money(p.balance)}</td><td>${p.age > 0 ? `<span class="badge ${p.age > 60 ? 'warn' : ''}">${p.age}d</span>` : '<span class="badge good">Current</span>'}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Largest suppliers</h2><button class="text-button" data-module="accounting" data-tab="parties">All parties ↗</button></div>
+          <div class="panel-body compact-table">
+            <table><thead><tr><th>Supplier</th><th class="numeric">Balance</th><th>Oldest</th></tr></thead>
+            <tbody>${apB.parts.slice(0, 5).map((p) => `<tr><td>${e(p.name)}</td><td class="numeric">${money(p.balance)}</td><td>${p.age > 0 ? `<span class="badge ${p.age > 60 ? 'warn' : ''}">${p.age}d</span>` : '<span class="badge good">Current</span>'}</td></tr>`).join('')}</tbody></table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Close readiness</h2><span class="badge">${balanced ? '1 of 3' : '0 of 3'}</span></div>
+          <div class="panel-body">
+            <div class="quiet-row"><div><strong>Trial balance proof</strong><small>Closing debits equal credits</small></div><span class="badge ${balanced ? 'good' : 'warn'}">${balanced ? 'Done' : 'Open'}</span></div>
+            <div class="quiet-row"><div><strong>Receivables review</strong><small>${money(over60)} past 60 days</small></div><span class="badge ${over60 ? 'warn' : 'good'}">${over60 ? 'Review' : 'Clear'}</span></div>
+            <div class="quiet-row"><div><strong>Statements</strong><small>Profit or loss and position</small></div><span class="badge">Ready</span></div>
+          </div>
+        </section>
+      </div>
+
+      <div class="dash-actions">
+        <button class="button primary" data-module="accounting" data-tab="journals" data-mode="editor">New journal</button>
+        <button class="button" data-module="accounting" data-tab="payments">Record a payment</button>
+        <button class="button" data-module="accounting" data-tab="sales-invoices">Raise an invoice</button>
+        <button class="button" data-module="accounting" data-tab="ledger">Open the ledger</button>
+        <button class="button" data-module="accounting" data-tab="reports">Reports</button>
+      </div>`;
   }
 
   function ageingLines(value, kind) {
@@ -331,6 +323,151 @@ export function createScreens({getCompany, range, navigate, notify}) {
     </div>`;
   }
 
+  /* ---------------------------------------------------------- general ledger */
+  const filters = {from: '2026-11-01', to: '2026-11-30', account: '1010', party: '', type: '', q: '', open: ''};
+
+  function ledgerRows() {
+    const docs = fixture(getCompany()).filter((d) => d.date >= filters.from && d.date <= filters.to)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    const rows = [];
+    for (const d of docs) {
+      if (filters.party && d.party !== filters.party) continue;
+      if (filters.type && d.source !== filters.type) continue;
+      for (const l of d.lines) {
+        if (filters.account !== 'all' && l.account !== filters.account) continue;
+        const acc = accounts().find((a) => a.code === l.account);
+        const hay = `${d.id} ${d.narrative} ${d.party} ${l.account} ${acc ? acc.name : ''}`.toLowerCase();
+        if (filters.q && !hay.includes(filters.q.toLowerCase())) continue;
+        rows.push({id: d.id, date: d.date, party: d.party, source: d.source, narrative: d.narrative,
+          account: l.account, accountName: acc ? acc.name : l.account,
+          debit: num(l.debit), credit: num(l.credit), doc: d});
+      }
+    }
+    return rows;
+  }
+
+  function openingBalance() {
+    if (filters.account === 'all') return 0;
+    return round2(fixture(getCompany()).filter((d) => d.date < filters.from)
+      .reduce((n, d) => n + d.lines.filter((l) => l.account === filters.account)
+        .reduce((m, l) => m + num(l.debit) - num(l.credit), 0), 0));
+  }
+
+  function gl() {
+    const rows = ledgerRows();
+    const opening = openingBalance();
+    const debit = round2(rows.reduce((n, r) => n + r.debit, 0));
+    const credit = round2(rows.reduce((n, r) => n + r.credit, 0));
+    const single = filters.account !== 'all';
+    const cols = single ? 8 : 9;
+    let run = opening;
+    const body = rows.map((r) => {
+      if (single) run = round2(run + r.debit - r.credit);
+      const open = filters.open === r.id + ':' + r.account;
+      return `<tr data-gl-row="${e(r.id)}:${e(r.account)}" class="${open ? 'gl-open' : ''}">
+          <td>${e(r.date)}</td>
+          ${single ? '' : `<td><button class="text-button" data-gl-account="${e(r.account)}">${e(r.account)}</button></td>`}
+          <td>${e(r.party)}</td>
+          <td>${e(r.source)}</td>
+          <td><button class="text-button" data-ac="source" data-value="${e(r.id)}">${e(r.id)}</button></td>
+          <td class="gl-desc">${e(r.narrative)}${single ? '' : `<small class="secondary">${e(r.accountName)}</small>`}</td>
+          <td class="numeric">${r.debit ? money(r.debit) : ''}</td>
+          <td class="numeric">${r.credit ? money(r.credit) : ''}</td>
+          ${single ? `<td class="numeric">${money(run)}</td>` : ''}
+        </tr>` + (open ? detailRow(r, single) : '');
+    }).join('');
+
+    const accountOptions = [['all', 'All accounts'], ...accounts().filter((a) => a.active).map((a) => [a.code, a.code + ' - ' + a.name])];
+    const parties = [...new Set(fixture(getCompany()).map((d) => d.party))].sort();
+    const types = [...new Set(fixture(getCompany()).map((d) => d.source))].sort();
+
+    return `<form id="gl-filter" class="filterbar gl-filter">
+        <label>From<input name="from" type="date" value="${e(filters.from)}" required></label>
+        <label>To<input name="to" type="date" value="${e(filters.to)}" required></label>
+        <label>Account<select name="account">${accountOptions.map(([v, t]) => `<option value="${v}" ${v === filters.account ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></label>
+        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p2) => `<option ${p2 === filters.party ? 'selected' : ''}>${e(p2)}</option>`).join('')}</select></label>
+        <label>Voucher type<select name="type"><option value="">All types</option>${types.map((t) => `<option ${t === filters.type ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></label>
+        <label>Search<input name="q" type="search" value="${e(filters.q)}" placeholder="Voucher, party or description"></label>
+        <button class="button primary">Apply</button>
+      </form>
+
+      <div class="stats gl-stats">
+        <section class="stat"><span class="stat-label">Opening</span><strong class="value numeric">${money(opening)}</strong><small>${single ? 'Before ' + e(filters.from) : 'All accounts'}</small></section>
+        <section class="stat"><span class="stat-label">Debit</span><strong class="value numeric">${money(debit)}</strong><small>${rows.length} lines</small></section>
+        <section class="stat"><span class="stat-label">Credit</span><strong class="value numeric">${money(credit)}</strong><small>${e(filters.from)} to ${e(filters.to)}</small></section>
+        <section class="stat"><span class="stat-label">Closing</span><strong class="value numeric">${money(round2(opening + debit - credit))}</strong><small>Opening + debit − credit</small></section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head"><h2>${filters.account === 'all' ? 'All accounts' : e((accounts().find((a) => a.code === filters.account) || {}).name || filters.account)}</h2><div class="related"><span class="badge">${rows.length} lines</span><button class="button" data-gl-export="csv">Export CSV</button><button class="button" data-gl-print>Print</button></div></div>
+        <div class="table-scroll gl-scroll">
+          <table class="gl-table">
+            <thead><tr>
+              <th>Date</th>${single ? '' : '<th>Account</th>'}<th>Party</th><th>Voucher type</th><th>Voucher no</th><th class="gl-desc">Description</th>
+              <th class="numeric">Debit</th><th class="numeric">Credit</th>${single ? '<th class="numeric">Balance</th>' : ''}
+            </tr></thead>
+            <tbody id="gl-rows">${body || `<tr><td colspan="${cols}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
+            <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(debit)}</td><td class="numeric">${money(credit)}</td>${single ? `<td class="numeric">${money(round2(opening + debit - credit))}</td>` : ''}</tr></tfoot>
+          </table>
+        </div>
+        <div class="table-footer">Opening ${money(opening)} + debit ${money(debit)} − credit ${money(credit)} = ${money(round2(opening + debit - credit))}. Click any row for the full transaction.</div>
+      </section>`;
+  }
+
+  function detailRow(r, single) {
+    const d = r.doc;
+    return `<tr class="gl-detail"><td colspan="9">
+      <div class="gl-detail-grid">
+        <div>
+          <div class="eyebrow">Source document</div>
+          <div class="record-summary">
+            <div><small>Voucher</small>${e(d.id)}</div>
+            <div><small>Date</small>${e(d.date)}</div>
+            <div><small>Type</small>${e(d.source)}</div>
+            <div><small>Party</small>${e(d.party)}</div>
+          </div>
+          <p class="form-note">${e(d.narrative)}</p>
+        </div>
+        <div>
+          <div class="eyebrow">All lines in this document</div>
+          <table class="compact-table"><thead><tr><th>Account</th><th class="numeric">Debit</th><th class="numeric">Credit</th></tr></thead>
+          <tbody>${d.lines.map((l) => `<tr><td>${e(l.account)} ${e((accounts().find((a) => a.code === l.account) || {}).name || '')}</td><td class="numeric">${num(l.debit) ? money(num(l.debit)) : ''}</td><td class="numeric">${num(l.credit) ? money(num(l.credit)) : ''}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td>Total</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.debit), 0))}</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.credit), 0))}</td></tr></tfoot></table>
+        </div>
+      </div>
+    </td></tr>`;
+  }
+
+  function bindGL(rerender) {
+    const form = document.querySelector('#gl-filter');
+    if (form) form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      Object.assign(filters, Object.fromEntries(new FormData(ev.target)));
+      filters.open = '';
+      rerender();
+    });
+    document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {
+      const acc = ev.target.closest('[data-gl-account]');
+      if (acc) { filters.account = acc.dataset.glAccount; rerender(); return; }
+      if (ev.target.closest('[data-ac]')) return;
+      const tr = ev.target.closest('[data-gl-row]');
+      if (!tr) return;
+      filters.open = filters.open === tr.dataset.glRow ? '' : tr.dataset.glRow;
+      rerender();
+    });
+    document.querySelector('[data-gl-print]')?.addEventListener('click', () => window.print());
+    document.querySelector('[data-gl-export]')?.addEventListener('click', () => {
+      const rows = ledgerRows();
+      const lines = [['Date', 'Account', 'Party', 'Voucher type', 'Voucher no', 'Description', 'Debit', 'Credit'],
+        ...rows.map((r) => [r.date, r.account, r.party, r.source, r.id, r.narrative, r.debit.toFixed(2), r.credit.toFixed(2)])];
+      const csv = lines.map((l) => l.map((c) => `"${String(c).replaceAll('"', '""')}"`).join(',')).join('\r\n');
+      const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'SA7EN-general-ledger.csv'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  }
+
 /* --------------------------------------------------------------- planned */
   const PLANNED = {
     parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
@@ -356,6 +493,7 @@ export function createScreens({getCompany, range, navigate, notify}) {
     </section>`;
   }
 
-  return {overview, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  const overview = dashboard;
+  return {overview, dashboard, gl, bindGL, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }
