@@ -1,5 +1,8 @@
 # Accounting module — page map
 
+> Expanded with diagrams for Inventory and Taxes in
+> `MODULE_MAP_ACCOUNTING_INVENTORY_TAXES.md`. This file keeps the accounting detail.
+
 Status: **proposal, before build.** Two or three lines per page, the behaviour that
 crosses pages, and the order I would build them in. Nothing here is implemented
 unless marked **built**.

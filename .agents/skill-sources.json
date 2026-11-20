@@ -21,6 +21,11 @@
       "repo": "meta/astryx",
       "commit": "935e25a3c94c9a1bfafe1e3df539f0b9a429432d",
       "prefix": "plugins/astryx/skills/astryx/"
+    },
+    {
+      "repo": "anthropics/claude-plugins-official",
+      "commit": "1b9a8c736db2330ce1812bcc41878a6e2e288e24",
+      "prefix": "plugins/frontend-design/skills/frontend-design/"
     }
   ],
   "personalInstall": "Blocked: personal checkout directories denied; authenticated fallback unavailable",
