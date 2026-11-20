@@ -24,13 +24,9 @@ States: **built** working screen · **partial** working, covers part of the page
 | 10 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
 | 11 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
 | 12 | Reports `reports` | partial | Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger. |
-| 13 | Tax codes `tax-codes` | planned | Rates with inclusive or exclusive pricing, accounts and effective ranges. |
-| 14 | Tax registers `tax-registers` | planned | Output and input tax lines by period, party and code, agreeing with the control accounts. |
-| 15 | Withholding `withholding` | planned | Sales and purchase VAT and income-tax withholding, expected against actual. |
-| 16 | Tax returns `tax-returns` | planned | Period return per tax type, locked with a snapshot and its evidence. |
-| 17 | Tax certificates `tax-certificates` | planned | Issue and receive withholding certificates, linked to the documents they cover. |
-| 18 | Setup `setup` | planned | Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods. |
-| 19 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
+| 13 | Taxes `taxes` | planned | One page, five tabs: codes and rates, registers, withholding, returns and certificates. |
+| 14 | Setup `setup` | planned | Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods. |
+| 15 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
 
 ## Inventory (inventory)
 
@@ -266,4 +262,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 156 pages · 6 built · 3 partial · 147 planned.**
+**20 modules · 152 pages · 6 built · 3 partial · 143 planned.**

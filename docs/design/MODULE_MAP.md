@@ -47,7 +47,9 @@ bank account register with a running balance.
 - Projects became its own module with a working list and per-project totals.
 - Setup became an accounting page holding organisation, numbering, default
   accounts, dimensions, approvals and periods.
-- Payments, Cash & bank, Sales, Purchases and Taxes stay inside Accounting.
+- Payments, Cash & bank, Sales and Purchases stay inside Accounting.
+- Taxes is one Accounting page with five tabs, not five rail entries:
+  codes & rates, registers, withholding, returns, certificates.
 
 ### Rules
 
@@ -133,11 +135,7 @@ Accounting
 ├── Chart of accounts
 ├── Trial balance
 ├── Reports                    (ageing, schedules, P&L, position, cash flow, equity)
-├── Tax codes
-├── Tax registers
-├── Withholding
-├── Tax returns
-├── Tax certificates
+├── Taxes                      (5 horizontal tabs: codes & rates, registers, withholding, returns, certificates)
 ├── Setup                      (accounting configuration)
 └── Period close
 ```
@@ -375,23 +373,15 @@ reason codes and their accounts.
 
 ### 4.1 Navigation
 
+Taxes is **one page with five horizontal tabs**, not five sidebar entries:
+
 ```
 Taxes
-├── Dashboard
-├── Registrations & jurisdictions
-├── Tax codes & rates
-├── Tax groups
-├── Output tax register          (sales VAT)
-├── Input tax register           (purchase VAT)
+├── Codes & rates
+├── Registers
 ├── Withholding
-│   ├── Sales VAT withholding
-│   ├── Purchase VAT withholding
-│   ├── Sales income-tax withholding
-│   └── Purchase income-tax withholding
-├── Reconciliation & returns
-├── Adjustments & corrections
-├── Certificates
-└── Settings
+├── Returns
+└── Certificates
 ```
 
 ### 4.2 Pages

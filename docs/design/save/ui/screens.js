@@ -81,6 +81,46 @@ export function bindProjectForm(rerender, notify) {
   });
 }
 
+/* --------------------------------------------------------------------- taxes */
+const TAX_TABS = [
+  ['codes', 'Codes & rates', 'Every rate the business uses: code, rate, inclusive or exclusive, the accounts it posts to, and the date range it is valid for. Rates are defaults for items and parties; any document line can override them or use a custom rate with its own account.', ['Code, rate and kind (VAT, income tax, withholding)', 'Inclusive or exclusive pricing', 'Output and input accounts', 'Effective from and to', 'Item and party defaults', 'Not deletable once used']],
+  ['registers', 'Registers', 'Every tax line produced by a document, split into output (sales) and input (purchases), filterable by period, party, code and document. The totals must agree with the tax control accounts, and the page says so when they do not.', ['Output tax lines', 'Input tax lines', 'Recoverable and blocked portions', 'Filter by period, party, code', 'Reconciliation against control accounts']],
+  ['withholding', 'Withholding', 'Four registers in one place: VAT and income tax withheld by customers from us, and VAT and income tax we withhold from suppliers. Each line names the document that caused it and the certificate that proves it.', ['Sales VAT withholding', 'Purchase VAT withholding', 'Sales income-tax withholding', 'Purchase income-tax withholding', 'Expected against actual', 'Certificate due or received']],
+  ['returns', 'Returns', 'The period return per tax type: output, input, carried forward, payable or refundable. Locking a return takes a snapshot and keeps the evidence that produced it, so a later correction is a new adjustment, not an edit.', ['Return per tax type and period', 'Carried forward and payable', 'Lock with snapshot and evidence', 'Filing summary for the accountant']],
+  ['certificates', 'Certificates', 'Proof of tax deducted at source. When a customer withholds from our invoice, their certificate lets us claim the credit; when we withhold from a supplier, we issue one so they can claim against it.', ['Issue a certificate', 'Receive a certificate', 'Link to the documents and amounts it covers', 'Unused unless withholding is enabled']],
+];
+
+function taxPanel(id) {
+  const tab = TAX_TABS.find(([k]) => k === id) || TAX_TABS[0];
+  const [, label, text, contains] = tab;
+  return `<section class="panel">
+    <div class="panel-head"><h2>${e(label)}</h2>${badge('Being built')}</div>
+    <div class="panel-body">
+      <p>${e(text)}</p>
+      <div class="section-title">What it will contain</div>
+      <ul class="contract-list">${contains.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
+      <div class="callout"><strong>Not connected yet.</strong> These tabs are mapped and specified. Nothing here posts, files or changes a balance.</div>
+      <p class="form-note">Tax rules can also be entered as a custom line on any document with an account flagged as a tax account, so the business can run without this page.</p>
+    </div>
+  </section>`;
+}
+
+function taxesScreen(tab = 'codes') {
+  const current = TAX_TABS.some(([k]) => k === tab) ? tab : 'codes';
+  return `<div class="tabs" role="tablist" aria-label="Tax views">
+      ${TAX_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-tax-tab="${id}">${label}</button>`).join('')}
+    </div>
+    <div id="tax-panel">${taxPanel(current)}</div>`;
+}
+
+function bindTaxes(rerender) {
+  document.querySelectorAll('[data-tax-tab]').forEach((btn) => btn.addEventListener('click', () => {
+    TAX_ACTIVE = btn.dataset.taxTab;
+    rerender();
+  }));
+}
+let TAX_ACTIVE = 'codes';
+
 /** Generic "being built" page for any module in the page map. */
 export function plannedPage(moduleId, pageId) {
   const entry = PAGE(moduleId, pageId);
@@ -661,6 +701,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const projectsView = () => projectsScreen(getCompany());
+  const taxesView = () => taxesScreen(TAX_ACTIVE);
 
   const PLANNED = {
     parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
@@ -687,6 +728,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, setup, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, setup, taxesView, bindTaxes, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }
