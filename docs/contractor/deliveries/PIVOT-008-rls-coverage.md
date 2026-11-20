@@ -8,7 +8,7 @@ Date: 20 November 2026 (Asia/Karachi). Worker A. Status: COMPLETE, awaiting Code
 - Base: `testing-1` @ `fae227b` (verified current)
 - Branch: `opencode/pivot-008-rls-coverage`
 - Worktree: `/home/esc/saven/wt-pivot-008`
-- Implementation SHA: see the branch tip containing this report (`git log -1`); report commit is the same commit or its immediate successor.
+- Implementation SHA: `2bb9dec528ff60ce60ca8e3df2d19c2105532abb` (includes this report). Report follow-up commit records this identity only.
 - Environment: Node `v24.19.0`, PostgreSQL `18.6`, disposable loopback cluster `127.0.0.1:55435`, `SAVEN_PIVOT_TEST_CLUSTER=1`, administrative test role `esc`, `PGADMIN_DATABASE=postgres`.
 - PIVOT-007 authority surface verified at merged head `550d120`/`fae227b`.
 
