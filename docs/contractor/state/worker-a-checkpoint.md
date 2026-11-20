@@ -1,46 +1,55 @@
-# WORKER-A checkpoint — PIVOT-007 revision 3 (review 92f3e00)
+# WORKER-A checkpoint — PIVOT-008 delivered, awaiting Codex review
 
-Date: 20 November 2026 (Asia/Karachi). Round-end checkpoint.
+Date: 20 November 2026 (Asia/Karachi). Round-end checkpoint. Not merged.
 
 ## Exact contract
 
-- `docs/contractor/contracts/PIVOT-007-operator-functions.md` (19–20 Nov amendments)
-- Base `testing-1` @ `e0fa9fb`; branch `opencode/pivot-007-operator-functions` @
-  `/home/esc/saven/wt-pivot-007`.
-- TOUCH: `db/postgres/50-functions.sql`, `db/postgres/README.md`,
-  `tests/pivot-007-operator-access.test.mjs`, `src/operator/support-read.mjs`,
-  `src/operator/README.md`, `src/auth/access.mjs` (metadata-only amendment).
-- Revision implementation SHA: `102e39a54e3bb129b7b0c0165b13dfe541396929`.
-- Delivery report: `docs/contractor/deliveries/PIVOT-007-operator-functions.md`.
+- `docs/contractor/contracts/PIVOT-008-rls-coverage.md`
+- Base `testing-1` @ `fae227b`; branch `opencode/pivot-008-rls-coverage` @
+  `/home/esc/saven/wt-pivot-008`.
+- TOUCH: `db/postgres/99-ci-rls-coverage.sql`, `scripts/verify-pg-rls.mjs`,
+  `scripts/check.mjs`, `.github/workflows/postgres-pivot.yml`,
+  `tests/pivot-008-coverage.test.mjs`, `db/postgres/README.md`.
+- Delivery report: `docs/contractor/deliveries/PIVOT-008-rls-coverage.md`.
+- Environment: Node `v24.19.0`, PostgreSQL `18.6`, disposable loopback cluster
+  `127.0.0.1:55435`, `SAVEN_PIVOT_TEST_CLUSTER=1`.
 
-## Review findings — status
+## Requirements / findings — status
 
-| # | Finding | Status | Named tests |
+| # | Requirement | Status | Proving evidence |
 | --- | --- | --- | --- |
-| 2a | Actual AUTH-007 source-age/skew policy | **DONE** — validator exposes captured immutable descriptor; adapter compares actual issuer/audience/access_mfa/age/skew with expected and SQL fingerprint; mismatch + boundary tests | `adapter compares the actual AUTH-007 age/skew descriptor, not expected values`; `adapter refuses post-preflight source-age boundary crossing with a permitted control` |
-| 2b | Policy effective window after final wait | **DONE** — policy-writer gate + triggers; policy selected with final `clock_timestamp()` after all gates; expiry-during-wait and writer-blocking tests | `revalidates policy expiry after the consent-gate wait and serializes policy writers`; policy-trigger disable in protocol test |
-| 2c | Early bearer refusals | **DONE** — missing/short/oversize bearer records unverified denial, no secret echo, outage observable | `adapter records early bearer refusals and exposes logging outage` |
-| 3 | Consent reservation | **CLOSED retained** — shared gate through COMMIT; writer blocking/revocation tests still pass | `serializes customer consent writes against in-flight reads`; `adapter reserves customer consent through publication COMMIT` |
-| 4 | Definer profile | **CLOSED retained** — no widening; validator/poison tests pass | `installs exactly the reviewed definer authority surface…`; `refuses a poisoned definer profile…` |
-| 5 | Denial attribution | **CLOSED retained** — current role/assurance/MFA/effective validation | `denial role evidence is current…`; `denial attribution never invents…` |
+| 1 | Missing ENABLE/FORCE/policy fails nonzero | **DONE** | five `MISSING_*` kinds + seeded isolation test |
+| 2 | Unsafe partition/child/view/function path fails | **DONE** | `UNSAFE_PARTITION_PATH`, `UNSAFE_VIEW_OWNER`, `UNSAFE_MATERIALIZED_VIEW`, definer owner/search-path/PUBLIC/row-security/assumption checks |
+| 3 | Runtime ownership/BYPASS and forbidden grants fail | **DONE** | `SAVEN_BYPASS_OR_SUPER`, `RUNTIME_OWNS_*`, `RUNTIME_SCHEMA_CREATE`, `RUNTIME_ASSUMES_PRIVILEGED_ROLE`, `FORBIDDEN_RUNTIME_PRIVILEGE`, cross-schema, `PUBLIC_*` |
+| 4 | Negative behavioral tests supplement catalog presence | **DONE** | 21 seeded cases across two tests; healthy test asserts populated surface |
+| 5 | Unavailable required gate fails, never skips | **DONE** | exit 2 without opt-in/connection; `check.mjs --postgres` propagates; CLI test |
+| 6 | Zero-row SELECT becomes nonzero exit | **DONE** | committed `NO FORCE RLS` → exit 1 + exact line; restore → exit 0 |
+| 7 | Offline parser check remains PG-free | **DONE** | `node scripts/check.mjs` without PG env |
+| 8 | No new superuser/BYPASSRLS/client-authoritative context | **DONE** | gate checks both; no role/grant/policy created |
+| 9 | No hardcoded growing domains / new coupling | **DONE** | suffix-derived role classes; no new module imports |
+| 10 | Preserve applied migration/native bytes | **DONE** | only TOUCH + process docs changed |
+
+D-016/D-018: no allocator, mapping incarnation, IAM flow or legacy event was created, reused or renumbered.
 
 ## Gate evidence
 
-- `node scripts/check.mjs` → `PASS: 174 JavaScript files parsed; package manifest valid.`
-- `node --test tests/pivot-007-operator-access.test.mjs` → **31/31** pass, 0 fail.
-- `node --test tests/auth-007-access.test.mjs` → **22/22** pass (metadata-only regression).
-- Environment: Node v24.19.0, PostgreSQL 18.6, disposable loopback cluster 55435,
-  `SAVEN_PIVOT_TEST_CLUSTER=1`.
+- `node scripts/check.mjs` → `PASS: 176 JavaScript files parsed; package manifest valid.`
+- `node --test tests/pivot-008-coverage.test.mjs` → **5/5** pass, 0 fail.
+- `node scripts/check.mjs --postgres` → `PASS: PIVOT-008 RLS/privilege coverage found no violation in 55435.`
+- Regression: `pivot-004`, `pivot-005`, `pivot-006`, `pivot-007`, `auth-006`, `auth-007` → **122/122** pass, 0 fail.
+- Default verifier installs/drops a private temporary database and is re-runnable; missing opt-in and refused connections exit 2.
 
 ## Where I stopped
 
-Revision delivered and pushed; not merged. No known failing test. Publication tests now use
-an entered-COMMIT barrier rather than fixed sleeps. Test logins are namespaced cluster roles
-created/dropped on the disposable cluster (not inside the database) and are not credentials.
+Delivery complete and pushed on `opencode/pivot-008-rls-coverage`; not merged. No known failing
+test and no open in-contract defect. No mid-fix failure evidence to report.
+
+Process artifacts outside TOUCH: this checkpoint and the delivery report, as required by the
+contractor protocol. `node_modules` is an untracked local symlink, not committed.
 
 ## Exact next step
 
-1. Codex reviews `102e39a` against the two remaining policy-authority findings.
-2. PIVOT-008 follows on its own branch; no merge without the human-approved dispatcher command.
-3. Deployment must seed `operator.access_read_policy` and pass the same actual AUTH-007
-   issuer/audience/`access_mfa`/source-age/skew to the adapter; drift fails closed.
+1. Codex reviews the delivery against the ten contract requirements above.
+2. Dispatcher relays any findings; fix rounds stay on this branch.
+3. No merge without the human-approved dispatcher command. PIVOT-014 also edits
+   `scripts/check.mjs`; rebase mechanically on whichever merges second.

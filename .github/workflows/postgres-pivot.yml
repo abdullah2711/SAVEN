@@ -1,0 +1,49 @@
+name: PostgreSQL pivot gate
+
+# PIVOT-008: the target PostgreSQL RLS/privilege coverage gate is mandatory for the
+# pivot path. It is a database CI gate, not a production deployment: the runner uses a
+# disposable PostgreSQL service database and drops the temporary database it creates.
+on:
+  push:
+    branches: [testing-1, main]
+  pull_request:
+    branches: [testing-1, main]
+permissions:
+  contents: read
+jobs:
+  rls-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: contract-test-only
+          POSTGRES_DB: saven_postgres_gate
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGPASSWORD: contract-test-only
+      PGADMIN_DATABASE: postgres
+      SAVEN_PIVOT_TEST_CLUSTER: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: RLS and privilege coverage gate (installs the accepted stack)
+        run: node scripts/check.mjs --postgres
+      - name: Coverage self-tests (seeded broken coverage must fail)
+        run: node --test tests/pivot-008-coverage.test.mjs

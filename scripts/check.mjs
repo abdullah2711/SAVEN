@@ -13,3 +13,11 @@ async function checkDirectory(dir){
 for(const dir of ['src','scripts','tests','public','reference'])await checkDirectory(resolve(root,dir));
 JSON.parse(await readFile(resolve(root,'package.json'),'utf8'));
 console.log(`PASS: ${count} JavaScript files parsed; package manifest valid.`);
+// PIVOT-008: the ordinary check above stays dependency-free and runs without
+// PostgreSQL. --postgres is the explicit optional database gate; it fails nonzero
+// when the disposable cluster is unavailable instead of silently skipping coverage.
+if(process.argv.includes('--postgres')){
+ const gate=spawnSync(process.execPath,[resolve(root,'scripts/verify-pg-rls.mjs')],{stdio:'inherit'});
+ if(gate.error){process.stderr.write(`PIVOT-008 coverage gate could not start: ${gate.error.message}\n`);process.exit(1);}
+ if(gate.status!==0)process.exit(gate.status??1);
+}
