@@ -131,7 +131,7 @@ and Statements are no longer pages.
 
 **2.2.1 Dashboard — built, being reworked**
 Position and work waiting: four figures with their basis, what needs action, one
-real trend, recent journals. Specified in §8.2.
+real trend, recent journals. Specified in §10.2.
 
 **2.2.2 Journal entries — built**
 Register of every journal: date, number, narrative, source, state, debit, credit,
@@ -203,8 +203,10 @@ Add, rename, regroup, archive (blocked with history), import a chart.
 
 **2.2.12 General ledger — built, import planned**
 Account (one or all), period, party, text search. Opening, every posted line with
-running balance, closing, and the proof line. Import for opening balances and
-history with a dry-run preview.
+running balance, closing, and the proof line. Two modes: **column view** (choose the
+columns) and **full record** (expand a line to every field of the source document).
+Views are saveable per person or shared. Import for opening balances and history
+with a dry-run preview.
 
 **2.2.13 Trial balance — built**
 Opening Dr/Cr, movement, closing Dr/Cr, group subtotals, difference must read 0.00.
@@ -368,7 +370,7 @@ Taxes
 **4.2.1 Dashboard — planned**
 Position by period and by tax type: output tax due, input tax recoverable,
 withholding receivable and payable, next filing date, unreconciled lines. Each
-figure links to its register. Specified in §8.4.
+figure links to its register. Specified in §10.4.
 
 **4.2.2 Registrations & jurisdictions — planned**
 Tax identities per company and branch, jurisdiction, effective dates, filing
@@ -446,6 +448,9 @@ recoverable by default, and whether withholding is enabled per direction.
 | Account | code, name, nature, group, control type, tax kind, inventory flag, bank details |
 | Item | code, name, type, unit, accounts, tax defaults, tracked, reorder point, costing |
 | Stock movement | item, warehouse, quantity, value, direction, source, reason |
+| Custom field | entity, key, label, type, options, required, filterable, active |
+| Form profile | company, form key, version, sections, field states, defaults, status |
+| Saved view | page, owner, scope, columns, sort, filters, grouping, density |
 
 ---
 
@@ -479,9 +484,48 @@ recoverable by default, and whether withholding is enabled per direction.
 
 ---
 
-## 8. Dashboards
+## 8. Forms, fields and views
 
-### 8.1 Shared design rules
+Documented separately in `FORMS_AND_VIEWS.md`. Summary:
+
+- **Forms are configured, not hardcoded.** Each form has a profile per company,
+  versioned: a field can be required, optional, hidden or locked. A profile can make
+  an optional field required; it can never make a required field optional or hide a
+  field the ledger needs.
+- **Custom fields are information, not behaviour.** Text, number, money, date,
+  select, boolean or a reference. They appear in the form's details section, in
+  lists, filters and reports. They never change an account, a tax rate, a price or a
+  posting.
+- **Every list is a view.** Journals, payments, invoices, parties, items, stock
+  movements, ledger, trial balance and tax registers choose their columns, order,
+  sort, filters, grouping, density and which columns total. Views are system
+  (read-only), shared (administrator) or personal.
+- **Ledger has two modes.** Column view for scanning; full record for one line —
+  entry type, source, source reference, created by, approved by, posted at, reason,
+  attachments, custom fields. A line is always the way into its full record.
+- Totals always equal the rows in scope, and the scope is stated on screen, in
+  print and in the export.
+
+## 9. Backend contract
+
+Documented separately in `BACKEND_CONTRACT.md`. It covers, before any real data is
+connected:
+
+- entity fields, types and invariants (account, party, item, document, line, tax
+  line, open item, allocation, journal, ledger line, stock movement, account
+  configuration, custom fields, profiles, views);
+- a per-screen table of what each page reads, writes and must refuse;
+- the posting transaction in order, from validation to audit, with reversal and
+  soft delete;
+- derived data and how each total is verified against its source;
+- permissions, field-level access, audit, imports and the non-goals.
+
+The rule for both documents: if a screen is built that they do not cover, the
+document is updated first.
+
+## 10. Dashboards
+
+### 10.1 Shared design rules
 
 - One page, no hero, no decorative imagery, no gradients behind text.
 - Every number states its period and links to the page that explains it.
@@ -490,7 +534,7 @@ recoverable by default, and whether withholding is enabled per direction.
 - Cards use one surface, one hairline, no shadow stack. Figures are tabular.
 - No chart without a source on the same page. No empty chart placeholder.
 
-### 8.2 Accounting dashboard
+### 10.2 Accounting dashboard
 
 **Row 1 — position (four figures)**
 Cash & bank · Receivables · Payables · Result for the period. Each with the basis
@@ -511,19 +555,19 @@ Cash & bank · Receivables · Payables · Result for the period. Each with the b
 Empty state: when there is no data, each block says what it will show and links to
 the page that creates the first record. No fake numbers.
 
-### 8.3 Inventory dashboard
+### 10.3 Inventory dashboard
 
 Stock value total and by warehouse · items below reorder point · movements today
 (in and out) · pending counts · top five movers · slow movers · value change this
 period.
 
-### 8.4 Taxes dashboard
+### 10.4 Taxes dashboard
 
 Output tax due · input tax recoverable · net position for the period · withholding
 receivable · withholding payable · next filing date and period · unreconciled tax
 lines. Each links to its register.
 
-### 8.5 Never on a dashboard
+### 10.5 Never on a dashboard
 
 Marketing copy, module promo cards, decorative icons at large size, charts without
 axes or labels, numbers without a period, anything that looks like a button but does
