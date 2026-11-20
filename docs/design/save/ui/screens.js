@@ -6,6 +6,7 @@ import {escape as e} from './model.js';
 import {fixture,trial,statements} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
+import {PAGE} from './pages-map.js';
 
 const num = (v) => Number(String(v ?? '').replace(/[^0-9.-]/g, '')) || 0;
 const round2 = (n) => Math.round(n * 100) / 100;
@@ -17,6 +18,24 @@ const money = (n) => {
 const badge = (label, kind = '') => `<span class="badge ${kind}">${e(label)}</span>`;
 const button = (label, action, extra = '', primary = false) => `<button type="button" class="button ${primary ? 'primary' : ''}" data-ac="${action}" ${extra}>${label}</button>`;
 const textButton = (label, action, extra = '') => `<button type="button" class="text-button" data-ac="${action}" ${extra}>${label}</button>`;
+
+/** Generic "being built" page for any module in the page map. */
+export function plannedPage(moduleId, pageId) {
+  const entry = PAGE(moduleId, pageId);
+  if (!entry) return '';
+  const [id, label, spec, state] = entry;
+  const module = catalog.modules.find((m) => m.id === moduleId);
+  const kind = state === 'partial' ? 'Partly built' : 'Being built';
+  return `<section class="panel">
+    <div class="panel-head"><h2>${e(label)}</h2>${badge(kind)}</div>
+    <div class="panel-body">
+      <p>${e(spec)}</p>
+      <p class="form-note">${e(module ? module.title : moduleId)} · ${e(label)} · ${e(state)}</p>
+      <div class="callout"><strong>Not connected yet.</strong> This page is mapped in the module map. It does not read or write real records and it does not post.</div>
+      <p class="form-note">Page map: docs/design/MODULE_MAP.md · backend contract: docs/design/BACKEND_CONTRACT.md · forms and views: docs/design/FORMS_AND_VIEWS.md.</p>
+    </div>
+  </section>`;
+}
 
 const CUSTOMERS = ['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality','Zenith Electrical','Falcon Chemicals','Pearl Distributors','Summit Hardware'];
 const SUPPLIERS = ['Willow Supplies','Maple Packaging','Cedar Services','Pak Print House','Al-Noor Freight','Metro Office Supply','Secure Line','Digital Systems','Riverside Maintenance','Gulberg Properties'];

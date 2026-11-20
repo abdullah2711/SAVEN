@@ -82,3 +82,12 @@ dialog{padding:0;border:0;border-radius:15px;background:var(--surface);color:var
 .nav-child:hover{background:#ffffff0b;color:var(--rail-ink)}
 .nav-child[aria-current="page"]{background:#ffffff14;color:var(--rail-ink);font-weight:600}
 .sidebar-collapsed .nav-children{display:none}
+
+/* Journal line table: account and party need room, amounts stay compact. */
+.journal-lines td:nth-child(1){min-width:230px}
+.journal-lines td:nth-child(2){min-width:170px}
+.journal-lines td:nth-child(3){min-width:200px;width:100%}
+.journal-lines td:nth-child(4),.journal-lines td:nth-child(5){min-width:120px}
+.journal-lines td:nth-child(6){width:86px}
+.journal-lines select,.journal-lines input{width:100%}
+.journal-lines select:disabled{color:var(--muted);opacity:.65}
