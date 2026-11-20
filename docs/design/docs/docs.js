@@ -1,6 +1,8 @@
 import { MODULES, SUMMARY, GROUP_ORDER } from '../shared/catalog.js';
 import { icon } from '../shared/icons.js';
-import { esc } from '../ui/ui.js';
+// Local helper: the documentation site must not import across into the app,
+// because the two are served from different roots.
+const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 import { amount, money, dateLong, dateShort, percent } from '../shared/format.js';
 
 /* Where a requirement is visible in the working application today. */
