@@ -14,3 +14,4 @@ test-results/
 .tools/ui/node_modules/
 .tools/ui/.npm/
 .agents/skills/**/.DS_Store
+__pycache__/
