@@ -1,8 +1,0 @@
-<!doctype html><html><head><meta charset="utf-8"></head><body>
-<script type="module">
-const pre=document.createElement('pre');
-pre.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;font:12px monospace;background:#fff;color:#111;padding:8px;white-space:pre-wrap;margin:0';
-document.documentElement.appendChild(pre);
-try { await import('/ui/accounting-ui.js'); pre.textContent='accounting-ui ok'; }
-catch (e) { pre.textContent = 'IMPORT ERROR: ' + e.name + ': ' + e.message + '\n' + (e.stack||''); }
-</script></body></html>
