@@ -157,7 +157,8 @@ th .sortable:hover{color:var(--ink)}
 .ms[data-open="true"] .ms-trigger,.ms-trigger[aria-expanded="true"]{border-color:var(--accent);box-shadow:0 0 0 3px var(--tint)}
 .ms-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ms-caret{font-size:9px;color:var(--muted);flex:none}
-.ms-panel{position:absolute;z-index:40;top:calc(100% + 6px);left:0;min-width:100%;width:max-content;max-width:320px;
+.ms-panel--right{left:auto;right:0}
+.ms-panel{position:absolute;z-index:40;top:calc(100% + 6px);left:0;min-width:260px;width:max-content;max-width:min(340px,calc(100vw - 32px));
   background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 22px 52px -20px #24151c40;overflow:hidden}
 .ms-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--soft)}
 .ms-head .text-button{font-size:11px}
@@ -173,3 +174,15 @@ th .sortable:hover{color:var(--ink)}
 /* Native checkboxes and radios take the plum accent. */
 input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .ms-list{max-height:297px}
+
+/* Column visibility is a CSS state, so toggling never re-renders the page. */
+.gl-table[data-hide~="subtype"] .col-subtype,
+.gl-table[data-hide~="against"] .col-against,
+.gl-table[data-hide~="partyType"] .col-partyType,
+.gl-table[data-hide~="project"] .col-project,
+.gl-table[data-hide~="location"] .col-location,
+.gl-table[data-hide~="centre"] .col-centre,
+.gl-table[data-hide~="againstVoucher"] .col-againstVoucher,
+.gl-table[data-hide~="supplierRef"] .col-supplierRef,
+.gl-table[data-hide~="party"] .col-party
+{display:none}

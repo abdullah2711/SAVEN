@@ -440,6 +440,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const other = d.lines.find((x) => x !== l && (wantDebit ? num(x.debit) > 0 : num(x.credit) > 0));
     return other ? other.account : '';
   };
+  const OPTIONAL = ['subtype', 'against', 'partyType', 'project', 'location', 'centre', 'againstVoucher', 'supplierRef'];
   const inSet = (list, value) => !list.length || list.includes(value);
 
   function ledgerRows() {
@@ -489,23 +490,34 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   /* One multi-select control, used by every filter and by the column chooser. */
   function ms(name, label, options, selected, attr) {
     const chosen = options.filter(([v]) => selected.includes(v));
-    const text = attr
-      ? (chosen.length === options.length ? 'All columns' : `${chosen.length} of ${options.length}`)
-      : (chosen.length === 0 ? 'All' : chosen.length === 1 ? chosen[0][1] : `${chosen.length} selected`);
-    const inputAttr = attr ? `data-${attr}` : `name="${name}"`;
-    return `<div class="ms" data-ms="${name}"${attr ? ' data-ms-columns="1"' : ''}>
+    let text;
+    if (attr) text = chosen.length === options.length ? 'All columns' : `${chosen.length} of ${options.length}`;
+    else if (chosen.length === 0) text = `All ${label.toLowerCase()}`;
+    else if (chosen.length === 1) text = chosen[0][1];
+    else if (chosen.length === 2) text = `${chosen[0][1]}, ${chosen[1][1]}`;
+    else text = `${chosen[0][1]} +${chosen.length - 1} more`;
+    return `<div class="ms" data-ms="${name}"${attr ? ' data-ms-columns="1"' : ''} data-placeholder="All ${e(label.toLowerCase())}">
       <span class="ms-label">${e(label)}</span>
-      <button type="button" class="ms-trigger" aria-expanded="false">
-        <span class="ms-text">${e(text)}</span><span class="ms-caret" aria-hidden="true">▾</span>
+      <button type="button" class="ms-trigger" aria-expanded="false" aria-haspopup="listbox">
+        <span class="ms-text" title="${e(text)}">${e(text)}</span><span class="ms-caret" aria-hidden="true">▾</span>
       </button>
       <div class="ms-panel" hidden>
         <div class="ms-head">
           <button type="button" class="text-button" data-ms-all>Select all</button>
           <button type="button" class="text-button" data-ms-none>Clear</button>
         </div>
-        <div class="ms-list">${options.map(([value, label2]) => `<label class="ms-row"><input class="check" type="checkbox" ${inputAttr} value="${e(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${e(label2)}</span></label>`).join('')}</div>
+        <div class="ms-list">${options.map(([value, label2]) => `<label class="ms-row"><input class="check" type="checkbox" ${attr ? `data-${attr}="${e(value)}"` : `name="${name}"`} value="${e(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${e(label2)}</span></label>`).join('')}</div>
       </div>
     </div>`;
+  }
+
+  function applyColumnVisibility(kind) {
+    const boxes = [...document.querySelectorAll(`[data-${kind}-col]`)];
+    const hidden = boxes.filter((b) => !b.checked).map((b) => b.dataset[`${kind}Col`]);
+    const table = document.querySelector(kind === 'gl' ? '.gl-table' : '.jr-table');
+    if (table) table.dataset.hide = hidden.join(' ');
+    const count = document.getElementById(kind + '-col-count');
+    if (count && table) count.textContent = String(table.querySelectorAll('thead th.col').length - hidden.length);
   }
 
   let msBound = false;
@@ -526,6 +538,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         closeAll(box);
         panel.hidden = !open;
         trigger.setAttribute('aria-expanded', String(open));
+        if (open) {
+          panel.classList.remove('ms-panel--right');
+          const rect = panel.getBoundingClientRect();
+          if (rect.right > window.innerWidth - 12) panel.classList.add('ms-panel--right');
+        }
         return;
       }
       const all = ev.target.closest('[data-ms-all]');
@@ -543,9 +560,15 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       if (!box) return;
       const boxes = [...box.querySelectorAll('input[type=checkbox]')];
       const chosen = boxes.filter((b) => b.checked);
-      const text = chosen.length === 0 ? 'All' : chosen.length === 1 ? (chosen[0].parentElement.textContent || '').trim() : `${chosen.length} selected`;
+      const labelOf = (b) => (b.parentElement.querySelector('span')?.textContent || '').trim();
+      let text;
+      if (box.dataset.msColumns) text = chosen.length === boxes.length ? 'All columns' : `${chosen.length} of ${boxes.length}`;
+      else if (chosen.length === 0) text = box.dataset.placeholder || 'All';
+      else if (chosen.length === 1) text = labelOf(chosen[0]);
+      else if (chosen.length === 2) text = `${labelOf(chosen[0])}, ${labelOf(chosen[1])}`;
+      else text = `${labelOf(chosen[0])} +${chosen.length - 1} more`;
       const el = box.querySelector('.ms-text');
-      if (el && !box.dataset.msColumns) el.textContent = text;
+      if (el) { el.textContent = text; el.title = text; }
     });
   }
 
@@ -560,19 +583,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     ];
     if (single) cols.push(['balance', 'Balance', (r) => money(r.balance), 'numeric']);
     cols.push(['type', 'Voucher type', (r) => e(r.source)]);
-    if (GL.extras.has('subtype')) cols.push(['subtype', 'Voucher subtype', (r) => e(r.subtype)]);
+    cols.push(['subtype', 'Voucher subtype', (r) => e(r.subtype)]);
     cols.push(['voucher', 'Voucher no', (r) => `<button class="text-button" data-ac="source" data-value="${e(r.id)}">${e(r.id)}</button>`]);
-    if (GL.extras.has('against')) cols.push(['against', 'Against account', (r) => e(r.against)]);
-    if (GL.extras.has('partyType')) cols.push(['partyType', 'Party type', (r) => e(r.partyType)]);
+    cols.push(['against', 'Against account', (r) => e(r.against)]);
+    cols.push(['partyType', 'Party type', (r) => e(r.partyType)]);
     cols.push(['party', 'Party', (r) => e(r.party)]);
-    if (GL.extras.has('project')) cols.push(['project', 'Project', (r) => e(r.project)]);
-    if (GL.extras.has('location')) cols.push(['location', 'Location', (r) => e(r.location)]);
-    if (GL.extras.has('centre')) cols.push(['centre', 'Cost centre', (r) => e(r.centre)]);
-    if (GL.extras.has('againstVoucher')) {
-      cols.push(['againstType', 'Against voucher type', (r) => e(againstType(r.againstVoucher))]);
-      cols.push(['againstVoucher', 'Against voucher', (r) => e(r.againstVoucher)]);
-    }
-    if (GL.extras.has('supplierRef')) cols.push(['supplierRef', 'Supplier invoice no', (r) => e(r.supplierRef)]);
+    cols.push(['project', 'Project', (r) => e(r.project)]);
+    cols.push(['location', 'Location', (r) => e(r.location)]);
+    cols.push(['centre', 'Cost centre', (r) => e(r.centre)]);
+    cols.push(['againstVoucher', 'Against voucher', (r) => e(r.againstVoucher ? againstType(r.againstVoucher) + ' ' + r.againstVoucher : '')]);
+    cols.push(['supplierRef', 'Supplier invoice no', (r) => e(r.supplierRef)]);
     return cols;
   }
 
@@ -591,7 +611,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const body = rows.map((r) => {
       const open = GL.open === r.id + ':' + r.account;
       return `<tr data-gl-row="${e(r.id)}:${e(r.account)}" class="${open ? 'gl-open' : ''}">
-          ${cols.map(([key, , cell, cls]) => `<td class="${cls || ''}">${cell(r)}</td>`).join('')}
+          ${cols.map(([key, , cell, cls]) => `<td class="col col-${key} ${cls || ''}">${cell(r)}</td>`).join('')}
         </tr>` + (open ? detailRow(r, cols.length) : '');
     }).join('');
 
@@ -618,16 +638,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
       <div class="gl-toolrow">
         ${ms('columns', 'Columns', extras, [...GL.extras], 'gl-col')}
-        <span class="form-note">${cols.length} of 17 columns. Posting date, account, description, amounts, voucher and party are always shown.</span>
+        <span class="form-note"><span id="gl-col-count">${cols.length}</span> of ${cols.length} columns visible. Posting date, account, description, amounts, voucher and party are always shown.</span>
       </div>
 
       <section class="panel">
         <div class="panel-head"><h2>${GL.accounts.length === 1 ? e((accounts().find((a) => a.code === GL.accounts[0]) || {}).name || GL.accounts[0]) : GL.accounts.length ? GL.accounts.length + ' accounts' : 'All accounts'}</h2><div class="related"><span class="badge">${rows.length} lines</span><button class="button" data-gl-export="csv">Export CSV</button><button class="button" data-gl-print>Print</button></div></div>
         <div class="table-scroll gl-scroll">
-          <table class="gl-table">
+          <table class="gl-table" data-hide="${[...OPTIONAL.filter((k) => !GL.extras.has(k))].join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
-              ? `<th class="${cls || ''}"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
-              : `<th class="${cls || ''}">${label}</th>`).join('')}</tr></thead>
+              ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
+              : `<th class="col col-${key} ${cls || ''}">${label}</th>`).join('')}</tr></thead>
             <tbody id="gl-rows">${body || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
             <tfoot><tr>
               <td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td>
@@ -686,7 +706,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     });
     document.querySelectorAll('[data-gl-col]').forEach((box) => box.addEventListener('change', () => {
       box.checked ? GL.extras.add(box.dataset.glCol) : GL.extras.delete(box.dataset.glCol);
-      rerender();
+      applyColumnVisibility('gl');
     }));
     document.querySelectorAll('[data-gl-sort]').forEach((btn) => btn.addEventListener('click', () => {
       const k = btn.dataset.glSort;
@@ -758,12 +778,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       ['credit', 'Credit', (r) => money(r.credit), 'numeric'],
       ['state', 'State', (r) => `<span class="badge ${r.state === 'posted' ? 'good' : r.state === 'draft' ? '' : 'warn'}">${e(r.state)}</span>`],
       ['type', 'Voucher type', (r) => e(r.doc.source)],
+      ['subtype', 'Subtype', (r) => e(r.subtype)],
+      ['party', 'Party', (r) => e(r.party)],
+      ['project', 'Project', (r) => e(r.project || '—')],
+      ['location', 'Location', (r) => e(r.location || '—')],
+      ['centre', 'Cost centre', (r) => e(r.centre || '—')],
     ];
-    if (J.extras.has('subtype')) cols.push(['subtype', 'Subtype', (r) => e(r.subtype)]);
-    if (J.extras.has('party')) cols.push(['party', 'Party', (r) => e(r.party)]);
-    if (J.extras.has('project')) cols.push(['project', 'Project', (r) => e(r.project || '—')]);
-    if (J.extras.has('location')) cols.push(['location', 'Location', (r) => e(r.location || '—')]);
-    if (J.extras.has('centre')) cols.push(['centre', 'Cost centre', (r) => e(r.centre || '—')]);
     const sortable = new Set(['date', 'voucher', 'description', 'debit', 'credit', 'subtype', 'party', 'project', 'location', 'centre']);
 
     const partyOpts = [...new Set(journalDocs().map((d) => d.party))].sort().map((x) => [x, x]);
@@ -785,18 +805,18 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
       <div class="gl-toolrow">
         ${ms('columns', 'Columns', extras, [...J.extras], 'jr-col')}
-        <span class="form-note">${cols.length} columns. Date, voucher, description, amounts and state are always shown; fields added to the entry form appear here automatically.</span>
+        <span class="form-note"><span id="jr-col-count">${cols.length}</span> of ${cols.length} columns visible. Date, voucher, description, amounts and state are always shown; fields added to the entry form appear here automatically.</span>
       </div>
 
       <section class="panel">
         <div class="panel-head"><h2>Journals</h2><div class="related"><span class="badge">${rows.length} entries</span><button class="button" data-jr-print>Print</button></div></div>
         <div class="table-scroll gl-scroll">
-          <table class="gl-table">
+          <table class="gl-table jr-table" data-hide="${['subtype', 'party', 'project', 'location', 'centre'].filter((k) => !J.extras.has(k)).join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
-              ? `<th class="${cls || ''}"><button class="sortable" data-jr-sort="${key}" aria-sort="${J.sort.key === key ? (J.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${J.sort.key === key ? (J.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
-              : `<th class="${cls || ''}">${label}</th>`).join('')}</tr></thead>
+              ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-jr-sort="${key}" aria-sort="${J.sort.key === key ? (J.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${J.sort.key === key ? (J.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
+              : `<th class="col col-${key} ${cls || ''}">${label}</th>`).join('')}</tr></thead>
             <tbody id="jr-rows">${rows.map((r) => `<tr data-jr-row="${e(r.id)}">
-                ${cols.map(([, , cell, cls]) => `<td class="${cls || ''}">${cell(r)}</td>`).join('')}
+                ${cols.map(([key, , cell, cls]) => `<td class="col col-${key} ${cls || ''}">${cell(r)}</td>`).join('')}
               </tr>`).join('') || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No journals</h2><p>No entry matches these filters.</p></div></td></tr>`}</tbody>
             <tfoot><tr><td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td><td class="numeric">${money(rows.reduce((n, r) => n + r.debit, 0))}</td><td class="numeric">${money(rows.reduce((n, r) => n + r.credit, 0))}</td><td colspan="${Math.max(0, cols.length - cols.findIndex(([k]) => k === 'debit') - 2)}"></td></tr></tfoot>
           </table>
@@ -855,7 +875,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     });
     document.querySelectorAll('[data-jr-col]').forEach((box) => box.addEventListener('change', () => {
       box.checked ? J.extras.add(box.dataset.jrCol) : J.extras.delete(box.dataset.jrCol);
-      rerender();
+      applyColumnVisibility('jr');
     }));
     document.querySelectorAll('[data-jr-sort]').forEach((btn) => btn.addEventListener('click', () => {
       const k = btn.dataset.jrSort;
