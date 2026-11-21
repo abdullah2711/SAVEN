@@ -125,8 +125,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
          <label>Posting time<input name="time" type="time" step="1" value="${e(draft.time||nowTime())}"><small class="secondary">Recorded automatically when you post; change it only if the entry belongs to an earlier moment.</small></label>
          <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series fixed in Setup: JV-MM-YYYY-0001. A custom format must be set before the first entry.</small></label>
          <div class="field"><span class="ms-label">Entry subtype</span>${ss({key:'subtype',name:'entrySubtype',value:draft.entrySubtype||'journal',options:SUBTYPE_OPTIONS,label:'entry subtypes',search:false})}</div>
-         <div class="field"><span class="ms-label">Entry type</span>${ss({key:'entrytype',name:'entryType',value:draft.entryType||'normal',options:ENTRYTYPE_OPTIONS,label:'entry types',search:false})}</div>
-         <div class="field"><span class="ms-label">Location</span>${ss({key:'location',name:'location',value:draft.location||'HQ',options:LOCATION_OPTIONS,label:'locations',search:false})}</div>
+
          <label class="wide">Narration<textarea name="narrative" rows="5" required>${e(draft.narrative)}</textarea><small class="secondary">What this entry is for, in plain language. Prints on the voucher.</small></label>
        </div>
        <div class="form-grid" ${formTab==='more'?'':'hidden'}>
@@ -140,22 +139,25 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
        </div>
 
        <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>
-       <div class="table-scroll journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Description</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
+       <div class="table-scroll journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
          const a=acc(l.account);
          return `<tr data-journal-line="${i}"><td>${picker(i,l.account)}</td>
            <td>${ss({key:'party',field:'party',value:l.party||'',options:PARTY_OPTIONS,label:'parties and sub-accounts',placeholder:'Choose party / sub-account',line:i,disabled:!partyNeeded(a)})}</td>
            <td>${ss({key:'project',field:'project',value:l.project||'',options:PROJECT_OPTIONS,label:'projects',search:false,line:i})}</td>
            <td>${ss({key:'location',field:'location',value:l.location||draft.location||'HQ',options:LOCATION_OPTIONS,label:'locations',search:false,line:i})}</td>
            <td>${ss({key:'centre',field:'costCentre',value:l.costCentre||'',options:CENTRE_OPTIONS,label:'cost centres',search:false,line:i})}</td>
-           <td><input data-journal-field="description" aria-label="Line ${i+1} description" value="${e(l.description)}"></td>
            <td><input data-journal-field="debit" aria-label="Line ${i+1} debit" value="${e(l.debit)}" inputmode="decimal"></td>
            <td><input data-journal-field="credit" aria-label="Line ${i+1} credit" value="${e(l.credit)}" inputmode="decimal"></td>
            <td>${button('Remove','remove-line','data-value="'+i+'"')}</td></tr>`;
        }).join('')}</tbody></table></div>
 
-       <div class="line-editor-heading"><h3>Supporting files</h3><label class="button">Choose files<input type="file" id="journal-evidence" multiple class="sr-only"></label></div>
-       <ul class="contract-list">${draft.evidence.map((f,i)=>`<li>${e(f.name)} <small>${f.size} bytes</small> ${button('Remove','remove-evidence','data-value="'+i+'"')}</li>`).join('')||'<li>No file attached.</li>'}</ul>
-       <p class="form-note">Filenames and sizes are shown only; bytes are not uploaded in this build.</p>
+       <div class="line-editor-heading"><h3>Supporting files</h3></div>
+       <div class="dropzone" id="journal-drop">
+         <span>Drop files here, or <label class="text-button">choose files<input type="file" id="journal-evidence" multiple class="sr-only"></label></span>
+         <small>PDF, image or SVG · up to 10 MB each</small>
+       </div>
+       <ul class="contract-list file-list">${draft.evidence.map((f,i)=>`<li><span>${e(f.name)} <small>${Math.max(1,Math.round(f.size/1024))} KB</small></span>${button('Remove','remove-evidence','data-value="'+i+'"')}</li>`).join('')||'<li class="muted">No file attached.</li>'}</ul>
+       <p class="form-note">Names and sizes are recorded on the draft; bytes are not stored in this build.</p>
      </form>
    </section>
    <section class="panel" id="journal-live-preview" aria-live="polite">${preview()}</section>
@@ -216,12 +218,23 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    const empty=box.querySelector('.ms-empty');
    if(empty)empty.hidden=shown>0;
  });
+ const addFiles=(list)=>{
+   for(const f of list) draft.evidence.push({name:f.name,size:f.size,type:f.type||''});
+   if(list.length)notify(list.length+' file(s) attached to this draft.');
+   render();
+ };
  document.querySelector('#journal-evidence')?.addEventListener('change',ev=>{
    capture();
-   [...ev.target.files].forEach(f=>draft.evidence.push({name:f.name,size:f.size,type:f.type||''}));
+   addFiles(ev.target.files);
    ev.target.value='';
-   render();
  });
+ const drop=document.querySelector('#journal-drop');
+ if(drop){
+   drop.addEventListener('dragover',ev=>{ev.preventDefault();drop.classList.add('is-over');});
+   drop.addEventListener('dragleave',()=>drop.classList.remove('is-over'));
+   drop.addEventListener('drop',ev=>{ev.preventDefault();drop.classList.remove('is-over');capture();addFiles(ev.dataTransfer.files);});
+   drop.querySelector('input[type=file]')?.addEventListener('change',ev=>{capture();addFiles(ev.target.files);ev.target.value='';});
+ }
  document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
    const act=b.dataset.formAction;
    if(act==='save'){capture();localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}

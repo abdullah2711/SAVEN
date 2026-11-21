@@ -470,3 +470,70 @@ Reversal is **a choice, not a requirement**.
 - Delete is offered only for drafts and cancelled entries. A posted entry must be
   cancelled first, which is what guarantees the ledger is never silently changed.
 - The record page shows the current state and only the actions valid for it.
+
+---
+
+# Round 5 — line fields, dimensions, balances
+
+## 33. Journal lines
+
+The line grid is now: **Account · Party/sub-account · Project · Location · Cost
+centre · Debit · Credit · remove**. The per-line description is gone — the narration
+at the header says what the entry is, and repeating it on every line was noise.
+
+The grid keeps a **permanent horizontal scrollbar** by holding a fixed minimum width
+(1120px) inside a scroll container, so a column can never disappear unnoticed.
+
+## 34. Entry type is gone
+
+The voucher is a journal entry by definition; the classification the ledger needs is
+the **subtype** (bank, cash, contra, expense, debit/credit note, depreciation,
+accrual, prepayment, write off, opening, adjustment, reversal). The old "adjusting"
+entry type is replaced by the **adjustment** subtype, which is the only case where a
+control line may omit the party.
+
+## 35. Location lives on the line only
+
+- No header location field: a single journal may move balance between locations, so
+  each line carries its own.
+- There is **no branch concept anywhere**. A branch is a location whose kind is
+  `branch`. One list, one filter, one dimension.
+- Projects and locations are the only two business dimensions. Balances can be
+  viewed by either.
+
+## 36. Balances by project or location — how it actually works
+
+Profit and loss by dimension is easy: every line carries the dimension, so summing
+income and expense lines by project or location gives the result directly.
+
+A **balance** is different: it is a property of an account, and it can only be sliced
+by a dimension if every posting that moves it carries that dimension. Three cases:
+
+1. **Ordinary accounts** (rent, sales, fixed assets, loans). The dimension is on the
+   ledger line, so balance by project/location = sum of the lines tagged that way.
+   Works immediately.
+2. **Control accounts** (receivables, payables). The account balance is the sum of
+   party open items, and an open item is created by a document. So the dimension must
+   be captured **on the document header** and copied to the open item. Then
+   "payables for location X" = sum of open items tagged X. Tagging only the ledger
+   line is not enough, because the line nets to zero against the control account.
+3. **Unallocated amounts** (advance received, payment on account). They belong to a
+   party but not to a project or location. They must either carry a dimension at the
+   time of receipt or be reported as "unallocated" so the totals still reconcile.
+
+**Rule to build by:** dimension on the document, inherited by every line and every
+open item; report balances by dimension only where every posting carries one; always
+show an "unallocated" column so the slice totals equal the account total. If a
+mandatory-dimension policy is switched on in Setup, no posting can be saved without
+it, and the slice is always complete.
+
+## 37. Evidence upload
+
+- The evidence area is a drop zone: drag files onto it or choose them; names, sizes
+  and types appear immediately with a remove action.
+- Bytes are not stored in this build. The field, the validation and the list are in
+  place so the contract is visible.
+- Handing over the two icon files: put the SVGs in
+  `docs/design/save/ui/icons/` in the repository (or paste their markup in chat);
+  chat attachments are not readable by this session. Once they are in the repo, they
+  replace the two drawn glyphs in `icons.js`.
