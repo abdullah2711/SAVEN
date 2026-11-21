@@ -127,6 +127,8 @@ Accounting
 ├── Dashboard
 ├── General ledger             (the detailed book of every posting)
 ├── Journal entries            (register; "New journal" is a button here)
+├── Projects                   (register + dashboard statistics by accounting head)
+├── Locations                  (register + dashboard statistics by accounting head)
 ├── Parties                    (register; a row opens the party page)
 ├── Cash & bank                (Accounts · Reconciliation)
 ├── Payments                   (register; "New payment" is a button here)
@@ -155,12 +157,13 @@ Register of every journal: date, number, narrative, source, state, debit, credit
 net. Filters: state, source, period, party, text. Footer totals. A row opens the
 entry with its lines; the page-level action is **New journal**.
 
-**2.2.3 New journal — built (round 3)**
-Full page. Header: date, journal, reference, narrative, currency, branch, entry
-type (Normal / Adjusting / Opening), workflow. Lines: account, party (required on
-control accounts), description, debit, credit, cost centre. Running totals,
-imbalance warning, posting blocked until balanced, evidence attachment. Posting
-writes the ledger, the party balance and consumes the oldest open item.
+**2.2.3 New journal — built (round 6)**
+Full page. Header: posting date, posting time, voucher number, subtype, one
+location for the whole voucher, narration. Lines: account, party / sub-account
+(required and filtered by the account's kind), project, cost centre, debit,
+credit. No per-line location, no per-line description, no entry type. Running
+totals, imbalance warning, posting blocked until balanced, evidence drop zone.
+Posting writes the ledger, the party balance and consumes the oldest open item.
 
 **2.2.4 Parties — planned**
 Register of customers and suppliers: type, group, tax identity, currency, terms,

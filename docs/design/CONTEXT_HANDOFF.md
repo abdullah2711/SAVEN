@@ -4,13 +4,15 @@ Paste this file at the start of a new session. It is the whole context.
 
 ## What this is
 
-A design build of the SAVEN/SA7EN accounting UI, served from the owner's machine.
-No database, no backend, no posting. Fixtures only.
+A working design build of the SAVEN/SA7EN accounting UI, served from the owner's
+machine. No database, no backend, no posting. Fixtures only. The owner reviews it
+through the live tunnel and gives feedback; every decision is recorded here and in
+`DECISIONS-2026-11-21.md`.
 
 - Repository: `/home/esc/saven/wt-design-theme`, branch **`opencode/design-theme-v1`**
   (never merge; push to origin after every change).
 - App: `docs/design/save/` — the **exact** saventesting build (shell, rail, search,
-  persona selects, theme toggle, dialogs) plus added screens.
+  theme toggle, dialogs, toasts) plus added screens.
 - Library: `docs/design/docs/` — module catalogue, rendered at savenui.
 - Live: **https://savenuitest.economicsystems.cc** (app) and
   **https://savenui.economicsystems.cc** (library), through a Cloudflare tunnel
@@ -18,70 +20,114 @@ No database, no backend, no posting. Fixtures only.
   `127.0.0.1:8795`, server `~/saven-preview/server.mjs`).
 
 Run locally: `node /home/esc/saven-preview/server.mjs`, then
-`http://savenuitest.localhost:8795/`. Host routing picks the root; `Host:
+`http://savenuitest.localhost:8795/`. Host routing picks the root: `Host:
 savenuitest.localhost` → `docs/design/save`.
 
 ## Hard rules
 
 - The shell is the owner's: do not restyle it. Change screens inside it.
 - No inline `style=` attributes: the build's CSP (`style-src 'self'`) blocks them.
-  All layout lives in `theme.css` classes.
+  All layout lives in `theme.css` classes. (Exceptions already in the build are the
+  design-system's own.)
 - No placeholder copy ("sample", "design example"). Real values only.
-- Money: decimal, two places, rows show bare numbers in a column. Dates ISO in data,
-  short form in tables.
+- Money: decimal, two places, right-aligned and tabular. Dates ISO in data, short in
+  tables.
 - Every figure must derive from the fixture; if it cannot, say so on screen.
 - Document decisions as they are made (this folder). The docs are the contract.
+- Never claim a fixture behaviour is production functionality.
+- Chat attachments cannot be read from this session. Files must be placed in the
+  repository (for the two flaticon SVGs: `docs/design/save/ui/icons/`), or their
+  markup pasted as text.
 
 ## Where things live
 
 | Path | Contents |
 |---|---|
 | `docs/design/save/ui/app.js` | shell, rail, routing, page map wiring |
-| `docs/design/save/ui/accounting-ui.js` | chart, journal register/editor, trial balance, statements, setup |
-| `docs/design/save/ui/screens.js` | dashboard, ledger, journal register + record, projects, taxes, planned pages, multi-select/picker |
-| `docs/design/save/ui/accounting-model.js` | fixture ledger, chart, numbering, projects, locations, cost centres |
+| `docs/design/save/ui/accounting-ui.js` | chart, journal register/editor, trial balance, statements, setup routing, single-select picker (`ss`) |
+| `docs/design/save/ui/accounting-setup.js` | opening balances, recurring journals |
+| `docs/design/save/ui/screens.js` | dashboard, ledger, journal register + record, projects/locations pages, parties, taxes, setup, multi-select (`ms`) |
+| `docs/design/save/ui/accounting-model.js` | fixture ledger (~199 documents), chart, numbering, projects, locations, cost centres |
 | `docs/design/save/ui/pages-map.js` | module → page map, single source for rail and docs |
-| `docs/design/save/ui/theme.css` | their stylesheet plus our component classes |
+| `docs/design/save/ui/theme.css` | their stylesheet plus our component classes at the end |
 | `docs/design/*.md` | decision log, module map, workflows, backend contract, forms/views, page register |
 
 ## Current state
 
-**Built and working:** accounting dashboard; general ledger (multi-select filters,
-search in every dropdown, column chooser, sorting, row expand, CSV); journal
-register (columns, filters, sorting, record page); journal form (numbering, time,
-guards, subtype, party/sub-account, project/location/cost centre per line, review at
-bottom, print + menu); trial balance; chart of accounts; statements; projects list;
-setup page; taxes page with five tabs; 20 modules and 152 pages mapped, planned pages
-render their spec.
+**Built and working**
 
-**Known gaps:** quick entry grid; forms register in Setup; bank/cash reconciliation;
-payments allocation; invoices; cash & bank tabs; project-scoped access enforcement;
-no persistence (reload returns to fixtures).
+- Accounting dashboard: KPI cards, cash chart, ageing, attention list, recent
+  journals.
+- General ledger: multi-select filters with search in every dropdown, column
+  chooser, sorting, row expand, CSV, no stats strip.
+- Journal register + record page: columns mirror the form, per-column filters,
+  sorting, state-aware actions.
+- Journal form: auto-numbering (`JV-MM-YYYY-0001`), posting time, guards (no future,
+  no date before business start, no closed period), subtype, one **header location**,
+  party/sub-account filtered by account kind, project, cost centre, review panel,
+  evidence drop zone, print + overflow menu, always-visible horizontal scroll track.
+- Chart of accounts, trial balance, statements.
+- **Projects** page (Accounting): register + create, and a dashboard with statistics
+  per accounting head.
+- **Locations** page (Accounting): same, with `kind` (office, branch, outlet,
+  warehouse, site).
+- **Setup**: organisation, numbering, default accounts, dimensions, approvals,
+  **accounting heads with a create form**, **party & sub-account membership**.
+- Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
+  their specification.
+
+**Known gaps**: quick entry grid; forms register; bank/cash reconciliation; payments
+allocation; invoices; item master; period lock enforcement; membership is
+display-only; no persistence (reload returns to fixtures).
 
 ## Decisions already made (do not re-litigate)
 
-- One dimension: **Location** (kind: head office, branch, outlet, warehouse). No
-  separate branch field. Books are company-wide.
-- **No project on the account.** Accounts stay generic; project/location are line
-  dimensions. Sub-accounts exist only for control accounts (parties, banks, cash).
-- Cancel removes the ledger effect but keeps the register row; delete removes it from
-  the register; numbers are never reused; the audit log is the permanent record;
-  reversal is optional.
+- **Location** is one field on the journal header — where the entry was made. A
+  **branch is a location with kind `branch`**; there is no separate branch concept.
+  Moving balance between locations is two entries.
+- **Project** is a line dimension and stays optional. Accounts stay generic; project
+  and location are dimensions, never balances.
+- **Balances are not sliced by project/location.** P&L by dimension works from
+  tagged lines. Parties and sub-accounts may record which projects/locations they
+  belong to (blank = all); it is a data field, not a balance and not access control.
+- **No entry type.** A voucher is a journal entry; the **subtype** classifies it
+  (bank, cash, contra, expense, debit/credit note, depreciation, accrual,
+  prepayment, write off, opening, adjustment, reversal). `adjustment` is the only
+  subtype where a control line may omit the party.
+- **Cancel / delete / reverse.** Cancel removes the ledger effect but keeps the
+  register row; delete removes it from the register (draft or cancelled only);
+  numbers are never reused; the audit log is the permanent record; reversal is
+  optional, used only when the correction must stay visible.
+- **Identity fields.** Created by / created at / source (User or AI) and submitted
+  by are separate; more than one person may be involved.
+- **Accounting heads are created in Setup** and appear immediately in the chart,
+  the journal picker and the reports. Control heads require a party on every line.
+- **Business switching happens at sign-in.** The topbar shows the active business as
+  text, never a dropdown.
 - Posting guards: no future time, nothing before business creation, nothing in a
   closed period.
-- Identity: created-by/source (User or AI) and submitted-by are separate fields.
 
 ## How to verify a change
 
 1. `node --check` every edited file.
-2. Screenshot with
-   `firefox --headless --window-size=1440,1000 --screenshot out.png "http://savenuitest.localhost:8795/#module=accounting&tab=ledger"`.
+2. Screenshot:
+   `firefox --headless --window-size=1440,1200 --screenshot out.png "http://savenuitest.localhost:8795/#module=accounting&tab=journals&mode=editor"`.
 3. For behaviour, build a probe page in `docs/design/save/` that imports the module,
-   drives the DOM and prints results into the page, then screenshot it, then delete it.
+   drives the DOM and prints results into a fixed `<pre>`, screenshot it, then delete
+   the probe. This is how the dropdown bug and the setup/membership flows were
+   verified.
 4. `node docs/design/build/make-page-docs.mjs` after touching the page map.
 5. Commit and push.
 
+Known trap: duplicate function definitions silently win (the later one overrides).
+Check with `grep -c "function editor"`. Also `grep` for the old identifier after a
+rename.
+
 ## Next
 
-Owner is reviewing the journal form and will return to the project/location/branch
-discussion. Do not start new modules before that review.
+- Owner is reviewing Projects/Locations, Setup heads and membership. Wait for that
+  review before starting another module.
+- Open naming question: two rail entries called “Projects” (Accounting dimension page
+  and Operations module). Decide whether to rename one.
+- Then: parties register (with membership visible on the party page), cash & bank,
+  payments, invoices.

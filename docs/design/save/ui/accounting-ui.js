@@ -32,7 +32,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  function tb(){const rows=trial(data(),range),dr=rows.reduce((n,a)=>n+cents(a.closingDebit),0n),cr=rows.reduce((n,a)=>n+cents(a.closingCredit),0n);return `<section class="panel"><div class="panel-head"><h2>Trial balance</h2>${button('Export trial balance CSV','export-trial')}</div>${filters()}${table(['Account','Opening net','Period debit','Period credit','Closing debit','Closing credit'],rows.filter(a=>(a.code+' '+a.name).toLowerCase().includes(query.toLowerCase())).map(a=>`<tr><td><button class="text-button" data-ac="ledger" data-value="${a.code}">${a.code} - ${e(a.name)}</button></td><td class="numeric">${a.opening}</td><td class="numeric">${a.debit}</td><td class="numeric">${a.credit}</td><td class="numeric">${a.closingDebit}</td><td class="numeric">${a.closingCredit}</td></tr>`))}<div class="ledger-basis"><span>Full sample chart / Closing debit <strong>${decimal(dr)}</strong></span><span>Closing credit <strong>${decimal(cr)}</strong></span><span class="badge ${dr===cr?'good':'warn'}">${dr===cr?'Balanced fixture':'Difference requires investigation'}</span></div></section>`;}
  function financial(){const s=statements(data(),range),statementTabs=[['profit','Profit & loss'],['position','Financial position'],['notes','Notes & source schedules']];return `<section class="panel"><div class="panel-head"><h2>Financial statements</h2>${button('Export statement CSV','export-statements')}</div>${filters()}<div class="panel-body"><div class="tabs">${statementTabs.map(([id,t])=>`<button data-ac="statement" data-value="${id}" aria-selected="${statement===id}">${t}</button>`).join('')}</div>${statement==='profit'?`<div class="statement-line"><span>Service revenue ${button('Source','ledger','data-value="4000"')}</span><strong>${s.income}</strong></div><div class="statement-line"><span>Operating expenses ${button('Source','ledger','data-value="5000"')}</span><strong>(${s.expenses})</strong></div><div class="statement-line total"><span>Profit / (loss)</span><strong>${s.profit}</strong></div>`:statement==='position'?`<div class="statement-line"><span>Assets</span><strong>${s.assets}</strong></div><div class="statement-line"><span>Liabilities</span><strong>${s.liabilities}</strong></div><div class="statement-line"><span>Capital</span><strong>${s.capital}</strong></div><div class="statement-line"><span>Accumulated sample profit</span><strong>${s.accumulatedProfit}</strong></div><div class="statement-line total"><span>Liabilities and equity</span><strong>${decimal(BigInt(s.liabilities.replace('.',''))+BigInt(s.equity.replace('.','')))}</strong></div><div class="related"><span class="badge good">${s.balanced?'Statement equation agrees':'Investigate differences'}</span></div>`:`<details open><summary>1. Basis of this example</summary><p class="form-note">Derived from four synthetic source documents and ten ledger lines. Currency PKR. No statutory reporting framework, legal tax rate or full published financial statements are represented.</p></details><details open><summary>2. Source and control schedules</summary><div class="related">${button('Bank','ledger','data-value="1010"')}${button('Receivables','ledger','data-value="1100"')}${button('Payables','ledger','data-value="2100"')}${button('Input tax','ledger','data-value="1300"')}${button('Output tax','ledger','data-value="2200"')}</div></details><p class="form-note">Comparatives, cash flow, changes in equity, industry disclosure packs and signed publication are required next UI workflows; this increment does not present them as complete.</p>`}<p class="form-note">Period ${range.from} to ${range.to}. Financial position includes all sample history through the end date. Filter text does not remove accounts from statement calculations.</p></div></section>`;}
  function close(){return `<section class="panel"><div class="panel-head"><h2>Period close</h2>${button('Review closing snapshot','period-review','',true)}</div><div class="panel-body"><p>Review controls before locking November 2026.</p><ul class="close-list">${[['Trial balance','Fixture balances agree','good'],['Bank statements','Reconciliation and outstanding items require evidence','warn'],['AR / AP / stock / assets / tax','Connect the independent source schedules',''],['Pending commands & evidence','Resolve held documents and retained attachments',''],['Review and report snapshot','Named sign-off, version and effective lock required','']].map(([t,d,k])=>`<li><div><strong>${t}</strong><small class="secondary">${d}</small></div><span class="badge ${k}">${k==='good'?'Agrees':'Review required'}</span></li>`).join('')}</ul><p class="form-note">This walkthrough cannot lock or reopen a real period. Current policy, authority and source versions must be rechecked at the actual commit.</p></div></section>`;}
- function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='ledger'?screens.gl():current==='coa'?coa():current==='trial'?tb():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.ageing():current==='approvals'?screens.approvals():current==='close'?close():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():plannedPage('accounting',current);return body;}
+ function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='projects'?screens.dimensionPage('project'):current==='locations'?screens.dimensionPage('location'):current==='ledger'?screens.gl():current==='coa'?coa():current==='trial'?tb():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.ageing():current==='approvals'?screens.approvals():current==='close'?close():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():plannedPage('accounting',current);return body;}
  function capture(){const f=document.querySelector('#accounting-journal');if(!f)return;draft={...draft,...Object.fromEntries(new FormData(f)),lines:[...f.querySelectorAll('[data-journal-line]')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-journal-field]')].map(x=>[x.dataset.journalField,x.value])))};}
  function preview(){
    const errors=[];
@@ -63,7 +63,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
            <div class="statement-line total"><span>Difference</span><strong>${decimal(debit-credit)}</strong></div>
            <div class="statement-line"><span>Workflow</span><strong>${e(result.decision)}</strong></div>
          </div>
-         <p class="form-note">Voucher ${e(draft.number||draft.reference)} · ${e(draft.date)} ${e(draft.time||'')} · posted entries are immutable; corrections are reversals.</p>
+         <p class="form-note">Voucher ${e(draft.number||draft.reference)} · ${e(draft.date)} ${e(draft.time||'')} · ${e(draft.location||'HQ')}</p>
        </div>`;
    }catch(error){
      return `<div class="panel-head"><h2>Journal review</h2><span class="badge warn">Not ready</span></div><div class="panel-body"><p class="error">${e(error.message)}</p><p class="form-note">Correct the draft before reviewing its workflow.</p></div>`;
@@ -85,8 +85,8 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  };
  const KIND_OF=(a)=>!a?'':a.control==='receivable'?'customer':a.control==='payable'?'supplier':a.code==='1010'?'bank':a.code==='1000'?'cash':'';
  const PARTY_OPTIONS=[['','—','none'],...CUSTOMER_NAMES.map(n=>[n,n,'customer']),...SUPPLIER_NAMES.map(n=>[n,n,'supplier']),...BANK_ACCOUNTS.map(n=>[n,n,'bank']),...CASH_CUSTODIANS.map(n=>[n,n,'cash'])];
- const PROJECT_OPTIONS=[['','No project'],...PROJECTS.map(p=>[p.code,`${p.code} · ${p.name}`])];
- const LOCATION_OPTIONS=LOCATIONS.map(x=>[x.code,`${x.code} · ${x.name}`]);
+ const PROJECT_OPTIONS=()=>[['','No project'],...PROJECTS.map(p=>[p.code,`${p.code} · ${p.name}`])];
+ const LOCATION_OPTIONS=()=>LOCATIONS.map(x=>[x.code,`${x.code} · ${x.name}`]);
  const CENTRE_OPTIONS=[['','—'],...COST_CENTRES.map(c=>[c,c])];
  const SUBTYPE_OPTIONS=[['journal','Journal entry'],['bank','Bank entry'],['cash','Cash entry'],['contra','Contra entry'],['expense','Expense entry'],['debit-note','Debit note'],['credit-note','Credit note'],['depreciation','Depreciation'],['accrual','Accrual'],['prepayment','Prepayment'],['writeoff','Write off'],['opening','Opening entry'],['adjustment','Adjustment'],['reversal','Reversal']];
  const ENTRYTYPE_OPTIONS=[['normal','Normal'],['adjusting','Adjusting (party optional)'],['opening','Opening balance']];
@@ -125,6 +125,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
          <label>Posting time<input name="time" type="time" step="1" value="${e(draft.time||nowTime())}"><small class="secondary">Recorded automatically when you post; change it only if the entry belongs to an earlier moment.</small></label>
          <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series fixed in Setup: JV-MM-YYYY-0001. A custom format must be set before the first entry.</small></label>
          <div class="field"><span class="ms-label">Entry subtype</span>${ss({key:'subtype',name:'entrySubtype',value:draft.entrySubtype||'journal',options:SUBTYPE_OPTIONS,label:'entry subtypes',search:false})}</div>
+         <div class="field"><span class="ms-label">Location</span>${ss({key:'location',name:'location',value:draft.location||'HQ',options:LOCATION_OPTIONS(),label:'locations',search:false})}<small class="secondary">Where this entry was made. One location for the whole voucher.</small></div>
 
          <label class="wide">Narration<textarea name="narrative" rows="5" required>${e(draft.narrative)}</textarea><small class="secondary">What this entry is for, in plain language. Prints on the voucher.</small></label>
        </div>
@@ -139,13 +140,13 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
        </div>
 
        <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>
-       <div class="table-scroll journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
+       <div class="hscroll" id="journal-hscroll"><div class="hscroll-thumb" id="journal-hscroll-thumb"></div></div>
+       <div class="table-scroll journal-scroll" id="journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Cost centre</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
          const a=acc(l.account);
          return `<tr data-journal-line="${i}"><td>${picker(i,l.account)}</td>
            <td>${ss({key:'party',field:'party',value:l.party||'',options:PARTY_OPTIONS,label:'parties and sub-accounts',placeholder:'Choose party / sub-account',line:i,disabled:!partyNeeded(a)})}</td>
-           <td>${ss({key:'project',field:'project',value:l.project||'',options:PROJECT_OPTIONS,label:'projects',search:false,line:i})}</td>
-           <td>${ss({key:'location',field:'location',value:l.location||draft.location||'HQ',options:LOCATION_OPTIONS,label:'locations',search:false,line:i})}</td>
-           <td>${ss({key:'centre',field:'costCentre',value:l.costCentre||'',options:CENTRE_OPTIONS,label:'cost centres',search:false,line:i})}</td>
+           <td>${ss({key:'project',field:'project',value:l.project||'',options:PROJECT_OPTIONS(),label:'projects',search:false,line:i})}</td>
+                      <td>${ss({key:'centre',field:'costCentre',value:l.costCentre||'',options:CENTRE_OPTIONS,label:'cost centres',search:false,line:i})}</td>
            <td><input data-journal-field="debit" aria-label="Line ${i+1} debit" value="${e(l.debit)}" inputmode="decimal"></td>
            <td><input data-journal-field="credit" aria-label="Line ${i+1} credit" value="${e(l.credit)}" inputmode="decimal"></td>
            <td>${button('Remove','remove-line','data-value="'+i+'"')}</td></tr>`;
@@ -167,7 +168,33 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  function source(id){const j=data().find(j=>j.id===id);if(!j)return;dialog(j.id+' - source fixture',`<div class="record-summary"><div><small>Date</small>${j.date}</div><div><small>Source</small>${j.source}</div><div><small>Party</small>${e(j.party)}</div></div><p class="form-note">${e(j.narrative)}</p>${table(['Account','Debit','Credit'],j.lines.map(l=>`<tr><td>${l.account} - ${e(accounts.find(a=>a.code===l.account)?.name)}</td><td>${l.debit}</td><td>${l.credit}</td></tr>`))}<div class="related">${button('Linked correction walkthrough','correction')}${button('Evidence & audit trail','source-evidence')}</div><p class="form-note">Posted fixture is read-only. No real document, attachment or audit event is being retrieved.</p>`);}
  function accountDialog(fresh){const a=fresh?{code:'',name:'',type:'expense'}:accounts.find(a=>a.code===selected);dialog(fresh?'New sample account':'Edit sample account',`<form id="sample-account-form" class="form-grid">${field('code','Account code',a.code,'text',`required pattern="[0-9]{4,8}" ${fresh?'':'readonly'}`)}${field('name','Account name',a.name,'text','required maxlength="80"')}<label>Account class<select name="type" class="inline-input">${options([['asset','Asset'],['liability','Liability'],['equity','Equity'],['income','Income'],['expense','Expense']],a.type)}</select></label></form><p class="form-note">Group, parent hierarchy, currency/control mappings and historical reclassification require further reviewed configuration. This changes only the in-memory sample chart.</p><div class="related">${button('Save sample account','save-account',`data-fresh="${fresh}"`,true)}</div>`);}
  function bind(){setup.bind();screens.bindGL(render);screens.bindJournal(render,notify);
- document.querySelectorAll('[data-form-tab]').forEach(b=>b.addEventListener('click',()=>{formTab=b.dataset.formTab;render();}));screens.bindProjectForm(render,notify);screens.bindTaxes(render);
+ document.querySelectorAll('[data-form-tab]').forEach(b=>b.addEventListener('click',()=>{formTab=b.dataset.formTab;render();}));screens.bindProjectForm(render,notify);screens.bindTaxes(render);screens.bindSetup(render);screens.bindDimension('project',render);screens.bindDimension('location',render);
+ const scroller=document.querySelector('#journal-scroll'),track=document.querySelector('#journal-hscroll'),thumb=document.querySelector('#journal-hscroll-thumb');
+ if(scroller&&track&&thumb){
+   const syncScroll=()=>{
+     const max=Math.max(scroller.scrollWidth-scroller.clientWidth,0);
+     const ratio=scroller.clientWidth/Math.max(scroller.scrollWidth,1);
+     thumb.style.width=Math.max(12,Math.round(ratio*100))+'%';
+     thumb.style.left=(max?scroller.scrollLeft/max:0)*(100-parseFloat(thumb.style.width))+'%';
+   };
+   scroller.addEventListener('scroll',syncScroll);
+   window.addEventListener('resize',syncScroll);
+   thumb.addEventListener('pointerdown',ev=>{
+     ev.preventDefault();
+     const startX=ev.clientX,startLeft=scroller.scrollLeft,max=Math.max(scroller.scrollWidth-scroller.clientWidth,0),trackWidth=track.clientWidth-thumb.offsetWidth;
+     thumb.setPointerCapture(ev.pointerId);
+     const move=e2=>{if(!trackWidth)return;scroller.scrollLeft=startLeft+((e2.clientX-startX)/trackWidth)*max;};
+     const up=()=>{thumb.removeEventListener('pointermove',move);thumb.removeEventListener('pointerup',up);};
+     thumb.addEventListener('pointermove',move);
+     thumb.addEventListener('pointerup',up);
+   });
+   track.addEventListener('click',ev=>{
+     if(ev.target===thumb)return;
+     const rect=track.getBoundingClientRect(),max=Math.max(scroller.scrollWidth-scroller.clientWidth,0);
+     scroller.scrollLeft=max*((ev.clientX-rect.left)/Math.max(rect.width,1));
+   });
+   syncScroll();
+ }
  const form=document.querySelector('#accounting-journal');
  if(form){
    const needsParty=a=>Boolean(a&&(a.control||a.code==='1010'||a.code==='1000'));

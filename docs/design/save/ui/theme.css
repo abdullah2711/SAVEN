@@ -226,11 +226,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .ms-trigger[disabled]{color:var(--muted);background:var(--soft);cursor:not-allowed;opacity:.75}
 
 /* The journal line grid always shows a horizontal scrollbar. */
-.journal-scroll{overflow-x:scroll;overflow-y:visible;scrollbar-gutter:stable}
-.journal-scroll::-webkit-scrollbar{height:12px}
-.journal-scroll::-webkit-scrollbar-thumb{background:#24151c33;border-radius:8px}
-.journal-scroll::-webkit-scrollbar-track{background:transparent}
-.journal-scroll{scrollbar-color:#24151c55 transparent;scrollbar-width:thin}
+.journal-scroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+.journal-scroll::-webkit-scrollbar{display:none}
 .audit-strip{margin-top:6px}
 
 /* Drop zone for evidence. */
@@ -240,3 +237,19 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .file-list li{display:flex;align-items:center;justify-content:space-between;gap:12px}
 /* The line grid always overflows, so the scrollbar is always present. */
 .journal-scroll table{min-width:1120px}
+
+/* Always-visible scroll indicator for the journal line grid. */
+.hscroll{position:relative;height:10px;margin:6px 0 2px;border-radius:99px;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.hscroll-thumb{position:absolute;top:0;height:10px;border-radius:99px;background:color-mix(in srgb,var(--ink) 32%,transparent)}
+
+/* The business name is context, not a switcher: switching happens at sign-in. */
+.company-context{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+/* The journal scroll indicator is always present, so no column can hide. */
+.hscroll{cursor:pointer}
+.hscroll-thumb{cursor:grab}
+.hscroll-thumb:active{cursor:grabbing}
+/* Membership cells already carry a column heading, so the picker label is noise. */
+.membership-table .ms-label{display:none}
+.membership-table .ms{min-width:170px}
+.membership-table .ms-trigger{min-height:36px}
+.membership-table td{padding-top:10px;padding-bottom:10px}

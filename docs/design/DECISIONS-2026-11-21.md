@@ -537,3 +537,123 @@ it, and the slice is always complete.
   `docs/design/save/ui/icons/` in the repository (or paste their markup in chat);
   chat attachments are not readable by this session. Once they are in the repo, they
   replace the two drawn glyphs in `icons.js`.
+
+---
+
+# Round 6 — one location per entry, dimension pages, setup heads, membership
+
+## 38. The journal scrollbar is part of the page, not of the desktop
+
+The line grid holds a fixed minimum width, so it always overflows its container.
+The native scrollbar is hidden and a **custom track is drawn below the grid at all
+times**; the thumb can be dragged and the track clicked, and it follows the grid
+when the grid scrolls.
+
+Reason: Firefox on Linux (and most touchpads) hide the overlay scrollbar until the
+user starts scrolling, so an overflowing grid looked like it had no horizontal
+scroll at all. The indicator is now always present, independent of the desktop's
+scrollbar setting.
+
+## 39. One location for the whole entry (supersedes §35)
+
+- Location is a **single field on the journal header**: where this entry was made.
+- Lines carry account, party/sub-account, project, cost centre, debit, credit.
+- A **branch is a location whose kind is `branch`**. There is no branch table, no
+  branch field and no branch report anywhere in Accounting.
+- A movement of balance between two locations is therefore **two entries** — one
+  issued at the origin location, one received at the destination — or two separate
+  vouchers. The ledger stays company-wide and balanced.
+
+Why this replaced the per-line location: the owner wants location to answer "where
+was this entry made", not to be a second project-like dimension tracked line by
+line. Project stays line-level because work is often split across projects inside
+one document; location rarely is.
+
+## 40. Balances sliced by project or location — deliberately not built
+
+§36 explains how such a slice would have to work. The decision is now to **skip
+it**:
+
+- Profit and loss by project or location already works, because every line carries
+  the dimension; the Projects and Locations dashboards show it.
+- Balances are not sliced by dimension. Instead, a party or sub-account can record
+  **which projects and locations it belongs to** (§43). Blank means all.
+- Membership is a data field for picking and filtering. It carries no balance, it
+  never restricts the ledger, and it is not an access control.
+
+This keeps one rule: **balances live on accounts; dimensions slice activity.**
+
+## 41. Switching business happens at sign-in, not in the topbar
+
+The company dropdown is gone. The topbar shows the active business name as text.
+A person who belongs to several businesses signs out and chooses the business at
+sign-in, from the businesses they are a member of.
+
+Backend consequence: a session is bound to exactly one company. Switching issues a
+new session scope; every command carries the company it was authorised for. The
+role selector that remains in the shell is the retained preview control, not a
+company switcher.
+
+## 42. Projects and Locations are accounting pages with a dashboard
+
+Two new pages, each with two tabs:
+
+| Tab | Contents |
+|---|---|
+| Projects / Locations | register of every row with code, name, manager or kind, state, postings, revenue, cost, net; footer totals; a create form |
+| Dashboard | five figures (count, postings, revenue, cost, net), then one panel per project/location containing its ledger sliced by **accounting head**: postings, debit, credit, net, with a footer of revenue, cost and net |
+
+- Every figure derives from the fixture ledger lines tagged with the dimension.
+- Rows with no dimension are shown as **No project assigned / No location
+  recorded**, so the panels add back to the whole ledger instead of quietly
+  dropping postings.
+- A new project or location appears immediately in the journal pickers, because the
+  option lists are built per render instead of once.
+- The standalone **Projects** module in Operations remains the delivery workspace.
+  These two pages are the accounting view of the same dimension. Having both rail
+  entries named “Projects” is noted as an open naming decision in §46.
+
+## 43. Accounting heads are created in Setup
+
+Setup now lists every accounting head (code, name, class, control, state) and has a
+create form: code, name, class, control type.
+
+- A new head appears immediately in the chart of accounts, the journal account
+  picker, the default-account panel and the Projects/Locations head statistics.
+- Codes are validated for uniqueness and shape (4–8 digits).
+- A **receivable** or **payable** control head makes the party field mandatory on
+  every line that uses it; that is what keeps the chart balance equal to its
+  subledger.
+- Party & sub-account **membership** is edited in the same page: for every customer,
+  supplier, bank account and cash custodian, the projects and locations it belongs
+  to. Blank means all. Stored per session in this build.
+
+## 44. The footer sentence is gone
+
+“Posted entries are immutable; corrections are reversals” was removed from the
+journal form. It contradicted the agreed cancellation rule and repeated a policy
+the record page already states. The form footer now reads
+`Voucher · date time · location`.
+
+The record page keeps the accurate rule: cancel removes the ledger effect and keeps
+the register row, delete removes it from the register, the number is never reused,
+the audit log keeps everything, and a reversal is optional.
+
+## 45. Party / sub-account identity and membership are different fields
+
+- **Identity** (round 3): who created, when, from which source (User or AI), and who
+  submitted. Audit only.
+- **Membership** (this round): which projects and locations the sub-account belongs
+  to. Selection convenience only.
+
+Neither of them moves a balance.
+
+## 46. Open
+
+- Two rail entries called “Projects” (Accounting dimension page and Operations
+  module). Decide whether the accounting one becomes “Project ledger”, or the
+  module one is removed from the rail.
+- Membership is display-only until party and sub-account records exist in storage.
+- Quick entry grid; custom fields as register columns; bank/cash reconciliation;
+  payments allocation; invoices; period lock enforcement.
+- Every figure is still a fixture. No posting, allocation or persistence.
