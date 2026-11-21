@@ -125,11 +125,11 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
          <label>Posting time<input name="time" type="time" step="1" value="${e(draft.time||nowTime())}"><small class="secondary">Recorded automatically when you post; change it only if the entry belongs to an earlier moment.</small></label>
          <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series fixed in Setup: JV-MM-YYYY-0001. A custom format must be set before the first entry.</small></label>
          <div class="field"><span class="ms-label">Entry subtype</span>${ss({key:'subtype',name:'entrySubtype',value:draft.entrySubtype||'journal',options:SUBTYPE_OPTIONS,label:'entry subtypes',search:false})}</div>
+         <div class="field"><span class="ms-label">Entry type</span>${ss({key:'entrytype',name:'entryType',value:draft.entryType||'normal',options:ENTRYTYPE_OPTIONS,label:'entry types',search:false})}</div>
          <div class="field"><span class="ms-label">Location</span>${ss({key:'location',name:'location',value:draft.location||'HQ',options:LOCATION_OPTIONS,label:'locations',search:false})}</div>
          <label class="wide">Narration<textarea name="narrative" rows="5" required>${e(draft.narrative)}</textarea><small class="secondary">What this entry is for, in plain language. Prints on the voucher.</small></label>
        </div>
        <div class="form-grid" ${formTab==='more'?'':'hidden'}>
-         <div class="field"><span class="ms-label">Entry type</span>${ss({key:'entrytype',name:'entryType',value:draft.entryType||'normal',options:ENTRYTYPE_OPTIONS,label:'entry types',search:false})}</div>
          <div class="record-summary audit-strip">
            <div><small>Created by</small>${e(draft.createdBy||'A. Rehman')}</div>
            <div><small>Created at</small>${e(draft.createdAt||draft.date+' '+nowTime())}</div>
@@ -140,7 +140,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
        </div>
 
        <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>
-       <div class="table-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Description</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
+       <div class="table-scroll journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Description</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
          const a=acc(l.account);
          return `<tr data-journal-line="${i}"><td>${picker(i,l.account)}</td>
            <td>${ss({key:'party',field:'party',value:l.party||'',options:PARTY_OPTIONS,label:'parties and sub-accounts',placeholder:'Choose party / sub-account',line:i,disabled:!partyNeeded(a)})}</td>
@@ -186,7 +186,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      if(!item)return;
      const box=item.closest('.ss');
      const hidden=box.querySelector('input[type="hidden"]');
-     hidden.value=item.dataset.code;
+     hidden.value=item.dataset.value;
      box.querySelector('.ms-text').textContent=item.dataset.label;
      box.querySelector('.ms-panel').hidden=true;
      box.querySelector('.ms-trigger').setAttribute('aria-expanded','false');
@@ -215,6 +215,12 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    });
    const empty=box.querySelector('.ms-empty');
    if(empty)empty.hidden=shown>0;
+ });
+ document.querySelector('#journal-evidence')?.addEventListener('change',ev=>{
+   capture();
+   [...ev.target.files].forEach(f=>draft.evidence.push({name:f.name,size:f.size,type:f.type||''}));
+   ev.target.value='';
+   render();
  });
  document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
    const act=b.dataset.formAction;

@@ -444,7 +444,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   const inSet = (list, value) => !list.length || list.includes(value);
 
   function ledgerRows() {
-    const docs = fixture(getCompany()).filter((d) => d.date >= GL.from && d.date <= GL.to);
+    const docs = fixture(getCompany()).filter((d) => d.date >= GL.from && d.date <= GL.to && !CANCELLED.has(d.id) && !DELETED.has(d.id));
     const out = [];
     for (const d of docs) {
       if (!inSet(GL.parties, d.party)) continue;
@@ -482,7 +482,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   function openingBalance(codes) {
     if (!codes.length) return 0;
-    return round2(fixture(getCompany()).filter((d) => d.date < GL.from)
+    return round2(fixture(getCompany()).filter((d) => d.date < GL.from && !CANCELLED.has(d.id) && !DELETED.has(d.id))
       .reduce((n, d) => n + d.lines.filter((l) => codes.includes(l.account))
         .reduce((m, l) => m + num(l.debit) - num(l.credit), 0), 0));
   }
@@ -607,6 +607,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       filterRows(ev.target.closest('.ms'));
     });
     document.addEventListener('change', (ev) => {
+      if (ev.target.type !== 'checkbox') return;   // single-selects set their own label
       const box = ev.target.closest('.ms');
       if (!box) return;
       const boxes = [...box.querySelectorAll('input[type=checkbox]')];
@@ -795,6 +796,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   /* --------------------------------------------------------- journal register */
+  const CANCELLED = new Set();
+  const DELETED = new Set();
+
   const J = {
     parties: [], projects: [], locations: [], centres: [], subtypes: [], q: '',
     sort: {key: 'date', dir: 'desc'}, record: '', session: [], removed: new Set(),
@@ -802,7 +806,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   };
 
   function journalDocs() {
-    return fixture(getCompany()).filter((d) => !J.removed.has(d.id)).concat(J.session);
+    return fixture(getCompany()).filter((d) => !J.removed.has(d.id) && !DELETED.has(d.id)).concat(J.session);
   }
 
   function journalRows() {
@@ -822,7 +826,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         project: d.project || '', location: d.location || '', centre, narrative: d.narrative,
         debit: round2(d.lines.reduce((n, l) => n + num(l.debit), 0)),
         credit: round2(d.lines.reduce((n, l) => n + num(l.credit), 0)),
-        state: d.state || 'posted', doc: d,
+        state: CANCELLED.has(d.id) ? 'cancelled' : (d.state || 'posted'), doc: d,
       });
     }
     return sortRows(rows, J.sort);
@@ -889,7 +893,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function recordPage(id) {
     const d = journalDocs().find((x) => x.id === id);
     if (!d) { J.record = ''; return journalRegister(); }
-    const state = d.state || 'posted';
+    const state = CANCELLED.has(d.id) ? 'cancelled' : (d.state || 'posted');
     const editable = state === 'draft';
     const totals = d.lines.reduce((n, l) => n + num(l.debit), 0);
     return `<div class="related gl-actions">
@@ -898,7 +902,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <span class="spacer"></span>
         ${editable ? '<button class="button" data-jr-edit>Edit draft</button>' : ''}
         <button class="button" data-jr-duplicate>Duplicate</button>
-        ${editable ? '<button class="button" data-jr-delete>Delete</button>' : ''}
+        ${state !== 'cancelled' ? '<button class="button" data-jr-cancel>Cancel entry</button>' : ''}
+        ${state === 'draft' || state === 'cancelled' ? '<button class="button" data-jr-delete>Delete</button>' : ''}
+        ${state === 'posted' ? '<button class="button" data-jr-reverse>Reverse</button>' : ''}
         <button class="button" data-jr-print>Print</button>
       </div>
       <section class="panel">
@@ -919,7 +925,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
             <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(totals)}</td><td class="numeric">${money(d.lines.reduce((n, l) => n + num(l.credit), 0))}</td></tr></tfoot></table>
           </div>
         </div>
-        <div class="table-footer">${state === 'posted' ? 'Posted entries are immutable: corrections are made by a reversing entry, and only an administrator may delete (soft delete, kept in the audit log).' : 'Draft: editable, can be submitted, duplicated or deleted.'}</div>
+        <div class="table-footer">${state === 'posted'
+          ? 'Posted: immutable. Cancel removes its ledger effect and keeps it in the register; delete then removes it from the register. A reversal entry is optional and only needed when the correction must stay visible in the ledger.'
+          : state === 'cancelled'
+            ? 'Cancelled: no ledger effect, still visible in the register. Delete removes it from the register; the number is never reused and the audit log keeps the record.'
+            : 'Draft: editable, can be submitted, duplicated or deleted. Nothing reaches the ledger.'}</div>
       </section>`;
   }
 
@@ -961,12 +971,22 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       J.record = copy.id;
       rerender();
     });
+    document.querySelector('[data-jr-cancel]')?.addEventListener('click', () => {
+      if (!J.record) return;
+      CANCELLED.add(J.record);
+      notify('Entry cancelled: removed from the ledger, kept in the register. Its number is not reused.');
+      rerender();
+    });
+    document.querySelector('[data-jr-reverse]')?.addEventListener('click', () => {
+      if (!J.record) return;
+      notify('Reversal drafted. Reversal is optional: cancel already removes the ledger effect.');
+    });
     document.querySelector('[data-jr-delete]')?.addEventListener('click', () => {
       const src = journalDocs().find((x) => x.id === J.record);
       if (!src) return;
       if (J.session.includes(src)) J.session = J.session.filter((x) => x !== src);
-      else J.removed.add(src.id);
-      notify('Removed for this session. A real deployment keeps a soft delete and an audit entry.');
+      else DELETED.add(src.id);
+      notify('Deleted from the register. The voucher number is never reused and the audit log keeps the record.');
       J.record = '';
       rerender();
     });

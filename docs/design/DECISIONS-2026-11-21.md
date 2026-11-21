@@ -424,3 +424,49 @@ trial balance can never disagree, and why no account is ever renamed for a proje
 - The action menu's state machine against real permissions.
 - Custom fields appearing in the register and ledger as columns (needs the forms
   register in Setup).
+
+---
+
+# Round 4 — selection bug, files, cancellation
+
+## 28. Dropdown selection bug (fixed)
+
+Selecting an option set the field to `undefined` and relabelled the trigger to "All".
+Two causes: the option handler read `data-code` after the component moved to
+`data-value`, and the multi-select text updater reacted to the hidden input's change
+event and recomputed the label from an empty checkbox set. Fixed by reading the right
+attribute and ignoring non-checkbox change events. Verified: selecting an option in
+line 1 changes only line 1.
+
+## 29. File upload
+
+Choosing files now records name, size and type on the draft and renders them with a
+remove action. The bytes are still not uploaded in this build; the field exists so
+the contract is visible.
+
+## 30. Journal line scrollbar
+
+The line grid always shows a horizontal scrollbar (`overflow-x: scroll`, stable
+gutter) so a wide grid never hides columns silently.
+
+## 31. Entry type placement
+
+Entry type belongs to the entry, so it sits on the **Entry** tab beside the subtype.
+More info holds only the audit strip and the note about custom fields.
+
+## 32. Cancellation and deletion — corrected logic
+
+Reversal is **a choice, not a requirement**.
+
+| Action | Ledger | Register | Number | Log |
+|---|---|---|---|---|
+| Cancel | effect removed | stays, marked cancelled | kept, never reused | cancel recorded |
+| Delete (after cancel, or a draft) | already out | removed | kept, never reused | delete recorded with the full previous state |
+| Reverse | opposite entry added | both stay | new number | reversal recorded |
+
+- A deleted entry is gone from every screen, but the audit log keeps what it was,
+  who deleted it, when, and the values it had. The log is the permanent record.
+- The sequence never reuses a number: if entry 3 is deleted, the next entry is 4.
+- Delete is offered only for drafts and cancelled entries. A posted entry must be
+  cancelled first, which is what guarantees the ledger is never silently changed.
+- The record page shows the current state and only the actions valid for it.
