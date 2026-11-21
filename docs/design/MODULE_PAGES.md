@@ -16,16 +16,16 @@ States: **built** working screen · **partial** working, covers part of the page
 | 2 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
 | 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
 | 4 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
-| 5 | Cash & bank `cash` | partial | Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab. |
+| 5 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
 | 6 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |
-| 7 | Items `items` | planned | Item register and item page with accounts, tax defaults, costing and item-wise statistics. |
+| 7 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
 | 8 | Sales invoices `sales-invoices` | planned | Customer invoices that create receivable open items, with source references into Selling. |
 | 9 | Purchase invoices `purchase-invoices` | planned | Supplier bills that create payable open items, with source references into Buying. |
 | 10 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
 | 11 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
-| 12 | Reports `reports` | partial | Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger. |
-| 13 | Taxes `taxes` | planned | One page, five tabs: codes and rates, registers, withholding, returns and certificates. |
-| 14 | Setup `setup` | planned | Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods. |
+| 12 | Reports `reports` | built | Ageing, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
+| 13 | Taxes `taxes` | built | One page, five tabs: tax rules with a create form, output and input registers, withholding, advance tax and reconciliation against the control accounts. |
+| 14 | Setup `setup` | built | One page, six tabs: organisation, numbering, default accounts, accounting heads, projects and locations, approvals and periods. |
 | 15 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
 
 ## Inventory (inventory)
@@ -262,4 +262,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 152 pages · 6 built · 3 partial · 143 planned.**
+**20 modules · 152 pages · 11 built · 1 partial · 140 planned.**

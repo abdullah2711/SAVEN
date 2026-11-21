@@ -144,6 +144,27 @@ Accounting
 Approvals is a separate top-level module. Receivables, Payables, Ageing, Registers
 and Statements are no longer pages.
 
+Status of every Accounting page:
+
+| Page | State | What works now |
+|---|---|---|
+| Dashboard | built | position, cash trend, ageing, attention list, recent journals |
+| General ledger | built | filters, columns, sorting, totals strip, drill-in, CSV, print |
+| Journal entries | built | register, record page with state actions, full-page form |
+| Cash & bank | built | sub-account register with balances and a create form with project/location access |
+| Items | built | register and create form with heads, tax default, tracked flag |
+| Chart of accounts | built | tree with group and head balances, add, edit, archive |
+| Trial balance | built | opening/movement/closing, totals, formatting, drill to ledger |
+| Reports | built | ageing, P&L, financial position, cash flow, equity |
+| Taxes | built | rules register and form, output/input registers, withholding, advance, reconciliation |
+| Setup | built | six tabs: organisation, numbering, default accounts, heads, projects & locations, approvals |
+| Parties | planned | register and party page, with allowed projects and locations on the form |
+| Payments | planned | receipts and payments with allocation |
+| Sales invoices | planned | customer invoice posting to receivables |
+| Purchase invoices | planned | supplier bill posting to payables |
+| Period close | partial | checklist visible; no enforced lock |
+
+
 ### 2.2 Pages
 
 **2.2.1 Dashboard — built, being reworked**

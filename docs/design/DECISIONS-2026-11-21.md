@@ -832,3 +832,97 @@ Selecting two or three values made the filter trigger grow, because the text spa
 had no `min-width` inside its flex row and refused to shrink. It now truncates with
 an ellipsis (`min-width:0`, `max-width:320px` on the filter control), so a long
 selection can never overlap the next block.
+
+---
+
+# Round 9 — cash & bank, items, taxes, reports, and the two registers completed
+
+## 57. Cash & bank
+
+One page, exactly like the journal page: a register and a form.
+
+- The register lists every **sub-account** — the party inside the control head —
+  with code, name, bank reference, kind, control account, postings and balance.
+- The form asks for code, name, kind (bank or cash), reference, and **which projects
+  and locations it may be used on**. Blank means all.
+- Bank sub-accounts belong to control **1010**, cash sub-accounts to **1000**. The
+  journal only offers a bank name on a bank line and a cash custodian on a cash
+  line, narrowed by the chosen projects and locations.
+- The head keeps the balance. The page shows four figures: bank, cash, the part of
+  the controls named to a sub-account, and **unallocated** — the part no document has
+  named yet. The fixture leaves 5,110.00 unallocated on purpose, so the concept is
+  visible instead of hidden.
+- Bank lines in the fixture now name their sub-account, so per-account balances are
+  real and add up to the control.
+
+## 58. Items
+
+One page, register plus form, same philosophy.
+
+- Code, name, unit, **income head**, **expense head**, **tax rule**, and the
+  **inventory-tracked** flag.
+- Accounting stores accounts and the tax default; Inventory owns quantity, valuation
+  and movement. Item lines appear in the ledger only when invoices exist, so the
+  register says that rather than inventing usage figures.
+
+## 59. Taxes
+
+Five tabs, all built, one page:
+
+| Tab | Contents |
+|---|---|
+| Rules | register of rules with kind, rate, basis, account, scope, effective date, allowed projects and locations; a form creates a new rule |
+| Registers | output and input tax lines derived from documents, with base, tax, effective rate, project and location, and totals |
+| Withholding | expected against recorded, from the withholding rules and this period's expense base |
+| Advance tax | the same for tax a customer deducts from our invoices |
+| Reconciliation | tax account register total against the ledger balance, with a difference per account |
+
+- A rule is a default; a document line may override or switch it off.
+- Withholding and advance are zero in the fixture because nothing has been withheld
+  or deducted yet. The page says so and shows the expected gap; it does not pretend
+  the money moved.
+
+## 60. Chart of accounts
+
+Completed:
+
+- group total on every class row (Assets, Liabilities, Equity, Income, Expenses);
+- closing balance of every head, marked **Dr** or **Cr**;
+- control badge (`receivable`, `payable`) on the head;
+- the detail panel shows control type and closing balance;
+- the chart now carries inventory, petty cash, advance tax receivable, withholding
+  tax payable and bank charges, so the default-account list points at real heads.
+
+## 61. Trial balance
+
+Completed:
+
+- a totals strip: heads, period debit, period credit, net or difference, balanced
+  badge;
+- all amounts formatted with thousands separators and two decimals;
+- opening net, movement and closing debit/credit per head, click through to the
+  ledger.
+
+## 62. Reports
+
+One page, five tabs, every figure from the same ledger:
+
+| Tab | Contents |
+|---|---|
+| Ageing | receivables and payables by bucket with totals, plus the depreciation schedule |
+| Profit & loss | income and expense per head, totals, result for the period |
+| Financial position | assets, liabilities, equity, accumulated result, and the equation check |
+| Cash flow | opening cash, receipts, payments, net movement, closing, movement by document type |
+| Equity | capital accounts, accumulated result, total equity |
+
+None of it presents a statutory statement; each panel says what it does and does not
+include.
+
+## 63. What is still not built
+
+- Parties register and party page (with allowed projects and locations on the form).
+- Payments with allocation.
+- Sales and purchase invoices.
+- Bank statement reconciliation.
+- Period close with an enforced lock.
+- Quick entry grid, forms register, custom fields as columns, persistence.

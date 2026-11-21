@@ -1,6 +1,6 @@
 // Independent synthetic UI fixtures. No business storage or posting endpoint.
 import {cents,decimal} from './model.js';
-export const chart=[['1000','Cash','asset','Assets'],['1010','Operating bank','asset','Assets'],['1100','Trade receivables','asset','Assets','receivable'],['1300','Recoverable input tax','asset','Assets'],['2100','Trade payables','liability','Liabilities','payable'],['2200','Output tax payable','liability','Liabilities'],['3000','Owner capital','equity','Equity'],['4000','Service revenue','income','Income'],['5000','Operating expenses','expense','Expenses']].map(([code,name,type,group,control])=>({code,name,type,group,control:control||'',currency:'PKR',active:true}));
+export const chart=[['1000','Cash','asset','Assets'],['1010','Operating bank','asset','Assets'],['1100','Trade receivables','asset','Assets','receivable'],['1300','Recoverable input tax','asset','Assets'],['2100','Trade payables','liability','Liabilities','payable'],['2200','Output tax payable','liability','Liabilities'],['3000','Owner capital','equity','Equity'],['4000','Service revenue','income','Income'],['5000','Operating expenses','expense','Expenses'],['1200','Inventory — finished goods','asset','Assets'],['1020','Petty cash','asset','Assets'],['1400','Advance tax receivable','asset','Assets'],['2150','Withholding tax payable','liability','Liabilities'],['6500','Bank charges','expense','Expenses']].map(([code,name,type,group,control])=>({code,name,type,group,control:control||'',currency:'PKR',active:true}));
 const line=(account,debit,credit,meta={})=>({account,debit,credit,project:'',location:'',costCentre:'',againstVoucher:'',supplierRef:'',...meta});
 export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital introduced',party:'Owner',source:'Journal',lines:[line('1010','5000.00','0.00'),line('3000','0.00','5000.00')]},{id:'DEMO-SI-001',date:'2026-11-03',narrative:'Service invoice',party:'Atlas Studio',source:'Sales invoice',lines:[line('1100','110.00','0.00'),line('4000','0.00','100.00'),line('2200','0.00','10.00')]},{id:'DEMO-PY-001',date:'2026-11-05',narrative:'Invoice settlement',party:'Atlas Studio',source:'Payment',lines:[line('1010','110.00','0.00'),line('1100','0.00','110.00')]},{id:'DEMO-PI-001',date:'2026-11-07',narrative:'Purchased services',party:'Willow Supplies',source:'Supplier bill',lines:[line('5000','50.00','0.00'),line('1300','5.00','0.00'),line('2100','0.00','55.00')]}];
 
@@ -29,6 +29,35 @@ export const PARTY_ACCESS = {
   'Meridian Pharma': {projects: ['PRJ-MERIDIAN'], locations: ['OUT-LHE-02']},
   'Willow Supplies': {projects: ['PRJ-FALCON'], locations: []},
 };
+// Cash and bank sub-accounts. A sub-account is a party inside the control
+// account (1010 bank, 1000 cash). Membership of projects and locations is a
+// data field on the sub-account: blank means all.
+export const BANK_NAMES = ['Standard Bank — current 0123456789', 'Meezan Bank — current 0987654321'];
+export const CASH_NAMES = ['Front desk — A. Khan', 'Store counter — S. Ali'];
+export const CASH_BANK = [
+  {code: 'BANK-STD', name: BANK_NAMES[0], kind: 'bank', control: '1010', reference: 'PK36STAN0000123456789012', projects: [], locations: []},
+  {code: 'BANK-MZN', name: BANK_NAMES[1], kind: 'bank', control: '1010', reference: 'PK36MEZN0000987654321098', projects: [], locations: []},
+  {code: 'CASH-FRONT', name: CASH_NAMES[0], kind: 'cash', control: '1000', reference: 'Front desk till', projects: [], locations: ['HQ']},
+  {code: 'CASH-STORE', name: CASH_NAMES[1], kind: 'cash', control: '1000', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
+];
+
+// Tax rules. A rule is a default; a document line may override it.
+export const TAX_RULES = [
+  {code: 'STD-SALE', name: 'Sales tax 10%', kind: 'sales', rate: 10, basis: 'exclusive', account: '2200', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'STD-PURCHASE', name: 'Purchase tax 10%', kind: 'purchase', rate: 10, basis: 'exclusive', account: '1300', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'WHT-SERV', name: 'Withholding on services 4.5%', kind: 'withholding', rate: 4.5, basis: 'exclusive', account: '2150', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'ADV-SALE', name: 'Advance tax deducted by customer 0.5%', kind: 'advance', rate: 0.5, basis: 'exclusive', account: '1400', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+];
+
+// Light item master for accounting. Tracked items are the only ones Inventory
+// would value; quantities never live here.
+export const ITEMS = [
+  {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
+  {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
+  {code: 'ITM-PACK', name: 'Packaging carton', unit: 'piece', income: '4000', expense: '5000', tax: 'STD-PURCHASE', tracked: true},
+  {code: 'ITM-INK', name: 'Printing ink', unit: 'litre', income: '4000', expense: '5000', tax: 'STD-PURCHASE', tracked: true},
+];
+
 const locationFor = (i) => LOCATIONS[i % LOCATIONS.length].code;
 export const COST_CENTRES = ['Administration', 'Operations', 'Sales', 'Warehouse'];
 const projectFor = (i) => (i % 5 === 0 ? '' : PROJECTS[i % PROJECTS.length].code);
@@ -57,7 +86,7 @@ export const operatingJournals=(()=>{
     }
     if(kind==='receipt'){
       const value=r2(30000+seeded()*55000);
-      return {id:'DEMO-PY-'+String(100+i),date,subtype:'Receipt',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Payment',supplierRef:'',againstVoucher:'DEMO-SI-'+String(100+i),lines:[line('1010',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)}),line('1100','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)})]};
+      return {id:'DEMO-PY-'+String(100+i),date,subtype:'Receipt',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Payment',supplierRef:'',againstVoucher:'DEMO-SI-'+String(100+i),lines:[line('1010',amt(value),'0.00',{project,costCentre:centre,party:BANK_NAMES[i%BANK_NAMES.length],againstVoucher:'DEMO-SI-'+String(100+i)}),line('1100','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)})]};
     }
     if(kind==='bill'){
       const value=r2(20000+seeded()*50000);
@@ -65,10 +94,10 @@ export const operatingJournals=(()=>{
     }
     if(kind==='payment'){
       const value=r2(30000+seeded()*50000);
-      return {id:'DEMO-JV-'+String(100+i),date,subtype:'Payment',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Payment',supplierRef:'',againstVoucher:'DEMO-PI-'+String(100+i),lines:[line('2100',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)}),line('1010','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)})]};
+      return {id:'DEMO-JV-'+String(100+i),date,subtype:'Payment',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Payment',supplierRef:'',againstVoucher:'DEMO-PI-'+String(100+i),lines:[line('2100',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)}),line('1010','0.00',amt(value),{project,costCentre:centre,party:BANK_NAMES[i%BANK_NAMES.length],againstVoucher:'DEMO-PI-'+String(100+i)})]};
     }
     const value=r2(60000+seeded()*80000);
-    return {id:'DEMO-JV-'+String(500+i),date,subtype:'Expense',project:'',location,party:'Internal',partyType:'',source:'Journal',supplierRef:'',againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre,location}),line('1010','0.00',amt(value),{project,costCentre:centre,location})]};
+    return {id:'DEMO-JV-'+String(500+i),date,subtype:'Expense',project:'',location,party:'Internal',partyType:'',source:'Journal',supplierRef:'',againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre,location}),line('1010','0.00',amt(value),{project,costCentre:centre,location,party:BANK_NAMES[i%BANK_NAMES.length]})]};
   });
   return docs.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
 })();

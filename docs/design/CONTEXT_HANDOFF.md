@@ -69,7 +69,15 @@ savenuitest.localhost` → `docs/design/save`.
   no date before business start, no closed period), subtype, one **header location**,
   party/sub-account filtered by account kind, project, cost centre, review panel,
   evidence drop zone, print + overflow menu, always-visible horizontal scroll track.
-- Chart of accounts, trial balance, statements.
+- Cash & bank: register of sub-accounts with balances and a create form carrying the
+  allowed projects and locations.
+- Items: register and create form with income/expense heads, tax default and tracked
+  flag.
+- Chart of accounts: group totals, per-head closing balance (Dr/Cr), control badges.
+- Trial balance: totals strip, formatted amounts, drill to the ledger.
+- Reports: ageing, profit & loss, financial position, cash flow, equity.
+- Taxes: rules register and form, output/input registers, withholding, advance tax,
+  reconciliation.
 - **Setup** is tabbed: organisation, numbering, default accounts, accounting heads,
   projects & locations, approvals & periods. Projects and locations are created
   there; they have no pages of their own.
@@ -77,9 +85,9 @@ savenuitest.localhost` → `docs/design/save`.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 
-**Known gaps**: quick entry grid; forms register; bank/cash reconciliation; payments
-allocation; invoices; item master; period lock enforcement; membership is
-display-only; no persistence (reload returns to fixtures).
+**Known gaps**: parties register and page; payments allocation; invoices; bank
+statement reconciliation; period close lock; quick entry grid; forms register;
+persistence (reload returns to fixtures).
 
 ## Decisions already made (do not re-litigate)
 

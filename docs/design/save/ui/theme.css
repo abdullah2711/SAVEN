@@ -265,3 +265,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 /* A filter with several values must truncate, never push into its neighbour. */
 .filterbar .ms{max-width:min(100%,320px)}
 .filterbar .ms .ms-trigger{overflow:hidden}
+
+/* Chart of accounts: group and head balances on the right of each row. */
+.coa-group .coa-total{margin-left:auto;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+.coa-account .badge{margin-left:4px}

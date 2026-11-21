@@ -3,7 +3,7 @@
 // no shader, no animation. Every total that duplicates a ledger figure is
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
-import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES} from './accounting-model.js';
+import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTY_ACCESS,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
@@ -87,43 +87,14 @@ export function bindProjectForm(rerender, notify) {
 
 /* --------------------------------------------------------------------- taxes */
 const TAX_TABS = [
-  ['rules', 'Rules', 'Every tax rule the business applies: kind (sales tax, purchase tax, withholding, advance tax), rate, inclusive or exclusive, the account it posts to, and what it applies to — everything, a group of items, or one item or service. A rule is a default: any document line can override the rate or switch tax off.', ['Rule kind and rate', 'Inclusive or exclusive pricing', 'Account per rule, different for sales and purchases', 'Scope: all items, a group, or a single item', 'Effective from and to', 'Override allowed per document line']],
-  ['registers', 'Registers', 'Every tax line produced by a document, split into output (sales) and input (purchases), filterable by period, party, rule and document. Totals must agree with the tax control accounts, and the page says so when they do not.', ['Output tax lines', 'Input tax lines', 'Recoverable and blocked portions', 'Filter by period, party, rule', 'Reconciliation against control accounts']],
-  ['withholding', 'Withholding', 'Tax we deduct from a supplier and owe to the authority on their behalf. It is a liability from the moment we withhold, cleared when we pay the authority. Shown separately from purchase tax because the money is never ours.', ['Purchase sales-tax withholding', 'Purchase income-tax withholding', 'Expected against actual', 'Liability by period', 'Paid to authority, cleared against the liability']],
-  ['advance', 'Advance tax', 'Tax a customer deducts from our invoice and pays to the authority on our behalf. It is our tax paid in advance: an asset until the return claims it.', ['Sales sales-tax deducted by customer', 'Sales income-tax deducted by customer', 'Asset by period', 'Claimed on the return', 'Reconciled against the certificate the customer issues']],
-  ['adjustments', 'Reconciliation & adjustments', 'Where recorded tax and actual tax differ — rounding, a rate applied late, a credit note, a filing adjustment. Each adjustment carries a reason, the period it belongs to, the account and the evidence, and posts to the tax control accounts.', ['Reason code per adjustment', 'Period it belongs to', 'Debit or credit to a tax account', 'Evidence and approval', 'Reconciliation view: recorded, adjusted, filed']],
+  ['rules', 'Rules'],
+  ['registers', 'Registers'],
+  ['withholding', 'Withholding'],
+  ['advance', 'Advance tax'],
+  ['adjustments', 'Reconciliation'],
 ];
-
-function taxPanel(id) {
-  const tab = TAX_TABS.find(([k]) => k === id) || TAX_TABS[0];
-  const [, label, text, contains] = tab;
-  return `<section class="panel">
-    <div class="panel-head"><h2>${e(label)}</h2>${badge('Being built')}</div>
-    <div class="panel-body">
-      <p>${e(text)}</p>
-      <div class="section-title">What it will contain</div>
-      <ul class="contract-list">${contains.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
-      <div class="callout"><strong>Not connected yet.</strong> These tabs are mapped and specified. Nothing here posts, files or changes a balance.</div>
-      <p class="form-note">Tax rules can also be entered as a custom line on any document with an account flagged as a tax account, so the business can run without this page.</p>
-    </div>
-  </section>`;
-}
-
-function taxesScreen(tab = 'codes') {
-  const current = TAX_TABS.some(([k]) => k === tab) ? tab : 'codes';
-  return `<div class="tabs" role="tablist" aria-label="Tax views">
-      ${TAX_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-tax-tab="${id}">${label}</button>`).join('')}
-    </div>
-    <div id="tax-panel">${taxPanel(current)}</div>`;
-}
-
-function bindTaxes(rerender) {
-  document.querySelectorAll('[data-tax-tab]').forEach((btn) => btn.addEventListener('click', () => {
-    TAX_ACTIVE = btn.dataset.taxTab;
-    rerender();
-  }));
-}
-let TAX_ACTIVE = 'codes';
+let TAX_ACTIVE = 'rules';
+let REPORT_TAB = 'ageing';
 
 /** Generic "being built" page for any module in the page map. */
 export function plannedPage(moduleId, pageId) {
@@ -1166,8 +1137,380 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     });
   }
 
+  /* ------------------------------------------------------ cash and bank */
+  const picked = (box) => [...box.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value);
+  const ledgerBalance = (code) => {
+    const a = rows().find((r) => r.code === code);
+    return a ? round2(num(a.closingDebit) - num(a.closingCredit)) : 0;
+  };
+  const scopeText = (list) => (list && list.length ? list.join(', ') : 'All');
+
+  function cashAccountRows() {
+    return CASH_BANK.map((s) => {
+      let postings = 0, dr = 0, cr = 0;
+      for (const d of fixture(getCompany())) for (const l of d.lines) {
+        if (l.party !== s.name) continue;
+        postings++; dr += num(l.debit); cr += num(l.credit);
+      }
+      return {...s, postings, balance: round2(dr - cr)};
+    });
+  }
+
+  function cashBankView() {
+    const list = cashAccountRows();
+    const sum = (kind) => round2(list.filter((s) => s.kind === kind).reduce((n, s) => n + s.balance, 0));
+    const bankTotal = sum('bank'), cashTotal = sum('cash');
+    const bankLedger = ledgerBalance('1010'), cashLedger = ledgerBalance('1000');
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    return `<div class="stats">
+        ${kpi('Bank', money(bankLedger), `${list.filter((s) => s.kind === 'bank').length} sub-accounts · control 1010`)}
+        ${kpi('Cash', money(cashLedger), `${list.filter((s) => s.kind === 'cash').length} sub-accounts · control 1000`)}
+        ${kpi('Named to a sub-account', money(bankTotal + cashTotal), 'Part of the controls with a name')}
+        ${kpi('Unallocated', money(bankLedger + cashLedger - bankTotal - cashTotal), 'Control balance no document has named yet')}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${list.length} accounts</span></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th></tr></thead>
+          <tbody>${list.map((s) => `<tr><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference)}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td class="mono">${e(s.control)}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="5">Total named</td><td class="numeric">${money(bankTotal + cashTotal)}</td><td colspan="2"></td></tr></tfoot>
+        </table></div>
+        <div class="table-footer">A sub-account is the party inside the control head. The head keeps the balance; this table keeps the name, the bank reference and the projects and locations it may be used on. Unallocated is the part of the control balance that no document has named yet.</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>New cash or bank sub-account</h2><span class="badge">Blank access means all</span></div>
+        <form data-cash-form class="panel-body form-grid">
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BANK-HBL"></label>
+          <label>Name<input name="name" required maxlength="70" placeholder="HBL — current 1234"></label>
+          <label>Kind<select name="kind" class="inline-input"><option value="bank">Bank</option><option value="cash">Cash</option></select></label>
+          <label>Reference<input name="reference" maxlength="40" placeholder="IBAN, card or till number"></label>
+          ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
+          ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
+          <div class="related"><button class="button primary">Add sub-account</button></div>
+        </form>
+        <div class="panel-body"><p class="form-note">Bank sub-accounts belong to control 1010, cash sub-accounts to 1000. The journal only offers a bank account on a bank line and a cash custodian on a cash line, narrowed further by the projects and locations chosen here.</p></div>
+      </section>`;
+  }
+
+  function bindCashBank(rerender, notify) {
+    document.querySelector('[data-cash-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      if (CASH_BANK.some((s) => s.code === v.code || s.name.trim().toLowerCase() === v.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
+      const [proj, loc] = form.querySelectorAll('.ms');
+      CASH_BANK.push({code: v.code, name: v.name.trim(), kind: v.kind, control: v.kind === 'cash' ? '1000' : '1010', reference: v.reference || '', projects: picked(proj), locations: picked(loc)});
+      notify('Sub-account added for this session. It is available in the journal and belongs to the chosen projects and locations.');
+      rerender();
+    });
+  }
+
+  /* ------------------------------------------------------------- items */
+  function itemsView() {
+    const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
+    const ruleName = (code) => (TAX_RULES.find((r) => r.code === code) || {}).name || 'No tax';
+    const tracked = ITEMS.filter((i) => i.tracked).length;
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    return `<div class="stats">
+        ${kpi('Items', String(ITEMS.length), 'Shared with Inventory')}
+        ${kpi('Tracked', String(tracked), 'Inventory would value these')}
+        ${kpi('Services', String(ITEMS.length - tracked), 'Never valued or counted')}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><h2>Items</h2><span class="badge">Accounting view</span></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Code</th><th>Item</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Tax rule</th><th>Stock</th></tr></thead>
+          <tbody>${ITEMS.map((i) => `<tr><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <div class="table-footer">The item master is shared with Inventory. Accounting stores the accounts and the tax default; Inventory owns quantity, valuation and movement. An item line appears in the ledger only when an invoice or bill is posted.</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>New item</h2></div>
+        <form data-item-form class="panel-body form-grid">
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="ITM-BOX"></label>
+          <label>Name<input name="name" required maxlength="70" placeholder="Shipping box"></label>
+          <label>Unit<input name="unit" required maxlength="10" value="piece"></label>
+          <label>Stock<select name="tracked" class="inline-input"><option value="no">Service or untracked</option><option value="yes">Tracked in Inventory</option></select></label>
+          <label>Income head<select name="income" class="inline-input">${accounts().filter((a) => a.type === 'income').map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Expense head<select name="expense" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Tax rule<select name="tax" class="inline-input">${TAX_RULES.filter((r) => r.kind === 'sales' || r.kind === 'purchase').map((r) => `<option value="${r.code}">${e(r.name)}</option>`).join('')}</select></label>
+          <div class="related"><button class="button primary">Add item</button></div>
+        </form>
+      </section>`;
+  }
+
+  function bindItems(rerender, notify) {
+    document.querySelector('[data-item-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      if (ITEMS.some((i) => i.code === v.code)) { notify('That item code already exists.'); return; }
+      ITEMS.push({code: v.code, name: v.name, unit: v.unit, income: v.income, expense: v.expense, tax: v.tax, tracked: v.tracked === 'yes'});
+      notify('Item added for this session. Its accounts and tax default are ready for invoices.');
+      rerender();
+    });
+  }
+
+  /* -------------------------------------------------------------- taxes */
+  function taxRule(code) { return TAX_RULES.find((r) => r.code === code) || {}; }
+  function taxLinesOf(kind) {
+    const acc = kind === 'sales' ? '2200' : '1300';
+    const out = [];
+    for (const d of fixture(getCompany())) {
+      const tax = d.lines.filter((l) => l.account === acc);
+      if (!tax.length) continue;
+      const base = round2(d.lines.filter((l) => (kind === 'sales' ? String(l.account).startsWith('4') : (String(l.account).startsWith('5') || String(l.account).startsWith('6'))))
+        .reduce((n, l) => n + (kind === 'sales' ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
+      for (const l of tax) out.push({id: d.id, date: d.date, party: d.party, base, tax: round2(kind === 'sales' ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), project: l.project || d.project || '', location: l.location || d.location || ''});
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  }
+  function taxRegisterPanel(kind) {
+    const lines = taxLinesOf(kind);
+    const base = round2(lines.reduce((n, l) => n + l.base, 0));
+    const tax = round2(lines.reduce((n, l) => n + l.tax, 0));
+    const effective = base ? round2((tax / base) * 100) : 0;
+    return `<section class="panel">
+      <div class="panel-head"><h2>${kind === 'sales' ? 'Output tax' : 'Input tax'} register</h2><span class="badge">${lines.length} tax lines</span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Date</th><th>Voucher</th><th>Party</th><th class="numeric">Base</th><th class="numeric">Tax</th><th>Project</th><th>Location</th></tr></thead>
+        <tbody>${lines.map((l) => `<tr><td>${e(l.date)}</td><td><button class="text-button" data-ac="source" data-value="${e(l.id)}">${e(l.id)}</button></td><td>${e(l.party)}</td><td class="numeric">${money(l.base)}</td><td class="numeric">${money(l.tax)}</td><td>${e(l.project || '—')}</td><td>${e(l.location || '—')}</td></tr>`).join('') || '<tr><td colspan="7">No tax lines in this period.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="3">Total · effective ${effective}%</td><td class="numeric">${money(base)}</td><td class="numeric">${money(tax)}</td><td colspan="2"></td></tr></tfoot>
+      </table></div>
+    </section>`;
+  }
+  function taxRulesPanel() {
+    const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
+    return `<section class="panel">
+      <div class="panel-head"><h2>Tax rules</h2><span class="badge">${TAX_RULES.length} rules</span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Scope</th><th>From</th><th>Projects</th><th>Locations</th></tr></thead>
+        <tbody>${TAX_RULES.map((r) => `<tr><td class="mono">${e(r.code)}</td><td>${e(r.name)}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td></tr>`).join('')}</tbody>
+      </table></div>
+      <div class="table-footer">A rule is a default. Any document line may override the rate or switch tax off. Withholding and advance rules post to their own liability and asset accounts.</div>
+    </section>
+    <section class="panel">
+      <div class="panel-head"><h2>New tax rule</h2><span class="badge">Blank access means all</span></div>
+      <form data-tax-form class="panel-body form-grid">
+        <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="STD-SALE"></label>
+        <label>Name<input name="name" required maxlength="70" placeholder="Sales tax 10%"></label>
+        <label>Kind<select name="kind" class="inline-input"><option value="sales">Sales tax</option><option value="purchase">Purchase tax</option><option value="withholding">Withholding</option><option value="advance">Advance tax</option></select></label>
+        <label>Rate %<input name="rate" required inputmode="decimal" value="10.00"></label>
+        <label>Basis<select name="basis" class="inline-input"><option value="exclusive">Tax exclusive</option><option value="inclusive">Tax inclusive</option></select></label>
+        <label>Account<select name="account" class="inline-input">${accounts().filter((a) => a.type === 'liability' || a.type === 'asset').sort((a, b) => Number(/tax/i.test(b.name)) - Number(/tax/i.test(a.name))).map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+        <label>Scope<select name="scope" class="inline-input"><option value="all">Everything</option><option value="group">An item group</option><option value="item">One item or service</option></select></label>
+        <label>Effective from<input name="from" type="date" value="2026-11-01" required></label>
+        ${ms('tax-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
+        ${ms('tax-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
+        <div class="related"><button class="button primary">Add tax rule</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">Scope narrows where the rule is offered; the effective date decides when it applies. Rules never post on their own — they fill a document line, and the document posts the tax.</p></div>
+    </section>`;
+  }
+  function withholdingPanel() {
+    const base = round2(fixture(getCompany()).filter((d) => d.date >= range().from && d.date <= range().to)
+      .reduce((n, d) => n + d.lines.filter((l) => String(l.account).startsWith('5')).reduce((m, l) => m + num(l.debit) - num(l.credit), 0), 0));
+    const recorded = ledgerBalance('2150');
+    const rules = TAX_RULES.filter((r) => r.kind === 'withholding');
+    const expected = round2(rules.reduce((n, r) => n + (base * r.rate) / 100, 0));
+    return `<section class="panel">
+      <div class="panel-head"><h2>Withholding</h2><span class="badge ${recorded === 0 && expected > 0 ? 'warn' : 'good'}">${recorded === 0 && expected > 0 ? 'Expected, nothing withheld yet' : 'Reconciled'}</span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Rule</th><th class="numeric">Rate</th><th class="numeric">Taxable base</th><th class="numeric">Expected</th><th class="numeric">Recorded</th><th class="numeric">Difference</th></tr></thead>
+        <tbody>${rules.map((r) => `<tr><td>${e(r.name)}</td><td class="numeric">${r.rate}%</td><td class="numeric">${money(base)}</td><td class="numeric">${money((base * r.rate) / 100)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money((base * r.rate) / 100 - recorded)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>Total</td><td></td><td class="numeric">${money(base)}</td><td class="numeric">${money(expected)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money(expected - recorded)}</td></tr></tfoot>
+      </table></div>
+      <div class="table-footer">Withholding is money we deduct from a supplier and owe to the authority; it is never ours. The expected column applies the rule to this period's expense base. Nothing is withheld in the fixture, so the liability is zero and the difference is shown rather than hidden.</div>
+    </section>`;
+  }
+  function advancePanel() {
+    const base = round2(fixture(getCompany()).filter((d) => d.date >= range().from && d.date <= range().to)
+      .reduce((n, d) => n + d.lines.filter((l) => String(l.account).startsWith('4')).reduce((m, l) => m + num(l.credit) - num(l.debit), 0), 0));
+    const recorded = ledgerBalance('1400');
+    const rules = TAX_RULES.filter((r) => r.kind === 'advance');
+    const expected = round2(rules.reduce((n, r) => n + (base * r.rate) / 100, 0));
+    return `<section class="panel">
+      <div class="panel-head"><h2>Advance tax</h2><span class="badge">${recorded === 0 && expected > 0 ? 'Expected, nothing recorded yet' : 'Reconciled'}</span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Rule</th><th class="numeric">Rate</th><th class="numeric">Taxable base</th><th class="numeric">Expected</th><th class="numeric">Recorded</th><th class="numeric">Difference</th></tr></thead>
+        <tbody>${rules.map((r) => `<tr><td>${e(r.name)}</td><td class="numeric">${r.rate}%</td><td class="numeric">${money(base)}</td><td class="numeric">${money((base * r.rate) / 100)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money((base * r.rate) / 100 - recorded)}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td>Total</td><td></td><td class="numeric">${money(base)}</td><td class="numeric">${money(expected)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money(expected - recorded)}</td></tr></tfoot>
+      </table></div>
+      <div class="table-footer">Advance tax is tax a customer deducts from our invoice and pays to the authority for us. It is our asset until a return claims it. The fixture records none, so the balance is zero and the gap is visible.</div>
+    </section>`;
+  }
+  function taxReconPanel() {
+    const out = round2(taxLinesOf('sales').reduce((n, l) => n + l.tax, 0));
+    const inp = round2(taxLinesOf('purchase').reduce((n, l) => n + l.tax, 0));
+    const rows = [
+      ['2200 Output tax', out, Math.abs(ledgerBalance('2200'))],
+      ['1300 Input tax', inp, Math.abs(ledgerBalance('1300'))],
+      ['2150 Withholding payable', 0, Math.abs(ledgerBalance('2150'))],
+      ['1400 Advance tax', 0, Math.abs(ledgerBalance('1400'))],
+    ];
+    return `<section class="panel">
+      <div class="panel-head"><h2>Reconciliation</h2><span class="badge">${rows.every((r) => round2(r[1] - r[2]) === 0) ? 'Agrees' : 'Differences to review'}</span></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Tax account</th><th class="numeric">Register</th><th class="numeric">Ledger</th><th class="numeric">Difference</th><th>Status</th></tr></thead>
+        <tbody>${rows.map(([name, reg, led]) => { const diff = round2(reg - led); return `<tr><td>${e(name)}</td><td class="numeric">${money(reg)}</td><td class="numeric">${money(led)}</td><td class="numeric">${money(diff)}</td><td>${diff === 0 ? badge('Agrees', 'good') : badge('Review', 'warn')}</td></tr>`; }).join('')}</tbody>
+      </table></div>
+      <div class="table-footer">The register is built from the tax lines on documents; the ledger figure is the account balance. They must be equal. Withholding and advance show zero because the fixture records none — that is a visible gap, not a hidden one.</div>
+    </section>`;
+  }
+  function taxPanel(id) {
+    if (id === 'registers') return taxRegisterPanel('sales') + taxRegisterPanel('purchase');
+    if (id === 'withholding') return withholdingPanel();
+    if (id === 'advance') return advancePanel();
+    if (id === 'adjustments') return taxReconPanel();
+    return taxRulesPanel();
+  }
+  function taxesView() {
+    const current = TAX_TABS.some(([k]) => k === TAX_ACTIVE) ? TAX_ACTIVE : 'rules';
+    return `<div class="tabs" role="tablist" aria-label="Tax views">${TAX_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-tax-tab="${id}">${label}</button>`).join('')}</div>
+      <div id="tax-panel">${taxPanel(current)}</div>`;
+  }
+  function bindTaxes(rerender, notify) {
+    document.querySelectorAll('[data-tax-tab]').forEach((btn) => btn.addEventListener('click', () => {
+      TAX_ACTIVE = btn.dataset.taxTab;
+      rerender();
+    }));
+    document.querySelector('[data-tax-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      if (TAX_RULES.some((r) => r.code === v.code)) { notify('That tax rule code already exists.'); return; }
+      const [proj, loc] = form.querySelectorAll('.ms');
+      TAX_RULES.push({code: v.code, name: v.name, kind: v.kind, rate: Number(v.rate), basis: v.basis, account: v.account, scope: v.scope, from: v.from, to: '', projects: picked(proj), locations: picked(loc)});
+      notify('Tax rule added for this session. It is available to documents from its effective date.');
+      rerender();
+    });
+  }
+
+  /* ------------------------------------------------------------ reports */
+  const REPORT_TABS = [['ageing', 'Ageing'], ['profit', 'Profit & loss'], ['position', 'Financial position'], ['cashflow', 'Cash flow'], ['equity', 'Equity']];
+  const line = (label, value, cls = '') => `<div class="statement-line ${cls}"><span>${e(label)}</span><strong class="numeric">${value}</strong></div>`;
+
+  function reportProfit() {
+    const tb = rows();
+    const income = tb.filter((a) => a.type === 'income');
+    const expense = tb.filter((a) => a.type === 'expense');
+    const amount = (a) => (a.type === 'income' ? round2(num(a.credit) - num(a.debit)) : round2(num(a.debit) - num(a.credit)));
+    const totalIncome = round2(income.reduce((n, a) => n + amount(a), 0));
+    const totalExpense = round2(expense.reduce((n, a) => n + amount(a), 0));
+    const profit = round2(totalIncome - totalExpense);
+    return `<section class="panel">
+      <div class="panel-head"><h2>Profit & loss</h2><span class="badge">${e(range().from)} to ${e(range().to)}</span></div>
+      <div class="panel-body">
+        <div class="section-title">Income</div>
+        ${income.map((a) => line(`${a.code} · ${a.name}`, money(amount(a)))).join('') || line('No income accounts', money(0))}
+        ${line('Total income', money(totalIncome), 'total')}
+        <div class="section-title">Expenses</div>
+        ${expense.map((a) => line(`${a.code} · ${a.name}`, money(amount(a)))).join('') || line('No expense accounts', money(0))}
+        ${line('Total expenses', money(totalExpense), 'total')}
+        ${line('Result for the period', money(profit), 'total')}
+      </div>
+      <div class="table-footer">Built from the same ledger as the trial balance, so the totals cannot disagree. No statutory presentation, comparative or tax computation is implied.</div>
+    </section>`;
+  }
+
+  function reportPosition() {
+    const tb = rows();
+    const value = (a) => round2(num(a.closingDebit) - num(a.closingCredit));
+    const assets = tb.filter((a) => a.type === 'asset');
+    const liabilities = tb.filter((a) => a.type === 'liability');
+    const equity = tb.filter((a) => a.type === 'equity');
+    const st = statements(fixture(getCompany()), range());
+    const totalAssets = round2(assets.reduce((n, a) => n + value(a), 0));
+    const totalLiabilities = round2(liabilities.reduce((n, a) => n - value(a), 0));
+    const totalCapital = round2(equity.reduce((n, a) => n - value(a), 0));
+    const accumulated = round2(num(st.accumulatedProfit));
+    const totalEquity = round2(totalCapital + accumulated);
+    const balanced = Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01;
+    return `<section class="panel">
+      <div class="panel-head"><h2>Financial position</h2><span class="badge ${balanced ? 'good' : 'warn'}">${balanced ? 'Assets = liabilities + equity' : 'Difference to investigate'}</span></div>
+      <div class="panel-body">
+        <div class="section-title">Assets</div>
+        ${assets.map((a) => line(`${a.code} · ${a.name}`, money(value(a)))).join('')}
+        ${line('Total assets', money(totalAssets), 'total')}
+        <div class="section-title">Liabilities</div>
+        ${liabilities.map((a) => line(`${a.code} · ${a.name}`, money(-value(a)))).join('')}
+        ${line('Total liabilities', money(totalLiabilities), 'total')}
+        <div class="section-title">Equity</div>
+        ${equity.map((a) => line(`${a.code} · ${a.name}`, money(-value(a)))).join('')}
+        ${line('Accumulated result', money(accumulated))}
+        ${line('Total equity', money(totalEquity), 'total')}
+      </div>
+      <div class="table-footer">All history through ${e(range().to)}. Accumulated result is the income less expenses of every period, not just this one.</div>
+    </section>`;
+  }
+
+  function reportCashflow() {
+    const cashAcc = new Set(['1010', '1000', '1020']);
+    const docs = fixture(getCompany());
+    let opening = 0, inflow = 0, outflow = 0;
+    const bySource = new Map();
+    for (const d of docs) {
+      const flow = round2(d.lines.filter((l) => cashAcc.has(l.account)).reduce((n, l) => n + num(l.debit) - num(l.credit), 0));
+      if (d.date < range().from) { opening += flow; continue; }
+      if (d.date > range().to) continue;
+      inflow += d.lines.filter((l) => cashAcc.has(l.account)).reduce((n, l) => n + num(l.debit), 0);
+      outflow += d.lines.filter((l) => cashAcc.has(l.account)).reduce((n, l) => n + num(l.credit), 0);
+      bySource.set(d.source, round2((bySource.get(d.source) || 0) + flow));
+    }
+    inflow = round2(inflow); outflow = round2(outflow);
+    const closing = round2(opening + inflow - outflow);
+    return `<section class="panel">
+      <div class="panel-head"><h2>Cash flow</h2><span class="badge">Direct, from the cash accounts</span></div>
+      <div class="panel-body">
+        ${line('Opening cash and bank', money(opening))}
+        ${line('Receipts', money(inflow))}
+        ${line('Payments', `(${money(outflow)})`)}
+        ${line('Net movement', money(inflow - outflow), 'total')}
+        ${line('Closing cash and bank', money(closing), 'total')}
+        <div class="section-title">Net movement by document type</div>
+        ${[...bySource.entries()].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([source, value]) => line(source, money(value))).join('')}
+      </div>
+      <div class="table-footer">Only accounts 1000, 1010 and 1020 are cash. Transfers between them cancel out. A full indirect statement would need working-capital schedules, which are not built.</div>
+    </section>`;
+  }
+
+  function reportEquity() {
+    const tb = rows();
+    const value = (a) => round2(num(a.closingDebit) - num(a.closingCredit));
+    const equity = tb.filter((a) => a.type === 'equity');
+    const st = statements(fixture(getCompany()), range());
+    const capital = round2(equity.reduce((n, a) => n - value(a), 0));
+    const accumulated = round2(num(st.accumulatedProfit));
+    return `<section class="panel">
+      <div class="panel-head"><h2>Equity</h2><span class="badge">${equity.length} accounts</span></div>
+      <div class="panel-body">
+        ${equity.map((a) => line(`${a.code} · ${a.name}`, money(-value(a)))).join('')}
+        ${line('Capital introduced', money(capital), 'total')}
+        ${line('Accumulated result', money(accumulated))}
+        ${line('Total equity', money(capital + accumulated), 'total')}
+      </div>
+      <div class="table-footer">Capital and accumulated result only. Dividends, drawings and equity movements would need their own accounts before they can appear here.</div>
+    </section>`;
+  }
+
+  function reportsView() {
+    const current = REPORT_TABS.some(([k]) => k === REPORT_TAB) ? REPORT_TAB : 'ageing';
+    const body = current === 'profit' ? reportProfit() : current === 'position' ? reportPosition() : current === 'cashflow' ? reportCashflow() : current === 'equity' ? reportEquity() : ageing();
+    return `<div class="tabs" role="tablist" aria-label="Report views">${REPORT_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-report-tab="${id}">${label}</button>`).join('')}</div>
+      <div id="report-panel">${body}</div>`;
+  }
+
+  function bindReports(rerender) {
+    document.querySelectorAll('[data-report-tab]').forEach((b) => b.addEventListener('click', () => {
+      REPORT_TAB = b.dataset.reportTab;
+      rerender();
+    }));
+  }
+
   const projectsView = () => projectsScreen(getCompany());
-  const taxesView = () => taxesScreen(TAX_ACTIVE);
 
   const PLANNED = {
     parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Allowed projects and locations, chosen on the party form', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
@@ -1194,6 +1537,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, bindCashBank, items: itemsView, bindItems, reports: reportsView, bindReports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

@@ -4,7 +4,7 @@ import {icon} from './icons.js';
 
 const requireValue=(value,message)=>{if(!value)throw Error(message);};
 const positive=value=>{const n=cents(value);requireValue(n>0n,'Amounts must be positive; retain credits as separate positions.');return n;};
-export const openingChart=[...chart,{code:'1200',name:'Inventory opening control',type:'asset',group:'Assets',currency:'PKR',active:true}];
+export const openingChart=[...chart];
 export const openingItems=[{id:'DEMO-ITEM',name:'Sample trading item',cost:'20.00',store:'Central'}];
 export function openingControls(data,date){const amount=account=>BigInt(ledger(data,{account,from:date,to:date}).closing.replace('.',''));return {receivables:decimal(amount('1100')),payables:decimal(-amount('2100')),inventory:decimal(amount('1200'))};}
 export function restoreOpeningDraft(value){
