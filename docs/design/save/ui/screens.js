@@ -502,11 +502,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <span class="ms-text" title="${e(text)}">${e(text)}</span><span class="ms-caret" aria-hidden="true">▾</span>
       </button>
       <div class="ms-panel" hidden>
+        <div class="ms-searchrow">
+          <input class="ms-search" type="search" placeholder="Search ${e(label.toLowerCase())}" aria-label="Search ${e(label)}" autocomplete="off">
+        </div>
         <div class="ms-head">
           <button type="button" class="text-button" data-ms-all>Select all</button>
+          <span class="ms-count">${options.length}</span>
           <button type="button" class="text-button" data-ms-none>Clear</button>
         </div>
         <div class="ms-list">${options.map(([value, label2]) => `<label class="ms-row"><input class="check" type="checkbox" ${attr ? `data-${attr}="${e(value)}"` : `name="${name}"`} value="${e(value)}" ${selected.includes(value) ? 'checked' : ''}><span>${e(label2)}</span></label>`).join('')}</div>
+        <div class="ms-empty" hidden>No match</div>
       </div>
     </div>`;
   }
@@ -530,6 +535,21 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   let msBound = false;
   let openMS = '';
+  function filterRows(box) {
+    const q = (box.querySelector('.ms-search')?.value || '').trim().toLowerCase();
+    const rows = [...box.querySelectorAll('.ms-row')];
+    let visible = 0;
+    rows.forEach((row) => {
+      const hit = !q || row.textContent.toLowerCase().includes(q);
+      row.hidden = !hit;
+      if (hit) visible++;
+    });
+    const empty = box.querySelector('.ms-empty');
+    if (empty) empty.hidden = visible > 0;
+    const count = box.querySelector('.ms-count');
+    if (count) count.textContent = q ? `${visible} of ${rows.length}` : String(rows.length);
+  }
+
   function bindMS() {
     if (msBound) return;
     msBound = true;
@@ -552,6 +572,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         trigger.setAttribute('aria-expanded', String(open));
         openMS = open ? box.dataset.ms : '';
         if (open) {
+          const search = panel.querySelector('.ms-search');
+          if (search) { search.value = ''; filterRows(box); search.focus(); }
+        }
+        if (open) {
           panel.classList.remove('ms-panel--right');
           const rect = panel.getBoundingClientRect();
           if (rect.right > window.innerWidth - 12) panel.classList.add('ms-panel--right');
@@ -562,12 +586,20 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const none = ev.target.closest('[data-ms-none]');
       if (all || none) {
         const box = (all || none).closest('.ms');
-        box.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = Boolean(all); b.dispatchEvent(new Event('change', {bubbles: true})); });
+        box.querySelectorAll('input[type=checkbox]').forEach((b) => {
+          if (all && b.closest('.ms-row').hidden) return;   // Select all respects the search
+          b.checked = Boolean(all);
+          b.dispatchEvent(new Event('change', {bubbles: true}));
+        });
         return;
       }
       if (!ev.target.closest('.ms-panel')) closeAll();
     });
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeAll(); });
+    document.addEventListener('input', (ev) => {
+      if (!ev.target.classList.contains('ms-search')) return;
+      filterRows(ev.target.closest('.ms'));
+    });
     document.addEventListener('change', (ev) => {
       const box = ev.target.closest('.ms');
       if (!box) return;

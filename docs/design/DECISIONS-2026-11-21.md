@@ -40,8 +40,12 @@ The control is one component used by every filter **and** by the column chooser:
   inputs.
 - A trigger styled exactly like the other inputs, showing the current state:
   `All` · a single value · `3 selected` · `All columns` · `4 of 8`.
-- The panel opens below the trigger: a header with **Select all** and **Clear**, then
-  a scrollable list of rows with plum checkboxes, and a hover state per row.
+- The panel opens below the trigger with a **search field** at the top, then a header
+  with **Select all**, a live count (`1 of 9`) and **Clear**, then a scrollable list of
+  rows with plum checkboxes and a hover state per row. Search filters the list as you
+  type; Select all applies to the filtered list only, so choosing 20 of 300 accounts is
+  search, Select all, clear the search, done. No matches shows an empty line, not a
+  blank panel.
 - Opens on click, closes on outside click or Escape, and only one panel is open at a
   time. The trigger keeps a visible focus ring and `aria-expanded`.
 - The column chooser is the same control, labelled **Columns**, and it never changes
