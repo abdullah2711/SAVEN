@@ -664,6 +664,15 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const credit = round2(rows.reduce((n, r) => n + r.credit, 0));
     const cols = glColumns();
     const sortable = new Set(['date', 'account', 'description', 'debit', 'credit', 'type', 'subtype', 'voucher', 'party', 'project', 'location', 'centre']);
+    const wholePeriod = (() => {
+      let lines = 0, dr = 0, cr = 0;
+      for (const d of fixture(getCompany())) {
+        if (d.date < GL.from || d.date > GL.to || CANCELLED.has(d.id) || DELETED.has(d.id)) continue;
+        for (const l of d.lines) { lines++; dr += num(l.debit); cr += num(l.credit); }
+      }
+      return {lines, debit: round2(dr), credit: round2(cr)};
+    })();
+    const filtered = Boolean(GL.accounts.length || GL.parties.length || GL.projects.length || GL.locations.length || GL.centres.length || GL.types.length || GL.q);
 
     const body = rows.map((r) => {
       const open = GL.open === r.id + ':' + r.account;
@@ -700,6 +709,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
       <section class="panel">
         <div class="panel-head"><h2>${GL.accounts.length === 1 ? e((accounts().find((a) => a.code === GL.accounts[0]) || {}).name || GL.accounts[0]) : GL.accounts.length ? GL.accounts.length + ' accounts' : 'All accounts'}</h2><div class="related"><span class="badge">${rows.length} lines</span><button class="button" data-gl-export="csv">Export CSV</button><button class="button" data-gl-print>Print</button></div></div>
+        <div class="gl-totals">
+          <div><span>Lines</span><strong class="numeric">${rows.length}</strong><small>${filtered ? `of ${wholePeriod.lines} in the period` : 'in this period'}</small></div>
+          <div><span>Total debit</span><strong class="numeric">${money(debit)}</strong><small>${filtered ? 'filtered' : 'whole period'}</small></div>
+          <div><span>Total credit</span><strong class="numeric">${money(credit)}</strong><small>${filtered ? 'filtered' : 'whole period'}</small></div>
+          <div><span>Net debit</span><strong class="numeric">${money(debit - credit)}</strong><small>${debit === credit ? 'in balance' : 'one-sided view'}</small></div>
+          ${filtered ? `<div class="gl-totals-note">Whole period, no filters: ${wholePeriod.lines} lines · debit ${money(wholePeriod.debit)} · credit ${money(wholePeriod.credit)}</div>` : ''}
+        </div>
         <div class="table-scroll gl-scroll">
           <table class="gl-table" data-hide="${[...OPTIONAL.filter((k) => !GL.extras.has(k))].join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
@@ -1032,15 +1048,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const totalPosts = named.reduce((n, r) => n + r.postings, 0);
     const totalRev = round2(named.reduce((n, r) => n + r.revenue, 0));
     const totalCost = round2(named.reduce((n, r) => n + r.cost, 0));
-    const form = isProject
-      ? `<label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="PRJ-NORTH"></label>
-         <label>Name<input name="name" required maxlength="60" placeholder="North depot"></label>
-         <label>Manager<input name="manager" required maxlength="40" value="A. Rehman"></label>
-         <label>Status<select name="status" class="inline-input"><option>active</option><option>on hold</option></select></label>`
-      : `<label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BR-KHI-03"></label>
-         <label>Name<input name="name" required maxlength="60" placeholder="Saddar branch"></label>
-         <label>Kind<select name="kind" class="inline-input"><option value="branch">Branch</option><option value="office">Office</option><option value="outlet">Outlet</option><option value="warehouse">Warehouse</option><option value="site">Site</option></select></label>
-         <label>Address<input name="address" maxlength="80" placeholder="Optional"></label>`;
     return `<section class="panel">
       <div class="panel-head"><h2>${isProject ? 'Projects' : 'Locations'}</h2><span class="badge">${dimList(kind).length} ${isProject ? 'projects' : 'locations'}</span></div>
       <div class="table-scroll"><table>
@@ -1055,13 +1062,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </table></div>
       <div class="table-footer">${isProject ? 'Revenue and cost are sums of the ledger lines tagged with the project.' : 'Revenue and cost are sums of the ledger lines tagged with the location. A branch is a location whose kind is branch — there is no separate branch field.'}${loose ? ` ${loose.postings} postings carry no ${isProject ? 'project' : 'location'} and are listed as unassigned on the dashboard.` : ''}</div>
     </section>
-    <details class="gl-columns">
-      <summary>New ${isProject ? 'project' : 'location'}</summary>
-      <form data-dim-form="${kind}" class="form-grid">${form}
-        <div class="related"><button class="button primary">Add ${isProject ? 'project' : 'location'}</button></div>
-      </form>
-      <p class="form-note">${isProject ? 'A new project starts with no postings, so every figure is zero until a journal line carries its code.' : 'Locations are the only “where” dimension. Add a branch here, not somewhere else, and it can be filtered and reported like any location.'}</p>
-    </details>`;
+    <div class="panel-body"><div class="related"><button class="text-button" data-module="accounting" data-tab="setup">Manage ${isProject ? 'projects' : 'locations'} in Setup ↗</button></div>
+      <p class="form-note">${isProject ? 'Project' : 'Location'} is a plain data field on a transaction: it says ${isProject ? 'what the work was for' : 'where it happened'} and it slices the reports. New ${isProject ? 'projects' : 'locations'} are added in Setup, not here.</p>
+    </div>`;
   }
 
   function dimDashboard(kind) {
@@ -1166,26 +1169,55 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>Dimensions</h2></div>
-        <div class="panel-body">
-          <div class="section-title">Projects</div>
-          <ul class="contract-list">${PROJECTS.map((p) => `<li>${e(p.code)} · ${e(p.name)} <span class="badge ${p.status === 'active' ? 'good' : ''}">${e(p.status)}</span></li>`).join('')}</ul>
-          <div class="section-title">Cost centres</div>
-          <ul class="contract-list">${COST_CENTRES.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
-          <p class="form-note">Every journal, invoice and payment line carries a project and a cost centre. Head office is a project, not the absence of one.</p>
+        <div class="panel-head"><h2>Approvals and periods</h2></div>
+        <div class="panel-body form-grid">
+          ${field('Review required above', '100,000.00', 'Debits above this need an independent reviewer')}
+          ${field('Self approval', 'Not permitted')}
+          ${field('Period lock', 'Requires checklist and sign-off')}
+          ${field('Reopen authority', 'Business administrator only')}
+          ${field('Post into closed period', 'Administrator, with reason')}
+          ${field('Correction route', 'Cancel, then delete; a reversal only when the correction must stay visible')}
         </div>
       </section>
     </div>
 
+    <div class="two-column">
+      <section class="panel">
+        <div class="panel-head"><h2>Projects</h2><span class="badge">Data field</span></div>
+        <table>
+          <thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th></tr></thead>
+          <tbody>${PROJECTS.length ? PROJECTS.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager)}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td></tr>`).join('') : '<tr><td colspan="4">No projects yet.</td></tr>'}</tbody>
+        </table>
+        <form data-dim-form="project" class="panel-body form-grid">
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="PRJ-NORTH"></label>
+          <label>Name<input name="name" required maxlength="60" placeholder="North depot"></label>
+          <label>Manager<input name="manager" required maxlength="40" value="A. Rehman"></label>
+          <label>State<select name="status" class="inline-input"><option value="active">Active</option><option value="on hold">On hold</option></select></label>
+          <div class="related"><button class="button primary">Add project</button></div>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>Locations</h2><span class="badge">A branch is a location kind</span></div>
+        <table>
+          <thead><tr><th>Code</th><th>Location</th><th>Kind</th></tr></thead>
+          <tbody>${LOCATIONS.map((l) => `<tr><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td></tr>`).join('')}</tbody>
+        </table>
+        <form data-dim-form="location" class="panel-body form-grid">
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BR-KHI-03"></label>
+          <label>Name<input name="name" required maxlength="60" placeholder="Saddar branch"></label>
+          <label>Kind<select name="kind" class="inline-input"><option value="branch">Branch</option><option value="office">Office</option><option value="outlet">Outlet</option><option value="warehouse">Warehouse</option><option value="site">Site</option></select></label>
+          <label>Address<input name="address" maxlength="80" placeholder="Optional"></label>
+          <div class="related"><button class="button primary">Add location</button></div>
+        </form>
+      </section>
+    </div>
+
     <section class="panel">
-      <div class="panel-head"><h2>Approvals and periods</h2></div>
-      <div class="panel-body form-grid">
-        ${field('Review required above', '100,000.00', 'Debits above this need an independent reviewer')}
-        ${field('Self approval', 'Not permitted')}
-        ${field('Period lock', 'Requires checklist and sign-off')}
-        ${field('Reopen authority', 'Business administrator only')}
-        ${field('Post into closed period', 'Administrator, with reason')}
-        ${field('Correction route', 'Cancel, then delete; a reversal only when the correction must stay visible')}
+      <div class="panel-head"><h2>Dimensions</h2><span class="badge">Slicing, never balances</span></div>
+      <div class="panel-body">
+        <div class="section-title">Cost centres</div>
+        <ul class="contract-list">${COST_CENTRES.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
+        <p class="form-note">Project and location are data fields on a transaction: project says what the work was for, location says where it happened, and both slice the reports. Neither holds a balance — balances stay on accounts. A new code is available in the journal form immediately.</p>
       </div>
     </section>
 

@@ -15,8 +15,8 @@ States: **built** working screen · **partial** working, covers part of the page
 | 1 | Dashboard `dashboard` | built | Position and work waiting: four figures with their basis, what needs action, one real trend, recent journals. |
 | 2 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
 | 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
-| 4 | Projects `projects` | built | Project register with a create form, and a dashboard with statistics per accounting head. |
-| 5 | Locations `locations` | built | Location register (head office, branch, outlet, warehouse, site) with a create form, and a dashboard with statistics per accounting head. |
+| 4 | Projects `projects` | built | Project data field: register and a dashboard with statistics per accounting head. Projects are created in Setup. |
+| 5 | Locations `locations` | built | Location data field (office, branch, outlet, warehouse, site): register and a dashboard with statistics per accounting head. Locations are created in Setup. |
 | 6 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
 | 7 | Cash & bank `cash` | partial | Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab. |
 | 8 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |

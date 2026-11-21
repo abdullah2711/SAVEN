@@ -657,3 +657,85 @@ Neither of them moves a balance.
 - Quick entry grid; custom fields as register columns; bank/cash reconciliation;
   payments allocation; invoices; period lock enforcement.
 - Every figure is still a fixture. No posting, allocation or persistence.
+
+---
+
+# Round 7 — projects and locations as data fields, ledger totals
+
+## 47. Project and location are plain data fields
+
+Both are now treated the same way:
+
+- they are created in **Setup** (Projects panel, Locations panel), next to the
+  accounting heads;
+- their pages are **read-only registers with a dashboard**, not editors;
+- a journal line carries **project** (optional) and the voucher carries one
+  **location**;
+- a new code is visible in the journal form immediately, because the option lists
+  are built on render;
+- neither one holds a balance. They slice activity; balances stay on accounts.
+
+A branch is a location whose kind is `branch`. There is no branch table, field or
+report.
+
+## 48. Balances by project — what is possible and what is not
+
+This is the honest answer to “can I see which payables belong to project X”.
+
+**Profit and loss by project or location: yes, already built.** Every line carries
+the dimension, so summing income and expense lines per project gives a result that
+adds back to the trial balance. The Projects and Locations dashboards show exactly
+that, by accounting head.
+
+**A balance by project: not from the ledger alone.** Three different cases:
+
+1. **Ordinary accounts** (rent, sales, fixed assets, loans, owner capital). The
+   balance is the sum of the tagged lines, so slicing it works today. Nothing to
+   build.
+2. **Control accounts** (trade receivables, trade payables, bank and cash
+   sub-accounts). Their balance is **not** the sum of their ledger lines: the
+   control line and the party line net to zero. “Receivables by project” read from
+   the ledger would therefore be meaningless. To get it you need the dimension on
+   the **document** (the invoice, the bill, the payment), copied to the **open
+   item**, with allocations inheriting it. The report then comes from the
+   open-item subledger, not from the general ledger. Required pieces:
+   documents, open items, allocations, a mandatory-dimension policy if the owner
+   wants complete coverage, and an **unallocated** bucket for advances and
+   on-account money so the slice still equals the control balance.
+3. **Unallocated money** (advance, payment on account, unapplied credit). It
+   belongs to a party but maybe not to a project or a location. It must either
+   carry a dimension at receipt or be reported as unallocated.
+
+So the decision is: **do not slice balances by project or location in this build.**
+We do not have invoices, parties or open items yet, and inventing a project balance
+from the ledger would produce a number that cannot reconcile. Revisit this only
+after the party subledger exists, and then only as a subledger report with an
+unallocated column.
+
+What is explicitly forbidden as a shortcut: splitting a control balance across
+projects by percentage, tagging only the control line and calling it a balance, or
+letting different screens compute a balance differently.
+
+## 49. General ledger totals at the top
+
+A totals strip now sits between the panel heading and the table, so the numbers are
+visible without scrolling:
+
+| Field | Meaning |
+|---|---|
+| Lines | lines currently shown, and the whole-period count when a filter is active |
+| Total debit | sum of the debit column, filtered |
+| Total credit | sum of the credit column, filtered |
+| Net debit | debit minus credit; labelled “in balance” when they agree, “one-sided view” when an account filter makes them differ |
+| Whole period | only when filters are active: lines, debit and credit with no filters |
+
+The table footer keeps its total row; the strip is the same figure, placed where it
+is seen first.
+
+## 50. Open
+
+- The party subledger (parties, invoices, allocations) is the prerequisite for any
+  project balance report; decide after it exists.
+- Two rail entries are called “Projects” (Accounting data-field page and the
+  Operations module). Decide whether to rename one.
+- Membership set in Setup is still display-only until party records exist.

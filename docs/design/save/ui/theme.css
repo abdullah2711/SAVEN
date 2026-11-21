@@ -253,3 +253,11 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .membership-table .ms{min-width:170px}
 .membership-table .ms-trigger{min-height:36px}
 .membership-table td{padding-top:10px;padding-bottom:10px}
+
+/* Totals above the general ledger table, so they are visible without scrolling. */
+.gl-totals{display:flex;flex-wrap:wrap;align-items:baseline;gap:26px;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--soft)}
+.gl-totals div{display:flex;flex-direction:column;gap:1px}
+.gl-totals span{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.gl-totals strong{font-size:15px;font-variant-numeric:tabular-nums}
+.gl-totals small{font-size:11px;color:var(--muted)}
+.gl-totals .gl-totals-note{margin-left:auto;font-size:11px;color:var(--muted);max-width:320px;text-align:right}

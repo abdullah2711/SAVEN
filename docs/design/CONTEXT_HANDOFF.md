@@ -59,7 +59,8 @@ savenuitest.localhost` → `docs/design/save`.
 - Accounting dashboard: KPI cards, cash chart, ageing, attention list, recent
   journals.
 - General ledger: multi-select filters with search in every dropdown, column
-  chooser, sorting, row expand, CSV, no stats strip.
+  chooser, sorting, row expand, CSV, and a totals strip above the table (filtered
+  debit, credit, net, line count, plus the whole-period totals when filtered).
 - Journal register + record page: columns mirror the form, per-column filters,
   sorting, state-aware actions.
 - Journal form: auto-numbering (`JV-MM-YYYY-0001`), posting time, guards (no future,
@@ -67,12 +68,13 @@ savenuitest.localhost` → `docs/design/save`.
   party/sub-account filtered by account kind, project, cost centre, review panel,
   evidence drop zone, print + overflow menu, always-visible horizontal scroll track.
 - Chart of accounts, trial balance, statements.
-- **Projects** page (Accounting): register + create, and a dashboard with statistics
-  per accounting head.
+- **Projects** page (Accounting): read-only register and a dashboard with
+  statistics per accounting head. Created in Setup.
 - **Locations** page (Accounting): same, with `kind` (office, branch, outlet,
-  warehouse, site).
-- **Setup**: organisation, numbering, default accounts, dimensions, approvals,
-  **accounting heads with a create form**, **party & sub-account membership**.
+  warehouse, site). Created in Setup.
+- **Setup**: organisation, numbering, default accounts, approvals, **projects and
+  locations with create forms**, **accounting heads with a create form**,
+  **party & sub-account membership**.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 
@@ -85,11 +87,14 @@ display-only; no persistence (reload returns to fixtures).
 - **Location** is one field on the journal header — where the entry was made. A
   **branch is a location with kind `branch`**; there is no separate branch concept.
   Moving balance between locations is two entries.
-- **Project** is a line dimension and stays optional. Accounts stay generic; project
-  and location are dimensions, never balances.
+- **Project and location are plain data fields**: created in Setup, chosen on the
+  journal (project per line, one location per voucher), used to slice reports.
+  Accounts stay generic; dimensions never carry a balance.
 - **Balances are not sliced by project/location.** P&L by dimension works from
-  tagged lines. Parties and sub-accounts may record which projects/locations they
-  belong to (blank = all); it is a data field, not a balance and not access control.
+  tagged lines. A control balance can only be sliced from the party/open-item
+  subledger, with an unallocated bucket — deferred until that subledger exists.
+  Parties and sub-accounts may record which projects/locations they belong to
+  (blank = all); it is a data field, not a balance and not access control.
 - **No entry type.** A voucher is a journal entry; the **subtype** classifies it
   (bank, cash, contra, expense, debit/credit note, depreciation, accrual,
   prepayment, write off, opening, adjustment, reversal). `adjustment` is the only
@@ -125,8 +130,8 @@ rename.
 
 ## Next
 
-- Owner is reviewing Projects/Locations, Setup heads and membership. Wait for that
-  review before starting another module.
+- Owner is reviewing the data-field treatment of Projects/Locations, the ledger
+  totals and Setup heads. Wait for that review before starting another module.
 - Open naming question: two rail entries called “Projects” (Accounting dimension page
   and Operations module). Decide whether to rename one.
 - Then: parties register (with membership visible on the party page), cash & bank,

@@ -127,8 +127,8 @@ Accounting
 ├── Dashboard
 ├── General ledger             (the detailed book of every posting)
 ├── Journal entries            (register; "New journal" is a button here)
-├── Projects                   (register + dashboard statistics by accounting head)
-├── Locations                  (register + dashboard statistics by accounting head)
+├── Projects                   (read-only register + dashboard; created in Setup)
+├── Locations                  (read-only register + dashboard; created in Setup)
 ├── Parties                    (register; a row opens the party page)
 ├── Cash & bank                (Accounts · Reconciliation)
 ├── Payments                   (register; "New payment" is a button here)
