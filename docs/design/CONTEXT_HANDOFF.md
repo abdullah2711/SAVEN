@@ -36,8 +36,9 @@ savenuitest.localhost` → `docs/design/save`.
 - Document decisions as they are made (this folder). The docs are the contract.
 - Never claim a fixture behaviour is production functionality.
 - Chat attachments cannot be read from this session. Files must be placed in the
-  repository (for the two flaticon SVGs: `docs/design/save/ui/icons/`), or their
-  markup pasted as text.
+  repository, or their markup pasted as text. The two supplied Flaticon glyphs
+  (print, vertical menu) now live in `docs/design/save/ui/icons/` and are inlined
+  in `ui/icons.js`; attribution is in `docs/design/ASSETS.md`.
 
 ## Where things live
 
@@ -75,6 +76,7 @@ savenuitest.localhost` → `docs/design/save`.
 - **Setup**: organisation, numbering, default accounts, approvals, **projects and
   locations with create forms**, **accounting heads with a create form**,
   **party & sub-account membership**.
+- Supplied print and vertical-menu glyphs wired into the journal header.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 

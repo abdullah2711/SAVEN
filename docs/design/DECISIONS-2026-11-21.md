@@ -739,3 +739,13 @@ is seen first.
 - Two rail entries are called “Projects” (Accounting data-field page and the
   Operations module). Decide whether to rename one.
 - Membership set in Setup is still display-only until party records exist.
+
+## 51. Supplied icons
+
+The owner supplied two Flaticon glyphs — print (`print_3917119`) and vertical menu
+(`menu-dots-vertical_3917764`). They are stored as source files in
+`docs/design/save/ui/icons/`, inlined into `ui/icons.js` with `fill="currentColor"`
+so they follow the theme, and used in the journal header for print and the overflow
+menu. No network request is made. Attribution and licence terms are recorded in
+`docs/design/ASSETS.md`; the free licence requires it, so it must travel with the
+design if it is published.
