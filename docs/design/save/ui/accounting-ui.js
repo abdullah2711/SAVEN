@@ -69,6 +69,28 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      return `<div class="panel-head"><h2>Journal review</h2><span class="badge warn">Not ready</span></div><div class="panel-body"><p class="error">${e(error.message)}</p><p class="form-note">Correct the draft before reviewing its workflow.</p></div>`;
    }
  }
+ const ss=(o)=>{
+   const selected=o.options.find(x=>x[0]===o.value);
+   return `<div class="ms ss" data-ss="${o.key}"${o.line!==undefined?` data-line="${o.line}"`:''}>
+     <button type="button" class="ms-trigger" aria-expanded="false" ${o.disabled?'disabled':''}>
+       <span class="ms-text">${e(selected?selected[1]:(o.placeholder||'Choose'))}</span><span class="ms-caret" aria-hidden="true">▾</span>
+     </button>
+     <div class="ms-panel" hidden>
+       ${o.search===false?'':`<div class="ms-searchrow"><input class="ms-search" type="search" placeholder="Search ${e(o.label||'')}" aria-label="Search ${e(o.label||'')}"></div>`}
+       <div class="ms-list">${o.options.map(([v,t,kind])=>`<button type="button" class="ms-row ss-item" data-value="${e(v)}" data-label="${e(t)}" ${kind?`data-kind="${e(kind)}"`:''}><span>${e(t)}</span></button>`).join('')}</div>
+       <div class="ms-empty" hidden>No match</div>
+     </div>
+     <input type="hidden" ${o.field?`data-journal-field="${o.field}"`:`name="${o.name}"`} value="${e(o.value)}">
+   </div>`;
+ };
+ const KIND_OF=(a)=>!a?'':a.control==='receivable'?'customer':a.control==='payable'?'supplier':a.code==='1010'?'bank':a.code==='1000'?'cash':'';
+ const PARTY_OPTIONS=[['','—','none'],...CUSTOMER_NAMES.map(n=>[n,n,'customer']),...SUPPLIER_NAMES.map(n=>[n,n,'supplier']),...BANK_ACCOUNTS.map(n=>[n,n,'bank']),...CASH_CUSTODIANS.map(n=>[n,n,'cash'])];
+ const PROJECT_OPTIONS=[['','No project'],...PROJECTS.map(p=>[p.code,`${p.code} · ${p.name}`])];
+ const LOCATION_OPTIONS=LOCATIONS.map(x=>[x.code,`${x.code} · ${x.name}`]);
+ const CENTRE_OPTIONS=[['','—'],...COST_CENTRES.map(c=>[c,c])];
+ const SUBTYPE_OPTIONS=[['journal','Journal entry'],['bank','Bank entry'],['cash','Cash entry'],['contra','Contra entry'],['expense','Expense entry'],['debit-note','Debit note'],['credit-note','Credit note'],['depreciation','Depreciation'],['accrual','Accrual'],['prepayment','Prepayment'],['writeoff','Write off'],['opening','Opening entry'],['adjustment','Adjustment'],['reversal','Reversal']];
+ const ENTRYTYPE_OPTIONS=[['normal','Normal'],['adjusting','Adjusting (party optional)'],['opening','Opening balance']];
+ const ACCOUNT_OPTIONS=()=>accounts.filter(a=>a.active).map(a=>[a.code,`${a.code} - ${a.name}`]);
  function nextJournalNumber(){
    const d=new Date(), mm=String(d.getMonth()+1).padStart(2,'0'), yyyy=d.getFullYear();
    return `JV-${mm}-${yyyy}-${String(seq++).padStart(4,'0')}`;
@@ -78,18 +100,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    const acc=(code)=>accounts.find(a=>a.code===code);
    const partyNeeded=(a)=>Boolean(a&&(a.control||a.code==='1010'||a.code==='1000'));
    const partyList=[...CUSTOMER_NAMES.map(n=>[n,'Customer']),...SUPPLIER_NAMES.map(n=>[n,'Supplier']),...BANK_ACCOUNTS.map(n=>[n,'Bank']),...CASH_CUSTODIANS.map(n=>[n,'Cash'])];
-   const picker=(i,current)=>{
-     const a=acc(current);
-     return `<div class="ms ss" data-ss="account">
-       <button type="button" class="ms-trigger" aria-expanded="false"><span class="ms-text">${a?e(a.code+' - '+a.name):'Choose account'}</span><span class="ms-caret" aria-hidden="true">▾</span></button>
-       <div class="ms-panel" hidden>
-         <div class="ms-searchrow"><input class="ms-search" type="search" placeholder="Search accounts" aria-label="Search accounts"></div>
-         <div class="ms-list">${accounts.filter(x=>x.active).map(x=>`<button type="button" class="ms-row ss-item" data-code="${e(x.code)}" data-label="${e(x.code+' - '+x.name)}"><span>${e(x.code)} - ${e(x.name)}</span></button>`).join('')}</div>
-         <div class="ms-empty" hidden>No match</div>
-       </div>
-       <input type="hidden" data-journal-field="account" value="${e(current)}">
-     </div>`;
-   };
+   const picker=(i,current)=>ss({key:'account',field:'account',value:current,options:ACCOUNT_OPTIONS(),label:'accounts',placeholder:'Choose account',line:i});
    return `<div class="journal-single"><section class="panel">
      <div class="panel-head"><div><div class="eyebrow">Journal entry · draft</div><h2>${e(draft.number||'New journal')}</h2></div>
        <div class="related">
@@ -113,23 +124,29 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
          ${field('date','Posting date',draft.date,'date','required')}
          <label>Posting time<input name="time" type="time" step="1" value="${e(draft.time||nowTime())}"><small class="secondary">Recorded automatically when you post; change it only if the entry belongs to an earlier moment.</small></label>
          <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series fixed in Setup: JV-MM-YYYY-0001. A custom format must be set before the first entry.</small></label>
-         <label>Entry subtype<select name="entrySubtype">${options([['journal','Journal entry'],['bank','Bank entry'],['cash','Cash entry'],['contra','Contra entry'],['expense','Expense entry'],['debit-note','Debit note'],['credit-note','Credit note'],['depreciation','Depreciation'],['accrual','Accrual'],['prepayment','Prepayment'],['writeoff','Write off'],['opening','Opening entry'],['adjustment','Adjustment'],['reversal','Reversal']],draft.entrySubtype||'journal')}</select></label>
-         <label>Location<select name="location">${LOCATIONS.map(x=>`<option value="${e(x.code)}" ${x.code===(draft.location||'HQ')?'selected':''}>${e(x.code)} · ${e(x.name)}</option>`).join('')}</select></label>
+         <div class="field"><span class="ms-label">Entry subtype</span>${ss({key:'subtype',name:'entrySubtype',value:draft.entrySubtype||'journal',options:SUBTYPE_OPTIONS,label:'entry subtypes',search:false})}</div>
+         <div class="field"><span class="ms-label">Location</span>${ss({key:'location',name:'location',value:draft.location||'HQ',options:LOCATION_OPTIONS,label:'locations',search:false})}</div>
          <label class="wide">Narration<textarea name="narrative" rows="5" required>${e(draft.narrative)}</textarea><small class="secondary">What this entry is for, in plain language. Prints on the voucher.</small></label>
        </div>
        <div class="form-grid" ${formTab==='more'?'':'hidden'}>
-         <label>Entry type<select name="entryType">${options([['normal','Normal'],['adjusting','Adjusting (party optional)'],['opening','Opening balance']],draft.entryType)}</select></label>
-         <label>Workflow decision - example<select name="decision">${options([['direct','Direct post inside authorized rules'],['review','Require independent review']],draft.decision)}</select></label>
+         <div class="field"><span class="ms-label">Entry type</span>${ss({key:'entrytype',name:'entryType',value:draft.entryType||'normal',options:ENTRYTYPE_OPTIONS,label:'entry types',search:false})}</div>
+         <div class="record-summary audit-strip">
+           <div><small>Created by</small>${e(draft.createdBy||'A. Rehman')}</div>
+           <div><small>Created at</small>${e(draft.createdAt||draft.date+' '+nowTime())}</div>
+           <div><small>Submitted by</small>${e(draft.submittedBy||'Not submitted')}</div>
+           <div><small>Source</small>${e(draft.origin||'User')}</div>
+         </div>
+         <p class="form-note wide">Fields added to this form in Setup appear here. Created and submitted are separate identities: one person may do both, or a preparer may submit for an approver.</p>
        </div>
 
        <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>
        <div class="table-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Description</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
          const a=acc(l.account);
          return `<tr data-journal-line="${i}"><td>${picker(i,l.account)}</td>
-           <td><select data-journal-field="party" aria-label="Line ${i+1} party or sub-account" ${partyNeeded(a)?'':'disabled'}><option value="">Choose party / sub-account</option>${partyList.map(([n,kind])=>`<option value="${e(n)}" ${n===l.party?'selected':''}>${e(n)} — ${kind}</option>`).join('')}</select></td>
-           <td><select data-journal-field="project" aria-label="Line ${i+1} project"><option value="">No project</option>${PROJECTS.map(p=>`<option value="${e(p.code)}" ${p.code===l.project?'selected':''}>${e(p.code)}</option>`).join('')}</select></td>
-           <td><select data-journal-field="location" aria-label="Line ${i+1} location">${LOCATIONS.map(x=>`<option value="${e(x.code)}" ${x.code===(l.location||draft.location||'HQ')?'selected':''}>${e(x.code)}</option>`).join('')}</select></td>
-           <td><select data-journal-field="costCentre" aria-label="Line ${i+1} cost centre"><option value="">—</option>${COST_CENTRES.map(c=>`<option value="${e(c)}" ${c===l.costCentre?'selected':''}>${e(c)}</option>`).join('')}</select></td>
+           <td>${ss({key:'party',field:'party',value:l.party||'',options:PARTY_OPTIONS,label:'parties and sub-accounts',placeholder:'Choose party / sub-account',line:i,disabled:!partyNeeded(a)})}</td>
+           <td>${ss({key:'project',field:'project',value:l.project||'',options:PROJECT_OPTIONS,label:'projects',search:false,line:i})}</td>
+           <td>${ss({key:'location',field:'location',value:l.location||draft.location||'HQ',options:LOCATION_OPTIONS,label:'locations',search:false,line:i})}</td>
+           <td>${ss({key:'centre',field:'costCentre',value:l.costCentre||'',options:CENTRE_OPTIONS,label:'cost centres',search:false,line:i})}</td>
            <td><input data-journal-field="description" aria-label="Line ${i+1} description" value="${e(l.description)}"></td>
            <td><input data-journal-field="debit" aria-label="Line ${i+1} debit" value="${e(l.debit)}" inputmode="decimal"></td>
            <td><input data-journal-field="credit" aria-label="Line ${i+1} credit" value="${e(l.credit)}" inputmode="decimal"></td>
@@ -154,11 +171,13 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    const needsParty=a=>Boolean(a&&(a.control||a.code==='1010'||a.code==='1000'));
    const sync=()=>form.querySelectorAll('[data-journal-line]').forEach(tr=>{
      const acc=accounts.find(a=>a.code===tr.querySelector('[data-journal-field="account"]').value);
-     const party=tr.querySelector('[data-journal-field="party"]');
-     if(!party)return;
+     const box=tr.querySelector('.ss[data-ss="party"]');
+     if(!box)return;
+     const trigger=box.querySelector('.ms-trigger');
+     const hidden=box.querySelector('input[type="hidden"]');
      const need=needsParty(acc);
-     party.disabled=!need;
-     if(!need)party.value='';
+     trigger.disabled=!need;
+     if(!need&&hidden.value){hidden.value='';box.querySelector('.ms-text').textContent='Choose party / sub-account';}
    });
    sync();
    form.addEventListener('change',ev=>{if(ev.target.matches('[data-journal-field="account"]'))sync();});
@@ -180,6 +199,23 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      }
    });
  }
+ document.addEventListener('ms:open',ev=>{
+   const box=ev.target.closest('.ss');
+   if(!box||box.dataset.ss!=='party')return;
+   const line=box.closest('[data-journal-line]');
+   if(!line)return;
+   const acc=accounts.find(a=>a.code===line.querySelector('[data-journal-field="account"]').value);
+   const kind=KIND_OF(acc);
+   if(!kind){box.querySelector('.ms-panel').hidden=true;return;}
+   let shown=0;
+   box.querySelectorAll('.ss-item').forEach(item=>{
+     const hit=item.dataset.kind===kind;
+     item.hidden=!hit;
+     if(hit)shown++;
+   });
+   const empty=box.querySelector('.ms-empty');
+   if(empty)empty.hidden=shown>0;
+ });
  document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
    const act=b.dataset.formAction;
    if(act==='save'){capture();localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}

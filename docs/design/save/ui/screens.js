@@ -572,8 +572,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         trigger.setAttribute('aria-expanded', String(open));
         openMS = open ? box.dataset.ms : '';
         if (open) {
+          const r = trigger.getBoundingClientRect();
+          panel.classList.add('ms-panel--fixed');
+          panel.style.top = Math.round(r.bottom + 6) + 'px';
+          panel.style.left = Math.round(r.left) + 'px';
+          panel.style.minWidth = Math.round(Math.max(r.width, 240)) + 'px';
           const search = panel.querySelector('.ms-search');
           if (search) { search.value = ''; filterRows(box); search.focus(); }
+          box.dispatchEvent(new CustomEvent('ms:open', {bubbles: true}));
         }
         if (open) {
           panel.classList.remove('ms-panel--right');

@@ -335,3 +335,92 @@ migration.
 - The menu's state machine against real permissions.
 - The forms register in Setup (duplicate/edit/activate), which is what makes fields
   like "weather" appear in the register and ledger as columns.
+
+---
+
+# Round 3 — pickers, sub-accounts, identity fields
+
+## 22. One picker everywhere
+
+Every dropdown in the journal form now uses the same component as the filters:
+searchable where the list can be long, keyboard reachable, same trigger height,
+same panel.
+
+- Account, party/sub-account, project, location, cost centre, entry subtype, entry
+  type.
+- Panels are positioned **fixed** to the viewport when opened, so a scrolling table
+  can no longer clip them. The panel follows the trigger's box and flips when it
+  would leave the screen.
+- The raw native `<select>` is gone from this form.
+
+## 23. Party / sub-account options follow the account
+
+The list is filtered by what the selected account actually requires:
+
+| Account kind | Options offered |
+|---|---|
+| receivable control | customers only |
+| payable control | suppliers only |
+| bank account | the business's bank accounts only |
+| cash account | cash custodians and cash locations only |
+| anything else | field disabled |
+
+A customer can never be chosen on a bank line. The label stays "Party /
+sub-account" because it is one concept: the entry inside the control balance.
+
+## 24. Identity fields
+
+Every document records two identities, because they are often different people:
+
+- **Created by** — who prepared the draft; also created at, and the source
+  (User or AI).
+- **Submitted by** — who submitted it for posting or approval; also submitted at.
+- Approval adds **Approved by** and the decision time.
+
+A preparer may submit their own entry when policy allows; otherwise the entry waits
+for an approver. An AI-originated draft names the model as source and still requires
+a human submitter. All five fields print on the audit trail of the voucher and are
+filterable in registers.
+
+## 25. More info tab
+
+Holds what is not part of the double entry: entry type, the audit strip (created by,
+created at, submitted by, source) and **any custom field added to this form in
+Setup**. On a fresh install it shows the audit strip and a note; it is never empty
+by accident.
+
+## 26. Accounts, projects, locations, branches — how they relate
+
+- **Account** — a line in the chart. It says *what* the money was (rent, sales,
+  receivables). Balances live here and only here.
+- **Control account** — an account whose balance is the total of a **sub-account**
+  ledger: trade receivables (customers), trade payables (suppliers), and the bank
+  and cash accounts (bank accounts, cash custodians). The chart shows one balance;
+  the sub-account shows who or where.
+- **Location** — *where* it happened: head office, branch, outlet, warehouse, site.
+  One list with a kind, not a separate "branch" dimension.
+- **Project** — *for what* it happened: a job, a client engagement, a new brand,
+  an internal initiative. Optional; empty means no project.
+- **Item** — *what was sold or bought*, when the line is about goods or services
+  rather than an account.
+
+Where each one is a log, and where it gives statistics:
+
+| Dimension | Journal log | Statistics |
+|---|---|---|
+| Account | every line | ledger, trial balance, statements |
+| Party / sub-account | every control line | party ledger, ageing, statements, credit exposure |
+| Location | every line | sales and cost by location, stock by location, cash by custodian |
+| Project | every line, optional | project P&L, cost against budget, margin |
+| Item | invoice and stock lines | item sales, purchase, margin, movement history |
+
+The rule: **balances are only ever on accounts**. Dimensions never carry a balance
+of their own; they slice the account balances. That is why a project report and the
+trial balance can never disagree, and why no account is ever renamed for a project.
+
+## 27. Still open in this form
+
+- Quick entry grid.
+- The action menu's state machine against real permissions.
+- Custom fields appearing in the register and ledger as columns (needs the forms
+  register in Setup).

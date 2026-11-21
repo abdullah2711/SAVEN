@@ -219,3 +219,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .review-grid .statement-line.total strong{font-size:20px}
 .callout--error{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 7%,transparent)}
 @media(max-width:820px){.review-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Panels opened from inside a scrolling table must escape its clip. */
+.ms-panel--fixed{position:fixed;left:auto;right:auto;max-width:min(360px,calc(100vw - 24px));max-height:min(60vh,420px);z-index:120}
+.ms-panel--fixed .ms-list{max-height:calc(min(60vh,420px) - 86px)}
+.ms-trigger[disabled]{color:var(--muted);background:var(--soft);cursor:not-allowed;opacity:.75}
