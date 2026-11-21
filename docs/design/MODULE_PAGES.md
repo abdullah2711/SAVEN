@@ -15,20 +15,18 @@ States: **built** working screen · **partial** working, covers part of the page
 | 1 | Dashboard `dashboard` | built | Position and work waiting: four figures with their basis, what needs action, one real trend, recent journals. |
 | 2 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
 | 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
-| 4 | Projects `projects` | built | Project data field: register and a dashboard with statistics per accounting head. Projects are created in Setup. |
-| 5 | Locations `locations` | built | Location data field (office, branch, outlet, warehouse, site): register and a dashboard with statistics per accounting head. Locations are created in Setup. |
-| 6 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
-| 7 | Cash & bank `cash` | partial | Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab. |
-| 8 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |
-| 9 | Items `items` | planned | Item register and item page with accounts, tax defaults, costing and item-wise statistics. |
-| 10 | Sales invoices `sales-invoices` | planned | Customer invoices that create receivable open items, with source references into Selling. |
-| 11 | Purchase invoices `purchase-invoices` | planned | Supplier bills that create payable open items, with source references into Buying. |
-| 12 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
-| 13 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
-| 14 | Reports `reports` | partial | Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger. |
-| 15 | Taxes `taxes` | planned | One page, five tabs: codes and rates, registers, withholding, returns and certificates. |
-| 16 | Setup `setup` | planned | Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods. |
-| 17 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
+| 4 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
+| 5 | Cash & bank `cash` | partial | Bank and cash accounts with balances, cash position, and statement reconciliation on its own tab. |
+| 6 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |
+| 7 | Items `items` | planned | Item register and item page with accounts, tax defaults, costing and item-wise statistics. |
+| 8 | Sales invoices `sales-invoices` | planned | Customer invoices that create receivable open items, with source references into Selling. |
+| 9 | Purchase invoices `purchase-invoices` | planned | Supplier bills that create payable open items, with source references into Buying. |
+| 10 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
+| 11 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
+| 12 | Reports `reports` | partial | Ageing, schedules, profit or loss, financial position, cash flow and equity from the same ledger. |
+| 13 | Taxes `taxes` | planned | One page, five tabs: codes and rates, registers, withholding, returns and certificates. |
+| 14 | Setup `setup` | planned | Accounting configuration: organisation, numbering, control and default accounts, dimensions, approvals and periods. |
+| 15 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
 
 ## Inventory (inventory)
 
@@ -264,4 +262,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 154 pages · 8 built · 3 partial · 143 planned.**
+**20 modules · 152 pages · 6 built · 3 partial · 143 planned.**

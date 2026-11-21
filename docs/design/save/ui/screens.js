@@ -19,10 +19,9 @@ const badge = (label, kind = '') => `<span class="badge ${kind}">${e(label)}</sp
 const button = (label, action, extra = '', primary = false) => `<button type="button" class="button ${primary ? 'primary' : ''}" data-ac="${action}" ${extra}>${label}</button>`;
 const textButton = (label, action, extra = '') => `<button type="button" class="text-button" data-ac="${action}" ${extra}>${label}</button>`;
 
-// Which projects and locations a party or sub-account belongs to. This is a
-// data field on the sub-account, never a balance: balances stay on the account.
-const MEMBERSHIP = new Map();
-const DIM_TAB = {project: 'register', location: 'register'};
+// Which Setup section is open. Membership of projects and locations lives on
+// the party and sub-account forms, not here.
+let SETUP_TAB = 'organisation';
 
 
 /* ------------------------------------------------------------------ projects */
@@ -662,6 +661,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     for (const r of rows) { if (single) { run = round2(run + r.debit - r.credit); r.balance = run; } }
     const debit = round2(rows.reduce((n, r) => n + r.debit, 0));
     const credit = round2(rows.reduce((n, r) => n + r.credit, 0));
+    const net = round2(debit - credit);
+    const netLabel = net === 0 ? 'Net' : net > 0 ? 'Net debit' : 'Net credit';
     const cols = glColumns();
     const sortable = new Set(['date', 'account', 'description', 'debit', 'credit', 'type', 'subtype', 'voucher', 'party', 'project', 'location', 'centre']);
     const wholePeriod = (() => {
@@ -713,8 +714,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <div><span>Lines</span><strong class="numeric">${rows.length}</strong><small>${filtered ? `of ${wholePeriod.lines} in the period` : 'in this period'}</small></div>
           <div><span>Total debit</span><strong class="numeric">${money(debit)}</strong><small>${filtered ? 'filtered' : 'whole period'}</small></div>
           <div><span>Total credit</span><strong class="numeric">${money(credit)}</strong><small>${filtered ? 'filtered' : 'whole period'}</small></div>
-          <div><span>Net debit</span><strong class="numeric">${money(debit - credit)}</strong><small>${debit === credit ? 'in balance' : 'one-sided view'}</small></div>
-          ${filtered ? `<div class="gl-totals-note">Whole period, no filters: ${wholePeriod.lines} lines · debit ${money(wholePeriod.debit)} · credit ${money(wholePeriod.credit)}</div>` : ''}
+          <div><span>${netLabel}</span><strong class="numeric">${money(Math.abs(net))}</strong><small>${net === 0 ? 'in balance' : filtered ? 'balance of the filtered lines' : 'balance of the period'}</small></div>
         </div>
         <div class="table-scroll gl-scroll">
           <table class="gl-table" data-hide="${[...OPTIONAL.filter((k) => !GL.extras.has(k))].join(' ')}">
@@ -1016,97 +1016,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     });
   }
 
-  /* ------------------------------------------------ projects and locations */
-  const dimList = (kind) => (kind === 'project' ? PROJECTS : LOCATIONS);
-  const dimField = (kind) => (kind === 'project' ? 'project' : 'location');
-  const headName = (code) => ((accounts?.() || []).find((a) => a.code === code) || {}).name || 'Unknown head';
-
-  function dimTotals(kind) {
-    const field = dimField(kind);
-    const bucket = new Map(dimList(kind).map((row) => [row.code, {...row, postings: 0, debit: 0, credit: 0, revenue: 0, cost: 0, heads: new Map()}]));
-    bucket.set('', {code: '', name: kind === 'project' ? 'No project assigned' : 'No location recorded', kind: 'unassigned', postings: 0, debit: 0, credit: 0, revenue: 0, cost: 0, heads: new Map()});
-    for (const d of fixture(getCompany())) for (const l of d.lines) {
-      const key = l[field] || d[field] || '';
-      const row = bucket.get(key) || bucket.get('');
-      const dr = num(l.debit), cr = num(l.credit);
-      row.postings++; row.debit += dr; row.credit += cr;
-      if (String(l.account).startsWith('4')) row.revenue += cr - dr;
-      if (String(l.account).startsWith('5') || String(l.account).startsWith('6')) row.cost += dr - cr;
-      const h = row.heads.get(l.account) || {code: l.account, postings: 0, debit: 0, credit: 0};
-      h.postings++; h.debit += dr; h.credit += cr; row.heads.set(l.account, h);
-    }
-    return [...bucket.values()]
-      .filter((row) => row.code || row.postings)
-      .map((row) => ({...row, debit: round2(row.debit), credit: round2(row.credit), revenue: round2(row.revenue), cost: round2(row.cost), net: round2(row.revenue - row.cost), heads: [...row.heads.values()].sort((a, b) => String(a.code).localeCompare(String(b.code)))}));
-  }
-
-  function dimRegister(kind) {
-    const isProject = kind === 'project';
-    const rows = dimTotals(kind);
-    const named = rows.filter((r) => r.code);
-    const loose = rows.find((r) => !r.code);
-    const totalPosts = named.reduce((n, r) => n + r.postings, 0);
-    const totalRev = round2(named.reduce((n, r) => n + r.revenue, 0));
-    const totalCost = round2(named.reduce((n, r) => n + r.cost, 0));
-    return `<section class="panel">
-      <div class="panel-head"><h2>${isProject ? 'Projects' : 'Locations'}</h2><span class="badge">${dimList(kind).length} ${isProject ? 'projects' : 'locations'}</span></div>
-      <div class="table-scroll"><table>
-        <thead><tr><th>Code</th><th>${isProject ? 'Project' : 'Location'}</th><th>${isProject ? 'Manager' : 'Kind'}</th><th>State</th><th class="numeric">Postings</th><th class="numeric">Revenue</th><th class="numeric">Cost</th><th class="numeric">Net</th></tr></thead>
-        <tbody>${dimList(kind).map((row) => {
-          const t = rows.find((r) => r.code === row.code) || {postings: 0, revenue: 0, cost: 0, net: 0};
-          const state = isProject ? row.status : (row.active === false ? 'archived' : 'active');
-          const kindLabel = isProject ? row.manager : row.kind;
-          return `<tr><td class="mono">${e(row.code)}</td><td>${e(row.name)}</td><td>${e(kindLabel)}</td><td>${badge(state, state === 'active' ? 'good' : 'warn')}</td><td class="numeric">${t.postings}</td><td class="numeric">${money(t.revenue)}</td><td class="numeric">${money(t.cost)}</td><td class="numeric">${money(t.net)}</td></tr>`;
-        }).join('')}</tbody>
-        <tfoot><tr><td colspan="4">Total · ${dimList(kind).length} rows${loose ? ` · ${loose.postings} unassigned` : ''}</td><td class="numeric">${totalPosts}</td><td class="numeric">${money(totalRev)}</td><td class="numeric">${money(totalCost)}</td><td class="numeric">${money(totalRev - totalCost)}</td></tr></tfoot>
-      </table></div>
-      <div class="table-footer">${isProject ? 'Revenue and cost are sums of the ledger lines tagged with the project.' : 'Revenue and cost are sums of the ledger lines tagged with the location. A branch is a location whose kind is branch — there is no separate branch field.'}${loose ? ` ${loose.postings} postings carry no ${isProject ? 'project' : 'location'} and are listed as unassigned on the dashboard.` : ''}</div>
-    </section>
-    <div class="panel-body"><div class="related"><button class="text-button" data-module="accounting" data-tab="setup">Manage ${isProject ? 'projects' : 'locations'} in Setup ↗</button></div>
-      <p class="form-note">${isProject ? 'Project' : 'Location'} is a plain data field on a transaction: it says ${isProject ? 'what the work was for' : 'where it happened'} and it slices the reports. New ${isProject ? 'projects' : 'locations'} are added in Setup, not here.</p>
-    </div>`;
-  }
-
-  function dimDashboard(kind) {
-    const isProject = kind === 'project';
-    const rows = dimTotals(kind);
-    const named = rows.filter((r) => r.code);
-    const sum = (key) => round2(named.reduce((n, r) => n + r[key], 0));
-    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
-    return `<div class="stats">
-        ${kpi(isProject ? 'Projects' : 'Locations', String(named.length), 'Active in the register')}
-        ${kpi('Postings', String(rows.reduce((n, r) => n + r.postings, 0)), 'Ledger lines carrying the dimension')}
-        ${kpi('Revenue', money(sum('revenue')), 'Credit minus debit on income heads')}
-        ${kpi('Cost', money(sum('cost')), 'Debit minus credit on expense heads')}
-        ${kpi('Net', money(sum('net')), 'Revenue less cost')}
-      </div>
-      <p class="form-note">Each panel below is one ${isProject ? 'project' : 'location'}; beneath its totals is the same ledger sliced by accounting head. Because every line is tagged, these figures add back to the trial balance.</p>
-      ${rows.map((row) => `<section class="panel">
-        <div class="panel-head"><div><div class="eyebrow">${e(row.code || '—')}</div><h2>${e(row.name)}</h2></div><span class="badge">${row.postings} postings</span></div>
-        <div class="table-scroll"><table>
-          <thead><tr><th>Accounting head</th><th>Head name</th><th class="numeric">Postings</th><th class="numeric">Debit</th><th class="numeric">Credit</th><th class="numeric">Net</th></tr></thead>
-          <tbody>${row.heads.map((h) => `<tr><td class="mono">${e(h.code)}</td><td>${e(headName(h.code))}</td><td class="numeric">${h.postings}</td><td class="numeric">${money(h.debit)}</td><td class="numeric">${money(h.credit)}</td><td class="numeric">${money(h.debit - h.credit)}</td></tr>`).join('') || '<tr><td colspan="6">No postings yet.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="2">Total</td><td class="numeric">${row.postings}</td><td class="numeric">${money(row.debit)}</td><td class="numeric">${money(row.credit)}</td><td class="numeric">${money(row.debit - row.credit)}</td></tr></tfoot>
-        </table></div>
-        <div class="table-footer">Revenue ${money(row.revenue)} · cost ${money(row.cost)} · net ${money(row.net)}</div>
-      </section>`).join('')}`;
-  }
-
-  function dimensionPage(kind) {
-    const tab = DIM_TAB[kind] || 'register';
-    const isProject = kind === 'project';
-    return `<div class="tabs" data-dim-kind="${kind}" role="tablist" aria-label="${isProject ? 'Project' : 'Location'} views">
-      <button role="tab" aria-selected="${tab === 'register'}" data-dim-tab="register">${isProject ? 'Projects' : 'Locations'}</button>
-      <button role="tab" aria-selected="${tab === 'dashboard'}" data-dim-tab="dashboard">Dashboard</button>
-    </div>
-    <div id="dimension-panel">${tab === 'dashboard' ? dimDashboard(kind) : dimRegister(kind)}</div>`;
-  }
-
+  /* Project and location master data lives in Setup; there are no separate
+     pages for them. This is the only shared piece: the create-form handler. */
   function bindDimension(kind, rerender) {
-    document.querySelectorAll(`[data-dim-kind="${kind}"] [data-dim-tab]`).forEach((b) => b.addEventListener('click', () => {
-      DIM_TAB[kind] = b.dataset.dimTab;
-      rerender();
-    }));
     document.querySelectorAll(`[data-dim-form="${kind}"]`).forEach((form) => form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const v = Object.fromEntries(new FormData(form));
@@ -1129,8 +1041,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const taxAccounts = accounts().filter((a) => ['1300', '2200'].includes(a.code)).map((a) => `${a.code} ${a.name}`).join(', ');
     const field = (label, value, hint = '') => `<label>${e(label)}<input value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
     const row = (label, value) => `<div class="quiet-row"><div><strong>${e(label)}</strong></div><span>${e(value)}</span></div>`;
-    return `<div class="two-column">
-      <section class="panel">
+    const sections = {
+      organisation: `<section class="panel">
         <div class="panel-head"><h2>Organisation</h2><span class="badge">Saved in this session only</span></div>
         <div class="panel-body form-grid">
           ${field('Legal name', 'Northstar Trading (Pvt) Ltd')}
@@ -1140,9 +1052,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           ${field('Default payment terms', '30')}
           ${field('Credit limit behaviour', 'Warn, allow with approval')}
         </div>
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>Numbering</h2></div>
+        <div class="panel-body"><p class="form-note">Business identity, currency and the open period. The business is chosen at sign-in, so there is no company switch here.</p></div>
+      </section>`,
+      numbering: `<section class="panel">
+        <div class="panel-head"><h2>Numbering</h2><span class="badge">Fixed after the first entry</span></div>
         <div class="panel-body form-grid">
           ${field('Journal prefix', 'JE-2026-')}
           ${field('Sales invoice prefix', 'SI-')}
@@ -1151,11 +1064,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           ${field('Receipt prefix', 'RCT-')}
           ${field('Next journal number', '0201')}
         </div>
-      </section>
-    </div>
-
-    <div class="two-column">
-      <section class="panel">
+        <div class="panel-body"><p class="form-note">A series is frozen once its first document exists; a deleted or cancelled number is never reused. Changing a prefix only affects documents that have not been created yet.</p></div>
+      </section>`,
+      accounts: `<section class="panel">
         <div class="panel-head"><h2>Default accounts</h2><span class="badge">From chart flags</span></div>
         <div class="panel-body">
           ${row('Trade receivables control', byControl('receivable'))}
@@ -1165,10 +1076,61 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           ${row('Bank account', '1010 Operating bank')}
           ${row('Cash account', '1000 Cash')}
           ${row('Rounding account', '6500 Bank charges')}
-          <p class="form-note">Control and tax accounts are set on the account itself, so a new account of that type appears here automatically.</p>
+          <p class="form-note">Control and tax accounts are set on the account itself, so a new account of that type appears here automatically. A control head requires a party or sub-account on every line that uses it.</p>
         </div>
-      </section>
+      </section>`,
+      heads: `<section class="panel">
+        <div class="panel-head"><h2>Accounting heads</h2><span class="badge">${accounts().length} heads</span></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Code</th><th>Accounting head</th><th>Class</th><th>Control</th><th>State</th></tr></thead>
+          <tbody>${accounts().map((a) => `<tr><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${a.control ? badge(a.control, 'plum') : '—'}</td><td>${a.active ? 'Active' : 'Archived'}</td></tr>`).join('')}</tbody>
+        </table></div>
+        <form id="new-head-form" class="panel-body form-grid">
+          <label>Code<input name="code" required pattern="[0-9]{4,8}" placeholder="5100"></label>
+          <label>Name<input name="name" required maxlength="80" placeholder="Marketing expense"></label>
+          <label>Class<select name="type" class="inline-input"><option value="expense">Expense</option><option value="income">Income</option><option value="asset">Asset</option><option value="liability">Liability</option><option value="equity">Equity</option></select></label>
+          <label>Control<select name="control" class="inline-input"><option value="">Ordinary posting account</option><option value="receivable">Receivable control — customer on every line</option><option value="payable">Payable control — supplier on every line</option></select></label>
+          <div class="related"><button class="button primary">Add accounting head</button></div>
+        </form>
+        <div class="panel-body"><p class="form-note">A head created here appears in the chart, the journal picker and the default-account list immediately. A control head demands a party or sub-account on every line; that is how a chart balance keeps its subledger.</p></div>
+      </section>`,
+      dimensions: `<div class="two-column">
+        <section class="panel">
+          <div class="panel-head"><h2>Projects</h2><span class="badge">Data field</span></div>
+          <table>
+            <thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th></tr></thead>
+            <tbody>${PROJECTS.length ? PROJECTS.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager)}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td></tr>`).join('') : '<tr><td colspan="4">No projects yet.</td></tr>'}</tbody>
+          </table>
+          <form data-dim-form="project" class="panel-body form-grid">
+            <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="PRJ-NORTH"></label>
+            <label>Name<input name="name" required maxlength="60" placeholder="North depot"></label>
+            <label>Manager<input name="manager" required maxlength="40" value="A. Rehman"></label>
+            <label>State<select name="status" class="inline-input"><option value="active">Active</option><option value="on hold">On hold</option></select></label>
+            <div class="related"><button class="button primary">Add project</button></div>
+          </form>
+        </section>
+        <section class="panel">
+          <div class="panel-head"><h2>Locations</h2><span class="badge">A branch is a location kind</span></div>
+          <table>
+            <thead><tr><th>Code</th><th>Location</th><th>Kind</th></tr></thead>
+            <tbody>${LOCATIONS.map((l) => `<tr><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td></tr>`).join('')}</tbody>
+          </table>
+          <form data-dim-form="location" class="panel-body form-grid">
+            <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BR-KHI-03"></label>
+            <label>Name<input name="name" required maxlength="60" placeholder="Saddar branch"></label>
+            <label>Kind<select name="kind" class="inline-input"><option value="branch">Branch</option><option value="office">Office</option><option value="outlet">Outlet</option><option value="warehouse">Warehouse</option><option value="site">Site</option></select></label>
+            <label>Address<input name="address" maxlength="80" placeholder="Optional"></label>
+            <div class="related"><button class="button primary">Add location</button></div>
+          </form>
+        </section>
+      </div>
       <section class="panel">
+        <div class="panel-head"><h2>Cost centres</h2><span class="badge">Data field</span></div>
+        <div class="panel-body"><ul class="contract-list">${COST_CENTRES.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
+          <p class="form-note">Project and location are data fields on a transaction: project says what the work was for, location says where it happened, and both slice the reports. Neither holds a balance. Which projects and locations a party or a bank/cash sub-account may be used on is set on that party or sub-account, not here.</p>
+        </div>
+      </section>`,
+      approval: `<section class="panel">
         <div class="panel-head"><h2>Approvals and periods</h2></div>
         <div class="panel-body form-grid">
           ${field('Review required above', '100,000.00', 'Debits above this need an independent reviewer')}
@@ -1178,100 +1140,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           ${field('Post into closed period', 'Administrator, with reason')}
           ${field('Correction route', 'Cancel, then delete; a reversal only when the correction must stay visible')}
         </div>
-      </section>
-    </div>
-
-    <div class="two-column">
-      <section class="panel">
-        <div class="panel-head"><h2>Projects</h2><span class="badge">Data field</span></div>
-        <table>
-          <thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th></tr></thead>
-          <tbody>${PROJECTS.length ? PROJECTS.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager)}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td></tr>`).join('') : '<tr><td colspan="4">No projects yet.</td></tr>'}</tbody>
-        </table>
-        <form data-dim-form="project" class="panel-body form-grid">
-          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="PRJ-NORTH"></label>
-          <label>Name<input name="name" required maxlength="60" placeholder="North depot"></label>
-          <label>Manager<input name="manager" required maxlength="40" value="A. Rehman"></label>
-          <label>State<select name="status" class="inline-input"><option value="active">Active</option><option value="on hold">On hold</option></select></label>
-          <div class="related"><button class="button primary">Add project</button></div>
-        </form>
-      </section>
-      <section class="panel">
-        <div class="panel-head"><h2>Locations</h2><span class="badge">A branch is a location kind</span></div>
-        <table>
-          <thead><tr><th>Code</th><th>Location</th><th>Kind</th></tr></thead>
-          <tbody>${LOCATIONS.map((l) => `<tr><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td></tr>`).join('')}</tbody>
-        </table>
-        <form data-dim-form="location" class="panel-body form-grid">
-          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BR-KHI-03"></label>
-          <label>Name<input name="name" required maxlength="60" placeholder="Saddar branch"></label>
-          <label>Kind<select name="kind" class="inline-input"><option value="branch">Branch</option><option value="office">Office</option><option value="outlet">Outlet</option><option value="warehouse">Warehouse</option><option value="site">Site</option></select></label>
-          <label>Address<input name="address" maxlength="80" placeholder="Optional"></label>
-          <div class="related"><button class="button primary">Add location</button></div>
-        </form>
-      </section>
-    </div>
-
-    <section class="panel">
-      <div class="panel-head"><h2>Dimensions</h2><span class="badge">Slicing, never balances</span></div>
-      <div class="panel-body">
-        <div class="section-title">Cost centres</div>
-        <ul class="contract-list">${COST_CENTRES.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
-        <p class="form-note">Project and location are data fields on a transaction: project says what the work was for, location says where it happened, and both slice the reports. Neither holds a balance — balances stay on accounts. A new code is available in the journal form immediately.</p>
-      </div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head"><h2>Accounting heads</h2><span class="badge">${accounts().length} heads</span></div>
-      <div class="table-scroll"><table>
-        <thead><tr><th>Code</th><th>Accounting head</th><th>Class</th><th>Control</th><th>State</th></tr></thead>
-        <tbody>${accounts().map((a) => `<tr><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${a.control ? badge(a.control, 'plum') : '—'}</td><td>${a.active ? 'Active' : 'Archived'}</td></tr>`).join('')}</tbody>
-      </table></div>
-      <form id="new-head-form" class="panel-body form-grid">
-        <label>Code<input name="code" required pattern="[0-9]{4,8}" placeholder="5100"></label>
-        <label>Name<input name="name" required maxlength="80" placeholder="Marketing expense"></label>
-        <label>Class<select name="type" class="inline-input"><option value="expense">Expense</option><option value="income">Income</option><option value="asset">Asset</option><option value="liability">Liability</option><option value="equity">Equity</option></select></label>
-        <label>Control<select name="control" class="inline-input"><option value="">Ordinary posting account</option><option value="receivable">Receivable control — customer on every line</option><option value="payable">Payable control — supplier on every line</option></select></label>
-        <div class="related"><button class="button primary">Add accounting head</button></div>
-      </form>
-      <div class="panel-body"><p class="form-note">A head created here appears in the chart, the journal picker and the default-account list immediately. A control head demands a party or sub-account on every line; that is how a chart balance keeps its subledger.</p></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-head"><h2>Party &amp; sub-account membership</h2><span class="badge">Optional data field</span></div>
-      <div class="panel-body">
-        <p class="form-note">Which projects and locations a customer, supplier, bank account or cash custodian belongs to. Blank means all. This is a field on the sub-account, not a balance: balances stay on the control account, and this only narrows the choices and the reports.</p>
-        <div class="table-scroll"><table class="membership-table">
-          <thead><tr><th>Party / sub-account</th><th>Projects</th><th>Locations</th></tr></thead>
-          <tbody>${partyDirectory().map(([name, kind], i) => {
-            const chosen = MEMBERSHIP.get(name) || {projects: [], locations: []};
-            return `<tr data-membership-row="${i}" data-member-party="${e(name)}"><td>${e(name)}<small class="secondary">${e(kind)}</small></td>
-              <td>${ms('mp' + i, 'Projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), chosen.projects)}</td>
-              <td>${ms('ml' + i, 'Locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), chosen.locations)}</td></tr>`;
-          }).join('')}</tbody>
-        </table></div>
-        <div class="related"><button class="button" data-save-membership="1">Save membership</button></div>
-        <p class="form-note">Membership is a convenience for picking and filtering. It never changes a balance and it never restricts the ledger; access control is a separate, enforced contract.</p>
-      </div>
-    </section>`;
-  }
-
-  function partyDirectory() {
-    const out = new Map();
-    for (const d of fixture(getCompany())) {
-      if (d.party && d.party !== 'Owner') out.set(d.party, d.partyType === 'Supplier' ? 'Supplier' : 'Customer');
-      for (const l of d.lines) {
-        if (!l.party) continue;
-        if (l.account === '1100') out.set(l.party, 'Customer');
-        else if (l.account === '2100') out.set(l.party, 'Supplier');
-        else if (l.account === '1010') out.set(l.party, 'Bank');
-        else if (l.account === '1000') out.set(l.party, 'Cash');
-      }
-    }
-    return [...out.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+      </section>`
+    };
+    const order = [['organisation', 'Organisation'], ['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['dimensions', 'Projects & locations'], ['approval', 'Approvals & periods']];
+    const current = order.some(([id]) => id === SETUP_TAB) ? SETUP_TAB : 'organisation';
+    return `<div class="tabs" role="tablist" aria-label="Setup sections">${order.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-setup-tab="${id}">${label}</button>`).join('')}</div>
+      <div id="setup-panel">${sections[current]}</div>`;
   }
 
   function bindSetup(rerender) {
+    document.querySelectorAll('[data-setup-tab]').forEach((b) => b.addEventListener('click', () => {
+      SETUP_TAB = b.dataset.setupTab;
+      rerender();
+    }));
     document.querySelector('#new-head-form')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
@@ -1283,28 +1164,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       notify('Accounting head added for this session. It is now available in the journal form.');
       rerender();
     });
-    document.querySelector('[data-save-membership]')?.addEventListener('click', () => {
-      const rows = [...document.querySelectorAll('[data-membership-row]')];
-      for (const row of rows) {
-        const [projects, locations] = row.querySelectorAll('.ms');
-        MEMBERSHIP.set(row.dataset.memberParty, {
-          projects: [...projects.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value),
-          locations: [...locations.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value),
-        });
-      }
-      notify(`Membership saved for ${rows.length} parties and sub-accounts in this session.`);
-      rerender();
-    });
   }
 
   const projectsView = () => projectsScreen(getCompany());
   const taxesView = () => taxesScreen(TAX_ACTIVE);
 
   const PLANNED = {
-    parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
+    parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Allowed projects and locations, chosen on the party form', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
     registers: ['Registers', 'Document registers by type — sales invoices, purchase invoices, payments and journals — filtered by party, date range, amount and state. This answers “every transaction with this party in this period” without opening the ledger.', ['Filter by party, type, period, amount, state', 'Column totals and export', 'Row opens the document']],
     payments: ['Payments', 'Money in and money out with a party, a bank or cash account, a reference and an allocation table. Allocation can follow oldest first, newest first or a manual selection across several documents, with any remainder kept as an advance.', ['Receipts and supplier payments', 'Allocation against open invoices or bills', 'Advance and on-account balances', 'Posts the ledger entry and the allocation together']],
-    banking: ['Banking & cash', 'Bank and cash accounts with balances and a cash-flow strip, a register per account, and reconciliation with statement import, suggested matches and unmatched lines. A reconciliation cannot be closed with a difference.', ['Bank and cash account list', 'Cash-flow summary', 'Account register', 'Statement import and reconciliation']],
+    banking: ['Banking & cash', 'Bank and cash accounts with balances and a cash-flow strip, a register per account, and reconciliation with statement import, suggested matches and unmatched lines. A reconciliation cannot be closed with a difference.', ['Bank and cash account list', 'Each bank or cash sub-account records its allowed projects and locations', 'Cash-flow summary', 'Account register', 'Statement import and reconciliation']],
     items: ['Items', 'Light item master for accounting: code, name, unit, income account, expense account, tax treatment and an “inventory tracked” flag. Tracked items are the only ones the Inventory module will value.', ['Sell and buy accounts per item', 'Tax treatment', 'Inventory-tracked flag', 'No quantities or valuation here']],
     sales: ['Sales invoices', 'Customer invoice with item or free-text lines, tax, due date and payment terms. Posting creates a receivable open item, updates the party balance and writes the ledger entry.', ['Line items with tax', 'Due date and terms', 'Submit, cancel with reversal, print', 'Credit note against the original']],
     purchases: ['Purchase invoices', 'Supplier bill mirroring the sales invoice, posting to payables and to expense or inventory-clearing. Used for expenses when the Buying module is off, and as the accounting record of a bill when it is on.', ['Line items with tax', 'Due date and terms', 'Expense or inventory clearing', 'Cancel with reversal']],
@@ -1325,6 +1194,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, dimensionPage, bindDimension, taxesView, bindTaxes, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

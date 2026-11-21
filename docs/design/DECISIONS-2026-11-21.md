@@ -749,3 +749,86 @@ so they follow the theme, and used in the journal header for print and the overf
 menu. No network request is made. Attribution and licence terms are recorded in
 `docs/design/ASSETS.md`; the free licence requires it, so it must travel with the
 design if it is published.
+
+---
+
+# Round 8 — data fields only, tabbed Setup, filtered totals
+
+## 52. Ledger totals, corrected
+
+- The extra “Whole period, no filters: …” sentence is gone. It repeated what the
+  strip already says and appeared only to explain a number nobody asked for.
+- The fourth figure is **dynamic**:
+  - debits larger → **Net debit**, positive value;
+  - credits larger → **Net credit**, positive value;
+  - equal → **Net**, 0.00, “in balance”.
+  The old version always said “Net debit” and printed a negative number when the
+  credit side was larger.
+- The strip still shows lines shown versus lines in the period when a filter is on.
+
+## 53. Projects and locations are data fields, not pages
+
+The two accounting pages for Projects and Locations are **removed**. They were a
+half-measure: the owner wants them to behave exactly like any other data field.
+
+- They are created in **Setup → Projects & locations**.
+- They are chosen on the journal: **project per line** (optional), **one location
+  per voucher**.
+- They slice reports; they never carry a balance.
+- The standalone **Projects module** in Operations stays as the delivery workspace.
+  The duplicate rail entry is therefore gone.
+
+## 54. Setup is tabbed
+
+One page, six tabs, one section each, so nothing is crowded:
+
+| Tab | Contents |
+|---|---|
+| Organisation | legal name, base currency, fiscal year, current period, terms, credit behaviour |
+| Numbering | document prefixes and the next journal number |
+| Default accounts | control and default accounts, read from the chart flags |
+| Accounting heads | head table plus the create form |
+| Projects & locations | project table and form, location table and form, cost centres |
+| Approvals & periods | review threshold, self approval, period lock, correction route |
+
+## 55. Membership belongs to the party, not to Setup
+
+The membership editor in Setup is removed. Which projects and locations a party or
+sub-account may be used on is a field **on that party or sub-account form**, exactly
+as the owner described:
+
+- creating a customer or supplier asks for the projects and locations it is allowed
+  on;
+- creating a bank or cash sub-account asks the same;
+- blank means all.
+
+The journal now follows that order:
+
+1. choose the **account**,
+2. choose the **project** (and the voucher's **location** at the top),
+3. choose the **party / sub-account**, filtered to what is allowed for that account
+   kind and for the chosen project and location,
+4. choose the **cost centre**,
+5. enter debit or credit.
+
+Consequences built in this round:
+
+- Column order is Account · Project · Party/sub-account · Cost centre · Debit ·
+  Credit.
+- The party list is filtered by the account kind **and** by the party's allowed
+  projects and locations.
+- Changing the project or the voucher location clears a party that is no longer
+  allowed, so an invalid combination cannot be saved.
+- `PARTY_ACCESS` in `accounting-model.js` holds the sample restrictions used to
+  demonstrate the rule (Atlas Studio, Meridian Pharma, Willow Supplies). The other
+  parties are unrestricted, which is what “blank means all” looks like.
+
+The party register and the bank/cash sub-account forms do not exist yet; when they
+are built they carry these two fields and the journal needs no further change.
+
+## 56. Filter box no longer runs under its neighbour
+
+Selecting two or three values made the filter trigger grow, because the text span
+had no `min-width` inside its flex row and refused to shrink. It now truncates with
+an ellipsis (`min-width:0`, `max-width:320px` on the filter control), so a long
+selection can never overlap the next block.

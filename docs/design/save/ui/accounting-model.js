@@ -21,6 +21,14 @@ export const LOCATIONS = [
   {code: 'OUT-LHE-02', name: 'Gulberg outlet', kind: 'outlet'},
   {code: 'WH-KHI', name: 'Central warehouse', kind: 'warehouse'},
 ];
+// Which projects and locations a party or sub-account may be used on. An empty
+// list means every project or every location. Configuration, not a balance: it
+// is set on the party or sub-account form and only narrows the journal picker.
+export const PARTY_ACCESS = {
+  'Atlas Studio': {projects: ['PRJ-MERIDIAN'], locations: ['HQ', 'OUT-KHI-01']},
+  'Meridian Pharma': {projects: ['PRJ-MERIDIAN'], locations: ['OUT-LHE-02']},
+  'Willow Supplies': {projects: ['PRJ-FALCON'], locations: []},
+};
 const locationFor = (i) => LOCATIONS[i % LOCATIONS.length].code;
 export const COST_CENTRES = ['Administration', 'Operations', 'Sales', 'Warehouse'];
 const projectFor = (i) => (i % 5 === 0 ? '' : PROJECTS[i % PROJECTS.length].code);

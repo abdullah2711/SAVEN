@@ -44,7 +44,7 @@ bank account register with a running balance.
   account, party type, project, cost centre, against voucher and supplier invoice
   number, with a column picker.
 - Project and cost centre are dimensions on every posting line.
-- Projects became its own module with a working list and per-project totals.
+- Projects and locations are data fields inside Accounting, created in Setup; the standalone Projects module is the delivery workspace.
 - Setup became an accounting page holding organisation, numbering, default
   accounts, dimensions, approvals and periods.
 - Payments, Cash & bank, Sales and Purchases stay inside Accounting.
@@ -127,8 +127,6 @@ Accounting
 ├── Dashboard
 ├── General ledger             (the detailed book of every posting)
 ├── Journal entries            (register; "New journal" is a button here)
-├── Projects                   (read-only register + dashboard; created in Setup)
-├── Locations                  (read-only register + dashboard; created in Setup)
 ├── Parties                    (register; a row opens the party page)
 ├── Cash & bank                (Accounts · Reconciliation)
 ├── Payments                   (register; "New payment" is a button here)

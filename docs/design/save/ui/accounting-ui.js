@@ -1,7 +1,7 @@
 import {escape as e,cents,decimal} from './model.js';
 import {chart,fixture,ledger,trial,statements,reviewJournal,csv} from './accounting-model.js';
 import {icon} from './icons.js';
-import {PROJECTS,LOCATIONS,COST_CENTRES} from './accounting-model.js';
+import {PROJECTS,LOCATIONS,COST_CENTRES,PARTY_ACCESS} from './accounting-model.js';
 import {createAccountingSetup} from './accounting-setup.js';
 import {createScreens,plannedPage} from './screens.js';
 const button=(label,action,extra='',primary=false)=>`<button type="button" class="button ${primary?'primary':''}" data-ac="${action}" ${extra}>${label}</button>`;
@@ -32,7 +32,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  function tb(){const rows=trial(data(),range),dr=rows.reduce((n,a)=>n+cents(a.closingDebit),0n),cr=rows.reduce((n,a)=>n+cents(a.closingCredit),0n);return `<section class="panel"><div class="panel-head"><h2>Trial balance</h2>${button('Export trial balance CSV','export-trial')}</div>${filters()}${table(['Account','Opening net','Period debit','Period credit','Closing debit','Closing credit'],rows.filter(a=>(a.code+' '+a.name).toLowerCase().includes(query.toLowerCase())).map(a=>`<tr><td><button class="text-button" data-ac="ledger" data-value="${a.code}">${a.code} - ${e(a.name)}</button></td><td class="numeric">${a.opening}</td><td class="numeric">${a.debit}</td><td class="numeric">${a.credit}</td><td class="numeric">${a.closingDebit}</td><td class="numeric">${a.closingCredit}</td></tr>`))}<div class="ledger-basis"><span>Full sample chart / Closing debit <strong>${decimal(dr)}</strong></span><span>Closing credit <strong>${decimal(cr)}</strong></span><span class="badge ${dr===cr?'good':'warn'}">${dr===cr?'Balanced fixture':'Difference requires investigation'}</span></div></section>`;}
  function financial(){const s=statements(data(),range),statementTabs=[['profit','Profit & loss'],['position','Financial position'],['notes','Notes & source schedules']];return `<section class="panel"><div class="panel-head"><h2>Financial statements</h2>${button('Export statement CSV','export-statements')}</div>${filters()}<div class="panel-body"><div class="tabs">${statementTabs.map(([id,t])=>`<button data-ac="statement" data-value="${id}" aria-selected="${statement===id}">${t}</button>`).join('')}</div>${statement==='profit'?`<div class="statement-line"><span>Service revenue ${button('Source','ledger','data-value="4000"')}</span><strong>${s.income}</strong></div><div class="statement-line"><span>Operating expenses ${button('Source','ledger','data-value="5000"')}</span><strong>(${s.expenses})</strong></div><div class="statement-line total"><span>Profit / (loss)</span><strong>${s.profit}</strong></div>`:statement==='position'?`<div class="statement-line"><span>Assets</span><strong>${s.assets}</strong></div><div class="statement-line"><span>Liabilities</span><strong>${s.liabilities}</strong></div><div class="statement-line"><span>Capital</span><strong>${s.capital}</strong></div><div class="statement-line"><span>Accumulated sample profit</span><strong>${s.accumulatedProfit}</strong></div><div class="statement-line total"><span>Liabilities and equity</span><strong>${decimal(BigInt(s.liabilities.replace('.',''))+BigInt(s.equity.replace('.','')))}</strong></div><div class="related"><span class="badge good">${s.balanced?'Statement equation agrees':'Investigate differences'}</span></div>`:`<details open><summary>1. Basis of this example</summary><p class="form-note">Derived from four synthetic source documents and ten ledger lines. Currency PKR. No statutory reporting framework, legal tax rate or full published financial statements are represented.</p></details><details open><summary>2. Source and control schedules</summary><div class="related">${button('Bank','ledger','data-value="1010"')}${button('Receivables','ledger','data-value="1100"')}${button('Payables','ledger','data-value="2100"')}${button('Input tax','ledger','data-value="1300"')}${button('Output tax','ledger','data-value="2200"')}</div></details><p class="form-note">Comparatives, cash flow, changes in equity, industry disclosure packs and signed publication are required next UI workflows; this increment does not present them as complete.</p>`}<p class="form-note">Period ${range.from} to ${range.to}. Financial position includes all sample history through the end date. Filter text does not remove accounts from statement calculations.</p></div></section>`;}
  function close(){return `<section class="panel"><div class="panel-head"><h2>Period close</h2>${button('Review closing snapshot','period-review','',true)}</div><div class="panel-body"><p>Review controls before locking November 2026.</p><ul class="close-list">${[['Trial balance','Fixture balances agree','good'],['Bank statements','Reconciliation and outstanding items require evidence','warn'],['AR / AP / stock / assets / tax','Connect the independent source schedules',''],['Pending commands & evidence','Resolve held documents and retained attachments',''],['Review and report snapshot','Named sign-off, version and effective lock required','']].map(([t,d,k])=>`<li><div><strong>${t}</strong><small class="secondary">${d}</small></div><span class="badge ${k}">${k==='good'?'Agrees':'Review required'}</span></li>`).join('')}</ul><p class="form-note">This walkthrough cannot lock or reopen a real period. Current policy, authority and source versions must be rechecked at the actual commit.</p></div></section>`;}
- function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='projects'?screens.dimensionPage('project'):current==='locations'?screens.dimensionPage('location'):current==='ledger'?screens.gl():current==='coa'?coa():current==='trial'?tb():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.ageing():current==='approvals'?screens.approvals():current==='close'?close():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():plannedPage('accounting',current);return body;}
+ function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='ledger'?screens.gl():current==='coa'?coa():current==='trial'?tb():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.ageing():current==='approvals'?screens.approvals():current==='close'?close():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():plannedPage('accounting',current);return body;}
  function capture(){const f=document.querySelector('#accounting-journal');if(!f)return;draft={...draft,...Object.fromEntries(new FormData(f)),lines:[...f.querySelectorAll('[data-journal-line]')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-journal-field]')].map(x=>[x.dataset.journalField,x.value])))};}
  function preview(){
    const errors=[];
@@ -141,12 +141,12 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
 
        <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>
        <div class="hscroll" id="journal-hscroll"><div class="hscroll-thumb" id="journal-hscroll-thumb"></div></div>
-       <div class="table-scroll journal-scroll" id="journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Cost centre</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
+       <div class="table-scroll journal-scroll" id="journal-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Project</th><th>Party / sub-account</th><th>Cost centre</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
          const a=acc(l.account);
          return `<tr data-journal-line="${i}"><td>${picker(i,l.account)}</td>
-           <td>${ss({key:'party',field:'party',value:l.party||'',options:PARTY_OPTIONS,label:'parties and sub-accounts',placeholder:'Choose party / sub-account',line:i,disabled:!partyNeeded(a)})}</td>
            <td>${ss({key:'project',field:'project',value:l.project||'',options:PROJECT_OPTIONS(),label:'projects',search:false,line:i})}</td>
-                      <td>${ss({key:'centre',field:'costCentre',value:l.costCentre||'',options:CENTRE_OPTIONS,label:'cost centres',search:false,line:i})}</td>
+           <td>${ss({key:'party',field:'party',value:l.party||'',options:PARTY_OPTIONS,label:'parties and sub-accounts',placeholder:'Choose party / sub-account',line:i,disabled:!partyNeeded(a)})}</td>
+           <td>${ss({key:'centre',field:'costCentre',value:l.costCentre||'',options:CENTRE_OPTIONS,label:'cost centres',search:false,line:i})}</td>
            <td><input data-journal-field="debit" aria-label="Line ${i+1} debit" value="${e(l.debit)}" inputmode="decimal"></td>
            <td><input data-journal-field="credit" aria-label="Line ${i+1} credit" value="${e(l.credit)}" inputmode="decimal"></td>
            <td>${button('Remove','remove-line','data-value="'+i+'"')}</td></tr>`;
@@ -210,6 +210,20 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    });
    sync();
    form.addEventListener('change',ev=>{if(ev.target.matches('[data-journal-field="account"]'))sync();});
+   const revalidate=()=>{
+     const location=form.querySelector('input[name="location"]')?.value||draft.location||'HQ';
+     form.querySelectorAll('[data-journal-line]').forEach(tr=>{
+       const party=tr.querySelector('.ss[data-ss="party"]');
+       if(!party)return;
+       const hidden=party.querySelector('input[type="hidden"]');
+       const project=tr.querySelector('[data-journal-field="project"]').value;
+       if(hidden.value&&!allowedHere(hidden.value,project,location)){
+         hidden.value='';
+         party.querySelector('.ms-text').textContent='Choose party / sub-account';
+       }
+     });
+   };
+   form.addEventListener('change',ev=>{if(ev.target.matches('[data-journal-field="project"], input[name="location"]'))revalidate();});
    form.addEventListener('click',ev=>{
      const item=ev.target.closest('.ss-item');
      if(!item)return;
@@ -228,22 +242,34 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      }
    });
  }
- document.addEventListener('ms:open',ev=>{
-   const box=ev.target.closest('.ss');
-   if(!box||box.dataset.ss!=='party')return;
+ const allowedHere=(name,project,location)=>{
+   const access=PARTY_ACCESS[name];
+   if(!access)return true;
+   if(project&&access.projects.length&&!access.projects.includes(project))return false;
+   if(access.locations.length&&!access.locations.includes(location))return false;
+   return true;
+ };
+ const openParty=box=>{
    const line=box.closest('[data-journal-line]');
    if(!line)return;
    const acc=accounts.find(a=>a.code===line.querySelector('[data-journal-field="account"]').value);
    const kind=KIND_OF(acc);
    if(!kind){box.querySelector('.ms-panel').hidden=true;return;}
+   const project=line.querySelector('[data-journal-field="project"]').value;
+   const location=document.querySelector('#accounting-journal input[name="location"]')?.value||draft.location||'HQ';
    let shown=0;
    box.querySelectorAll('.ss-item').forEach(item=>{
-     const hit=item.dataset.kind===kind;
+     const hit=item.dataset.kind===kind&&allowedHere(item.dataset.value,project,location);
      item.hidden=!hit;
      if(hit)shown++;
    });
    const empty=box.querySelector('.ms-empty');
    if(empty)empty.hidden=shown>0;
+ };
+ document.addEventListener('ms:open',ev=>{
+   const box=ev.target.closest('.ss');
+   if(!box||box.dataset.ss!=='party')return;
+   openParty(box);
  });
  const addFiles=(list)=>{
    for(const f of list) draft.evidence.push({name:f.name,size:f.size,type:f.type||''});

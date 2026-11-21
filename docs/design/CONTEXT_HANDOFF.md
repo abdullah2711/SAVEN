@@ -60,8 +60,9 @@ savenuitest.localhost` → `docs/design/save`.
 - Accounting dashboard: KPI cards, cash chart, ageing, attention list, recent
   journals.
 - General ledger: multi-select filters with search in every dropdown, column
-  chooser, sorting, row expand, CSV, and a totals strip above the table (filtered
-  debit, credit, net, line count, plus the whole-period totals when filtered).
+  chooser, sorting, row expand, CSV, and a totals strip above the table (lines
+  shown, total debit, total credit, and a net figure labelled net debit or net
+  credit depending on the side).
 - Journal register + record page: columns mirror the form, per-column filters,
   sorting, state-aware actions.
 - Journal form: auto-numbering (`JV-MM-YYYY-0001`), posting time, guards (no future,
@@ -69,13 +70,9 @@ savenuitest.localhost` → `docs/design/save`.
   party/sub-account filtered by account kind, project, cost centre, review panel,
   evidence drop zone, print + overflow menu, always-visible horizontal scroll track.
 - Chart of accounts, trial balance, statements.
-- **Projects** page (Accounting): read-only register and a dashboard with
-  statistics per accounting head. Created in Setup.
-- **Locations** page (Accounting): same, with `kind` (office, branch, outlet,
-  warehouse, site). Created in Setup.
-- **Setup**: organisation, numbering, default accounts, approvals, **projects and
-  locations with create forms**, **accounting heads with a create form**,
-  **party & sub-account membership**.
+- **Setup** is tabbed: organisation, numbering, default accounts, accounting heads,
+  projects & locations, approvals & periods. Projects and locations are created
+  there; they have no pages of their own.
 - Supplied print and vertical-menu glyphs wired into the journal header.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
@@ -91,7 +88,12 @@ display-only; no persistence (reload returns to fixtures).
   Moving balance between locations is two entries.
 - **Project and location are plain data fields**: created in Setup, chosen on the
   journal (project per line, one location per voucher), used to slice reports.
-  Accounts stay generic; dimensions never carry a balance.
+  Accounts stay generic; dimensions never carry a balance. They have no pages.
+- **Membership lives on the party or sub-account form** (allowed projects and
+  locations, blank = all), not in Setup. Journal order is account → project →
+  party/sub-account → cost centre → amount, and the party list follows the account
+  kind plus the allowed project and location. Changing project/location clears an
+  invalid party.
 - **Balances are not sliced by project/location.** P&L by dimension works from
   tagged lines. A control balance can only be sliced from the party/open-item
   subledger, with an unallocated bucket — deferred until that subledger exists.
