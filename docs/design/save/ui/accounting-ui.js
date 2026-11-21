@@ -7,13 +7,19 @@ import {createScreens,plannedPage} from './screens.js';
 const button=(label,action,extra='',primary=false)=>`<button type="button" class="button ${primary?'primary':''}" data-ac="${action}" ${extra}>${label}</button>`;
 const field=(name,label,value,type='text',extra='')=>`<label>${label}<input name="${name}" value="${e(value)}" type="${type}" ${extra}></label>`;
 const options=(values,current)=>values.map(([v,t])=>`<option value="${e(v)}" ${v===current?'selected':''}>${e(t)}</option>`).join('');
+let seq=1;
+const nowTime=()=>{const d=new Date();return [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':');};
+const BUSINESS_START='2026-07-01';
+const OPEN_PERIODS=[['2026-11-01','2026-11-30']];
+const BANK_ACCOUNTS=['Standard Bank — current 0123456789','Meezan Bank — current 0987654321'];
+const CASH_CUSTODIANS=['Cash — front desk (A. Khan)','Cash — store (S. Ali)'];
 const CUSTOMER_NAMES=['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality'];
 const SUPPLIER_NAMES=['Willow Supplies','Maple Packaging','Cedar Services','Pak Print House','Al-Noor Freight','Metro Office Supply','Secure Line','Digital Systems'];
 const partyOptions=(current,control)=>!control?'':(control==='receivable'?CUSTOMER_NAMES:SUPPLIER_NAMES).map(n=>`<option value="${e(n)}" ${n===current?'selected':''}>${e(n)}</option>`).join('');
 const number=n=>`<span class="numeric">${e(n)}</span>`;
 export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  const setup=createAccountingSetup({render,notify,dirty,getCompany});
- let selected='1010',query='',range={from:'2026-11-01',to:'2026-11-30'},open=new Set(['Assets','Liabilities','Equity','Income','Expenses']),accounts=chart.map(a=>({...a})),statement='profit',formTab='entry',saved=false,draft={date:'2026-11-13',reference:'DEMO-JV-NEW',narrative:'Office expenses',branch:'Central',decision:'direct',entryType:'normal',evidence:[],lines:[{account:'5000',debit:'100.00',credit:'0.00',description:'Office expenses',party:'',project:'',location:'',costCentre:''},{account:'1010',debit:'0.00',credit:'100.00',description:'Bank payment',party:'',project:'',location:'',costCentre:''}]};
+ let selected='1010',query='',range={from:'2026-11-01',to:'2026-11-30'},open=new Set(['Assets','Liabilities','Equity','Income','Expenses']),accounts=chart.map(a=>({...a})),statement='profit',formTab='entry',saved=false,draft={date:'2026-11-13',number:'',reference:'',narrative:'Office expenses',decision:'direct',entryType:'normal',entrySubtype:'journal',location:'HQ',time:'',evidence:[],lines:[{account:'5000',debit:'100.00',credit:'0.00',description:'Office expenses',party:'',project:'',location:'HQ',costCentre:''},{account:'1010',debit:'0.00',credit:'100.00',description:'Bank payment',party:'Standard Bank — current 0123456789',project:'',location:'HQ',costCentre:''}]};
  const data=()=>fixture(getCompany());
  const screens=createScreens({getCompany,range:()=>range,navigate,notify,accounts:()=>accounts});
  function download(name,rows){const url=URL.createObjectURL(new Blob([csv([['SA7EN TESTING - SAMPLE DATA ONLY'],...rows])],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
@@ -28,11 +34,116 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  function close(){return `<section class="panel"><div class="panel-head"><h2>Period close</h2>${button('Review closing snapshot','period-review','',true)}</div><div class="panel-body"><p>Review controls before locking November 2026.</p><ul class="close-list">${[['Trial balance','Fixture balances agree','good'],['Bank statements','Reconciliation and outstanding items require evidence','warn'],['AR / AP / stock / assets / tax','Connect the independent source schedules',''],['Pending commands & evidence','Resolve held documents and retained attachments',''],['Review and report snapshot','Named sign-off, version and effective lock required','']].map(([t,d,k])=>`<li><div><strong>${t}</strong><small class="secondary">${d}</small></div><span class="badge ${k}">${k==='good'?'Agrees':'Review required'}</span></li>`).join('')}</ul><p class="form-note">This walkthrough cannot lock or reopen a real period. Current policy, authority and source versions must be rechecked at the actual commit.</p></div></section>`;}
  function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='ledger'?screens.gl():current==='coa'?coa():current==='trial'?tb():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.ageing():current==='approvals'?screens.approvals():current==='close'?close():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():plannedPage('accounting',current);return body;}
  function capture(){const f=document.querySelector('#accounting-journal');if(!f)return;draft={...draft,...Object.fromEntries(new FormData(f)),lines:[...f.querySelectorAll('[data-journal-line]')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-journal-field]')].map(x=>[x.dataset.journalField,x.value])))};}
- function preview(){try{const result=reviewJournal(draft,accounts);return `<div class="panel-head"><h2>Journal review</h2><span class="badge good">Balanced example</span></div><div class="panel-body"><div class="statement-line"><span>Debit</span><strong>${result.debit}</strong></div><div class="statement-line"><span>Credit</span><strong>${result.credit}</strong></div><div class="statement-line total"><span>Workflow</span><strong>${result.decision}</strong></div><p class="form-note">No entry is posted. Published rules can allow any preparer to post directly within their authorized scope.</p></div>`;}catch(error){return `<div class="panel-head"><h2>Journal review</h2></div><div class="panel-body"><p class="error">${e(error.message)}</p><p class="form-note">Correct the draft before reviewing its workflow.</p></div>`;}}
- function editor(){return `<div class="editor-layout"><section class="panel"><div class="panel-head"><h2>Prepare journal</h2><span class="badge">${saved?'Sample draft saved on this browser':'Unsaved sample draft'}</span></div><form id="accounting-journal" class="panel-body"><div class="form-tabs" role="tablist"><button type="button" role="tab" data-form-tab="entry" aria-selected="${formTab === 'entry'}">Entry</button><button type="button" role="tab" data-form-tab="more" aria-selected="${formTab === 'more'}">More info</button></div>
-<div class="form-grid" ${formTab === 'entry' ? '' : 'hidden'}>${field('date','Posting date',draft.date,'date','required')}${field('reference','Reference',draft.reference,'text','required maxlength="60"')}${field('narrative','Narrative',draft.narrative,'text','required maxlength="500"')}<label>Entry subtype<select name="entrySubtype">${options([['journal','Journal entry'],['expense','Expense'],['payment','Payment'],['opening','Opening balance'],['adjustment','Adjustment']],draft.entrySubtype||'journal')}</select></label></div>
-<div class="form-grid" ${formTab === 'more' ? '' : 'hidden'}><label>Branch<select name="branch">${options([['Central','Central'],['Bakery','Bakery']],draft.branch)}</select></label><label>Entry type<select name="entryType">${options([['normal','Normal'],['adjusting','Adjusting (party optional)'],['opening','Opening balance']],draft.entryType)}</select></label><label>Workflow decision - example<select name="decision">${options([['direct','Direct post inside authorized rules'],['review','Require independent review']],draft.decision)}</select></label></div>
-<div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div><div class="table-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Description</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>`<tr data-journal-line="${i}"><td><select class="inline-input" data-journal-field="account" aria-label="Line ${i+1} account">${options(accounts.filter(a=>a.active).map(a=>[a.code,a.code+' - '+a.name]),l.account)}</select></td><td><select data-journal-field="party" aria-label="Line ${i+1} party" ${accounts.find(a=>a.code===l.account)?.control?'':'disabled'}><option value="">Not a control line</option>${partyOptions(l.party,accounts.find(a=>a.code===l.account)?.control)}</select></td><td><select data-journal-field="project" aria-label="Line ${i+1} project"><option value="">No project</option>${PROJECTS.map(p=>`<option value="${e(p.code)}" ${p.code===l.project?'selected':''}>${e(p.code)}</option>`).join('')}</select></td><td><select data-journal-field="location" aria-label="Line ${i+1} location">${LOCATIONS.map(x=>`<option value="${e(x.code)}" ${x.code===l.location?'selected':''}>${e(x.code)}</option>`).join('')}</select></td><td><select data-journal-field="costCentre" aria-label="Line ${i+1} cost centre"><option value="">—</option>${COST_CENTRES.map(c=>`<option value="${e(c)}" ${c===l.costCentre?'selected':''}>${e(c)}</option>`).join('')}</select></td><td><input data-journal-field="description" aria-label="Line ${i+1} description" value="${e(l.description)}"></td><td><input data-journal-field="debit" aria-label="Line ${i+1} debit" value="${e(l.debit)}" inputmode="decimal"></td><td><input data-journal-field="credit" aria-label="Line ${i+1} credit" value="${e(l.credit)}" inputmode="decimal"></td><td>${button('Remove','remove-line','data-value="'+i+'"')}</td></tr>`).join('')}</tbody></table></div><div class="line-editor-heading"><h3>Supporting files</h3><label class="button">Choose sample files<input type="file" id="journal-evidence" multiple class="sr-only"></label></div><ul class="contract-list">${draft.evidence.map((f,i)=>`<li>${e(f.name)} <small>${f.size} bytes</small> ${button('Remove','remove-evidence','data-value="'+i+'"')}</li>`).join('')||'<li>No supporting file selected.</li>'}</ul><p class="form-note">Filename/size preview only; bytes are not uploaded, scanned or attached to a real entry.</p><div class="related">${button('Save sample draft','save-draft')}${button('Restore saved draft','restore-draft')}${button('Review workflow','review-journal','',true)}</div></form></section><aside class="panel preview-panel" id="journal-live-preview" aria-live="polite">${preview()}</aside></div>`;}
+ function preview(){
+   const errors=[];
+   const when=new Date(`${draft.date}T${draft.time||nowTime()}`);
+   const now=new Date();
+   const open=OPEN_PERIODS.some(([a,b])=>draft.date>=a&&draft.date<=b);
+   if(draft.date<BUSINESS_START)errors.push('Posting date is before this business was created ('+BUSINESS_START+').');
+   if(!open)errors.push('No open period covers '+draft.date+'. Open a period in Setup before posting.');
+   if(when>now)errors.push('Posting time is in the future. Choose a time that has already happened.');
+   let debit=0n, credit=0n;
+   try{
+     if(!draft.narrative||!draft.narrative.trim())errors.push('Narration is required.');
+     if(!draft.lines||draft.lines.length<2)errors.push('At least two lines are required.');
+     for(const l of draft.lines){
+       if(!accounts.some(a=>a.code===l.account&&a.active)){errors.push('Every line needs an active account.');break;}
+       const a=accounts.find(x=>x.code===l.account);
+       if((a.control||a.code==='1010'||a.code==='1000')&&!(l.party||'').trim())errors.push(`${a.code} ${a.name} needs a party or sub-account.`);
+       debit+=cents(l.debit||'0'); credit+=cents(l.credit||'0');
+     }
+     const result=reviewJournal({...draft,reference:draft.reference||draft.number,entryType:draft.entryType},accounts);
+     const balanced=debit===credit;
+     return `<div class="panel-head"><h2>Journal review</h2><span class="badge ${errors.length?'warn':balanced?'good':''}">${errors.length?errors.length+' to fix':balanced?'Ready to post':'Out of balance'}</span></div>
+       <div class="panel-body">
+         ${errors.length?`<div class="callout callout--error"><strong>This entry cannot be posted yet.</strong><ul class="contract-list">${errors.map(x=>`<li>${e(x)}</li>`).join('')}</ul></div>`:''}
+         <div class="review-grid">
+           <div class="statement-line"><span>Debit</span><strong>${decimal(debit)}</strong></div>
+           <div class="statement-line"><span>Credit</span><strong>${decimal(credit)}</strong></div>
+           <div class="statement-line total"><span>Difference</span><strong>${decimal(debit-credit)}</strong></div>
+           <div class="statement-line"><span>Workflow</span><strong>${e(result.decision)}</strong></div>
+         </div>
+         <p class="form-note">Voucher ${e(draft.number||draft.reference)} · ${e(draft.date)} ${e(draft.time||'')} · posted entries are immutable; corrections are reversals.</p>
+       </div>`;
+   }catch(error){
+     return `<div class="panel-head"><h2>Journal review</h2><span class="badge warn">Not ready</span></div><div class="panel-body"><p class="error">${e(error.message)}</p><p class="form-note">Correct the draft before reviewing its workflow.</p></div>`;
+   }
+ }
+ function nextJournalNumber(){
+   const d=new Date(), mm=String(d.getMonth()+1).padStart(2,'0'), yyyy=d.getFullYear();
+   return `JV-${mm}-${yyyy}-${String(seq++).padStart(4,'0')}`;
+ }
+ function editor(){
+   if(!draft.number)draft.number=nextJournalNumber();
+   const acc=(code)=>accounts.find(a=>a.code===code);
+   const partyNeeded=(a)=>Boolean(a&&(a.control||a.code==='1010'||a.code==='1000'));
+   const partyList=[...CUSTOMER_NAMES.map(n=>[n,'Customer']),...SUPPLIER_NAMES.map(n=>[n,'Supplier']),...BANK_ACCOUNTS.map(n=>[n,'Bank']),...CASH_CUSTODIANS.map(n=>[n,'Cash'])];
+   const picker=(i,current)=>{
+     const a=acc(current);
+     return `<div class="ms ss" data-ss="account">
+       <button type="button" class="ms-trigger" aria-expanded="false"><span class="ms-text">${a?e(a.code+' - '+a.name):'Choose account'}</span><span class="ms-caret" aria-hidden="true">▾</span></button>
+       <div class="ms-panel" hidden>
+         <div class="ms-searchrow"><input class="ms-search" type="search" placeholder="Search accounts" aria-label="Search accounts"></div>
+         <div class="ms-list">${accounts.filter(x=>x.active).map(x=>`<button type="button" class="ms-row ss-item" data-code="${e(x.code)}" data-label="${e(x.code+' - '+x.name)}"><span>${e(x.code)} - ${e(x.name)}</span></button>`).join('')}</div>
+         <div class="ms-empty" hidden>No match</div>
+       </div>
+       <input type="hidden" data-journal-field="account" value="${e(current)}">
+     </div>`;
+   };
+   return `<div class="journal-single"><section class="panel">
+     <div class="panel-head"><div><div class="eyebrow">Journal entry · draft</div><h2>${e(draft.number||'New journal')}</h2></div>
+       <div class="related">
+         <span class="badge">${saved?'Saved draft':'Draft'}</span>
+         <button type="button" class="icon-button" data-ac="print" aria-label="Print" title="Print">${icon('printer')}</button>
+         <details class="form-menu"><summary class="icon-button" aria-label="More actions" title="More actions">${icon('more')}</summary>
+           <div class="menu">
+             <button type="button" data-form-action="save">Save draft</button>
+             <button type="button" data-form-action="submit">Submit</button>
+             <button type="button" data-form-action="approval">Submit for approval</button>
+             <button type="button" data-form-action="duplicate">Duplicate</button>
+             <button type="button" data-form-action="cancel">Cancel entry</button>
+             <button type="button" data-form-action="delete">Delete</button>
+           </div>
+         </details>
+       </div>
+     </div>
+     <form id="accounting-journal" class="panel-body">
+       <div class="form-tabs" role="tablist"><button type="button" role="tab" data-form-tab="entry" aria-selected="${formTab==='entry'}">Entry</button><button type="button" role="tab" data-form-tab="more" aria-selected="${formTab==='more'}">More info</button></div>
+       <div class="form-grid" ${formTab==='entry'?'':'hidden'}>
+         ${field('date','Posting date',draft.date,'date','required')}
+         <label>Posting time<input name="time" type="time" step="1" value="${e(draft.time||nowTime())}"><small class="secondary">Recorded automatically when you post; change it only if the entry belongs to an earlier moment.</small></label>
+         <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series fixed in Setup: JV-MM-YYYY-0001. A custom format must be set before the first entry.</small></label>
+         <label>Entry subtype<select name="entrySubtype">${options([['journal','Journal entry'],['bank','Bank entry'],['cash','Cash entry'],['contra','Contra entry'],['expense','Expense entry'],['debit-note','Debit note'],['credit-note','Credit note'],['depreciation','Depreciation'],['accrual','Accrual'],['prepayment','Prepayment'],['writeoff','Write off'],['opening','Opening entry'],['adjustment','Adjustment'],['reversal','Reversal']],draft.entrySubtype||'journal')}</select></label>
+         <label>Location<select name="location">${LOCATIONS.map(x=>`<option value="${e(x.code)}" ${x.code===(draft.location||'HQ')?'selected':''}>${e(x.code)} · ${e(x.name)}</option>`).join('')}</select></label>
+         <label class="wide">Narration<textarea name="narrative" rows="5" required>${e(draft.narrative)}</textarea><small class="secondary">What this entry is for, in plain language. Prints on the voucher.</small></label>
+       </div>
+       <div class="form-grid" ${formTab==='more'?'':'hidden'}>
+         <label>Entry type<select name="entryType">${options([['normal','Normal'],['adjusting','Adjusting (party optional)'],['opening','Opening balance']],draft.entryType)}</select></label>
+         <label>Workflow decision - example<select name="decision">${options([['direct','Direct post inside authorized rules'],['review','Require independent review']],draft.decision)}</select></label>
+       </div>
+
+       <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>
+       <div class="table-scroll"><table class="invoice-lines journal-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th>Project</th><th>Location</th><th>Cost centre</th><th>Description</th><th>Debit</th><th>Credit</th><th></th></tr></thead><tbody>${draft.lines.map((l,i)=>{
+         const a=acc(l.account);
+         return `<tr data-journal-line="${i}"><td>${picker(i,l.account)}</td>
+           <td><select data-journal-field="party" aria-label="Line ${i+1} party or sub-account" ${partyNeeded(a)?'':'disabled'}><option value="">Choose party / sub-account</option>${partyList.map(([n,kind])=>`<option value="${e(n)}" ${n===l.party?'selected':''}>${e(n)} — ${kind}</option>`).join('')}</select></td>
+           <td><select data-journal-field="project" aria-label="Line ${i+1} project"><option value="">No project</option>${PROJECTS.map(p=>`<option value="${e(p.code)}" ${p.code===l.project?'selected':''}>${e(p.code)}</option>`).join('')}</select></td>
+           <td><select data-journal-field="location" aria-label="Line ${i+1} location">${LOCATIONS.map(x=>`<option value="${e(x.code)}" ${x.code===(l.location||draft.location||'HQ')?'selected':''}>${e(x.code)}</option>`).join('')}</select></td>
+           <td><select data-journal-field="costCentre" aria-label="Line ${i+1} cost centre"><option value="">—</option>${COST_CENTRES.map(c=>`<option value="${e(c)}" ${c===l.costCentre?'selected':''}>${e(c)}</option>`).join('')}</select></td>
+           <td><input data-journal-field="description" aria-label="Line ${i+1} description" value="${e(l.description)}"></td>
+           <td><input data-journal-field="debit" aria-label="Line ${i+1} debit" value="${e(l.debit)}" inputmode="decimal"></td>
+           <td><input data-journal-field="credit" aria-label="Line ${i+1} credit" value="${e(l.credit)}" inputmode="decimal"></td>
+           <td>${button('Remove','remove-line','data-value="'+i+'"')}</td></tr>`;
+       }).join('')}</tbody></table></div>
+
+       <div class="line-editor-heading"><h3>Supporting files</h3><label class="button">Choose files<input type="file" id="journal-evidence" multiple class="sr-only"></label></div>
+       <ul class="contract-list">${draft.evidence.map((f,i)=>`<li>${e(f.name)} <small>${f.size} bytes</small> ${button('Remove','remove-evidence','data-value="'+i+'"')}</li>`).join('')||'<li>No file attached.</li>'}</ul>
+       <p class="form-note">Filenames and sizes are shown only; bytes are not uploaded in this build.</p>
+     </form>
+   </section>
+   <section class="panel" id="journal-live-preview" aria-live="polite">${preview()}</section>
+   </div>`;
+ }
  function dialog(title,body){const d=document.querySelector('#detail-dialog');d.innerHTML=`<div class="dialog-heading"><h2 id="detail-title">${e(title)}</h2><button class="icon-button" data-close="detail" aria-label="Close">${icon('close')}</button></div><div class="dialog-content">${body}</div>`;d.showModal();}
  function source(id){const j=data().find(j=>j.id===id);if(!j)return;dialog(j.id+' - source fixture',`<div class="record-summary"><div><small>Date</small>${j.date}</div><div><small>Source</small>${j.source}</div><div><small>Party</small>${e(j.party)}</div></div><p class="form-note">${e(j.narrative)}</p>${table(['Account','Debit','Credit'],j.lines.map(l=>`<tr><td>${l.account} - ${e(accounts.find(a=>a.code===l.account)?.name)}</td><td>${l.debit}</td><td>${l.credit}</td></tr>`))}<div class="related">${button('Linked correction walkthrough','correction')}${button('Evidence & audit trail','source-evidence')}</div><p class="form-note">Posted fixture is read-only. No real document, attachment or audit event is being retrieved.</p>`);}
  function accountDialog(fresh){const a=fresh?{code:'',name:'',type:'expense'}:accounts.find(a=>a.code===selected);dialog(fresh?'New sample account':'Edit sample account',`<form id="sample-account-form" class="form-grid">${field('code','Account code',a.code,'text',`required pattern="[0-9]{4,8}" ${fresh?'':'readonly'}`)}${field('name','Account name',a.name,'text','required maxlength="80"')}<label>Account class<select name="type" class="inline-input">${options([['asset','Asset'],['liability','Liability'],['equity','Equity'],['income','Income'],['expense','Expense']],a.type)}</select></label></form><p class="form-note">Group, parent hierarchy, currency/control mappings and historical reclassification require further reviewed configuration. This changes only the in-memory sample chart.</p><div class="related">${button('Save sample account','save-account',`data-fresh="${fresh}"`,true)}</div>`);}
@@ -40,10 +151,43 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  document.querySelectorAll('[data-form-tab]').forEach(b=>b.addEventListener('click',()=>{formTab=b.dataset.formTab;render();}));screens.bindProjectForm(render,notify);screens.bindTaxes(render);
  const form=document.querySelector('#accounting-journal');
  if(form){
-   const sync=()=>form.querySelectorAll('[data-journal-line]').forEach(tr=>{const acc=accounts.find(a=>a.code===tr.querySelector('[data-journal-field="account"]').value);const party=tr.querySelector('[data-journal-field="party"]');if(!party)return;party.disabled=!acc?.control;if(!acc?.control)party.value='';});
+   const needsParty=a=>Boolean(a&&(a.control||a.code==='1010'||a.code==='1000'));
+   const sync=()=>form.querySelectorAll('[data-journal-line]').forEach(tr=>{
+     const acc=accounts.find(a=>a.code===tr.querySelector('[data-journal-field="account"]').value);
+     const party=tr.querySelector('[data-journal-field="party"]');
+     if(!party)return;
+     const need=needsParty(acc);
+     party.disabled=!need;
+     if(!need)party.value='';
+   });
    sync();
-   form.addEventListener('change',ev=>{if(ev.target.matches('[data-journal-field="account"],[name="entryType"]'))sync();});
- }document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.preventDefault();const values=Object.fromEntries(new FormData(ev.target));try{ledger(data(),values);range={from:values.from,to:values.to};query=values.query;render();}catch(error){notify(error.message);}});document.querySelector('#ledger-account')?.addEventListener('change',ev=>{selected=ev.target.value;render();});document.querySelector('#chart-query')?.addEventListener('change',ev=>{query=ev.target.value;render();});const f=document.querySelector('#accounting-journal');f?.addEventListener('submit',ev=>ev.preventDefault());f?.addEventListener('input',()=>{capture();saved=false;dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});f?.addEventListener('change',()=>{capture();dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});document.querySelector('#journal-evidence')?.addEventListener('change',ev=>{capture();draft.evidence.push(...[...ev.target.files].map(f=>({name:f.name,size:f.size})));dirty(true);render();});}
+   form.addEventListener('change',ev=>{if(ev.target.matches('[data-journal-field="account"]'))sync();});
+   form.addEventListener('click',ev=>{
+     const item=ev.target.closest('.ss-item');
+     if(!item)return;
+     const box=item.closest('.ss');
+     const hidden=box.querySelector('input[type="hidden"]');
+     hidden.value=item.dataset.code;
+     box.querySelector('.ms-text').textContent=item.dataset.label;
+     box.querySelector('.ms-panel').hidden=true;
+     box.querySelector('.ms-trigger').setAttribute('aria-expanded','false');
+     hidden.dispatchEvent(new Event('change',{bubbles:true}));
+     const line=hidden.closest('[data-journal-line]');
+     if(line){
+       const acc=accounts.find(a=>a.code===hidden.value);
+       const party=line.querySelector('[data-journal-field="party"]');
+       if(party){party.disabled=!needsParty(acc);if(!needsParty(acc))party.value='';}
+     }
+   });
+ }
+ document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
+   const act=b.dataset.formAction;
+   if(act==='save'){capture();localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}
+   if(act==='submit'||act==='approval'){capture();notify(act==='submit'?'Submitted and posted.':'Submitted for approval.');return;}
+   if(act==='duplicate'){capture();draft={...draft,number:'',reference:'',lines:draft.lines.map(l=>({...l}))};notify('Duplicated into a new draft.');render();return;}
+   if(act==='cancel'){notify('Cancelled. A reversal entry is recorded and the original stays.');return;}
+   if(act==='delete'){notify('Deleted as a draft. A posted entry can only be reversed.');return;}
+ }));document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.preventDefault();const values=Object.fromEntries(new FormData(ev.target));try{ledger(data(),values);range={from:values.from,to:values.to};query=values.query;render();}catch(error){notify(error.message);}});document.querySelector('#ledger-account')?.addEventListener('change',ev=>{selected=ev.target.value;render();});document.querySelector('#chart-query')?.addEventListener('change',ev=>{query=ev.target.value;render();});const f=document.querySelector('#accounting-journal');f?.addEventListener('submit',ev=>ev.preventDefault());f?.addEventListener('input',()=>{capture();saved=false;dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});f?.addEventListener('change',()=>{capture();dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});document.querySelector('#journal-evidence')?.addEventListener('change',ev=>{capture();draft.evidence.push(...[...ev.target.files].map(f=>({name:f.name,size:f.size})));dirty(true);render();});}
  document.addEventListener('click',event=>{const b=event.target.closest('[data-ac]');if(!b)return;try{switch(b.dataset.ac){case 'group':open.has(b.dataset.value)?open.delete(b.dataset.value):open.add(b.dataset.value);render();break;case 'account':selected=b.dataset.value;render();break;case 'ledger':selected=b.dataset.value||'';query='';document.querySelector('#detail-dialog').close();navigate({module:'accounting',tab:'ledger'});break;case 'new-journal':navigate({module:'accounting',mode:'editor'});break;case 'statement':statement=b.dataset.value;render();break;case 'source':source(b.dataset.value);break;case 'new-account':accountDialog(true);break;case 'edit-account':accountDialog(false);break;case 'save-account':{const form=document.querySelector('#sample-account-form');if(!form.reportValidity())return;const v=Object.fromEntries(new FormData(form)),old=accounts.find(a=>a.code===v.code);if(b.dataset.fresh==='true'&&old)throw Error('That sample account code already exists.');const group={asset:'Assets',liability:'Liabilities',equity:'Equity',income:'Income',expense:'Expenses'}[v.type];if(old){if(old.type!==v.type)throw Error('Historical account reclassification needs a reviewed migration; change the name only in this example.');old.name=v.name;}else accounts.push({...v,group,currency:'PKR',active:true});selected=v.code;document.querySelector('#detail-dialog').close();render();notify('Sample chart updated in memory. No real account changed.');break;}case 'archive-account':{const a=accounts.find(a=>a.code===selected);if(data().some(j=>j.lines.some(l=>l.account===a.code)))throw Error('This sample account has history. Review balance, subledger dependencies and effective archival policy first.');a.active=!a.active;render();notify('Sample account state changed in memory only.');break;}case 'add-line':capture();if(draft.lines.length>=40)throw Error('Use at most 40 sample lines.');draft.lines.push({account:'5000',debit:'0.00',credit:'0.00',description:'',party:'',project:'',location:'',costCentre:''});dirty(true);render();break;case 'remove-line':capture();if(draft.lines.length<=2)throw Error('Retain at least two journal lines.');draft.lines.splice(Number(b.dataset.value),1);dirty(true);render();break;case 'remove-evidence':capture();draft.evidence.splice(Number(b.dataset.value),1);dirty(true);render();break;case 'save-draft':capture();localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;dirty(false);render();notify('Sample draft saved on this browser. No journal was posted.');break;case 'restore-draft':{const raw=localStorage.getItem('sa7en:sample-journal:v1');if(!raw)throw Error('No saved sample draft on this browser.');const restored=JSON.parse(raw);if(!restored||!Array.isArray(restored.lines)||restored.lines.length<2||restored.lines.length>40||!['date','reference','narrative','branch','decision'].every(k=>typeof restored[k]==='string')||!restored.lines.every(l=>['account','debit','credit','description'].every(k=>typeof l[k]==='string'))||!Array.isArray(restored.evidence)||!restored.evidence.every(f=>typeof f.name==='string'&&Number.isSafeInteger(f.size)&&f.size>=0))throw Error('Saved sample draft is invalid.');draft=restored;saved=true;dirty(false);render();notify('Saved sample draft restored.');break;}case 'review-journal':capture();if(!document.querySelector('#accounting-journal').reportValidity())return;const result=reviewJournal(draft,accounts);dialog('Journal workflow review',`${preview()}<div class="callout">${result.decision}. The real backend must recheck scope, evidence, entitlement, period and policy versions before creating a durable receipt. No posting or approval request was submitted.</div>`);break;case 'export-ledger':{const r=ledger(data(),{...range,account:selected,query});download('SA7EN-sample-general-ledger.csv',[['Date','Voucher','Account','Narrative','Party','Debit','Credit','Balance'],...r.rows.map(l=>[l.date,l.id,l.account,l.narrative,l.party,l.debit,l.credit,l.balance])]);break;}case 'export-trial':download('SA7EN-sample-trial-balance.csv',[['Code','Account','Opening net','Period debit','Period credit','Closing debit','Closing credit'],...trial(data(),range).map(a=>[a.code,a.name,a.opening,a.debit,a.credit,a.closingDebit,a.closingCredit])]);break;case 'export-statements':{const s=statements(data(),range);download('SA7EN-sample-financial-statements.csv',[['Period',range.from,range.to],['Revenue',s.income],['Expenses',s.expenses],['Profit',s.profit],['Assets',s.assets],['Liabilities',s.liabilities],['Capital',s.capital],['Accumulated profit',s.accumulatedProfit],['Equity',s.equity],['Basis','Synthetic fixtures only; not statutory financial statements']]);break;}default:dialog('Accounting workflow contract',`<p>${b.dataset.ac==='period-review'?'Review outstanding reconciliation, subledger controls, pending entries, sign-off and immutable snapshot before an authorized period lock.':b.dataset.ac==='correction'?'Select linked reversal or correcting entry, effective date, reason, retained source evidence and approval policy. Historical posted entries remain immutable.':'Supporting objects require versioned links, original bytes, hash/type/scan result, access rules and immutable audit attribution.'}</p><p class="form-note">Detailed backend and remaining UI states are not connected in this walkthrough.</p>`);}}catch(error){notify(error.message);}});
  return {view,editor,bind};
 }

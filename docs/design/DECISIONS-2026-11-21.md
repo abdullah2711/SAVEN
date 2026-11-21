@@ -228,3 +228,110 @@ Cash & bank does not create balances; the ledger does. Its job is:
   it is a permission layer, not a screen.
 - **Certificates, returns, multi-currency** — out of scope for this phase by the
   owner's direction.
+
+---
+
+# Round 2 — journal entry form
+
+## 12. Form layout
+
+- **Journal review sits at the bottom of the page**, full width, under the form. It
+  is not a right-hand sidebar. It shows the state badge, any blocking problems as a
+  list, then Debit / Credit / Difference / Workflow.
+- The form is one column, max 1180px, so long narration and a nine-column line table
+  both fit without competing for width.
+
+## 13. Numbering
+
+- Numbers are assigned from a series, not typed: `JV-11-2026-0001` — prefix, month,
+  year, four-digit sequence. Same pattern for `SI-`, `PI-`, `PV-` (payment) and
+  `RV-` (receipt).
+- The sequence and format are **fixed once the first entry exists**. A custom format
+  can only be set in Setup before that point; afterwards the field is read-only and
+  Setup refuses the change.
+- Month and year come from the posting date at submission, not from the creation
+  date, and a reversal gets its own number in the same series.
+- The number is shown read-only on the form so the preparer can quote it.
+
+## 14. Posting time
+
+- The database stores a full timestamp. The form carries a date and a time field;
+  the time defaults to now and is recorded at posting.
+- The preparer may override the time for a genuinely earlier entry.
+- Guards: no future date or time, nothing before the business creation date, and
+  nothing inside a closed period. Each refusal names the reason and the boundary.
+- The same timestamp rule applies to POS and any other back-dated capture.
+
+## 15. Narration
+
+A multi-line textarea (five rows, resizable), not a single-line input. It prints on
+the voucher and is required.
+
+## 16. Entry subtype
+
+Journal entry, bank entry, cash entry, contra entry, expense entry, debit note,
+credit note, depreciation, accrual, prepayment, write off, opening entry,
+adjustment, reversal. The voucher type stays "Journal entry"; subtype is the
+classification the ledger and reports group by.
+
+## 17. Account, party and sub-account
+
+- The account picker is a searchable single-select in the same visual language as
+  the filter dropdowns: search field, filtered list, keyboard focus.
+- The column is labelled **Party / sub-account**.
+- A **control account** (receivables, payables) requires a party.
+- A **bank account** requires the bank account record; a **cash account** requires
+  the cash custodian or cash location. They appear in the same column because they
+  are the same concept: the subledger entry that the control balance is made of.
+- Options are grouped by kind (customer, supplier, bank, cash) and are always
+  present, so enabling the field on an account change actually offers choices.
+
+## 18. Location, not branch — decision
+
+There is **one** dimension: **Location**. A location has a kind — head office,
+branch, outlet, warehouse, project site. We do not keep a separate "branch" field
+beside it.
+
+Reasons: two parallel dimensions invite contradictory data (branch Karachi with
+location Lahore), double the filtering and reporting permutations, and every
+downstream module (stock, POS, projects) then has to decide which one to trust. One
+list with a kind gives the same information, one validation, one filter.
+
+- Every posting line carries a location; the header also sets a default that the
+  lines inherit.
+- The top-bar branch selector is gone: the books are company-wide and location is a
+  field, not a set of books.
+
+## 19. Accounts versus project-specific accounts
+
+Do **not** bake the project into the account name (`Cash in hand — Quetta Tunnel`).
+That multiplies the chart, breaks comparatives, and makes every new project a chart
+migration.
+
+- Keep accounts generic. Use the **project** and **location** dimensions on the line.
+- If a balance must be separated operationally, that is what the party/sub-account
+  subledger is for — parties, banks and cash custodians.
+- Reports filter by dimension; the chart stays stable.
+- Project-scoped access is a permission on the dimension, not a different account.
+
+## 20. Actions and states
+
+- The page heading carries only **Back to register**. Print is an icon in the form
+  header; the overflow **⋮** menu holds the rest.
+- Menu: Save draft · Submit · Submit for approval · Duplicate · Cancel entry ·
+  Delete.
+- What is shown depends on state and permission: a draft can be edited, submitted,
+  duplicated or deleted; a submitted entry can be withdrawn or duplicated; a posted
+  entry can be duplicated, printed, reversed (a new document) and, for an
+  administrator, soft-deleted.
+- Opening an existing entry uses the same form. A posted entry renders read-only with
+  the reversal and duplicate actions.
+- No placeholder text remains in the UI: no "Print design example", no "sample
+  draft" badges. The header shows the real voucher number and its state.
+
+## 21. Still to build in this area
+
+- Quick entry grid (compact two-line, Enter advances) using the same validation.
+- The menu's state machine against real permissions.
+- The forms register in Setup (duplicate/edit/activate), which is what makes fields
+  like "weather" appear in the register and ledger as columns.

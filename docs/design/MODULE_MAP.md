@@ -155,7 +155,7 @@ Register of every journal: date, number, narrative, source, state, debit, credit
 net. Filters: state, source, period, party, text. Footer totals. A row opens the
 entry with its lines; the page-level action is **New journal**.
 
-**2.2.3 New journal — built, needs the party field**
+**2.2.3 New journal — built**
 Full page. Header: date, journal, reference, narrative, currency, branch, entry
 type (Normal / Adjusting / Opening), workflow. Lines: account, party (required on
 control accounts), description, debit, credit, cost centre. Running totals,
