@@ -646,7 +646,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${ms('centre', 'Cost centres', centreOpts, GL.centres)}
         ${ms('type', 'Voucher types', typeOpts, GL.types)}
         <label>Search<input name="q" type="search" value="${e(GL.q)}" placeholder="Voucher, party or description"></label>
-        <button class="button" type="button" data-gl-reset>Reset</button>
+        <button class="button" type="button" data-gl-reset>Reset</button><button class="button primary">Apply</button>
       </form>
 
       <div class="gl-toolrow">
@@ -717,18 +717,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function bindGL(rerender) {
     bindMS();
     const filter = document.querySelector('#gl-filter');
-    let typing = 0;
     filter?.addEventListener('submit', (ev) => { ev.preventDefault(); syncGL(ev.target); rerender(); });
-    filter?.addEventListener('change', (ev) => {
-      if (!ev.target.closest('.ms') && ev.target.type !== 'date') return;
-      syncGL(filter);
-      rerender();
-    });
-    filter?.addEventListener('input', (ev) => {
-      if (ev.target.name !== 'q') return;
-      clearTimeout(typing);
-      typing = setTimeout(() => { syncGL(filter); rerender(); }, 350);
-    });
     document.querySelectorAll('[data-gl-col]').forEach((box) => box.addEventListener('change', () => {
       box.checked ? GL.extras.add(box.dataset.glCol) : GL.extras.delete(box.dataset.glCol);
       applyColumnVisibility('gl');
@@ -834,7 +823,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${ms('location', 'Locations', locOpts, J.locations)}
         ${ms('centre', 'Cost centres', centreOpts, J.centres)}
         <label>Search<input name="q" type="search" value="${e(J.q)}" placeholder="Voucher, party or description"></label>
-        <button class="button" type="button" data-jr-reset>Reset</button>
+        <button class="button" type="button" data-jr-reset>Reset</button><button class="button primary">Apply</button>
       </form>
 
       <div class="gl-toolrow">
@@ -906,16 +895,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function bindJournal(rerender, notify) {
     bindMS();
     const form = document.querySelector('#jr-filter');
-    let typing = 0;
-    if (form) {
-      form.addEventListener('submit', (ev) => { ev.preventDefault(); syncJ(form); rerender(); });
-      form.addEventListener('change', (ev) => { if (!ev.target.closest('.ms')) return; syncJ(form); rerender(); });
-      form.addEventListener('input', (ev) => {
-        if (ev.target.name !== 'q') return;
-        clearTimeout(typing);
-        typing = setTimeout(() => { syncJ(form); rerender(); }, 350);
-      });
-    }
+    if (form) form.addEventListener('submit', (ev) => { ev.preventDefault(); syncJ(form); rerender(); });
     document.querySelectorAll('[data-jr-col]').forEach((box) => box.addEventListener('change', () => {
       box.checked ? J.extras.add(box.dataset.jrCol) : J.extras.delete(box.dataset.jrCol);
       applyColumnVisibility('jr');

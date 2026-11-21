@@ -163,7 +163,14 @@ th .sortable:hover{color:var(--ink)}
 .ms-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-bottom:1px solid var(--line);background:var(--soft)}
 .ms-head .text-button{font-size:11px}
 .ms-list{max-height:264px;overflow:auto;padding:6px;display:grid;gap:1px}
-.ms-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;font-size:12px;cursor:pointer;color:var(--ink)}
+.ms .ms-row{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:6px;font-size:12px;
+  cursor:pointer;color:var(--ink);min-width:0;flex:none;line-height:1.3}
+.ms .ms-row span{font-size:12px;color:inherit}
+/* the form-input styling must not touch the tick boxes inside the panel */
+.ms .ms-row input[type="checkbox"]{width:16px;height:16px;min-height:0;max-width:16px;padding:0;margin:0;
+  flex:none;background:transparent;border:0;box-shadow:none;border-radius:3px;accent-color:var(--accent);
+  appearance:auto;-webkit-appearance:auto}
+.ms .ms-row input[type="checkbox"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .ms-row:hover{background:var(--tint)}
 .ms-row input{flex:none;margin:0}
 .ms-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
