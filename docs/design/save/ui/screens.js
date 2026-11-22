@@ -100,7 +100,7 @@ let PERIOD_LOCKED = false;
 const EDIT = {type: '', code: ''};
 // Per-register filters. They survive a re-render because they live here.
 const FILTERS = {
-  cash: {q: '', kind: '', control: '', status: ''},
+  cash: {q: '', kind: '', control: '', status: '', asof: ''},
   parties: {q: '', type: '', status: ''},
   items: {q: ''},
   tax: {q: ''},
@@ -1214,21 +1214,24 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   };
   const scopeText = (list) => (list && list.length ? list.join(', ') : 'All');
 
-  function cashAccountRows() {
+  function cashAccountRows(asOf = '') {
     return CASH_BANK.map((s) => {
-      let postings = 0, dr = 0, cr = 0;
+      let postings = 0, dr = 0, cr = 0, current = 0;
       for (const d of fixture(getCompany())) for (const l of d.lines) {
         if (l.party !== s.name) continue;
-        postings++; dr += num(l.debit); cr += num(l.credit);
+        const movement = num(l.debit) - num(l.credit);
+        current += movement;
+        if (!asOf || d.date <= asOf) { postings++; dr += num(l.debit); cr += num(l.credit); }
       }
-      return {...s, postings, balance: round2(dr - cr)};
+      return {...s, postings, balance: round2(dr - cr), current: round2(current)};
     });
   }
 
   function cashBankView() {
     const controls = accounts().filter((a) => a.control === 'bank' || a.control === 'cash');
-    const list = cashAccountRows();
     const f = FILTERS.cash;
+    const asOf = f.asof || '';
+    const list = cashAccountRows(asOf);
     const rows = list.filter((x) => {
       const head = accounts().find((a) => a.code === x.control);
       return hit(f.q, x.code, x.name, x.reference, x.kind, head ? head.name : '', x.projects.join(' '), x.locations.join(' '))
@@ -1239,16 +1242,17 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <label>Kind<select name="kind"><option value="">All kinds</option><option value="bank" ${f.kind === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${f.kind === 'cash' ? 'selected' : ''}>Cash</option></select></label>
         <label>Control head<select name="control"><option value="">All control heads</option>${controls.map((a) => `<option value="${a.code}" ${f.control === a.code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
         <label>Status<select name="status"><option value="">All states</option><option ${f.status === 'Active' ? 'selected' : ''}>Active</option><option ${f.status === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
-        <button class="button" type="button" data-filter-reset="cash">Reset</button>
+        <label>Balances as at<input type="date" name="asof" value="${e(asOf)}" max="2026-12-31"></label>
+        <button class="button" type="button" data-filter-reset="cash">Reset to current</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${rows.length} of ${list.length} accounts</span></div>
+        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${rows.length} of ${list.length} accounts</span><span class="badge">${asOf ? `balances as at ${e(asOf)}` : 'current balances'}</span></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th></th></tr></thead>
-          <tbody>${rows.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td class="row-go">›</td></tr>`; }).join('')}</tbody>
-          <tfoot><tr><td colspan="6">Total shown · ${rows.length} of ${list.length}</td><td class="numeric">${money(round2(rows.reduce((n, s) => n + s.balance, 0)))}</td><td colspan="3"></td></tr></tfoot>
+          <tbody>${rows.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}${asOf ? `<small class="secondary">current ${money(s.current)}</small>` : ''}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td class="row-go">›</td></tr>`; }).join('')}</tbody>
+          <tfoot><tr><td colspan="6">Total shown · ${rows.length} of ${list.length}${asOf ? ` · as at ${e(asOf)}` : ' · current'}</td><td class="numeric">${money(round2(rows.reduce((n, s) => n + s.balance, 0)))}</td><td colspan="3"></td></tr></tfoot>
         </table></div>
-        <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts. Click a row to open its form. Unallocated is the part of the control balances that no document has named yet.</div>
+        <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts. Click a row to open its form. Set a date to see the balance as it stood then; the small figure under it stays the current balance. Reset returns to current.</div>
       </section>`;
   }
 

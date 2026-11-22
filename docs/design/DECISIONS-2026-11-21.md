@@ -1193,3 +1193,19 @@ The party itself is the sub-account: a customer for 1100, a supplier for 2100, a
 sub-account for a bank control, a cash sub-account for a cash control. Those records
 carry the allowed projects and locations, so the picker is narrowed by both the
 account kind and the access rule.
+
+## 82. Cash & bank can be read at any date
+
+The register has a **Balances as at** date in its filter bar.
+
+- Empty means **current balances** — the badge says so.
+- A date shows each sub-account's balance as it stood at the close of that day, and
+  the postings count follows the same cut-off.
+- Underneath, the small line keeps the **current** balance visible, so the two can be
+  compared without switching back.
+- The footer total and the “shown of total” count follow the chosen date too.
+- **Reset to current** clears the date along with the other filters.
+
+The rule is inclusive: a document dated on the chosen day is included, which is what
+“balance at the end of that day” means. If the owner later wants opening-of-day
+figures, that is a second option on the same control rather than a different report.
