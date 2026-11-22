@@ -3,7 +3,7 @@
 // no shader, no animation. Every total that duplicates a ledger figure is
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
-import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES,CUSTOM_FIELDS} from './accounting-model.js';
+import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES,CUSTOM_FIELDS,NUMBERING} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
@@ -1113,17 +1113,17 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       numbering: `<section class="panel">
         <div class="panel-head"><h2>Numbering</h2><span class="badge">Fixed after the first entry</span></div>
         <form class="panel-body form-grid" data-settings-save="numbering">
-          ${field('Journal prefix', 'JE-2026-', '', 'journalPrefix')}
-          ${field('Next journal number', '0201', '', 'journalNext')}
-          ${field('Sales invoice prefix', 'SI-', '', 'salesPrefix')}
-          ${field('Next sales number', '0301', '', 'salesNext')}
-          ${field('Purchase invoice prefix', 'PI-', '', 'purchasePrefix')}
-          ${field('Next purchase number', '0301', '', 'purchaseNext')}
-          ${field('Payment prefix', 'PMT-', '', 'paymentPrefix')}
-          ${field('Next payment number', '0201', '', 'paymentNext')}
-          ${field('Receipt prefix', 'RCT-', '', 'receiptPrefix')}
-          ${field('Next receipt number', '0201', '', 'receiptNext')}
-          ${field('Number padding', '4', 'Digits after the prefix', 'padding')}
+          ${field('Journal prefix', NUMBERING.journal.prefix, `Number looks like ${NUMBERING.journal.prefix}-MM-YYYY-${'0'.repeat((NUMBERING.journal.padding || 4) - 1)}1`, 'journalPrefix')}
+          ${field('Next journal number', String(NUMBERING.journal.next).padStart(NUMBERING.journal.padding || 4, '0'), '', 'journalNext')}
+          ${field('Sales invoice prefix', NUMBERING.sales.prefix, '', 'salesPrefix')}
+          ${field('Next sales number', String(NUMBERING.sales.next).padStart(NUMBERING.sales.padding || 4, '0'), '', 'salesNext')}
+          ${field('Purchase invoice prefix', NUMBERING.purchase.prefix, '', 'purchasePrefix')}
+          ${field('Next purchase number', String(NUMBERING.purchase.next).padStart(NUMBERING.purchase.padding || 4, '0'), '', 'purchaseNext')}
+          ${field('Payment prefix', NUMBERING.payment.prefix, '', 'paymentPrefix')}
+          ${field('Next payment number', String(NUMBERING.payment.next).padStart(NUMBERING.payment.padding || 4, '0'), '', 'paymentNext')}
+          ${field('Receipt prefix', NUMBERING.receipt.prefix, '', 'receiptPrefix')}
+          ${field('Next receipt number', String(NUMBERING.receipt.next).padStart(NUMBERING.receipt.padding || 4, '0'), '', 'receiptNext')}
+          ${field('Number padding', String(NUMBERING.journal.padding), 'Digits after the prefix', 'padding')}
           <div class="related"><button class="button primary">Save numbering</button></div>
         </form>
         <div class="panel-body"><p class="form-note">A series is frozen once its first document exists; a deleted or cancelled number is never reused. Changing a prefix only affects documents that have not been created yet.</p></div>
@@ -2335,6 +2335,22 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function bindSettingsView(rerender, notify) {
     document.querySelectorAll('[data-settings-save]').forEach((f) => f.addEventListener('submit', (ev) => {
       ev.preventDefault();
+      if (f.dataset.settingsSave === 'numbering') {
+        const v = Object.fromEntries(new FormData(f));
+        const set = (name, prefix, next) => {
+          NUMBERING[name].prefix = prefix;
+          NUMBERING[name].next = Math.max(1, Number(next) || 1);
+          NUMBERING[name].padding = Math.max(2, Math.min(8, Number(v.padding) || 4));
+        };
+        set('journal', v.journalPrefix || 'JV', v.journalNext);
+        set('sales', v.salesPrefix || 'SI-', v.salesNext);
+        set('purchase', v.purchasePrefix || 'PI-', v.purchaseNext);
+        set('payment', v.paymentPrefix || 'PMT-', v.paymentNext);
+        set('receipt', v.receiptPrefix || 'RCT-', v.receiptNext);
+        notify(`Numbering saved. The next journal is ${NUMBERING.journal.prefix}-MM-YYYY-${String(NUMBERING.journal.next).padStart(NUMBERING.journal.padding, '0')}.`);
+        rerender();
+        return;
+      }
       notify('Settings saved for this session. A real deployment versions these values and applies them from their effective date.');
       rerender();
     }));

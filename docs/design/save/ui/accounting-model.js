@@ -40,6 +40,16 @@ export const CASH_BANK = [
 ];
 
 // Tax rules. A rule is a default; a document line may override it.
+// One source for every document series. The journal composes
+// prefix-MONTH-YEAR-sequence; the others are prefix + sequence.
+export const NUMBERING = {
+  journal: {prefix: 'JV', month: true, year: true, next: 1, padding: 4},
+  sales: {prefix: 'SI-2026-', next: 301, padding: 4},
+  purchase: {prefix: 'PI-2026-', next: 301, padding: 4},
+  payment: {prefix: 'PMT-2026-', next: 201, padding: 4},
+  receipt: {prefix: 'RCT-2026-', next: 201, padding: 4},
+};
+
 export const TAX_RULES = [
   {code: 'STD-SALE', name: 'Sales tax 10%', kind: 'sales', rate: 10, basis: 'exclusive', account: '2200', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
   {code: 'STD-PURCHASE', name: 'Purchase tax 10%', kind: 'purchase', rate: 10, basis: 'exclusive', account: '1300', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},

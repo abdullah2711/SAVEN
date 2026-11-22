@@ -1287,3 +1287,52 @@ transaction where it belongs:
 
 The register filter is pre-filled with the voucher, so the document is the only row
 shown and its surrounding context is intact.
+
+---
+
+# Round 16 — the four conflicts settled
+
+## 89. Numbering has one source, and it is Settings
+
+The settings page still showed `JE-2026-` / `0201` while the journal form generated
+`JV-MM-YYYY-0001`. That was a mistake in the settings page, not two valid choices.
+
+- `NUMBERING` in the accounting model is now the only place a series is defined:
+  journal prefix with month and year segments, plus sales, purchase, payment and
+  receipt prefixes, the next number and the padding.
+- The journal form builds its number from it: prefix, month, year, padded sequence.
+- Settings → Accounting → Numbering renders those values and **saves back into them**.
+- Creating a new journal re-reads the settings, so a changed prefix or next number is
+  used immediately. The number is still frozen once the first document exists, and a
+  deleted or cancelled number is never reused.
+
+## 90. No cash and bank statistics
+
+The cash & bank strip stays removed. For this phase the **cash flow report** answers
+the question, with opening cash, receipts, payments, net movement and closing cash.
+The register keeps its own per-account balances, search, filters and balance-as-at
+date.
+
+## 91. Every document follows the same cancel/delete rule
+
+Confirmed: journals, payments, invoices and bills all use the same lifecycle —
+draft, submitted, posted, cancelled — with **cancel removing the ledger effect while
+keeping the register row**, **delete removing the row** (draft or cancelled only), a
+number that is never reused, and an audit log that keeps everything.
+
+Sales and purchase **returns** are the exception that will get their own flow: a
+credit note against an invoice and a debit note against a bill, each linked to the
+original document. That flow will be built with the invoice modules, not improvised
+here.
+
+## 92. Projects, locations and heads inside Settings — explained, still open
+
+The remaining “conflict” is an inconsistency, not a contradiction:
+
+- Every **register** in Accounting opens its form on a separate page.
+- Inside **Settings → Accounting**, the three configuration lists (projects,
+  locations, accounting heads) still show a table and an inline form on the same tab.
+
+Both are edit-in-place master data; the difference is only the interaction. The
+question is whether those three should follow the register + form-page rule too, or
+stay inline because they are configuration. **Awaiting the owner’s decision.**

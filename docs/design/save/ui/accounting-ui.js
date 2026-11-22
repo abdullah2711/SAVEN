@@ -1,7 +1,7 @@
 import {escape as e,cents,decimal} from './model.js';
 import {chart,fixture,ledger,trial,statements,reviewJournal,csv} from './accounting-model.js';
 import {icon} from './icons.js';
-import {PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,CUSTOM_FIELDS} from './accounting-model.js';
+import {PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,CUSTOM_FIELDS,NUMBERING} from './accounting-model.js';
 import {createAccountingSetup} from './accounting-setup.js';
 import {createScreens,plannedPage} from './screens.js';
 const button=(label,action,extra='',primary=false)=>`<button type="button" class="button ${primary?'primary':''}" data-ac="${action}" ${extra}>${label}</button>`;
@@ -93,9 +93,12 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  const ENTRYTYPE_OPTIONS=[['normal','Normal'],['adjusting','Adjusting (party optional)'],['opening','Opening balance']];
  const ACCOUNT_OPTIONS=()=>accounts.filter(a=>a.active).map(a=>[a.code,`${a.code} - ${a.name}`]);
  function nextJournalNumber(){
-   const d=new Date(), mm=String(d.getMonth()+1).padStart(2,'0'), yyyy=d.getFullYear();
-   return `JV-${mm}-${yyyy}-${String(seq++).padStart(4,'0')}`;
+   const n=NUMBERING.journal,d=new Date();
+   const mm=String(d.getMonth()+1).padStart(2,'0'),yyyy=d.getFullYear();
+   const value=String(n.next++).padStart(n.padding||4,'0');
+   return [n.prefix,n.month?mm:null,n.year?yyyy:null,value].filter(Boolean).join('-');
  }
+ function journalSeriesSample(){const n=NUMBERING.journal;return [n.prefix,n.month?'MM':null,n.year?'YYYY':null,'0'.repeat((n.padding||4)-1)+'1'].filter(Boolean).join('-');}
  function resetJournalDraft(){
    draft={date:'2026-11-30',time:'',number:nextJournalNumber(),reference:'',narrative:'',decision:'direct',entrySubtype:'journal',location:'HQ',evidence:[],editingId:'',state:'draft',locked:false,lines:[{account:'',debit:'0.00',credit:'0.00',party:'',project:'',costCentre:''},{account:'',debit:'0.00',credit:'0.00',party:'',project:'',costCentre:''}]};
  }
@@ -140,7 +143,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
        <div class="form-grid" ${formTab==='entry'?'':'hidden'}>
          ${field('date','Posting date',draft.date,'date','required')}
          <label>Posting time<input name="time" type="time" step="1" value="${e(draft.time||nowTime())}"><small class="secondary">Recorded automatically when you post; change it only if the entry belongs to an earlier moment.</small></label>
-         <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series fixed in Setup: JV-MM-YYYY-0001. A custom format must be set before the first entry.</small></label>
+         <label>Voucher number<input name="reference" value="${e(draft.reference||draft.number)}" readonly><small class="secondary">Series from Settings → Accounting: ${journalSeriesSample()}. It is frozen after the first entry and a number is never reused.</small></label>
          <div class="field"><span class="ms-label">Entry subtype</span>${ss({key:'subtype',name:'entrySubtype',value:draft.entrySubtype||'journal',options:SUBTYPE_OPTIONS,label:'entry subtypes',search:false})}</div>
          <div class="field"><span class="ms-label">Location</span>${ss({key:'location',name:'location',value:draft.location||'HQ',options:LOCATION_OPTIONS(),label:'locations',search:false})}<small class="secondary">Where this entry was made. One location for the whole voucher.</small></div>
 
@@ -380,5 +383,6 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    if(!code&&draft.editingId)resetJournalDraft();
    return journalEditor();
  }
- return {view,editor,newLabel,formMeta,bind,settings:page=>screens.settings(page)};
+ function prepareNew(tab){if(tab==='journals')resetJournalDraft();}
+ return {view,editor,newLabel,formMeta,prepareNew,bind,settings:page=>screens.settings(page)};
 }

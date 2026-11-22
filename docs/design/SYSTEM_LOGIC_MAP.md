@@ -189,11 +189,14 @@ not claimed.
 
 ## 9. Numbering
 
-- Journals: generated as `JV-MM-YYYY-0001` by the form.
-- Settings → Numbering shows prefixes and next numbers for journals, sales, purchases,
-  payments and receipts, plus padding.
-- **Open conflict (see §11):** the settings default prefix is `JE-2026-` while the form
-  generates `JV-MM-YYYY-0001`. One must be chosen.
+- `NUMBERING` in the accounting model is the single source: journal prefix with month
+  and year segments, sales, purchase, payment and receipt prefixes, next number and
+  padding.
+- Journals are generated as `JV-MM-YYYY-0001` (prefix · month · year · padded
+  sequence) from those settings.
+- Settings → Accounting → Numbering renders and saves the same value. Creating a new
+  journal re-reads it. A series is frozen after its first document; numbers are never
+  reused.
 
 ---
 
@@ -221,15 +224,15 @@ not claimed.
 | Journal row → record page | inline detail page | journal form page, state-aware | 83 |
 | GL row → detail dialog | inline expansion | opens the document in its own page | 88 |
 | Back to register | always journals | returns to the register being edited | 87 |
-| Journal numbering | `JV-MM-YYYY-0001` in the form vs `JE-2026-` in settings | **unresolved** | — |
+| Journal numbering | `JV-MM-YYYY-0001` in the form vs `JE-2026-` in settings | one source: settings define the series, the form composes it | 89 (resolved) |
+| Cash & bank statistics | four KPI figures | removed; the cash flow report answers it for this phase | 90 (resolved) |
+| Document cancel/delete | journals only | every document uses the same lifecycle; returns get their own flow later | 91 (resolved) |
 
-### Open questions to settle with the owner
+### Open question
 
-1. **Journal number format:** `JV-MM-YYYY-0001` or the settings series `JE-2026-0201`?
-2. Should the cash & bank statistics return, and in what form?
-3. Should projects, locations and accounting heads move to register + form pages?
-4. When invoices and payments post, should they be cancellable with the same rule as
-   journals (cancel keeps the row, delete removes it)?
+1. Should projects, locations and accounting heads (inside Settings → Accounting) move
+   to the same register + form-page pattern, or stay as inline configuration forms?
+   Everything else in this table is resolved.
 
 ---
 
