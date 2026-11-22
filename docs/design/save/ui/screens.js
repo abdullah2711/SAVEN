@@ -1229,7 +1229,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('Unallocated', money(bankLedger + cashLedger - named), 'Control balance no document has named yet')}
       </div>
       <section class="panel">
-        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><div class="related"><span class="badge">${list.length} accounts</span><button class="text-button" data-new-cash>New sub-account</button></div></div>
+        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${list.length} accounts</span></div>
         <div class="table-scroll"><table>
           <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th></th></tr></thead>
           <tbody>${list.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td class="row-go">›</td></tr>`; }).join('')}</tbody>
@@ -1268,7 +1268,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   function bindCashBank(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'cash'});
-    document.querySelector('[data-new-cash]')?.addEventListener('click', () => navigate({module: 'accounting', tab: 'cash', mode: 'editor'}));
     document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
       const [type, code] = b.dataset.edit.split(':');
       if (type !== 'cash') return;
@@ -1511,7 +1510,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('Open with this party', party ? money(outstanding) : '—', party ? party.name : 'Choose a party in the form')}
       </div>
       <section class="panel">
-        <div class="panel-head"><h2>Receipts and payments</h2><div class="related"><span class="badge">${rows.length} documents</span><button class="text-button" data-new-payment>New receipt or payment</button></div></div>
+        <div class="panel-head"><h2>Receipts and payments</h2><span class="badge">${rows.length} documents</span></div>
         <div class="table-scroll"><table>
           <thead><tr><th>Date</th><th>Reference</th><th>Direction</th><th>Party</th><th>Cash / bank account</th><th class="numeric">Amount</th><th>Against</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e(r.account || '—')}</td><td class="numeric">${money(r.amount)}</td><td>${e(r.against || '—')}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No payments yet.</td></tr>'}</tbody>
@@ -1561,7 +1560,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const goBack = () => navigate({module: 'accounting', tab: 'payments'});
     const form = document.querySelector('[data-pay-form]');
     if (!form) return;
-    document.querySelector('[data-new-payment]')?.addEventListener('click', () => navigate({module: 'accounting', tab: 'payments', mode: 'editor'}));
     document.querySelector('[data-pay-form] [data-form-cancel]')?.addEventListener('click', goBack);
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -1635,7 +1633,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('In this draft', money(totals.gross), 'Net plus tax')}
       </div>
       <section class="panel">
-        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><div class="related"><span class="badge">${rows.length} documents</span><button class="text-button" data-new-invoice="${kind}">New ${isSales ? 'invoice' : 'bill'}</button></div></div>
+        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><span class="badge">${rows.length} documents</span></div>
         <div class="table-scroll"><table>
           <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No documents yet.</td></tr>'}</tbody>
@@ -1690,7 +1688,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function bindInvoices(kind, rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: kind === 'sales' ? 'sales-invoices' : 'purchase-invoices'});
     const root = document.querySelector(`[data-invoice-form="${kind}"]`)?.closest('section');
-    document.querySelector(`[data-new-invoice="${kind}"]`)?.addEventListener('click', () => navigate({module: 'accounting', tab: kind === 'sales' ? 'sales-invoices' : 'purchase-invoices', mode: 'editor'}));
     if (!root) return;
     root.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
     root.querySelector('[data-inv-calc]')?.addEventListener('click', () => { captureInvoice(kind, root); rerender(); });
@@ -1813,7 +1810,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function taxRulesPanel() {
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
     return `<section class="panel">
-      <div class="panel-head"><h2>Tax rules</h2><div class="related"><span class="badge">${TAX_RULES.length} rules</span><button class="text-button" data-new-tax>New rule</button></div></div>
+      <div class="panel-head"><h2>Tax rules</h2><span class="badge">${TAX_RULES.length} rules</span></div>
       <div class="table-scroll"><table>
         <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Scope</th><th>Effective</th><th>Projects</th><th>Locations</th><th>Status</th><th></th></tr></thead>
         <tbody>${TAX_RULES.map((r) => `<tr class="row-link" data-edit="tax:${e(r.code)}"><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
@@ -1918,7 +1915,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       TAX_ACTIVE = btn.dataset.taxTab;
       rerender();
     }));
-    document.querySelector('[data-new-tax]')?.addEventListener('click', () => navigate({module: 'accounting', tab: 'taxes', mode: 'editor'}));
     document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
       const [type, code] = b.dataset.edit.split(':');
       if (type !== 'tax') return;

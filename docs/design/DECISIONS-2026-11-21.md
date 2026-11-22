@@ -1103,3 +1103,9 @@ Approvals, People, Forms & fields, Views and Print keep their inline forms becau
 each edits one settings object. The registers that live *inside* Settings — projects,
 locations and accounting heads — still use inline forms; moving them onto the same
 page pattern is the next step.
+
+## 76. One create button, not two
+
+The duplicate “New …” button inside the register panel is gone. The page action at
+the top right is the single create entry point; rows still open their own record.
+This applies to cash & bank, tax rules, payments and invoices.
