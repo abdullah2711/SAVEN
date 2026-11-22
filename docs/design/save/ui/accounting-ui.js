@@ -180,7 +180,8 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
          <label class="wide">Narration<textarea name="narrative" rows="5" required>${e(draft.narrative)}</textarea><small class="secondary">What this entry is for, in plain language. Prints on the voucher.</small></label>
        </div>
        <div class="form-grid" ${formTab==='more'?'':'hidden'}>
-         <div class="record-summary audit-strip">
+         <label>External reference<input name="externalRef" value="${e(draft.externalRef||'')}" placeholder="Bank reference, cheque or source document"><small class="secondary">Optional link to the paper or system this entry came from.</small></label>
+         <div class="record-summary audit-strip wide">
            <div><small>Created by</small>${e(draft.createdBy||'A. Rehman')}</div>
            <div><small>Created at</small>${e(draft.createdAt||draft.date+' '+nowTime())}</div>
            <div><small>Submitted by</small>${e(draft.submittedBy||'Not submitted')}</div>

@@ -133,8 +133,10 @@ const SAVED_VIEWS = [
   {name: 'Unposted drafts', scope: 'Journal entries', detail: 'State draft · newest first'},
   {name: 'Customer balances', scope: 'Parties', detail: 'Customers only · balance descending'},
 ];
-const PRINT_TEMPLATES = [{name: 'A4 letterhead', size: 'A4', logo: true, qr: false, footer: 'Northstar Trading (Pvt) Ltd'}, {name: 'Thermal receipt', size: '80 mm', logo: false, qr: true, footer: 'Thank you'}];
-let PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
+const PRINT_DOCUMENTS = ['Journal entry', 'Sales invoice', 'Purchase bill', 'Receipt', 'Payment', 'Delivery note', 'Goods receipt', 'Stock transfer', 'Stock count', 'Stock adjustment', 'Work order', 'Bill of material', 'Asset register', 'Depreciation schedule', 'Party statement', 'Trial balance', 'Financial statements'];
+const PRINT_TEMPLATES = PRINT_DOCUMENTS.map((doc) => ({document: doc, name: doc + ' template', size: doc === 'Receipt' || doc === 'Payment' ? '80 mm' : 'A4', logo: true, qr: doc !== 'Journal entry', copies: doc === 'Sales invoice' || doc === 'Delivery note' ? 2 : 1, margin: 12, footer: 'Northstar Trading (Pvt) Ltd'}));
+let WITHHOLD = {salesTax: 0, incomeTax: 0, salesTaxPayable: 0, incomeTaxPayable: 4.5};
+let PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}], salesTaxRate: '', incomeTaxRate: ''};
 const PAYMENTS = [];
 let PAY_SEQ = 1;
 const INVOICES = [];
@@ -1439,6 +1441,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Tax identity<input name="taxId" maxlength="30" value="${e(v('taxId'))}" placeholder="NTN-"></label>
         <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Hold' ? 'selected' : ''}>Hold</option><option ${v('status') === 'Blocked' ? 'selected' : ''}>Blocked</option></select></label>
         <label>Billing address<input name="address" maxlength="90" value="${e(v('address'))}" placeholder="Street, city"></label>
+        <label>Bank name<input name="bankName" maxlength="60" value="${e(v('bankName'))}" placeholder="For supplier payments"></label>
+        <label>Bank account / IBAN<input name="bankAccount" maxlength="40" value="${e(v('bankAccount'))}"></label>
         <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Delivery instructions, special terms"></label>
         ${ms('party-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
         ${ms('party-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
@@ -1470,7 +1474,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const editingCode = v2.editingCode || '';
       if (!editingCode && PARTIES.some((p) => p.code === v2.code || p.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      const record = {code: v2.code, name: v2.name.trim(), type: v2.type, group: v2.group || 'General', terms: Number(v2.terms) || 0, limit: round2(Number(v2.limit) || 0), opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', taxId: v2.taxId || '', contact: v2.contact || '', phone: v2.phone || '', email: v2.email || '', address: v2.address || '', currency: v2.currency || 'PKR', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
+      const record = {code: v2.code, name: v2.name.trim(), type: v2.type, group: v2.group || 'General', terms: Number(v2.terms) || 0, limit: round2(Number(v2.limit) || 0), opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', taxId: v2.taxId || '', contact: v2.contact || '', phone: v2.phone || '', email: v2.email || '', address: v2.address || '', bankName: v2.bankName || '', bankAccount: v2.bankAccount || '', currency: v2.currency || 'PKR', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
       if (editingCode) {
         const target = PARTIES.find((p) => p.code === editingCode);
         if (target) Object.assign(target, record);
@@ -1515,7 +1519,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const bank = d.lines.find((l) => ['1010', '1000', '1020'].includes(l.account));
       const amount = round2(Math.abs(num(bank ? bank.debit : 0) - num(bank ? bank.credit : 0)));
       const account = bank ? bank.party || '' : '';
-      return {id: d.id, date: d.date, party: d.party, account, amount, direction: isReceipt(d) ? 'receive' : 'pay', method: 'Bank transfer', against: d.againstVoucher || '', advanced: 0, tenders: [{method: 'bank', account, reference: d.againstVoucher || '', amount}], session: false};
+      return {id: d.id, date: d.date, party: d.party, account, amount, withheld: 0, net: amount, direction: isReceipt(d) ? 'receive' : 'pay', method: 'Bank transfer', against: d.againstVoucher || '', advanced: 0, tenders: [{method: 'bank', account, reference: d.againstVoucher || '', amount}], session: false};
     });
     return PAYMENTS.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
@@ -1533,9 +1537,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <section class="panel">
         <div class="panel-head"><h2>Payments and receipts</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Reference</th><th>Type</th><th>Party</th><th>Method</th><th>Cash / bank</th><th>Against</th><th class="numeric">Amount</th><th>State</th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e((r.tenders && r.tenders.length > 1) ? `${r.tenders.length} methods` : r.method || '—')}</td><td>${e(r.account || '—')}</td><td>${e(r.against || 'Advance / on account')}</td><td class="numeric">${money(r.amount)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="9">No payments match these filters.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="7">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td></td></tr></tfoot>
+          <thead><tr><th>Date</th><th>Reference</th><th>Type</th><th>Party</th><th>Method</th><th>Cash / bank</th><th>Against</th><th class="numeric">Amount</th><th class="numeric">Withheld</th><th class="numeric">Net</th><th>State</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e((r.tenders && r.tenders.length > 1) ? `${r.tenders.length} methods` : r.method || '—')}</td><td>${e(r.account || '—')}</td><td>${e(r.against || 'Advance / on account')}</td><td class="numeric">${money(r.amount)}</td><td class="numeric">${r.withheld ? money(r.withheld) : '—'}</td><td class="numeric">${money(r.net ?? r.amount)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="11">No payments match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="7">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.withheld || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.net ?? r.amount), 0)))}</td><td></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A receipt brings money in, a payment sends it out. The document may use more than one method — bank, cash or an existing advance — and the total is allocated across the party's open invoices, oldest first. Anything left is an advance.</div>
       </section>`;
@@ -1555,6 +1559,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Party<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === PAY_FORM.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
         <label>Date<input name="date" type="date" value="${e(PAY_FORM.date || '2026-11-30')}" required></label>
         <label>Reference<input name="reference" maxlength="40" value="${e(PAY_FORM.reference || '')}" placeholder="Cheque, transfer or slip"></label>
+        <label>Sales tax withheld %<input name="salesTaxRate" value="${e(PAY_FORM.salesTaxRate ?? (PAY_FORM.direction === 'receive' ? WITHHOLD.salesTax : WITHHOLD.salesTaxPayable))}" inputmode="decimal"></label>
+        <label>Income tax withheld %<input name="incomeTaxRate" value="${e(PAY_FORM.incomeTaxRate ?? (PAY_FORM.direction === 'receive' ? WITHHOLD.incomeTax : WITHHOLD.incomeTaxPayable))}" inputmode="decimal"></label>
         <label class="wide">Notes<input name="notes" maxlength="100" value="${e(PAY_FORM.notes || '')}" placeholder="What this money is for"></label>
       </form>
       <div class="table-scroll"><table class="invoice-lines">
@@ -1581,7 +1587,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       reference: tr.querySelector('[data-tender-field="reference"]') ? tr.querySelector('[data-tender-field="reference"]').value : '',
       amount: tr.querySelector('[data-tender-field="amount"]').value,
     }));
-    PAY_FORM = {direction: v.direction, party: v.party, date: v.date, reference: v.reference || '', notes: v.notes || '', tenders};
+    PAY_FORM = {direction: v.direction, party: v.party, date: v.date, reference: v.reference || '', notes: v.notes || '', tenders, salesTaxRate: v.salesTaxRate, incomeTaxRate: v.incomeTaxRate};
     return {...v, tenders};
   }
   function bindPayments(rerender, notify, navigate) {
@@ -1604,8 +1610,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const tenders = v.tenders.filter((t) => Number(t.amount) > 0);
       const total = round2(tenders.reduce((n, t) => n + Number(t.amount), 0));
       if (!tenders.length || total <= 0) { notify('Add at least one method with an amount.'); return; }
-      const allocation = autoAllocate(party, total);
-      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: tenders.find((t) => t.account)?.account || '', amount: total, direction: v.direction, method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: v.reference, notes: v.notes, against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, tenders, session: true});
+      const withheld = round2(total * ((Number(v.salesTaxRate) || 0) + (Number(v.incomeTaxRate) || 0)) / 100);
+      const allocation = autoAllocate(party, total - withheld);
+      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: tenders.find((t) => t.account)?.account || '', amount: total, withheld, net: round2(total - withheld), direction: v.direction, method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: v.reference, notes: v.notes, against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, tenders, session: true});
       notify(`Saved for this session: ${allocation.rows.length} documents settled${allocation.left ? `, ${allocation.left.toFixed(2)} left as an advance` : ''}.`);
       PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
       goBack();
@@ -1652,9 +1659,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         const tax = round2(d.lines.filter((l) => l.account === (isSales ? '2200' : '1300')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
         const gross = round2(d.lines.filter((l) => l.account === control).reduce((n, l) => n + (isSales ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
-        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines: []};
+        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines: []};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || []}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || []}));
     return session.concat(fromFixture)
       .map((r) => ({...r, balance: round2(Math.max(r.gross - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -1683,9 +1690,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       </form>
       ${source && locked ? `<div class="panel-body"><div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div><p class="form-note">Line detail is recorded on the posted document. Use Return to reduce it.</p></div>`
       : `<div class="table-scroll"><table class="invoice-lines">
-        <thead><tr><th>Line</th><th>Account</th><th>Description</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th></tr></thead>
-        <tbody>${draft.lines.map((l, i) => `<tr data-inv-line="${i}"><td>${i + 1}</td><td><select class="inline-input" data-inv-field="account">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td><input data-inv-field="description" value="${e(l.description)}" aria-label="Line ${i + 1} description"></td><td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td><td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td><td class="numeric">${money((Number(l.qty) || 0) * (Number(l.price) || 0))}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="5">Net ${money(totals.net)} · tax ${money(totals.tax)} · gross <strong>${money(totals.gross)}</strong></td><td class="numeric">${money(totals.gross)}</td></tr></tfoot>
+        <thead><tr><th>Line</th><th>Account</th><th>Description</th><th>Project</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th></tr></thead>
+        <tbody>${draft.lines.map((l, i) => `<tr data-inv-line="${i}"><td>${i + 1}</td><td><select class="inline-input" data-inv-field="account">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td><input data-inv-field="description" value="${e(l.description)}" aria-label="Line ${i + 1} description"></td><td><select class="inline-input" data-inv-field="project">${['', ...PROJECTS.map((p) => p.code)].map((p) => `<option value="${p}" ${p === (l.project || '') ? 'selected' : ''}>${p || 'No project'}</option>`).join('')}</select></td><td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td><td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td><td class="numeric">${money((Number(l.qty) || 0) * (Number(l.price) || 0))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="6">Net ${money(totals.net)} · tax ${money(totals.tax)} · gross <strong>${money(totals.gross)}</strong></td><td class="numeric">${money(totals.gross)}</td></tr></tfoot>
       </table></div>
       ${INV_PAY[kind] ? `<div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Payment method</th><th>Cash / bank account or advance</th><th>Reference</th><th class="numeric">Amount</th></tr></thead><tbody>${INV_TENDERS[kind].map((t, i) => `<tr data-inv-tender="${i}"><td><select class="inline-input" data-inv-tender-field="method">${[['bank', 'Bank'], ['cash', 'Cash'], ['advance', 'Advance already paid']].map(([k, l]) => `<option value="${k}" ${t.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td>${t.method === 'advance' ? `<input data-inv-tender-field="reference" value="${e(t.reference || '')}" placeholder="Advance document">` : `<select class="inline-input" data-inv-tender-field="account">${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>`}</td><td><input data-inv-tender-field="reference" value="${e(t.reference || '')}" aria-label="Payment ${i + 1} reference"></td><td><input class="numeric" data-inv-tender-field="amount" value="${e(t.amount)}" inputmode="decimal" aria-label="Payment ${i + 1} amount"></td></tr>`).join('')}</tbody></table></div>` : ''}
       <div class="panel-body"><div class="related"><button type="button" class="button" data-inv-calc>Calculate</button><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
@@ -1726,9 +1733,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <section class="panel">
         <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Paid</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${r.paid ? money(r.paid) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.paid || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
+          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Project</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Paid</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.project || '—')}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${r.paid ? money(r.paid) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.paid || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
         </table></div>
         <div class="table-footer">Returned, Paid and Balance follow every return and receipt, partial or complete. Use the row menu to open a document or create its return.</div>
       </section>`;
@@ -1761,6 +1768,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const lines = [...root.querySelectorAll('[data-inv-line]')].map((tr) => ({
       account: tr.querySelector('[data-inv-field="account"]').value,
       description: tr.querySelector('[data-inv-field="description"]').value,
+      project: tr.querySelector('[data-inv-field="project"]') ? tr.querySelector('[data-inv-field="project"]').value : '',
       qty: tr.querySelector('[data-inv-field="qty"]').value,
       price: tr.querySelector('[data-inv-field="price"]').value,
     }));
@@ -1880,8 +1888,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <section class="panel">
         <div class="panel-head"><h2>Items</h2><div class="related"><span class="badge">${rows.length} of ${ITEMS.length}</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Sales tax</th><th>Purchase tax</th><th>Stock</th><th></th></tr></thead>
-          <tbody>${rows.map((i) => `<tr class="row-link" data-edit="item:${e(i.code)}"><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.salesTax || i.tax))}</td><td>${e(ruleName(i.purchaseTax || i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
+          <thead><tr><th>Code</th><th>Barcode</th><th>Item</th><th>Group</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Sales tax</th><th>Purchase tax</th><th>Stock</th><th></th></tr></thead>
+          <tbody>${rows.map((i) => `<tr class="row-link" data-edit="item:${e(i.code)}"><td class="mono">${e(i.code)}</td><td>${e(i.barcode || '—')}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.salesTax || i.tax))}</td><td>${e(ruleName(i.purchaseTax || i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
         </table></div>
         <div class="table-footer">The item master is shared with Inventory. Accounting stores the accounts and the tax default; Inventory owns quantity, valuation and movement. An item line appears in the ledger only when an invoice or bill is posted.</div>
       </section>
@@ -1896,6 +1904,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <form data-item-form class="panel-body form-grid">
         <input type="hidden" name="editingCode" value="${e(editingRow.code || '')}">
         <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="ITM-BOX"></label>
+        <label>Barcode<input name="barcode" maxlength="30" value="${e(v('barcode'))}"></label>
         <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="Shipping box"></label>
         <label>Group<input name="group" maxlength="30" value="${e(v('group'))}" placeholder="Packaging"></label>
         <label>Unit<input name="unit" required maxlength="10" value="${e(v('unit', 'piece'))}"></label>
@@ -1928,7 +1937,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const v2 = Object.fromEntries(new FormData(form));
       const editingCode = v2.editingCode || '';
       if (!editingCode && ITEMS.some((i) => i.code === v2.code)) { notify('That item code already exists.'); return; }
-      const record = {code: v2.code, name: v2.name, group: v2.group || 'General', unit: v2.unit, description: v2.description || '', income: v2.income, expense: v2.expense, tax: v2.salesTax || v2.tax, salesTax: v2.salesTax || '', purchaseTax: v2.purchaseTax || '', tracked: v2.tracked === 'yes', salePrice: round2(Number(v2.salePrice) || 0), purchasePrice: round2(Number(v2.purchasePrice) || 0), status: v2.status || 'Active'};
+      const record = {code: v2.code, name: v2.name, barcode: v2.barcode || '', group: v2.group || 'General', unit: v2.unit, description: v2.description || '', income: v2.income, expense: v2.expense, tax: v2.salesTax || v2.tax, salesTax: v2.salesTax || '', purchaseTax: v2.purchaseTax || '', tracked: v2.tracked === 'yes', salePrice: round2(Number(v2.salePrice) || 0), purchasePrice: round2(Number(v2.purchasePrice) || 0), status: v2.status || 'Active'};
       if (editingCode) {
         const target = ITEMS.find((i) => i.code === editingCode);
         if (target) Object.assign(target, record);
@@ -2285,7 +2294,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   /* ----------------------------------------------------------- settings */
-  const SETTINGS_TABS = [['company', 'Company'], ['accounting', 'Accounting'], ['people', 'People & access'], ['periods', 'Periods'], ['forms', 'Forms & fields'], ['views', 'Saved views'], ['print', 'Print & templates']];
+  const SETTINGS_TABS = [['company', 'Company'], ['accounting', 'Accounting'], ['inventory', 'Inventory'], ['manufacturing', 'Manufacturing'], ['people', 'People & access'], ['periods', 'Periods'], ['forms', 'Forms & fields'], ['views', 'Saved views'], ['print', 'Print & templates']];
   const field = (label, value, hint = '', name = '') => `<label>${e(label)}<input ${name ? `name="${name}"` : ''} value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
   /* -------------------------------------- settings master-data editors */
   function accountEditor(code) {
@@ -2479,6 +2488,38 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function settingsView(page) {
     const current = SETTINGS_TABS.some(([k]) => k === page) ? page : 'company';
     const body = current === 'accounting' ? setup()
+      : current === 'inventory' ? `<section class="panel">
+          <div class="panel-head"><h2>Inventory defaults</h2><span class="badge">Session values</span></div>
+          <form class="panel-body form-grid" data-settings-save="inventory">
+            <label>Costing method<select name="costing" class="inline-input"><option>Weighted average</option><option>FIFO</option></select></label>
+            <label>Negative stock<select name="negative" class="inline-input"><option>Not allowed</option><option>Warn only</option><option>Allowed</option></select></label>
+            ${field('Default warehouse', 'WH-KHI · Central warehouse', '', 'warehouse')}
+            ${field('Default receipt warehouse', 'WH-KHI', '', 'receiptWarehouse')}
+            ${field('Inventory account', '1200 · Inventory — finished goods', '', 'inventoryAccount')}
+            ${field('Goods received not invoiced', '2150 · Withholding tax payable', 'Placeholder until the clearing account exists', 'grniAccount')}
+            ${field('Issue / cost of sales', '5000 · Operating expenses', '', 'issueAccount')}
+            ${field('Stock adjustment', '5000 · Operating expenses', '', 'adjustAccount')}
+            <label>Capitalise landed cost<select name="landed" class="inline-input"><option>Yes, into stock value</option><option>No, expense</option></select></label>
+            <label>Count tolerance %<input name="tolerance" value="2" inputmode="decimal"></label>
+            <div class="related"><button class="button primary">Save inventory defaults</button></div>
+          </form>
+          <div class="panel-body"><p class="form-note">These defaults are read by the inventory forms. The accounts will be validated against the chart when posting is connected.</p></div>
+        </section>`
+      : current === 'manufacturing' ? `<section class="panel">
+          <div class="panel-head"><h2>Manufacturing defaults</h2><span class="badge">Session values</span></div>
+          <form class="panel-body form-grid" data-settings-save="manufacturing">
+            <label>Material issue<select name="issue" class="inline-input"><option>Manual from the work order</option><option>Automatic on release</option></select></label>
+            <label>BOM required<select name="bomRequired" class="inline-input"><option>Yes</option><option>No, allow ad-hoc</option></select></label>
+            ${field('Default work centre', 'WC-PRINT · Printing', '', 'centre')}
+            ${field('Scrap account', '5000 · Operating expenses', '', 'scrapAccount')}
+            ${field('Labour account', '5000 · Operating expenses', '', 'labourAccount')}
+            ${field('Overhead account', '5000 · Operating expenses', '', 'overheadAccount')}
+            ${field('WIP account', '1200 · Inventory — finished goods', 'Placeholder until WIP exists', 'wipAccount')}
+            <label>Close order after output<select name="autoClose" class="inline-input"><option>No, close manually</option><option>Yes</option></select></label>
+            <div class="related"><button class="button primary">Save manufacturing defaults</button></div>
+          </form>
+          <div class="panel-body"><p class="form-note">These defaults drive the BOM and work-order forms. Posting to the accounts is backend work.</p></div>
+        </section>`
       : current === 'people' ? `<section class="panel">
           <div class="panel-head"><h2>People &amp; access</h2><span class="badge">${PEOPLE.length} people</span></div>
           <div class="table-scroll" data-hscroll><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Scope</th><th>Status</th></tr></thead><tbody>${PEOPLE.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.email)}</td><td>${e(p.phone || '—')}</td><td>${e(p.role)}</td><td>${e(p.scope)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>
@@ -2531,15 +2572,18 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         </section>`
       : current === 'print' ? `<section class="panel">
           <div class="panel-head"><h2>Print &amp; templates</h2><span class="badge">${PRINT_TEMPLATES.length} templates</span></div>
-          <div class="table-scroll" data-hscroll><table><thead><tr><th>Template</th><th>Size</th><th>Logo</th><th>QR</th><th>Footer</th></tr></thead><tbody>${PRINT_TEMPLATES.map((t) => `<tr><td>${e(t.name)}</td><td>${e(t.size)}</td><td>${t.logo ? 'Yes' : 'No'}</td><td>${t.qr ? 'Yes' : 'No'}</td><td>${e(t.footer)}</td></tr>`).join('')}</tbody></table></div>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Document</th><th>Template</th><th>Size</th><th>Logo</th><th>QR</th><th class="numeric">Copies</th><th class="numeric">Margin</th><th>Footer</th><th></th></tr></thead><tbody>${PRINT_TEMPLATES.filter((t) => hit(FILTERS.print.q, t.document, t.name, t.size, t.footer)).map((t) => `<tr class="row-link" data-print-edit="${e(t.name)}"><td>${e(t.document)}</td><td>${e(t.name)}</td><td>${e(t.size)}</td><td>${t.logo ? 'Yes' : 'No'}</td><td>${t.qr ? 'Yes' : 'No'}</td><td class="numeric">${t.copies || 1}</td><td class="numeric">${t.margin || 12}</td><td>${e(t.footer)}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
           <form data-print-form class="panel-body form-grid">
-            <label>Name<input name="name" required maxlength="40" placeholder="A5 invoice"></label>
+            <input type="hidden" name="editingName" value="">
+            <label>Document<select name="document" class="inline-input">${PRINT_DOCUMENTS.map((d) => `<option>${d}</option>`).join('')}</select></label>
+            <label>Template name<input name="name" required maxlength="40" placeholder="A5 invoice"></label>
             <label>Size<select name="size" class="inline-input"><option>A4</option><option>A5</option><option>80 mm</option></select></label>
+            <label>Copies<input name="copies" type="number" min="1" max="5" value="1"></label>
             <label>Footer<input name="footer" maxlength="70" value="Northstar Trading (Pvt) Ltd"></label>
             <label>Show logo<select name="logo" class="inline-input"><option value="yes">Yes</option><option value="no">No</option></select></label>
             <label>Show QR<select name="qr" class="inline-input"><option value="no">No</option><option value="yes">Yes</option></select></label>
             <label>Margin (mm)<input name="margin" type="number" min="0" max="30" value="12"></label>
-            <div class="related"><button class="button primary">Add template</button></div>
+            <div class="related"><button class="button primary">Save template</button><button type="button" class="button" data-print-cancel>Cancel</button></div>
           </form>
           <div class="panel-body"><p class="form-note">The journal print action uses the browser print sheet today. A template selection, letterhead upload and QR prove the document without a server round trip.</p></div>
         </section>`
@@ -2620,6 +2664,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function bindSettingsView(rerender, notify) {
     document.querySelectorAll('[data-settings-save]').forEach((f) => f.addEventListener('submit', (ev) => {
       ev.preventDefault();
+      if (f.dataset.settingsSave === 'withholding') {
+        const v = Object.fromEntries(new FormData(f));
+        WITHHOLD = {salesTax: Number(v.salesTaxWithheld) || 0, incomeTax: Number(v.incomeTaxWithheld) || 0, salesTaxPayable: Number(v.salesTaxPayable) || 0, incomeTaxPayable: Number(v.incomeTaxPayable) || 0};
+        notify('Withholding defaults saved for this session.');
+        rerender();
+        return;
+      }
       if (f.dataset.settingsSave === 'numbering') {
         const v = Object.fromEntries(new FormData(f));
         const set = (name, prefix, next) => {
@@ -2666,13 +2717,30 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       notify('View saved for this session.');
       rerender();
     });
+    document.querySelectorAll('[data-print-edit]').forEach((tr) => tr.addEventListener('click', () => {
+      const t = PRINT_TEMPLATES.find((x) => x.name === tr.dataset.printEdit);
+      const form = document.querySelector('[data-print-form]');
+      if (!t || !form) return;
+      form.elements.editingName.value = t.name;
+      form.elements.document.value = t.document;
+      form.elements.name.value = t.name;
+      form.elements.size.value = t.size;
+      form.elements.copies.value = t.copies || 1;
+      form.elements.footer.value = t.footer;
+      form.elements.logo.value = t.logo ? 'yes' : 'no';
+      form.elements.qr.value = t.qr ? 'yes' : 'no';
+      form.elements.margin.value = t.margin || 12;
+    }));
+    document.querySelector('[data-print-cancel]')?.addEventListener('click', () => rerender());
     document.querySelector('[data-print-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
-      PRINT_TEMPLATES.push({name: v.name, size: v.size, logo: v.logo === 'yes', qr: v.qr === 'yes', margin: Number(v.margin) || 12, footer: v.footer});
-      notify('Print template added for this session.');
+      const rec = {document: v.document, name: v.name, size: v.size, logo: v.logo === 'yes', qr: v.qr === 'yes', copies: Number(v.copies) || 1, margin: Number(v.margin) || 12, footer: v.footer};
+      const editing = v.editingName;
+      if (editing) { const t = PRINT_TEMPLATES.find((x) => x.name === editing); if (t) Object.assign(t, rec); notify('Print template updated for this session.'); }
+      else { if (PRINT_TEMPLATES.some((t) => t.name === rec.name)) { notify('That template name already exists.'); return; } PRINT_TEMPLATES.push(rec); notify('Print template added for this session.'); }
       rerender();
     });
     document.querySelector('[data-period-toggle]')?.addEventListener('click', () => {

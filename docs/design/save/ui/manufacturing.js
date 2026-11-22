@@ -9,6 +9,7 @@ const badge = (t, k = '') => `<span class="badge ${k}">${esc(t)}</span>`;
 const itemName = (c) => (ITEMS.find((i) => i.code === c) || {}).name || c;
 const centreName = (c) => (WORK_CENTRES.find((w) => w.code === c) || {}).name || c;
 const F = {q: '', status: ''};
+const SUBCONTRACTS = [];
 const kpi = (l, v, b) => `<section class="stat"><span class="stat-label">${esc(l)}</span><strong class="value numeric">${v}</strong><small>${esc(b)}</small></section>`;
 const hit = (...p) => !F.q || p.join(' ').toLowerCase().includes(F.q.toLowerCase());
 const filterBar = (ph, extra = '') => `<form class="filterbar" data-mf-filter><label>Search<input type="search" name="q" value="${esc(F.q)}" placeholder="${esc(ph)}"></label>${extra}<button class="button" type="button" data-mf-reset>Reset</button></form>`;
@@ -75,14 +76,17 @@ function scrapPage() {
     <div class="table-scroll" data-hscroll><table><thead><tr><th>Order</th><th>Item</th><th class="numeric">Scrap</th><th class="numeric">Produced</th><th>Yield</th></tr></thead><tbody>${rows.map((o) => `<tr><td class="mono">${esc(o.id)}</td><td>${esc(itemName(o.item))}</td><td class="numeric">${o.scrap || 0}</td><td class="numeric">${o.produced}</td><td>${o.produced + (o.scrap || 0) ? Math.round((o.produced / (o.produced + (o.scrap || 0))) * 100) + '%' : '—'}</td></tr>`).join('')}</tbody></table></div><div class="table-footer">Scrap is recorded against the order and reduces yield; its cost stays with the order.</div></section>`;
 }
 function subcontractPage() {
-  return `<section class="panel"><div class="panel-head"><h2>Subcontracting</h2><div class="related"><span class="badge">0 documents</span>${exportBtn}<button class="button" data-mf-new="subcontract">New subcontract</button></div></div>
-    <div class="panel-body"><p class="form-note">Send components to a subcontractor and receive the finished item back. Each step writes a stock movement: an issue to the subcontractor and a receipt of the finished item. No subcontract document exists yet in the sample data.</p></div></section>`;
+  const rows = SUBCONTRACTS.filter((d) => hit(d.id, d.item, d.subcontractor, d.status));
+  return filterBar('Document, item, subcontractor') + `<section class="panel"><div class="panel-head"><h2>Subcontracting</h2><div class="related"><span class="badge">${rows.length} documents</span>${exportBtn}<button class="button" data-mf-new="subcontract">New subcontract</button></div></div>
+    <div class="table-scroll" data-hscroll><table><thead><tr><th>Document</th><th>Date</th><th>Subcontractor</th><th>Item</th><th class="numeric">Sent</th><th class="numeric">Received</th><th class="numeric">Cost</th><th>Status</th></tr></thead>
+    <tbody>${rows.map((d) => `<tr><td class="mono">${esc(d.id)}</td><td>${d.date}</td><td>${esc(d.subcontractor)}</td><td>${esc(itemName(d.item))}</td><td class="numeric">${d.sent}</td><td class="numeric">${d.received || 0}</td><td class="numeric">${money(d.cost || 0)}</td><td>${badge(d.status, d.status === 'closed' ? 'good' : 'plum')}</td></tr>`).join('') || '<tr><td colspan="8">No subcontract documents yet. Send components, then receive the finished item.</td></tr>'}</tbody></table></div>
+    <div class="table-footer">Sending writes an issue movement; receiving writes a receipt and closes the document. The cost is the subcontractor's charge, kept with the document.</div></section>`;
 }
 function costingPage() {
-  const rows = WORK_ORDERS.map((o) => { const c = orderCost(o); const standard = Math.round(((BOMS.find((b) => b.code === o.bom) || {outputQty: 1}).outputQty ? 0 : 0)); return {...o, ...c, variance: Math.round((c.total - standard) * 100) / 100}; });
+  const rows = WORK_ORDERS.map((o) => { const c = orderCost(o); const item = ITEMS.find((i) => i.code === o.item) || {}; const standard = Math.round((o.qty * (item.purchasePrice || averageCost(o.item))) * 100) / 100; return {...o, ...c, standard, variance: Math.round((c.total - standard) * 100) / 100}; });
   return `<section class="panel"><div class="panel-head"><h2>Costing</h2><span class="badge">Material + labour</span>${exportBtn}</div>
-    <div class="table-scroll" data-hscroll><table><thead><tr><th>Order</th><th>Item</th><th class="numeric">Material</th><th class="numeric">Labour</th><th class="numeric">Total</th><th class="numeric">Per unit</th><th>Status</th></tr></thead><tbody>${rows.map((o) => `<tr><td class="mono">${esc(o.id)}</td><td>${esc(itemName(o.item))}</td><td class="numeric">${money(o.material)}</td><td class="numeric">${money(o.labour)}</td><td class="numeric">${money(o.total)}</td><td class="numeric">${o.produced ? money(o.total / o.produced) : '—'}</td><td>${badge(o.status, o.status === 'closed' ? 'good' : '')}</td></tr>`).join('')}</tbody></table></div>
-    <div class="table-footer">Material is issued quantity × average cost; labour is the routing minutes × work-centre rate scaled to the order quantity. Standard cost comparison arrives with the costing review.</div></section>`;
+    <div class="table-scroll" data-hscroll><table><thead><tr><th>Order</th><th>Item</th><th class="numeric">Material</th><th class="numeric">Labour</th><th class="numeric">Total</th><th class="numeric">Standard</th><th class="numeric">Variance</th><th class="numeric">Per unit</th><th>Status</th></tr></thead><tbody>${rows.map((o) => `<tr><td class="mono">${esc(o.id)}</td><td>${esc(itemName(o.item))}</td><td class="numeric">${money(o.material)}</td><td class="numeric">${money(o.labour)}</td><td class="numeric">${money(o.total)}</td><td class="numeric">${money(o.standard)}</td><td class="numeric">${money(o.variance)}</td><td class="numeric">${o.produced ? money(o.total / o.produced) : '—'}</td><td>${badge(o.status, o.status === 'closed' ? 'good' : '')}</td></tr>`).join('')}</tbody></table></div>
+    <div class="table-footer">Material is issued quantity × average cost; labour is the routing minutes × work-centre rate scaled to the order quantity. Standard is the item's purchase price (or average cost) × ordered quantity; variance is actual minus standard.</div></section>`;
 }
 function reportsPage() {
   return `<div class="two-column">
@@ -137,6 +141,21 @@ export function editor(form, code) {
         <label>Warehouse<select name="warehouse" class="inline-input">${WAREHOUSES.map((w) => `<option value="${esc(w.code)}">${esc(w.name)}</option>`).join('')}</select></label>
         <div class="related"><button class="button primary">Create order</button><button type="button" class="button" data-mf-cancel>Cancel</button></div></form></section>`;
   }
+  if (form === 'subcontract') {
+    const open = SUBCONTRACTS.filter((d) => d.status === 'sent');
+    return `<section class="panel"><div class="panel-head"><h2>Subcontract</h2><span class="badge">Send or receive</span></div>
+      <form data-mf-form="subcontract" class="panel-body form-grid">
+        <label>Step<select name="step" class="inline-input"><option value="send">Send components out</option><option value="receive">Receive finished item</option></select></label>
+        <label>Document<select name="document" class="inline-input"><option value="">New document (send)</option>${open.map((d) => `<option value="${esc(d.id)}">${esc(d.id)} · ${esc(itemName(d.item))} · ${d.sent} out</option>`).join('')}</select></label>
+        <label>Item<select name="item" class="inline-input">${ITEMS.map((i) => `<option value="${esc(i.code)}">${esc(i.name)}</option>`).join('')}</select></label>
+        <label>Quantity<input name="qty" value="1" inputmode="decimal"></label>
+        <label>Warehouse<select name="warehouse" class="inline-input">${WAREHOUSES.map((w) => `<option value="${esc(w.code)}">${esc(w.name)}</option>`).join('')}</select></label>
+        <label>Subcontractor<input name="subcontractor" value="" placeholder="Vendor name" required></label>
+        <label>Cost of the service<input name="cost" value="0.00" inputmode="decimal"></label>
+        <div class="related"><button class="button primary">Save</button><button type="button" class="button" data-mf-cancel>Cancel</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">Send: components leave stock as an issue. Receive: the finished item enters stock; the document closes.</p></div></section>`;
+  }
   if (form === 'scrap') {
     return `<section class="panel"><div class="panel-head"><h2>Record scrap</h2></div>
       <form data-mf-form="scrap" class="panel-body form-grid">
@@ -189,6 +208,21 @@ export function bind(render, notify, navigate) {
     if (kind === 'order') {
       WORK_ORDERS.push({id: 'WO-2026-' + String(100 + WORK_ORDERS.length), date: '2026-11-30', item: v.item, bom: v.bom, qty: Number(v.qty), warehouse: v.warehouse, due: v.due, status: 'planned', issued: 0, produced: 0, scrap: 0});
       notify('Work order created.'); navigate({module: 'manufacturing', tab: 'orders'}); return;
+    }
+    if (kind === 'subcontract') {
+      const qty = Number(v.qty) || 0;
+      if (v.step === 'receive' && v.document) {
+        const d = SUBCONTRACTS.find((x) => x.id === v.document);
+        if (!d) { notify('Choose an open subcontract document.'); return; }
+        d.received = qty; d.cost = Number(v.cost) || 0; d.status = 'closed';
+        STOCK_MOVES.push({id: 'MV-SC-' + STOCK_MOVES.length, date: '2026-11-30', type: 'receipt', item: d.item, warehouse: v.warehouse, qty, unitCost: averageCost(d.item), value: Math.round(averageCost(d.item) * qty * 100) / 100, source: 'Subcontract receipt', reference: d.id, project: '', location: '', reason: ''});
+        notify('Finished item received; document closed.');
+      } else {
+        SUBCONTRACTS.push({id: 'SC-2026-' + String(101 + SUBCONTRACTS.length), date: '2026-11-30', subcontractor: v.subcontractor, item: v.item, sent: qty, received: 0, cost: Number(v.cost) || 0, status: 'sent', warehouse: v.warehouse});
+        STOCK_MOVES.push({id: 'MV-SC-' + STOCK_MOVES.length, date: '2026-11-30', type: 'issue', item: v.item, warehouse: v.warehouse, qty: -qty, unitCost: averageCost(v.item), value: Math.round(-averageCost(v.item) * qty * 100) / 100, source: 'Subcontract send', reference: 'SC-' + (101 + SUBCONTRACTS.length), project: '', location: '', reason: ''});
+        notify('Components sent to the subcontractor.');
+      }
+      navigate({module: 'manufacturing', tab: 'subcontracting'}); return;
     }
     if (kind === 'scrap') {
       const o = WORK_ORDERS.find((x) => x.id === v.order);

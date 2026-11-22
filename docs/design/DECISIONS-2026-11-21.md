@@ -1650,3 +1650,45 @@ Not yet complete, stated plainly:
   formats review.
 - Posting from operations to the ledger, persistence and permissions remain backend
   work.
+
+---
+
+# Round 22 — print register, module settings, and the audit pass
+
+## 117. Print formats are a register per document
+
+Settings → Print & templates now holds **one row per document** — journal, sales
+invoice, purchase bill, receipt, payment, delivery note, goods receipt, stock
+transfer, stock count, stock adjustment, work order, bill of material, asset register,
+depreciation schedule, party statement, trial balance, financial statements — with
+paper size, logo, QR, copies, margin and footer. Rows are editable and new templates
+can be added.
+
+## 118. Inventory and manufacturing settings pages
+
+Settings gained **Inventory** (costing method, negative stock, default warehouse,
+inventory/issue/adjustment accounts, landed cost, count tolerance) and
+**Manufacturing** (material issue policy, BOM requirement, default work centre, scrap,
+labour, overhead and WIP accounts, auto-close). They are configuration forms saved for
+the session.
+
+## 119. Subcontracting and standard costing
+
+- Subcontract: send components (issue movement) and receive the finished item
+  (receipt movement), with a register of documents and their status.
+- Costing shows **standard** (item purchase price × quantity) and **variance** against
+  actual material plus labour.
+
+## 120. Field gaps closed
+
+Journal external reference; party bank name and account; item barcode; asset serial,
+supplier and purchase document; invoice project per line; payment withholding rates
+with withheld and net shown. Registers gained the columns where a field matters
+(invoice project, payment withheld/net, item barcode, asset serial).
+
+## 121. Audit result
+
+`docs/design/FORM_AUDIT.md` records the full pass. Automated probes render every page
+and every editor across Accounting, Settings, Inventory, Manufacturing and Assets with
+zero failures. Open items are listed there: per-line invoice tax, withholding
+allocation, negative-stock enforcement, ledger posting, template-driven print output.

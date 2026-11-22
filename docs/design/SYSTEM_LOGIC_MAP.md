@@ -93,6 +93,13 @@ form where it edits one object):
 Settings → Periods owns the period lock: closing a past period locks it, and only an
 administrator may lock or reopen.
 
+Settings also holds **Inventory** and **Manufacturing** defaults (costing, negative
+stock, accounts, warehouses; issue policy, BOM requirement, work centre, accounts) and
+a **print register with one template per document**.
+
+`FORM_AUDIT.md` records the form/register audit: every page and editor renders, the
+fields added this round, and the bounded items still open.
+
 ---
 
 ## 3. Registers and forms — the universal interaction

@@ -36,6 +36,11 @@ on its own page, and every rule written down so a backend team can implement it.
   with cancellation rules.
 - Honest notes where posting to the accounting ledger is not wired yet.
 
+## Status
+
+All eight phases are implemented and audited; `FORM_AUDIT.md` holds the result and the
+remaining bounded items.
+
 ## Honest limits
 
 Posting from operations to the ledger, persistence and permissions are backend work.

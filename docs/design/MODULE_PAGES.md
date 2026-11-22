@@ -184,11 +184,13 @@ States: **built** working screen · **partial** working, covers part of the page
 |---|---|---|---|
 | 1 | Company `company` | built | Legal identity, addresses, base currency, fiscal year and the active period. |
 | 2 | Accounting `accounting` | built | Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals. |
-| 3 | People & access `people` | built | Users, roles, scope and invitations for this business. |
-| 4 | Periods `periods` | built | Every period with its state; the lock is the same switch as the close checklist. |
-| 5 | Forms & fields `forms` | built | Standard field counts per form and the custom fields added to them. |
-| 6 | Saved views `views` | built | Named list views with their filters, columns and sorting. |
-| 7 | Print & templates `print` | built | Letterheads, paper sizes and what prints on a document. |
+| 3 | Inventory `inventory` | built | Costing method, negative stock, default warehouse and the inventory accounts. |
+| 4 | Manufacturing `manufacturing` | built | Material issue policy, BOM requirement, default work centre and the manufacturing accounts. |
+| 5 | People & access `people` | built | Users, roles, scope and invitations for this business. |
+| 6 | Periods `periods` | built | Every period with its state; the lock is the same switch as the close checklist. |
+| 7 | Forms & fields `forms` | built | Standard field counts per form and the custom fields added to them. |
+| 8 | Saved views `views` | built | Named list views with their filters, columns and sorting. |
+| 9 | Print & templates `print` | built | Letterheads, paper sizes and what prints on a document. |
 
 ## Administration (admin)
 
@@ -254,4 +256,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 144 pages · 53 built · 0 partial · 91 planned.**
+**20 modules · 146 pages · 55 built · 0 partial · 91 planned.**

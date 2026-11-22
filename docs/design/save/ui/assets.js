@@ -26,14 +26,14 @@ function dashboard() {
       ${kpi('Monthly charge', money(charge), 'Straight line')}
     </div>
     <section class="panel"><div class="panel-head"><h2>Assets</h2><button class="text-button" data-module="assets" data-tab="register">Open register ↗</button></div>
-      <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Asset</th><th>Category</th><th>Location</th><th class="numeric">Cost</th><th class="numeric">NBV</th><th>Status</th></tr></thead><tbody>${ASSETS.slice(0, 6).map((a) => `<tr><td class="mono">${esc(a.code)}</td><td>${esc(a.name)}</td><td>${esc(cat(a.category).name)}</td><td>${esc(a.location)}</td><td class="numeric">${money(a.cost)}</td><td class="numeric">${money(assetNbv(a))}</td><td>${badge(a.status, a.status === 'disposed' ? 'warn' : 'good')}</td></tr>`).join('')}</tbody></table></div></section>`;
+      <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Asset</th><th>Category</th><th>Location</th><th class="numeric">Cost</th><th class="numeric">NBV</th><th>Status</th></tr></thead><tbody>${ASSETS.slice(0, 6).map((a) => `<tr><td class="mono">${esc(a.code)}</td><td>${esc(a.name)}</td><td>${esc(a.serial || '—')}</td><td>${esc(cat(a.category).name)}</td><td>${esc(a.location)}</td><td class="numeric">${money(a.cost)}</td><td class="numeric">${money(assetNbv(a))}</td><td>${badge(a.status, a.status === 'disposed' ? 'warn' : 'good')}</td></tr>`).join('')}</tbody></table></div></section>`;
 }
 function registerPage() {
   const rows = ASSETS.filter((a) => hit(a.code, a.name, a.custodian, a.location, cat(a.category).name) && (!F.category || a.category === F.category) && (!F.status || a.status === F.status));
   return filterBar('Code, asset, custodian', `<label>Category<select name="category"><option value="">All categories</option>${ASSET_CATEGORIES.map((c) => `<option value="${esc(c.code)}" ${F.category === c.code ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label><label>Status<select name="status"><option value="">All states</option><option ${F.status === 'in use' ? 'selected' : ''}>in use</option><option ${F.status === 'disposed' ? 'selected' : ''}>disposed</option></select></label>`) +
     `<section class="panel"><div class="panel-head"><h2>Asset register</h2><div class="related"><span class="badge">${rows.length} assets</span>${exportBtn}<button class="button" data-as-new="asset">New asset</button></div></div>
-    <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Asset</th><th>Category</th><th>Location</th><th>Custodian</th><th>Acquired</th><th class="numeric">Cost</th><th class="numeric">Accumulated</th><th class="numeric">NBV</th><th>Status</th><th></th></tr></thead>
-    <tbody>${rows.map((a) => `<tr class="row-link" data-as-edit="asset:${esc(a.code)}"><td class="mono">${esc(a.code)}</td><td>${esc(a.name)}</td><td>${esc(cat(a.category).name)}</td><td>${esc(a.location)}</td><td>${esc(a.custodian)}</td><td>${a.date}</td><td class="numeric">${money(a.cost)}</td><td class="numeric">${money(a.accum)}</td><td class="numeric">${money(assetNbv(a))}</td><td>${badge(a.status, a.status === 'disposed' ? 'warn' : 'good')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+    <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Asset</th><th>Serial</th><th>Category</th><th>Location</th><th>Custodian</th><th>Acquired</th><th class="numeric">Cost</th><th class="numeric">Accumulated</th><th class="numeric">NBV</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows.map((a) => `<tr class="row-link" data-as-edit="asset:${esc(a.code)}"><td class="mono">${esc(a.code)}</td><td>${esc(a.name)}</td><td>${esc(a.serial || '—')}</td><td>${esc(cat(a.category).name)}</td><td>${esc(a.location)}</td><td>${esc(a.custodian)}</td><td>${a.date}</td><td class="numeric">${money(a.cost)}</td><td class="numeric">${money(a.accum)}</td><td class="numeric">${money(assetNbv(a))}</td><td>${badge(a.status, a.status === 'disposed' ? 'warn' : 'good')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
     <div class="table-footer">Cost less accumulated depreciation is net book value. A disposed asset stays in the register with its gain or loss.</div></section>`;
 }
 function categoriesPage() {
@@ -89,6 +89,9 @@ export function editor(form, code) {
       <form data-as-form="asset" class="panel-body form-grid"><input type="hidden" name="editingCode" value="${esc(a.code || '')}">
         <label>Code<input name="code" required value="${esc(a.code || '')}" ${a.code ? 'readonly' : ''}></label>
         <label>Name<input name="name" required value="${esc(a.name || '')}"></label>
+        <label>Serial number<input name="serial" value="${esc(a.serial || '')}"></label>
+        <label>Supplier<input name="supplier" value="${esc(a.supplier || '')}"></label>
+        <label>Purchase document<input name="invoiceRef" value="${esc(a.invoiceRef || '')}"></label>
         <label>Category<select name="category" class="inline-input">${ASSET_CATEGORIES.map((c) => `<option value="${esc(c.code)}" ${c.code === a.category ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
         <label>Location<select name="location" class="inline-input">${LOCATIONS.map((l) => `<option value="${esc(l.code)}" ${l.code === a.location ? 'selected' : ''}>${esc(l.code)} · ${esc(l.name)}</option>`).join('')}</select></label>
         <label>Custodian<input name="custodian" value="${esc(a.custodian || '')}"></label>
@@ -140,7 +143,7 @@ export function bind(render, notify, navigate) {
     if (kind === 'asset') {
       const editing = v.editingCode || '';
       if (!editing && ASSETS.some((a) => a.code === v.code)) { notify('That asset code already exists.'); return; }
-      const rec = {code: v.code, name: v.name, category: v.category, location: v.location, custodian: v.custodian || '', date: v.date, cost: Number(v.cost) || 0, residual: Number(v.residual) || 0, accum: Number(v.accum) || 0, status: v.status};
+      const rec = {code: v.code, name: v.name, serial: v.serial || '', supplier: v.supplier || '', invoiceRef: v.invoiceRef || '', category: v.category, location: v.location, custodian: v.custodian || '', date: v.date, cost: Number(v.cost) || 0, residual: Number(v.residual) || 0, accum: Number(v.accum) || 0, status: v.status};
       if (editing) { Object.assign(ASSETS.find((a) => a.code === editing), rec); notify('Asset updated.'); }
       else { ASSETS.push(rec); notify('Asset capitalised for this session.'); }
       navigate({module: 'assets', tab: 'register'}); return;

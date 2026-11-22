@@ -140,6 +140,8 @@ export const PAGE_MAP = {
   settings: [
     ['company', 'Company', 'Legal identity, addresses, base currency, fiscal year and the active period.', 'built'],
     ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals.', 'built'],
+    ['inventory', 'Inventory', 'Costing method, negative stock, default warehouse and the inventory accounts.', 'built'],
+    ['manufacturing', 'Manufacturing', 'Material issue policy, BOM requirement, default work centre and the manufacturing accounts.', 'built'],
     ['people', 'People & access', 'Users, roles, scope and invitations for this business.', 'built'],
     ['periods', 'Periods', 'Every period with its state; the lock is the same switch as the close checklist.', 'built'],
     ['forms', 'Forms & fields', 'Standard field counts per form and the custom fields added to them.', 'built'],
