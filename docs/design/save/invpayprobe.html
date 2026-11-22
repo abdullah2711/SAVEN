@@ -1,0 +1,24 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><div id="host"></div><pre id="out" style="position:fixed;inset:0 0 auto 0;z-index:9999;background:#fff;font:11px monospace;white-space:pre-wrap">loading</pre>
+<script type="module">
+const out=document.getElementById('out');const calls=[];
+try{
+ let draw=()=>{};
+ const {createAccountingUI}=await import('/ui/accounting-ui.js');
+ const {INVOICES}=await import('/ui/accounting-model.js').catch(()=>({}));
+ const ui=createAccountingUI({render:()=>draw(),navigate:(r)=>calls.push(r),notify:(m)=>calls.push('n:'+m),dirty(){},getCompany:()=>'Northstar Trading'});
+ const host=document.getElementById('host');
+ draw=()=>{host.innerHTML='<main class="workspace">'+ui.editor('sales-invoices','','')+'</main>';ui.bind();};
+ draw();
+ const f=document.querySelector('[data-invoice-form="sales"]');
+ f.elements.party.value='Atlas Studio';
+ document.querySelector('[data-inv-line="0"] [data-inv-field="price"]').value='500';
+ const sel=f.elements.recordPayment; sel.value='yes'; sel.dispatchEvent(new Event('change',{bubbles:true}));
+ const t=document.querySelector('[data-inv-tender="0"] [data-inv-tender-field="amount"]');
+ t.value='100';
+ document.querySelector('[data-inv-save]').click();
+ host.innerHTML='<main class="workspace">'+ui.view('sales-invoices')+'</main>';ui.bind();
+ const row=document.querySelector('tbody tr');
+ const cells=[...row.querySelectorAll('td')].map(td=>td.textContent.trim());
+ out.textContent=JSON.stringify({calls,firstRow:cells.slice(0,10)});
+}catch(e){out.textContent='ERR '+e.message+'\n'+e.stack;}
+</script></body></html>

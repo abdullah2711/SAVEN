@@ -12,7 +12,7 @@ export const PAGE_MAP = {
     ['journals', 'Journal entries', 'Register of every journal with state, source, party and totals; new journal opens a full page form.', 'built'],
     ['parties', 'Parties', 'Customers and suppliers with terms, credit limits, balances and status; a row opens the party page with its statement and access.', 'built'],
     ['cash', 'Cash & bank', 'Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on.', 'built'],
-    ['payments', 'Payments', 'Receipts and payments with oldest-first allocation across open documents and the remainder kept as an advance.', 'built'],
+    ['payments', 'Payment / Receipts', 'Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance.', 'built'],
     ['items', 'Items', 'Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns.', 'built'],
     ['purchase-invoices', 'Purchase invoices', 'Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns.', 'built'],

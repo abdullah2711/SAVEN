@@ -48,7 +48,7 @@ Companion documents:
 | Journal entries | complete | journal register; row opens the journal form |
 | Parties | complete | customers and suppliers, statements, access |
 | Cash & bank | complete | cash and bank sub-accounts, balances at a date |
-| Payments | complete | receipts and payments, oldest-first allocation |
+| Payment / Receipts | complete | receipts and payments, several methods, oldest-first allocation |
 | Items | complete | item master for accounting |
 | Sales invoices | complete | invoice register, returns tab, open/return menu |
 | Purchase invoices | complete | bill register, returns tab, open/return menu |
@@ -182,7 +182,9 @@ when the correction must stay visible. The audit log keeps everything.
   original posted with its number. The Returns tab lists them and can create one
   without opening the invoice first.
 - **Payments** settle the oldest open documents first; the remainder is an advance.
-  Open documents are invoices/bills minus what already settled them.
+  A single document may use bank, cash or an existing advance, and an invoice can
+  record its own payment while it is created.
+- An invoice balance is **gross − returned − paid**; the register shows all three.
 - **Invoices and bills** carry party, dates, terms, reference, location, narration,
   lines with quantity and price, and tax at the rule’s rate. They are session records
   until ledger posting exists.

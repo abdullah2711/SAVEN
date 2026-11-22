@@ -104,7 +104,7 @@ const FILTERS = {
   parties: {q: '', type: '', status: '', asof: '', balance: ''},
   items: {q: '', group: '', stock: '', status: ''},
   tax: {q: ''},
-  payments: {q: '', direction: ''},
+  payments: {q: '', direction: '', party: ''},
   invoices: {q: '', party: ''},
 };
 const hit = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(String(q).toLowerCase());
@@ -125,13 +125,15 @@ const SAVED_VIEWS = [
   {name: 'Customer balances', scope: 'Parties', detail: 'Customers only · balance descending'},
 ];
 const PRINT_TEMPLATES = [{name: 'A4 letterhead', size: 'A4', logo: true, qr: false, footer: 'Northstar Trading (Pvt) Ltd'}, {name: 'Thermal receipt', size: '80 mm', logo: false, qr: true, footer: 'Thank you'}];
-let PAY_FORM = {direction: 'receive', party: '', account: '', amount: ''};
+let PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
 const PAYMENTS = [];
 let PAY_SEQ = 1;
 const INVOICES = [];
 const INV_TAB = {sales: 'invoices', purchase: 'invoices'};
 const RETURNS = {sales: [], purchase: []};
 const RET_SEQ = {sales: 301, purchase: 301};
+const INV_PAY = {sales: false, purchase: false};
+const INV_TENDERS = {sales: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}], purchase: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
 const RET_DRAFT = {
   sales: {invoice: '', date: '2026-11-30', amount: '', reason: 'Damaged goods', notes: ''},
   purchase: {invoice: '', date: '2026-11-30', amount: '', reason: 'Damaged goods', notes: ''},
@@ -1494,104 +1496,103 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const isReceipt = (d) => d.lines.some((l) => ['1010', '1000', '1020'].includes(l.account) && num(l.debit) > 0);
     const fromFixture = fixture(getCompany()).filter((d) => d.source === 'Payment').map((d) => {
       const bank = d.lines.find((l) => ['1010', '1000', '1020'].includes(l.account));
-      return {id: d.id, date: d.date, party: d.party, account: bank ? bank.party || '' : '', amount: round2(Math.abs(num(bank ? bank.debit : 0) - num(bank ? bank.credit : 0))), direction: isReceipt(d) ? 'receive' : 'pay', against: d.againstVoucher || '', session: false};
+      const amount = round2(Math.abs(num(bank ? bank.debit : 0) - num(bank ? bank.credit : 0)));
+      const account = bank ? bank.party || '' : '';
+      return {id: d.id, date: d.date, party: d.party, account, amount, direction: isReceipt(d) ? 'receive' : 'pay', method: 'Bank transfer', against: d.againstVoucher || '', advanced: 0, tenders: [{method: 'bank', account, reference: d.againstVoucher || '', amount}], session: false};
     });
     return PAYMENTS.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
   function paymentsView() {
     const all = paymentRows();
     const f = FILTERS.payments;
-    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.account, r.against, r.reference, r.method) && (!f.direction || r.direction === f.direction));
-    const parties = PARTIES.filter((p) => (PAY_FORM.direction === 'receive' ? p.type === 'customer' : p.type === 'supplier'));
-    const party = PARTIES.find((p) => p.name === PAY_FORM.party);
-    const amount = round2(Number(PAY_FORM.amount) || 0);
-    const allocation = party && amount ? autoAllocate(party, amount) : {rows: [], left: 0};
-    const outstanding = party ? round2(openItems(party).reduce((n, x) => n + x.outstanding, 0)) : 0;
-    const received = round2(rows.filter((r) => r.direction === 'receive').reduce((n, r) => n + r.amount, 0));
-    const paid = round2(rows.filter((r) => r.direction === 'pay').reduce((n, r) => n + r.amount, 0));
-    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
-    return `<div class="stats">
-        ${kpi('Received', money(received), `${rows.filter((r) => r.direction === 'receive').length} receipts`)}
-        ${kpi('Paid', money(paid), `${rows.filter((r) => r.direction === 'pay').length} payments`)}
-        ${kpi('Open with this party', party ? money(outstanding) : '—', party ? party.name : 'Choose a party in the form')}
-      </div>
-      <form class="filterbar" data-filter="payments">
+    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.account, r.against, r.reference) && (!f.direction || r.direction === f.direction) && (!f.party || r.party === f.party));
+    const parties = PARTIES;
+    return `<form class="filterbar" data-filter="payments">
         ${filterInput('payments', f.q, 'Reference, party, account, document')}
-        <label>Direction<select name="direction"><option value="">Both</option><option value="receive" ${f.direction === 'receive' ? 'selected' : ''}>Receipts</option><option value="pay" ${f.direction === 'pay' ? 'selected' : ''}>Payments</option></select></label>
+        <label>Type<select name="direction"><option value="">Payments and receipts</option><option value="receive" ${f.direction === 'receive' ? 'selected' : ''}>Receipts</option><option value="pay" ${f.direction === 'pay' ? 'selected' : ''}>Payments</option></select></label>
+        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p) => `<option value="${e(p.name)}" ${f.party === p.name ? 'selected' : ''}>${e(p.name)}</option>`).join('')}</select></label>
         <button class="button" type="button" data-filter-reset="payments">Reset</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>Receipts and payments</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
+        <div class="panel-head"><h2>Payments and receipts</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Reference</th><th>Direction</th><th>Party</th><th>Cash / bank account</th><th class="numeric">Amount</th><th>Against</th><th>State</th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e(r.account || '—')}</td><td class="numeric">${money(r.amount)}</td><td>${e(r.against || '—')}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No payments yet.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(received + paid)}</td><td colspan="2"></td></tr></tfoot>
+          <thead><tr><th>Date</th><th>Reference</th><th>Type</th><th>Party</th><th>Method</th><th>Cash / bank</th><th>Against</th><th class="numeric">Amount</th><th>State</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e((r.tenders && r.tenders.length > 1) ? `${r.tenders.length} methods` : r.method || '—')}</td><td>${e(r.account || '—')}</td><td>${e(r.against || 'Advance / on account')}</td><td class="numeric">${money(r.amount)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="9">No payments match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="7">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td></td></tr></tfoot>
         </table></div>
-        <div class="table-footer">Money in is a receipt, money out is a payment. The document posts the bank or cash sub-account and the party control together; the allocation decides which open documents it settles and what remains as an advance.</div>
+        <div class="table-footer">A receipt brings money in, a payment sends it out. The document may use more than one method — bank, cash or an existing advance — and the total is allocated across the party's open invoices, oldest first. Anything left is an advance.</div>
       </section>`;
   }
 
   function paymentEditor() {
     const parties = PARTIES.filter((p) => (PAY_FORM.direction === 'receive' ? p.type === 'customer' : p.type === 'supplier'));
     const party = PARTIES.find((p) => p.name === PAY_FORM.party);
-    const amount = round2(Number(PAY_FORM.amount) || 0);
-    const allocation = party && amount ? autoAllocate(party, amount) : {rows: [], left: 0};
+    const total = round2(PAY_FORM.tenders.reduce((n, t) => n + (Number(t.amount) || 0), 0));
+    const allocation = party && total ? autoAllocate(party, total) : {rows: [], left: 0};
     const outstanding = party ? round2(openItems(party).reduce((n, x) => n + x.outstanding, 0)) : 0;
+    const methodOptions = [['bank', 'Bank'], ['cash', 'Cash'], ['advance', 'Advance already paid']];
     return `<section class="panel">
-      <div class="panel-head"><h2>New receipt or payment</h2><span class="badge">${party ? e(party.name) : 'Choose a party'}</span></div>
+      <div class="panel-head"><h2>${PAY_FORM.direction === 'receive' ? 'New receipt' : 'New payment'}</h2><span class="badge">${party ? e(party.name) : 'Choose a party'}</span></div>
       <form data-pay-form class="panel-body form-grid">
-        <label>Direction<select name="direction" class="inline-input"><option value="receive" ${PAY_FORM.direction === 'receive' ? 'selected' : ''}>Receive money</option><option value="pay" ${PAY_FORM.direction === 'pay' ? 'selected' : ''}>Pay money</option></select></label>
+        <label>Type<select name="direction" class="inline-input"><option value="receive" ${PAY_FORM.direction === 'receive' ? 'selected' : ''}>Receipt — money in</option><option value="pay" ${PAY_FORM.direction === 'pay' ? 'selected' : ''}>Payment — money out</option></select></label>
         <label>Party<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === PAY_FORM.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
-        <label>Cash / bank<select name="account" class="inline-input" required><option value="">Choose a sub-account</option>${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === PAY_FORM.account ? 'selected' : ''}>${e(c.name)} · ${e(c.control)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="2026-11-30" required></label>
-        <label>Method<select name="method" class="inline-input"><option>Bank transfer</option><option>Cheque</option><option>Cash</option><option>Card</option><option>Online</option></select></label>
-        <label>Reference<input name="reference" maxlength="40" placeholder="Cheque, transfer or slip"></label>
-        <label>Instrument number<input name="instrument" maxlength="30" placeholder="Cheque / transaction number"></label>
-        <label>Instrument date<input name="instrumentDate" type="date" value="2026-11-30"></label>
-        <label>Amount<input name="amount" inputmode="decimal" value="${PAY_FORM.amount || ''}" placeholder="0.00" required></label>
-        <label class="wide">Notes<input name="notes" maxlength="100" placeholder="What this money is for"></label>
-        <div class="related"><button type="button" class="button" data-pay-calc>Show allocation</button><button class="button primary">Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+        <label>Date<input name="date" type="date" value="${e(PAY_FORM.date || '2026-11-30')}" required></label>
+        <label>Reference<input name="reference" maxlength="40" value="${e(PAY_FORM.reference || '')}" placeholder="Cheque, transfer or slip"></label>
+        <label class="wide">Notes<input name="notes" maxlength="100" value="${e(PAY_FORM.notes || '')}" placeholder="What this money is for"></label>
       </form>
-      ${party ? `<div class="panel-body"><div class="section-title">Open documents · ${e(party.name)} · ${money(outstanding)} outstanding</div>
-        <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Document</th><th class="numeric">Total</th><th class="numeric">Settled</th><th class="numeric">Outstanding</th><th class="numeric">This payment</th></tr></thead>
-          <tbody>${openItems(party).map((x) => { const hit = allocation.rows.find((a) => a.id === x.id); return `<tr><td>${e(x.date)}</td><td class="mono">${e(x.id)}</td><td class="numeric">${money(x.total)}</td><td class="numeric">${money(x.paid)}</td><td class="numeric">${money(x.outstanding)}</td><td class="numeric">${hit ? money(hit.amount) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="6">Nothing open.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="5">Allocated ${money(round2(amount - allocation.left))} · advance or unallocated ${money(allocation.left)}</td><td class="numeric">${money(amount)}</td></tr></tfoot>
+      <div class="table-scroll"><table class="invoice-lines">
+        <thead><tr><th>Method</th><th>Cash / bank account or advance reference</th><th>Reference</th><th class="numeric">Amount</th></tr></thead>
+        <tbody>${PAY_FORM.tenders.map((t, i) => `<tr data-tender="${i}"><td><select class="inline-input" data-tender-field="method">${methodOptions.map(([k, l]) => `<option value="${k}" ${t.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td>${t.method === 'advance' ? `<input data-tender-field="reference" value="${e(t.reference || '')}" placeholder="Advance document / receipt">` : `<select class="inline-input" data-tender-field="account">${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)} · ${c.control}</option>`).join('')}</select>`}</td><td><input data-tender-field="reference" value="${e(t.reference || '')}" aria-label="Tender ${i + 1} reference"></td><td><input class="numeric" data-tender-field="amount" value="${e(t.amount)}" inputmode="decimal" aria-label="Tender ${i + 1} amount"></td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="3">Total tender</td><td class="numeric">${money(total)}</td></tr></tfoot>
+      </table></div>
+      ${party ? `<div class="panel-body"><div class="section-title">Allocation · ${e(party.name)} · ${money(outstanding)} outstanding</div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Date</th><th>Document</th><th class="numeric">Total</th><th class="numeric">Settled</th><th class="numeric">Outstanding</th><th class="numeric">This document</th></tr></thead>
+          <tbody>${openItems(party).map((x) => { const h = allocation.rows.find((a) => a.id === x.id); return `<tr><td>${e(x.date)}</td><td class="mono">${e(x.id)}</td><td class="numeric">${money(x.total)}</td><td class="numeric">${money(x.paid)}</td><td class="numeric">${money(x.outstanding)}</td><td class="numeric">${h ? money(h.amount) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="6">Nothing open.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="5">Allocated ${money(round2(total - allocation.left))} · advance ${money(allocation.left)}</td><td class="numeric">${money(total)}</td></tr></tfoot>
         </table></div></div>` : ''}
-      <div class="panel-body"><p class="form-note">The preview settles the oldest open documents first. Anything left over is an advance on account. Nothing in this build posts to the ledger; a saved document lives in this session only.</p></div>
+      <div class="panel-body"><div class="related"><button type="button" class="button" data-pay-calc>Recalculate</button><button class="button primary">Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+        <p class="form-note">Use as many methods as needed. An advance row points at money already received or paid, and the rest can be split between cash and bank. Nothing here posts to the ledger in this build.</p></div>
     </section>`;
   }
 
   function capturePay(form) {
     const v = Object.fromEntries(new FormData(form));
-    PAY_FORM = {direction: v.direction, party: v.party, account: v.account, amount: v.amount};
-    return v;
+    const tenders = [...document.querySelectorAll('[data-tender]')].map((tr) => ({
+      method: tr.querySelector('[data-tender-field="method"]').value,
+      account: tr.querySelector('[data-tender-field="account"]') ? tr.querySelector('[data-tender-field="account"]').value : '',
+      reference: tr.querySelector('[data-tender-field="reference"]') ? tr.querySelector('[data-tender-field="reference"]').value : '',
+      amount: tr.querySelector('[data-tender-field="amount"]').value,
+    }));
+    PAY_FORM = {direction: v.direction, party: v.party, date: v.date, reference: v.reference || '', notes: v.notes || '', tenders};
+    return {...v, tenders};
   }
   function bindPayments(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'payments'});
     const form = document.querySelector('[data-pay-form]');
     if (!form) return;
-    document.querySelector('[data-pay-form] [data-form-cancel]')?.addEventListener('click', goBack);
-    form.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      if (!form.reportValidity()) return;
-      const v = capturePay(form);
-      const party = PARTIES.find((p) => p.name === v.party);
-      if (!party) { notify('Choose a party first.'); return; }
-      const amount = round2(Number(v.amount) || 0);
-      if (amount <= 0) { notify('Enter an amount greater than zero.'); return; }
-      const allocation = autoAllocate(party, amount);
-      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: v.account, amount, direction: v.direction, method: v.method || '', reference: v.reference || '', instrument: v.instrument || '', instrumentDate: v.instrumentDate || '', notes: v.notes || '', against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, session: true});
-      notify(`Saved for this session: ${allocation.rows.length} documents settled${allocation.left ? `, ${allocation.left.toFixed(2)} left as an advance` : ''}.`);
-      PAY_FORM = {direction: 'receive', party: '', account: '', amount: ''};
-      goBack();
-    });
+    document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
     form.addEventListener('change', (ev) => {
       if (!ev.target.matches('select')) return;
       capturePay(form);
       rerender();
     });
     form.querySelector('[data-pay-calc]')?.addEventListener('click', () => { capturePay(form); rerender(); });
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!form.reportValidity()) return;
+      const v = capturePay(form);
+      const party = PARTIES.find((p) => p.name === v.party);
+      if (!party) { notify('Choose a party first.'); return; }
+      const tenders = v.tenders.filter((t) => Number(t.amount) > 0);
+      const total = round2(tenders.reduce((n, t) => n + Number(t.amount), 0));
+      if (!tenders.length || total <= 0) { notify('Add at least one method with an amount.'); return; }
+      const allocation = autoAllocate(party, total);
+      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: tenders.find((t) => t.account)?.account || '', amount: total, direction: v.direction, method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: v.reference, notes: v.notes, against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, tenders, session: true});
+      notify(`Saved for this session: ${allocation.rows.length} documents settled${allocation.left ? `, ${allocation.left.toFixed(2)} left as an advance` : ''}.`);
+      PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
+      goBack();
+    });
   }
 
   /* -------------------------------------------------- invoices and bills */
@@ -1618,6 +1619,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function returnedFor(kind, id) {
     return round2(RETURNS[kind].filter((r) => r.invoiceId === id).reduce((n, r) => n + r.gross, 0));
   }
+  function paidFor(kind, id) {
+    const fromSession = PAYMENTS.reduce((n, p) => n + (p.allocations || []).filter((a) => a.id === id).reduce((m, a) => m + a.amount, 0), 0);
+    const control = kind === 'sales' ? '1100' : '2100';
+    const fromFixture = fixture(getCompany()).filter((d) => d.againstVoucher === id).reduce((n, d) => n + d.lines.filter((l) => l.account === control).reduce((m, l) => m + (kind === 'sales' ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0), 0);
+    return round2(fromSession + fromFixture);
+  }
   function invoiceRows(kind) {
     const isSales = kind === 'sales';
     const control = isSales ? '1100' : '2100';
@@ -1628,11 +1635,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         const tax = round2(d.lines.filter((l) => l.account === (isSales ? '2200' : '1300')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
         const gross = round2(d.lines.filter((l) => l.account === control).reduce((n, l) => n + (isSales ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
-        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, returned: returnedFor(kind, d.id), session: false, lines: []};
+        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines: []};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, returned: returnedFor(kind, x.id), session: true, lines: x.lines || []}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || []}));
     return session.concat(fromFixture)
-      .map((r) => ({...r, balance: round2(Math.max(r.gross - r.returned, 0))}))
+      .map((r) => ({...r, balance: round2(Math.max(r.gross - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
   function invoiceEditor(kind, code) {
@@ -1655,6 +1662,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Location<select name="location" class="inline-input" ${locked ? 'disabled' : ''}>${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${e(l.code) === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
         <label>Narration<input name="narration" maxlength="80" value="${e(draft.narration || '')}" ${locked ? 'disabled' : ''}></label>
         <label class="wide">Notes<input name="notes" maxlength="100" value="${e(draft.notes || '')}" ${locked ? 'disabled' : ''}></label>
+        ${locked ? '' : `<label>Record payment with this document<select name="recordPayment" class="inline-input"><option value="no" ${INV_PAY[kind] ? '' : 'selected'}>No — post the document only</option><option value="yes" ${INV_PAY[kind] ? 'selected' : ''}>Yes — record the money now</option></select></label>`}
       </form>
       ${source && locked ? `<div class="panel-body"><div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div><p class="form-note">Line detail is recorded on the posted document. Use Return to reduce it.</p></div>`
       : `<div class="table-scroll"><table class="invoice-lines">
@@ -1662,6 +1670,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <tbody>${draft.lines.map((l, i) => `<tr data-inv-line="${i}"><td>${i + 1}</td><td><select class="inline-input" data-inv-field="account">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td><input data-inv-field="description" value="${e(l.description)}" aria-label="Line ${i + 1} description"></td><td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td><td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td><td class="numeric">${money((Number(l.qty) || 0) * (Number(l.price) || 0))}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td colspan="5">Net ${money(totals.net)} · tax ${money(totals.tax)} · gross <strong>${money(totals.gross)}</strong></td><td class="numeric">${money(totals.gross)}</td></tr></tfoot>
       </table></div>
+      ${INV_PAY[kind] ? `<div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Payment method</th><th>Cash / bank account or advance</th><th>Reference</th><th class="numeric">Amount</th></tr></thead><tbody>${INV_TENDERS[kind].map((t, i) => `<tr data-inv-tender="${i}"><td><select class="inline-input" data-inv-tender-field="method">${[['bank', 'Bank'], ['cash', 'Cash'], ['advance', 'Advance already paid']].map(([k, l]) => `<option value="${k}" ${t.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td>${t.method === 'advance' ? `<input data-inv-tender-field="reference" value="${e(t.reference || '')}" placeholder="Advance document">` : `<select class="inline-input" data-inv-tender-field="account">${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>`}</td><td><input data-inv-tender-field="reference" value="${e(t.reference || '')}" aria-label="Payment ${i + 1} reference"></td><td><input class="numeric" data-inv-tender-field="amount" value="${e(t.amount)}" inputmode="decimal" aria-label="Payment ${i + 1} amount"></td></tr>`).join('')}</tbody></table></div>` : ''}
       <div class="panel-body"><div class="related"><button type="button" class="button" data-inv-calc>Calculate</button><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
         <p class="form-note">Enter quantity and price, then Calculate to refresh the totals. A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>`}
     </section>`;
@@ -1700,11 +1709,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <section class="panel">
         <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
+          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Paid</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${r.paid ? money(r.paid) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.paid || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
         </table></div>
-        <div class="table-footer">Returned and Balance follow every return, partial or complete. Use the row menu to open a document or create its return.</div>
+        <div class="table-footer">Returned, Paid and Balance follow every return and receipt, partial or complete. Use the row menu to open a document or create its return.</div>
       </section>`;
   }
 
@@ -1738,6 +1747,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       qty: tr.querySelector('[data-inv-field="qty"]').value,
       price: tr.querySelector('[data-inv-field="price"]').value,
     }));
+    INV_PAY[kind] = v.recordPayment === 'yes';
+    const tenderRows = [...(root.querySelectorAll('[data-inv-tender]') || [])].map((tr) => ({
+      method: tr.querySelector('[data-inv-tender-field="method"]').value,
+      account: tr.querySelector('[data-inv-tender-field="account"]') ? tr.querySelector('[data-inv-tender-field="account"]').value : '',
+      reference: tr.querySelector('[data-inv-tender-field="reference"]') ? tr.querySelector('[data-inv-tender-field="reference"]').value : '',
+      amount: tr.querySelector('[data-inv-tender-field="amount"]').value,
+    }));
+    if (tenderRows.length) INV_TENDERS[kind] = tenderRows;
     Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, narration: v.narration, notes: v.notes, lines});
     return draft;
   }
@@ -1773,6 +1790,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const root = document.querySelector(`[data-invoice-form="${kind}"]`)?.closest('section');
     if (root) {
       document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
+      root.querySelector('[name="recordPayment"]')?.addEventListener('change', () => { captureInvoice(kind, root); rerender(); });
       root.querySelector('[data-inv-calc]')?.addEventListener('click', () => { captureInvoice(kind, root); rerender(); });
       root.querySelector('[data-inv-save]')?.addEventListener('click', () => {
         const draft = captureInvoice(kind, root);
@@ -1787,6 +1805,17 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         } else {
           INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
           notify(`Saved for this session: ${draft.party} · gross ${totals.gross.toFixed(2)}.`);
+        }
+        if (INV_PAY[kind]) {
+          const tenders = INV_TENDERS[kind].filter((t) => Number(t.amount) > 0);
+          const total = round2(tenders.reduce((n, t) => n + Number(t.amount), 0));
+          if (tenders.length && total > 0) {
+            const invId = editing || INVOICES[INVOICES.length - 1].id;
+            const applied = Math.min(total, totals.gross);
+            PAYMENTS.push({id: (kind === 'sales' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: draft.date, party: draft.party, account: tenders.find((t) => t.account)?.account || '', amount: total, direction: kind === 'sales' ? 'receive' : 'pay', method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: draft.reference || '', notes: '', against: invId, allocations: [{id: invId, amount: applied}], advance: round2(total - applied), tenders, session: true});
+          }
+          INV_PAY[kind] = false;
+          INV_TENDERS[kind] = [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}];
         }
         INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', lines: INV_DRAFT[invKey(kind)].lines.map((l) => ({...l, price: '0.00', qty: '1'}))};
         goBack();

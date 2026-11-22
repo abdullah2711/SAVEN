@@ -1515,3 +1515,41 @@ Both invoice pages follow the same rules.
   original's number or state beyond the return status.
 - Partial returns are allowed; the maximum is the outstanding balance, and the tax is
   split in the same proportion as the original.
+
+---
+
+# Round 20 — Payment / Receipts and paying an invoice at the same time
+
+## 108. The page is Payment / Receipts
+
+- Renamed in the rail and the page title.
+- **No statistics.**
+- Filters: search (reference, party, account, document), **type** (payments and
+  receipts, receipts only, payments only) and **party**.
+- Columns: date, reference, **type**, party, **method**, cash/bank account, **against**
+  (invoice or advance), amount and state.
+- A document may carry **more than one method**: bank, cash, or an **advance already
+  paid**. Each row has a method, an account or advance reference, its own reference
+  and an amount. The rows make the total.
+- The total is allocated across the party's open invoices **oldest first**; anything
+  left is kept as an **advance**. Party is mandatory.
+
+## 109. An invoice can record its payment while it is created
+
+- The invoice and bill forms have **Record payment with this document**:
+  *No — post the document only* or *Yes — record the money now*.
+- Choosing Yes reveals the same payment rows as the payment page (bank, cash,
+  advance), each with account, reference and amount.
+- Saving the invoice then also creates the receipt (sales) or payment (purchase),
+  automatically against that invoice, with the remainder as an advance — so the user
+  does not have to post two documents for one transaction.
+- The invoice register now shows **Paid** beside **Returned**, and
+  **Balance = Gross − Returned − Paid**. Payments already recorded in the fixture are
+  counted too, so the balance always reflects what is actually still open.
+- Posted documents stay read-only; their payment section is not offered.
+
+## 110. Kept honest
+
+Returns and payments update the register balances immediately, but nothing is posted
+to the ledger yet. The balances are the documents' own arithmetic: gross, less what
+was returned, less what was paid.

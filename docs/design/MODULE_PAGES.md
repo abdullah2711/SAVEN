@@ -17,7 +17,7 @@ States: **built** working screen · **partial** working, covers part of the page
 | 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
 | 4 | Parties `parties` | built | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page with its statement and access. |
 | 5 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
-| 6 | Payments `payments` | built | Receipts and payments with oldest-first allocation across open documents and the remainder kept as an advance. |
+| 6 | Payment / Receipts `payments` | built | Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance. |
 | 7 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
 | 8 | Sales invoices `sales-invoices` | built | Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns. |
 | 9 | Purchase invoices `purchase-invoices` | built | Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns. |
