@@ -16,7 +16,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  const setup=createAccountingSetup({render,notify,dirty,getCompany});
  let chartTab='accounts',tbClass='',tbGroup='',selected='1010',query='',range={from:'2026-11-01',to:'2026-11-30'},open=new Set(['Assets','Liabilities','Equity','Income','Expenses']),accounts=chart.map(a=>({...a})),statement='profit',formTab='entry',saved=false,draft={date:'2026-11-13',number:'',reference:'',narrative:'Office expenses',decision:'direct',entryType:'normal',entrySubtype:'journal',location:'HQ',time:'',evidence:[],lines:[{account:'5000',debit:'100.00',credit:'0.00',description:'Office expenses',party:'',project:'',location:'HQ',costCentre:''},{account:'1010',debit:'0.00',credit:'100.00',description:'Bank payment',party:'Standard Bank — current 0123456789',project:'',location:'HQ',costCentre:''}]};
  const data=()=>fixture(getCompany());
- const screens=createScreens({getCompany,range:()=>range,navigate,notify,accounts:()=>accounts});
+ const screens=createScreens({getCompany,range:()=>range,navigate,notify,accounts:()=>accounts,trialView:()=>tb()});
  function download(name,rows){const url=URL.createObjectURL(new Blob([csv([['SA7EN TESTING - SAMPLE DATA ONLY'],...rows])],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
  function table(headers,rows){return `<div class="table-scroll" data-hscroll><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${headers.length}">No matching sample records.</td></tr>`}</tbody></table></div>`;}
  function filters(){return `<form class="filterbar" id="accounting-filter">${field('from','From',range.from,'date','required')}${field('to','To',range.to,'date','required')}${field('query','Reference, party or description',query,'search')}<button class="button primary">Apply filters</button></form>`;}
@@ -61,12 +61,9 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      <div class="ledger-basis"><span class="badge ${dr===cr?'good':'warn'}">${dr===cr?'Balanced':'Difference requires investigation'}</span><span>Click a row to open the account.</span></div>
    </section>`;
  }
- function chartPage(force){
-   const tab=(force||chartTab)==='trial'?'trial':'accounts';
-   return `<div class="tabs" role="tablist" aria-label="Chart views"><button role="tab" aria-selected="${tab==='accounts'}" data-ac="chart-tab" data-value="accounts">Chart of accounts</button><button role="tab" aria-selected="${tab==='trial'}" data-ac="chart-tab" data-value="trial">Trial balance</button></div><div id="chart-panel">${tab==='trial'?tb():coa()}</div>`;
- }
+ function chartPage(){return coa();}
  function financial(){const s=statements(data(),range),statementTabs=[['profit','Profit & loss'],['position','Financial position'],['notes','Notes & source schedules']];return `<section class="panel"><div class="panel-head"><h2>Financial statements</h2>${button('Export statement CSV','export-statements')}</div>${filters()}<div class="panel-body"><div class="tabs">${statementTabs.map(([id,t])=>`<button data-ac="statement" data-value="${id}" aria-selected="${statement===id}">${t}</button>`).join('')}</div>${statement==='profit'?`<div class="statement-line"><span>Service revenue ${button('Source','ledger','data-value="4000"')}</span><strong>${s.income}</strong></div><div class="statement-line"><span>Operating expenses ${button('Source','ledger','data-value="5000"')}</span><strong>(${s.expenses})</strong></div><div class="statement-line total"><span>Profit / (loss)</span><strong>${s.profit}</strong></div>`:statement==='position'?`<div class="statement-line"><span>Assets</span><strong>${s.assets}</strong></div><div class="statement-line"><span>Liabilities</span><strong>${s.liabilities}</strong></div><div class="statement-line"><span>Capital</span><strong>${s.capital}</strong></div><div class="statement-line"><span>Accumulated sample profit</span><strong>${s.accumulatedProfit}</strong></div><div class="statement-line total"><span>Liabilities and equity</span><strong>${decimal(BigInt(s.liabilities.replace('.',''))+BigInt(s.equity.replace('.','')))}</strong></div><div class="related"><span class="badge good">${s.balanced?'Statement equation agrees':'Investigate differences'}</span></div>`:`<details open><summary>1. Basis of this example</summary><p class="form-note">Derived from four synthetic source documents and ten ledger lines. Currency PKR. No statutory reporting framework, legal tax rate or full published financial statements are represented.</p></details><details open><summary>2. Source and control schedules</summary><div class="related">${button('Bank','ledger','data-value="1010"')}${button('Receivables','ledger','data-value="1100"')}${button('Payables','ledger','data-value="2100"')}${button('Input tax','ledger','data-value="1300"')}${button('Output tax','ledger','data-value="2200"')}</div></details><p class="form-note">Comparatives, cash flow, changes in equity, industry disclosure packs and signed publication are required next UI workflows; this increment does not present them as complete.</p>`}<p class="form-note">Period ${range.from} to ${range.to}. Financial position includes all sample history through the end date. Filter text does not remove accounts from statement calculations.</p></div></section>`;}
- function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='ledger'?screens.gl():current==='trial'?chartPage('trial'):current==='coa'?chartPage():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.reports():current==='cash'?screens.cashBank():current==='items'?screens.items():current==='approvals'?screens.approvals():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():current==='parties'?screens.parties():current==='payments'?screens.payments():current==='sales-invoices'?screens.invoices('sales'):current==='purchase-invoices'?screens.invoices('purchase'):current==='close'?screens.close():plannedPage('accounting',current);return body;}
+ function view(tab='dashboard'){const alias={register:'journals'};const current=alias[tab]||tab||'dashboard';const body=current==='dashboard'?screens.dashboard():current==='journals'?screens.journalRegister():current==='ledger'?screens.gl():current==='coa'?chartPage():current==='statements'?financial():current==='receivables'?screens.receivables():current==='payables'?screens.payables():current==='aging'||current==='reports'?screens.reports():current==='cash'?screens.cashBank():current==='items'?screens.items():current==='approvals'?screens.approvals():current==='opening'?setup.openingView():current==='recurring'?setup.recurringView():current==='setup'?screens.setup():current==='taxes'?screens.taxesView():current==='parties'?screens.parties():current==='payments'?screens.payments():current==='sales-invoices'?screens.invoices('sales'):current==='purchase-invoices'?screens.invoices('purchase'):current==='close'?screens.close():plannedPage('accounting',current);return body;}
  function capture(){const f=document.querySelector('#accounting-journal');if(!f)return;draft={...draft,...Object.fromEntries(new FormData(f)),lines:[...f.querySelectorAll('[data-journal-line]')].map(tr=>Object.fromEntries([...tr.querySelectorAll('[data-journal-field]')].map(x=>[x.dataset.journalField,x.value])))};}
  function preview(){
    const errors=[];
@@ -400,23 +397,25 @@ document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.
    trial:['',''],
  };
  function newLabel(tab){return (FORM_META[tab]||FORM_META.journals)[0];}
- function formMeta(tab,code){
+ function formMeta(tab,code,form){
    if(tab==='journals'&&code)return {title:'Journal entry',description:'Opened in the same form it was created in. Drafts and returned entries are editable; posted entries are read-only until cancelled or duplicated.'};
+   if((tab==='sales-invoices'||tab==='purchase-invoices')&&form==='return')return {title:tab==='sales-invoices'?'New sales return':'New purchase return',description:'Returns reduce the original document. Partial returns are allowed and the balance updates immediately.'};
+   if(tab==='sales-invoices'||tab==='purchase-invoices')return {title:tab==='sales-invoices'?'Sales invoice':'Purchase bill',description:code?'Posted documents are read-only; use Return to reduce the balance.':'Fill this form and save. Nothing posts to the ledger in this build.'};
    if(tab==='coa')return code?{title:'Edit account',description:'Saving returns to the chart register.'}:{title:'New account',description:'Adds a head to the chart. Class and control decide where it posts and whether it needs a party.'};
    const meta=FORM_META[tab]||FORM_META.journals;
    return code
      ? {title:'Edit '+meta[1].toLowerCase(),description:'Change the saved values. Saving returns you to the register.'}
      : {title:meta[0],description:'Fill this form and save. Nothing here posts to the ledger in this build.'};
  }
- function editor(tab,code){
+ function editor(tab,code,form){
    if(tab==='coa')return screens.chartAccountEditor(code||'');
    if(tab==='cash')return screens.cashEditor(code||'');
    if(tab==='parties')return screens.partyEditor(code||'');
    if(tab==='items')return screens.itemEditor(code||'');
    if(tab==='taxes')return screens.taxEditor(code||'');
    if(tab==='payments')return screens.paymentEditor();
-   if(tab==='sales-invoices')return screens.invoiceEditor('sales');
-   if(tab==='purchase-invoices')return screens.invoiceEditor('purchase');
+   if(tab==='sales-invoices')return form==='return'?screens.returnEditor('sales',code||''):screens.invoiceEditor('sales',code||'');
+   if(tab==='purchase-invoices')return form==='return'?screens.returnEditor('purchase',code||''):screens.invoiceEditor('purchase',code||'');
    if(code&&draft.editingId!==code)loadJournalDoc(code);
    if(!code&&draft.editingId)resetJournalDraft();
    return journalEditor();

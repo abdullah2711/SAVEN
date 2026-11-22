@@ -1476,3 +1476,42 @@ Cost centres were a hard-coded list with no page. They are now records with a co
 a name, a description and a state, and Settings → Accounting has a **Cost centres**
 tab like Projects and Locations, with its own form page. The journal's cost-centre
 picker reads the register and follows the names.
+
+---
+
+# Round 19 — trial to reports, items filters, invoice returns
+
+## 105. Trial balance moves to Reports
+
+The Chart of accounts page is now one thing: the **account register**. The exact trial
+balance lives on **Reports** as its own tab (Ageing · Trial balance · Profit & loss ·
+Financial position · Cash flow · Equity). The chart keeps no tabs.
+
+## 106. Items: no statistics, real filters
+
+The three figures at the top are removed. The register filters by search (code, name,
+group, unit, description), **group**, **stock** (tracked or service) and **status**.
+The form stays as it is for now; its field-by-field review is still pending.
+
+## 107. Invoices and bills: returns, filters, no statistics
+
+Both invoice pages follow the same rules.
+
+- **No statistics strip.**
+- **Two tabs**: documents and **Returns**.
+- Document register filters: search (number, party, date), **party** and reset.
+- Columns add **Returned** and **Balance** next to net, tax and gross, and the state
+  becomes *posted*, *partly returned* or *returned*.
+- Each row has a **menu** with **Open** and **Return**.
+  - **Open** loads the document in the invoice form; posted documents are read-only
+    with a Return action, session documents remain editable.
+  - **Return** opens the return form with that document already chosen and the
+    balance prefilled.
+- The **Returns** tab lists every return with its original document, party, net, tax,
+  gross and reason, and has a **New return** button so a return can be created
+  without opening an invoice first.
+- A saved return is numbered `SR-2026-…` for sales and `PR-2026-…` for purchases,
+  updates the original's **Returned** and **Balance**, and never changes the
+  original's number or state beyond the return status.
+- Partial returns are allowed; the maximum is the outstanding balance, and the tax is
+  split in the same proportion as the original.

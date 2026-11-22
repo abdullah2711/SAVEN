@@ -102,10 +102,10 @@ const EDIT = {type: '', code: ''};
 const FILTERS = {
   cash: {q: '', kind: '', control: '', status: '', asof: ''},
   parties: {q: '', type: '', status: '', asof: '', balance: ''},
-  items: {q: ''},
+  items: {q: '', group: '', stock: '', status: ''},
   tax: {q: ''},
   payments: {q: '', direction: ''},
-  invoices: {q: ''},
+  invoices: {q: '', party: ''},
 };
 const hit = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(String(q).toLowerCase());
 const filterInput = (key, value, placeholder) => `<label>Search<input type="search" name="q" data-filter-focus="${key}" value="${e(value)}" placeholder="${e(placeholder)}"></label>`;
@@ -129,6 +129,13 @@ let PAY_FORM = {direction: 'receive', party: '', account: '', amount: ''};
 const PAYMENTS = [];
 let PAY_SEQ = 1;
 const INVOICES = [];
+const INV_TAB = {sales: 'invoices', purchase: 'invoices'};
+const RETURNS = {sales: [], purchase: []};
+const RET_SEQ = {sales: 301, purchase: 301};
+const RET_DRAFT = {
+  sales: {invoice: '', date: '2026-11-30', amount: '', reason: 'Damaged goods', notes: ''},
+  purchase: {invoice: '', date: '2026-11-30', amount: '', reason: 'Damaged goods', notes: ''},
+};
 let INV_SEQ = 1;
 let REPORT_TAB = 'ageing';
 
@@ -177,7 +184,7 @@ function spread(total, names, kind) {
 const bucketOf = (age) => (age <= 0 ? 'Current' : age <= 30 ? '1–30' : age <= 60 ? '31–60' : age <= 90 ? '61–90' : '90+');
 const BUCKETS = ['Current', '1–30', '31–60', '61–90', '90+'];
 
-export function createScreens({getCompany, range, navigate, notify, accounts}) {
+export function createScreens({getCompany, range, navigate, notify, accounts, trialView}) {
   const rows = () => trial(fixture(getCompany()), range());
   const accountBalance = (code) => {
     const row = rows().find((r) => r.code === code);
@@ -1608,6 +1615,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const tax = round2((net * rate) / 100);
     return {net, tax, gross: round2(net + tax), rate};
   }
+  function returnedFor(kind, id) {
+    return round2(RETURNS[kind].filter((r) => r.invoiceId === id).reduce((n, r) => n + r.gross, 0));
+  }
   function invoiceRows(kind) {
     const isSales = kind === 'sales';
     const control = isSales ? '1100' : '2100';
@@ -1618,69 +1628,105 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         const tax = round2(d.lines.filter((l) => l.account === (isSales ? '2200' : '1300')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
         const gross = round2(d.lines.filter((l) => l.account === control).reduce((n, l) => n + (isSales ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
-        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, session: false};
+        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, returned: returnedFor(kind, d.id), session: false, lines: []};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, session: true}));
-    return session.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, returned: returnedFor(kind, x.id), session: true, lines: x.lines || []}));
+    return session.concat(fromFixture)
+      .map((r) => ({...r, balance: round2(Math.max(r.gross - r.returned, 0))}))
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
-  function invoicesView(kind) {
+  function invoiceEditor(kind, code) {
     const isSales = kind === 'sales';
-    const f = FILTERS.invoices;
-    const draft = INV_DRAFT[invKey(kind)];
-    const all = invoiceRows(kind);
-    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.date, r.due));
-    const totals = invoiceTotals(kind, draft.lines);
-    const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
-    const open = round2(rows.reduce((n, r) => n + r.gross, 0));
-    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
-    return `<div class="stats">
-        ${kpi(isSales ? 'Invoiced' : 'Billed', money(open), `${rows.length} documents`)}
-        ${kpi(isSales ? 'Receivable' : 'Payable', money(Math.abs(ledgerBalance(isSales ? '1100' : '2100'))), 'Control account balance')}
-        ${kpi('In this draft', money(totals.gross), 'Net plus tax')}
-      </div>
-      <form class="filterbar" data-filter="invoices">
-        ${filterInput('invoices', f.q, 'Number, party, date')}
-        <button class="button" type="button" data-filter-reset="invoices">Reset</button>
-      </form>
-      <section class="panel">
-        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
-        <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>State</th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No documents yet.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(open)}</td><td></td></tr></tfoot>
-        </table></div>
-        <div class="table-footer">${isSales ? 'A posted invoice debits receivables and credits income plus output tax.' : 'A posted bill debits expense and input tax and credits payables.'} Session documents exist only in this browser.</div>
-      </section>
-    </section>`;
-  }
-
-  function invoiceEditor(kind) {
-    const isSales = kind === 'sales';
-    const draft = INV_DRAFT[invKey(kind)];
-    const totals = invoiceTotals(kind, draft.lines);
+    const source = code ? invoiceRows(kind).find((r) => r.id === code) : null;
+    const locked = Boolean(source && !source.session);
+    const draft = source ? {party: source.party, date: source.date, due: source.due, terms: '30', reference: '', location: 'HQ', narration: '', notes: '', lines: source.lines || []} : INV_DRAFT[invKey(kind)];
+    const totals = source ? {net: source.net, tax: source.tax, gross: source.gross, rate: 10} : invoiceTotals(kind, draft.lines);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
     return `<section class="panel">
-      <div class="panel-head"><h2>${isSales ? 'Sales invoice' : 'Purchase bill'}</h2><span class="badge">Tax ${totals.rate}%</span></div>
+      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge">Tax ${totals.rate}%</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
+      ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The content is read-only. Create a return to reduce its balance; partial returns are allowed.</div></div>` : ''}
       <form data-invoice-form="${kind}" class="panel-body form-grid">
-        <label>${isSales ? 'Customer' : 'Supplier'}<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === draft.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="${e(draft.date)}" required></label>
-        <label>Due date<input name="due" type="date" value="${e(draft.due)}" required></label>
-        <label>Terms (days)<input name="terms" type="number" min="0" max="365" value="${e(draft.terms || '30')}"></label>
-        <label>${isSales ? 'Customer reference' : 'Supplier invoice no'}<input name="reference" maxlength="40" value="${e(draft.reference || '')}" placeholder="PO or their document number"></label>
-        <label>Location<select name="location" class="inline-input">${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${e(l.code) === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
-        <label>Narration<input name="narration" maxlength="80" value="${e(draft.narration)}"></label>
-        <label class="wide">Notes<input name="notes" maxlength="100" value="${e(draft.notes || '')}" placeholder="What the document covers"></label>
+        <input type="hidden" name="editingCode" value="${e(source ? source.id : '')}">
+        <label>${isSales ? 'Customer' : 'Supplier'}<select name="party" class="inline-input" required ${locked ? 'disabled' : ''}><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === draft.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+        <label>Date<input name="date" type="date" value="${e(draft.date)}" required ${locked ? 'disabled' : ''}></label>
+        <label>Due date<input name="due" type="date" value="${e(draft.due)}" required ${locked ? 'disabled' : ''}></label>
+        <label>Terms (days)<input name="terms" type="number" min="0" max="365" value="${e(draft.terms || '30')}" ${locked ? 'disabled' : ''}></label>
+        <label>${isSales ? 'Customer reference' : 'Supplier invoice no'}<input name="reference" maxlength="40" value="${e(draft.reference || '')}" ${locked ? 'disabled' : ''}></label>
+        <label>Location<select name="location" class="inline-input" ${locked ? 'disabled' : ''}>${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${e(l.code) === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
+        <label>Narration<input name="narration" maxlength="80" value="${e(draft.narration || '')}" ${locked ? 'disabled' : ''}></label>
+        <label class="wide">Notes<input name="notes" maxlength="100" value="${e(draft.notes || '')}" ${locked ? 'disabled' : ''}></label>
       </form>
-      <div class="table-scroll"><table class="invoice-lines">
+      ${source && locked ? `<div class="panel-body"><div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div><p class="form-note">Line detail is recorded on the posted document. Use Return to reduce it.</p></div>`
+      : `<div class="table-scroll"><table class="invoice-lines">
         <thead><tr><th>Line</th><th>Account</th><th>Description</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th></tr></thead>
         <tbody>${draft.lines.map((l, i) => `<tr data-inv-line="${i}"><td>${i + 1}</td><td><select class="inline-input" data-inv-field="account">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td><input data-inv-field="description" value="${e(l.description)}" aria-label="Line ${i + 1} description"></td><td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td><td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td><td class="numeric">${money((Number(l.qty) || 0) * (Number(l.price) || 0))}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td colspan="5">Net ${money(totals.net)} · tax ${money(totals.tax)} · gross <strong>${money(totals.gross)}</strong></td><td class="numeric">${money(totals.gross)}</td></tr></tfoot>
       </table></div>
       <div class="panel-body"><div class="related"><button type="button" class="button" data-inv-calc>Calculate</button><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
-        <p class="form-note">Enter quantity and price, then Calculate to refresh the totals. A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
+        <p class="form-note">Enter quantity and price, then Calculate to refresh the totals. A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>`}
     </section>`;
   }
 
+  function invoicesView(kind) {
+    const isSales = kind === 'sales';
+    const f = FILTERS.invoices;
+    const tab = INV_TAB[kind] === 'returns' ? 'returns' : 'invoices';
+    const all = invoiceRows(kind);
+    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.date, r.due) && (!f.party || r.party === f.party));
+    const returns = RETURNS[kind].slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
+    const statusOf = (r) => (r.returned >= r.gross && r.gross > 0 ? 'returned' : r.returned > 0 ? 'partly returned' : 'posted');
+    const tabs = `<div class="tabs" role="tablist" aria-label="${isSales ? 'Sales invoice' : 'Purchase bill'} views"><button role="tab" aria-selected="${tab === 'invoices'}" data-inv-tab="${kind}:invoices">${isSales ? 'Invoices' : 'Bills'}</button><button role="tab" aria-selected="${tab === 'returns'}" data-inv-tab="${kind}:returns">Returns</button></div>`;
+    if (tab === 'returns') {
+      return tabs + `<form class="filterbar" data-filter="invoices">
+          ${filterInput('invoices', f.q, 'Return number, party, invoice')}
+          <label>Party<select name="party"><option value="">All parties</option>${parties.map((p) => `<option value="${e(p.name)}" ${f.party === p.name ? 'selected' : ''}>${e(p.name)}</option>`).join('')}</select></label>
+          <button class="button" type="button" data-filter-reset="invoices">Reset</button>
+          <button class="button primary" type="button" data-new-return="${kind}">New return</button>
+        </form>
+        <section class="panel">
+          <div class="panel-head"><h2>Returns</h2><span class="badge">${returns.length} documents</span></div>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Date</th><th>Return</th><th>Original</th><th>Party</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>Reason</th></tr></thead>
+            <tbody>${returns.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td class="mono">${e(r.invoiceId)}</td><td>${e(r.party)}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${e(r.reason)}</td></tr>`).join('') || '<tr><td colspan="8">No returns yet. Use New return to create one against any open document.</td></tr>'}</tbody>
+          </table></div>
+          <div class="table-footer">A return reduces the original document's balance. Partial returns are allowed; the original stays posted and keeps its number.</div>
+        </section>`;
+    }
+    return tabs + `<form class="filterbar" data-filter="invoices">
+        ${filterInput('invoices', f.q, 'Number, party, date')}
+        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p) => `<option value="${e(p.name)}" ${f.party === p.name ? 'selected' : ''}>${e(p.name)}</option>`).join('')}</select></label>
+        <button class="button" type="button" data-filter-reset="invoices">Reset</button>
+      </form>
+      <section class="panel">
+        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
+        <div class="table-scroll" data-hscroll><table>
+          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
+        </table></div>
+        <div class="table-footer">Returned and Balance follow every return, partial or complete. Use the row menu to open a document or create its return.</div>
+      </section>`;
+  }
+
+  function returnEditor(kind, invoiceId) {
+    const isSales = kind === 'sales';
+    const open = invoiceRows(kind).filter((r) => r.balance > 0);
+    const draft = RET_DRAFT[kind];
+    const selected = invoiceId ? open.find((r) => r.id === invoiceId) : null;
+    const party = selected ? selected.party : '';
+    return `<section class="panel">
+      <div class="panel-head"><h2>New ${isSales ? 'sales return' : 'purchase return'}</h2><span class="badge">Reduces the original</span></div>
+      <form data-return-form="${kind}" class="panel-body form-grid">
+        <label>Original document<select name="invoice" class="inline-input" required><option value="">Choose an open document</option>${open.map((r) => `<option value="${e(r.id)}" ${selected && selected.id === r.id ? 'selected' : ''}>${e(r.id)} · ${e(r.party)} · ${money(r.balance)}</option>`).join('')}</select></label>
+        <label>Date<input name="date" type="date" value="${e(draft.date)}" required></label>
+        <label>Amount<input name="amount" inputmode="decimal" value="${selected ? selected.balance.toFixed(2) : ''}" placeholder="0.00" required></label>
+        <label>Reason<select name="reason" class="inline-input">${['Damaged goods', 'Wrong item', 'Over-delivery', 'Price correction', 'Other'].map((r) => `<option ${draft.reason === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+        <label class="wide">Notes<input name="notes" maxlength="100" value="${e(draft.notes || '')}" placeholder="What is being returned"></label>
+        <div class="related"><button class="button primary">Save return</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+      </form>
+      ${selected ? `<div class="panel-body"><div class="record-summary"><div><small>Party</small>${e(party)}</div><div><small>Gross</small>${money(selected.gross)}</div><div><small>Already returned</small>${money(selected.returned)}</div><div><small>Balance</small>${money(selected.balance)}</div></div><p class="form-note">Return the full balance or a part of it. Tax is split in the same proportion as the original.</p></div>` : ''}
+    </section>`;
+  }
   function captureInvoice(kind, root) {
     const form = root.querySelector('[data-invoice-form]');
     const draft = INV_DRAFT[invKey(kind)];
@@ -1696,19 +1742,74 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     return draft;
   }
   function bindInvoices(kind, rerender, notify, navigate) {
-    const goBack = () => navigate({module: 'accounting', tab: kind === 'sales' ? 'sales-invoices' : 'purchase-invoices'});
+    const tabOf = kind === 'sales' ? 'sales-invoices' : 'purchase-invoices';
+    const goBack = () => navigate({module: 'accounting', tab: tabOf});
+    document.querySelectorAll('[data-inv-tab]').forEach((b) => b.addEventListener('click', () => {
+      const [k, t] = b.dataset.invTab.split(':');
+      if (k !== kind) return;
+      INV_TAB[kind] = t;
+      rerender();
+    }));
+    document.querySelectorAll('[data-inv-open]').forEach((b) => b.addEventListener('click', () => {
+      const [k, id] = b.dataset.invOpen.split(':');
+      if (k !== kind) return;
+      navigate({module: 'accounting', tab: tabOf, mode: 'editor', code: id});
+    }));
+    document.querySelectorAll('[data-inv-return]').forEach((b) => b.addEventListener('click', () => {
+      const [k, id] = b.dataset.invReturn.split(':');
+      if (k !== kind) return;
+      navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: id});
+    }));
+    document.querySelectorAll('[data-new-return]').forEach((b) => b.addEventListener('click', () => {
+      if (b.dataset.newReturn !== kind) return;
+      navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: ''});
+    }));
+    document.querySelectorAll('[data-inv-open-return]').forEach((b) => b.addEventListener('click', () => {
+      const [k, id] = b.dataset.invOpenReturn.split(':');
+      if (k !== kind) return;
+      navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: id});
+    }));
+
     const root = document.querySelector(`[data-invoice-form="${kind}"]`)?.closest('section');
-    if (!root) return;
-    root.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
-    root.querySelector('[data-inv-calc]')?.addEventListener('click', () => { captureInvoice(kind, root); rerender(); });
-    root.querySelector('[data-inv-save]')?.addEventListener('click', () => {
-      const draft = captureInvoice(kind, root);
-      if (!draft.party) { notify('Choose a party first.'); return; }
-      const totals = invoiceTotals(kind, draft.lines);
-      if (totals.net <= 0) { notify('Enter at least one line with a quantity and a price.'); return; }
-      INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
-      notify(`Saved for this session: ${draft.party} · gross ${totals.gross.toFixed(2)}.`);
-      INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', lines: INV_DRAFT[invKey(kind)].lines.map((l) => ({...l, price: '0.00', qty: '1'}))};
+    if (root) {
+      document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
+      root.querySelector('[data-inv-calc]')?.addEventListener('click', () => { captureInvoice(kind, root); rerender(); });
+      root.querySelector('[data-inv-save]')?.addEventListener('click', () => {
+        const draft = captureInvoice(kind, root);
+        if (!draft.party) { notify('Choose a party first.'); return; }
+        const totals = invoiceTotals(kind, draft.lines);
+        if (totals.net <= 0) { notify('Enter at least one line with a quantity and a price.'); return; }
+        const editing = document.querySelector(`[data-invoice-form="${kind}"] [name="editingCode"]`)?.value || '';
+        if (editing) {
+          const target = INVOICES.find((x) => x.id === editing);
+          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross});
+          notify('Invoice updated for this session.');
+        } else {
+          INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
+          notify(`Saved for this session: ${draft.party} · gross ${totals.gross.toFixed(2)}.`);
+        }
+        INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', lines: INV_DRAFT[invKey(kind)].lines.map((l) => ({...l, price: '0.00', qty: '1'}))};
+        goBack();
+      });
+    }
+
+    document.querySelector(`[data-return-form="${kind}"] [data-form-cancel]`)?.addEventListener('click', goBack);
+    document.querySelector(`[data-return-form="${kind}"]`)?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      const inv = invoiceRows(kind).find((r) => r.id === v.invoice);
+      if (!inv) { notify('Choose an open document to return against.'); return; }
+      const amount = round2(Number(v.amount) || 0);
+      if (amount <= 0) { notify('Enter an amount greater than zero.'); return; }
+      if (amount > inv.balance + 0.005) { notify(`The most that can be returned is ${inv.balance.toFixed(2)}.`); return; }
+      const ratio = inv.gross ? amount / inv.gross : 0;
+      const net = round2(inv.net * ratio);
+      const tax = round2(amount - net);
+      RETURNS[kind].push({id: (kind === 'sales' ? 'SR-2026-' : 'PR-2026-') + String(RET_SEQ[kind]++), invoiceId: inv.id, date: v.date, party: inv.party, net, tax, gross: amount, reason: v.reason, notes: v.notes || '', session: true});
+      INV_TAB[kind] = 'returns';
+      notify(`Return saved: ${inv.id} · ${amount.toFixed(2)}. Its balance is now ${round2(inv.balance - amount).toFixed(2)}.`);
       goBack();
     });
   }
@@ -1716,20 +1817,18 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   /* ------------------------------------------------------------- items */
   function itemsView() {
     const f = FILTERS.items;
-    const rows = ITEMS.filter((i) => hit(f.q, i.code, i.name, i.group, i.unit, i.description));
+    const rows = ITEMS.filter((i) => hit(f.q, i.code, i.name, i.group, i.unit, i.description)
+      && (!f.group || i.group === f.group) && (!f.stock || (f.stock === 'tracked' ? i.tracked : !i.tracked)) && (!f.status || (i.status || 'Active') === f.status));
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
     const ruleName = (code) => (TAX_RULES.find((r) => r.code === code) || {}).name || 'No tax';
     const tracked = ITEMS.filter((i) => i.tracked).length;
     const editingRow = editRecord('item', ITEMS) || {};
     const v = (key, fallback = '') => (editingRow[key] !== undefined ? editingRow[key] : fallback);
-    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
-    return `<div class="stats">
-        ${kpi('Items', String(ITEMS.length), 'Shared with Inventory')}
-        ${kpi('Tracked', String(tracked), 'Inventory would value these')}
-        ${kpi('Services', String(ITEMS.length - tracked), 'Never valued or counted')}
-      </div>
-      <form class="filterbar" data-filter="items">
+    return `<form class="filterbar" data-filter="items">
         ${filterInput('items', f.q, 'Code, name, group, description')}
+        <label>Group<select name="group"><option value="">All groups</option>${ITEM_GROUPS.map((g) => `<option value="${e(g.name)}" ${f.group === g.name ? 'selected' : ''}>${e(g.name)}</option>`).join('')}</select></label>
+        <label>Stock<select name="stock"><option value="">All items</option><option value="tracked" ${f.stock === 'tracked' ? 'selected' : ''}>Tracked</option><option value="service" ${f.stock === 'service' ? 'selected' : ''}>Service / untracked</option></select></label>
+        <label>Status<select name="status"><option value="">All states</option><option ${f.status === 'Active' ? 'selected' : ''}>Active</option><option ${f.status === 'Archived' ? 'selected' : ''}>Archived</option></select></label>
         <button class="button" type="button" data-filter-reset="items">Reset</button>
       </form>
       <section class="panel">
@@ -1966,7 +2065,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   /* ------------------------------------------------------------ reports */
-  const REPORT_TABS = [['ageing', 'Ageing'], ['profit', 'Profit & loss'], ['position', 'Financial position'], ['cashflow', 'Cash flow'], ['equity', 'Equity']];
+  const REPORT_TABS = [['ageing', 'Ageing'], ['trial', 'Trial balance'], ['profit', 'Profit & loss'], ['position', 'Financial position'], ['cashflow', 'Cash flow'], ['equity', 'Equity']];
   const line = (label, value, cls = '') => `<div class="statement-line ${cls}"><span>${e(label)}</span><strong class="numeric">${value}</strong></div>`;
 
   function reportProfit() {
@@ -2074,7 +2173,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   function reportsView() {
     const current = REPORT_TABS.some(([k]) => k === REPORT_TAB) ? REPORT_TAB : 'ageing';
-    const body = current === 'profit' ? reportProfit() : current === 'position' ? reportPosition() : current === 'cashflow' ? reportCashflow() : current === 'equity' ? reportEquity() : ageing();
+    const body = current === 'trial' ? (trialView ? trialView() : '') : current === 'profit' ? reportProfit() : current === 'position' ? reportPosition() : current === 'cashflow' ? reportCashflow() : current === 'equity' ? reportEquity() : ageing();
     return `<div class="tabs" role="tablist" aria-label="Report views">${REPORT_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-report-tab="${id}">${label}</button>`).join('')}</div>
       <div id="report-panel">${body}</div>`;
   }
@@ -2546,6 +2645,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

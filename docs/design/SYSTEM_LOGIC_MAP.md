@@ -50,10 +50,11 @@ Companion documents:
 | Cash & bank | complete | cash and bank sub-accounts, balances at a date |
 | Payments | complete | receipts and payments, oldest-first allocation |
 | Items | complete | item master for accounting |
-| Sales invoices | complete | customer invoice register and form |
-| Purchase invoices | complete | supplier bill register and form |
+| Sales invoices | complete | invoice register, returns tab, open/return menu |
+| Purchase invoices | complete | bill register, returns tab, open/return menu |
 | Chart of accounts | complete | heads, groups, controls, balances |
-| Chart of accounts | complete | two tabs: account register and trial balance; account form page |
+| Chart of accounts | complete | account register with account form page |
+| Reports | complete | ageing, trial balance, P&L, position, cash flow, equity |
 | Reports | complete | ageing, P&L, position, cash flow, equity |
 
 ### Settings (Workspace settings)
@@ -176,6 +177,10 @@ when the correction must stay visible. The audit log keeps everything.
 
 ## 7. Payments, invoices, taxes
 
+- **Returns** are documents against an invoice or bill. A return is numbered `SR-` or
+  `PR-`, reduces the original's balance (partially or completely) and leaves the
+  original posted with its number. The Returns tab lists them and can create one
+  without opening the invoice first.
 - **Payments** settle the oldest open documents first; the remainder is an advance.
   Open documents are invoices/bills minus what already settled them.
 - **Invoices and bills** carry party, dates, terms, reference, location, narration,
@@ -192,7 +197,7 @@ when the correction must stay visible. The audit log keeps everything.
 
 ## 8. Reports
 
-Ageing, profit & loss, financial position, cash flow and equity are tabs on one page
+Ageing, trial balance, profit & loss, financial position, cash flow and equity are tabs on one page
 and are all built from the same ledger, so they cannot disagree with the trial
 balance. Statutory presentation, comparatives and indirect cash flow are explicitly
 not claimed.
@@ -278,8 +283,8 @@ permissions. See §100 of the decision log.
 
 ## 13. Pending and incomplete
 
-- Payments and invoice pages still need their full review, including returns.
 - Every form needs a field-by-field review, and its effect on register columns.
+- Payments page still needs its full review.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices and payments record session documents but do not write the ledger.
 - Bank statement reconciliation.

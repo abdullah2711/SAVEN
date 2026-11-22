@@ -19,10 +19,10 @@ States: **built** working screen · **partial** working, covers part of the page
 | 5 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
 | 6 | Payments `payments` | built | Receipts and payments with oldest-first allocation across open documents and the remainder kept as an advance. |
 | 7 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
-| 8 | Sales invoices `sales-invoices` | built | Customer invoices with item or service lines, tax, due date and totals; session register until posting exists. |
-| 9 | Purchase invoices `purchase-invoices` | built | Supplier bills mirroring the sales invoice, posting to expense and input tax; session register until posting exists. |
-| 10 | Chart of accounts `coa` | built | Two tabs: the account register (code, name, accounting head, accounting group, control, currency, description, state, closing) and the trial balance (opening debit and credit, period movement, closing); the account form opens on its own page. |
-| 11 | Reports `reports` | built | Ageing, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
+| 8 | Sales invoices `sales-invoices` | built | Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns. |
+| 9 | Purchase invoices `purchase-invoices` | built | Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns. |
+| 10 | Chart of accounts `coa` | built | Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page. |
+| 11 | Reports `reports` | built | Ageing, trial balance, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
 
 ## Inventory (inventory)
 
