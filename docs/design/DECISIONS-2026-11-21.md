@@ -1553,3 +1553,14 @@ Both invoice pages follow the same rules.
 Returns and payments update the register balances immediately, but nothing is posted
 to the ledger yet. The balances are the documents' own arithmetic: gross, less what
 was returned, less what was paid.
+
+## 111. Every register has filters and an export
+
+- Accounting: cash & bank, parties, items, payments/receipts, invoices/bills and
+  returns now carry **Export CSV** alongside their filters. Chart, ledger and the
+  journal register already had theirs.
+- Settings: accounting heads, projects, locations, cost centres, party groups, item
+  groups, tax rules, people, saved views and print templates each gained a **search
+  filter** (plus status or kind where it matters) and **Export CSV**.
+- The export is table-based: it writes exactly the rows currently on screen, with the
+  filters applied, so what is exported is what is seen.

@@ -106,6 +106,15 @@ const FILTERS = {
   tax: {q: ''},
   payments: {q: '', direction: '', party: ''},
   invoices: {q: '', party: ''},
+  heads: {q: ''},
+  projects: {q: ''},
+  locations: {q: ''},
+  centres: {q: ''},
+  partygroups: {q: ''},
+  itemgroups: {q: ''},
+  people: {q: '', status: ''},
+  views: {q: ''},
+  print: {q: ''},
 };
 const hit = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(String(q).toLowerCase());
 const filterInput = (key, value, placeholder) => `<label>Search<input type="search" name="q" data-filter-focus="${key}" value="${e(value)}" placeholder="${e(placeholder)}"></label>`;
@@ -1107,8 +1116,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const bal = (code, key) => { const a = tb.find((r) => r.code === code); return a ? round2(num(a[key])) : 0; };
     const control = (a) => (a.control ? badge(a.control, 'plum') : '—');
     const newBtn = (label, form) => `<button class="text-button" data-settings-new="${form}">${label}</button>`;
+    const exportBtn = '<button class="button" data-export-table>Export CSV</button>';
     const editorLink = (form, code) => `data-settings-edit="${form}:${e(code)}"`;
-    const headRows = accounts().map((a) => `<tr class="row-link" ${editorLink('heads', a.code)}><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${e(a.group)}</td><td>${control(a)}</td><td class="numeric">${money(bal(a.code, 'opening'))}</td><td class="numeric">${money(bal(a.code, 'closingDebit') - bal(a.code, 'closingCredit'))}</td><td>${badge(a.active ? 'Active' : 'Archived', a.active ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('');
+    const headRows = accounts().filter((a) => hit(FILTERS.heads.q, a.code, a.name, a.type, a.group, a.description)).map((a) => `<tr class="row-link" ${editorLink('heads', a.code)}><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${e(a.group)}</td><td>${control(a)}</td><td class="numeric">${money(bal(a.code, 'opening'))}</td><td class="numeric">${money(bal(a.code, 'closingDebit') - bal(a.code, 'closingCredit'))}</td><td>${badge(a.active ? 'Active' : 'Archived', a.active ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('');
     const sections = {
       numbering: `<section class="panel">
         <div class="panel-head"><h2>Numbering</h2><span class="badge">Fixed after the first entry</span></div>
@@ -1144,38 +1154,45 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <div class="panel-body"><p class="form-note">Control and tax accounts are set on the account itself, so a new account of that type appears here automatically. A control head requires a party or sub-account on every line that uses it.</p></div>
       </section>`,
       heads: `<section class="panel">
-        <div class="panel-head"><h2>Accounting heads</h2><div class="related"><span class="badge">${accounts().length} heads</span>${newBtn('New head', 'heads')}</div></div>
+        <div class="panel-head"><h2>Accounting heads</h2><div class="related"><span class="badge">${headRows.length} of ${accounts().length} heads</span>${exportBtn}${newBtn('New head', 'heads')}</div></div>
+        <form class="filterbar" data-filter="heads">${filterInput('heads', FILTERS.heads.q, 'Code, name, accounting head, group')}<button class="button" type="button" data-filter-reset="heads">Reset</button></form>
         <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Account name</th><th>Accounting head</th><th>Accounting group</th><th>Control</th><th class="numeric">Opening</th><th class="numeric">Closing</th><th>State</th><th></th></tr></thead><tbody>${headRows}</tbody></table></div>
         <div class="table-footer">A head is the account itself. Its class decides where it appears in the trial balance; its control flag decides whether every line needs a party. Click a row to edit it.</div>
       </section>`,
       projects: `<section class="panel">
-        <div class="panel-head"><h2>Projects</h2><div class="related"><span class="badge">${PROJECTS.length} projects</span>${newBtn('New project', 'project')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th><th>Start</th><th>End</th><th class="numeric">Budget</th><th></th></tr></thead><tbody>${PROJECTS.map((p) => `<tr class="row-link" ${editorLink('project', p.code)}><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager || '—')}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td><td>${e(p.start || '—')}</td><td>${e(p.end || '—')}</td><td class="numeric">${money(p.budget || 0)}</td><td class="row-go">›</td></tr>`).join('') || '<tr><td colspan="8">No projects yet.</td></tr>'}</tbody></table></div>
+        <div class="panel-head"><h2>Projects</h2><div class="related"><span class="badge">${PROJECTS.filter((p) => hit(FILTERS.projects.q, p.code, p.name, p.manager)).length} of ${PROJECTS.length} projects</span>${exportBtn}${newBtn('New project', 'project')}</div></div>
+        <form class="filterbar" data-filter="projects">${filterInput('projects', FILTERS.projects.q, 'Code, project, manager')}<button class="button" type="button" data-filter-reset="projects">Reset</button></form>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th><th>Start</th><th>End</th><th class="numeric">Budget</th><th></th></tr></thead><tbody>${PROJECTS.filter((p) => hit(FILTERS.projects.q, p.code, p.name, p.manager, p.status)).map((p) => `<tr class="row-link" ${editorLink('project', p.code)}><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager || '—')}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td><td>${e(p.start || '—')}</td><td>${e(p.end || '—')}</td><td class="numeric">${money(p.budget || 0)}</td><td class="row-go">›</td></tr>`).join('') || '<tr><td colspan="8">No projects yet.</td></tr>'}</tbody></table></div>
         <div class="table-footer">Projects are a data field on transactions. They slice reports and never hold a balance.</div>
       </section>`,
       locations: `<section class="panel">
-        <div class="panel-head"><h2>Locations</h2><div class="related"><span class="badge">${LOCATIONS.length} locations</span>${newBtn('New location', 'location')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Location</th><th>Kind</th><th>Address</th><th>Contact</th><th></th></tr></thead><tbody>${LOCATIONS.map((l) => `<tr class="row-link" ${editorLink('location', l.code)}><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td><td>${e(l.address || '—')}</td><td>${e(l.contact || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+        <div class="panel-head"><h2>Locations</h2><div class="related"><span class="badge">${LOCATIONS.filter((l) => hit(FILTERS.locations.q, l.code, l.name, l.kind)).length} of ${LOCATIONS.length} locations</span>${exportBtn}${newBtn('New location', 'location')}</div></div>
+        <form class="filterbar" data-filter="locations">${filterInput('locations', FILTERS.locations.q, 'Code, location, kind, address')}<button class="button" type="button" data-filter-reset="locations">Reset</button></form>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Location</th><th>Kind</th><th>Address</th><th>Contact</th><th></th></tr></thead><tbody>${LOCATIONS.filter((l) => hit(FILTERS.locations.q, l.code, l.name, l.kind, l.address, l.contact)).map((l) => `<tr class="row-link" ${editorLink('location', l.code)}><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td><td>${e(l.address || '—')}</td><td>${e(l.contact || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
         <div class="table-footer">A branch is a location whose kind is branch. There is no separate branch field.</div>
       </section>`,
       centres: `<section class="panel">
-        <div class="panel-head"><h2>Cost centres</h2><div class="related"><span class="badge">${COST_CENTRES.length} cost centres</span>${newBtn('New cost centre', 'centre')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Cost centre</th><th>Description</th><th>State</th><th></th></tr></thead><tbody>${COST_CENTRES.map((c) => `<tr class="row-link" ${editorLink('centre', c.code)}><td class="mono">${e(c.code)}</td><td>${e(c.name)}</td><td>${e(c.description || '—')}</td><td>${badge(c.archived ? 'Archived' : 'Active', c.archived ? 'warn' : 'good')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+        <div class="panel-head"><h2>Cost centres</h2><div class="related"><span class="badge">${COST_CENTRES.filter((c) => hit(FILTERS.centres.q, c.code, c.name)).length} of ${COST_CENTRES.length} cost centres</span>${exportBtn}${newBtn('New cost centre', 'centre')}</div></div>
+        <form class="filterbar" data-filter="centres">${filterInput('centres', FILTERS.centres.q, 'Code, cost centre')}<button class="button" type="button" data-filter-reset="centres">Reset</button></form>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Cost centre</th><th>Description</th><th>State</th><th></th></tr></thead><tbody>${COST_CENTRES.filter((c) => hit(FILTERS.centres.q, c.code, c.name, c.description)).map((c) => `<tr class="row-link" ${editorLink('centre', c.code)}><td class="mono">${e(c.code)}</td><td>${e(c.name)}</td><td>${e(c.description || '—')}</td><td>${badge(c.archived ? 'Archived' : 'Active', c.archived ? 'warn' : 'good')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
         <div class="table-footer">Cost centres slice expense and activity for internal reporting. They never hold a balance.</div>
       </section>`,
       partygroups: `<section class="panel">
-        <div class="panel-head"><h2>Party groups</h2><div class="related"><span class="badge">${PARTY_GROUPS.length} groups</span>${newBtn('New party group', 'partygroups')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Group</th><th>Applies to</th><th>Description</th><th></th></tr></thead><tbody>${PARTY_GROUPS.map((g) => `<tr class="row-link" ${editorLink('partygroups', g.code)}><td class="mono">${e(g.code)}</td><td>${e(g.name)}</td><td>${e(g.kind || 'both')}</td><td>${e(g.description || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+        <div class="panel-head"><h2>Party groups</h2><div class="related"><span class="badge">${PARTY_GROUPS.filter((g) => hit(FILTERS.partygroups.q, g.code, g.name)).length} of ${PARTY_GROUPS.length} groups</span>${exportBtn}${newBtn('New party group', 'partygroups')}</div></div>
+        <form class="filterbar" data-filter="partygroups">${filterInput('partygroups', FILTERS.partygroups.q, 'Code, group, description')}<button class="button" type="button" data-filter-reset="partygroups">Reset</button></form>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Group</th><th>Applies to</th><th>Description</th><th></th></tr></thead><tbody>${PARTY_GROUPS.filter((g) => hit(FILTERS.partygroups.q, g.code, g.name, g.kind, g.description)).map((g) => `<tr class="row-link" ${editorLink('partygroups', g.code)}><td class="mono">${e(g.code)}</td><td>${e(g.name)}</td><td>${e(g.kind || 'both')}</td><td>${e(g.description || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
         <div class="table-footer">Groups classify customers and suppliers for reporting and default terms. A party can belong to one group.</div>
       </section>`,
       itemgroups: `<section class="panel">
-        <div class="panel-head"><h2>Item groups</h2><div class="related"><span class="badge">${ITEM_GROUPS.length} groups</span>${newBtn('New item group', 'itemgroups')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Group</th><th>Description</th><th></th></tr></thead><tbody>${ITEM_GROUPS.map((g) => `<tr class="row-link" ${editorLink('itemgroups', g.code)}><td class="mono">${e(g.code)}</td><td>${e(g.name)}</td><td>${e(g.description || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+        <div class="panel-head"><h2>Item groups</h2><div class="related"><span class="badge">${ITEM_GROUPS.filter((g) => hit(FILTERS.itemgroups.q, g.code, g.name)).length} of ${ITEM_GROUPS.length} groups</span>${exportBtn}${newBtn('New item group', 'itemgroups')}</div></div>
+        <form class="filterbar" data-filter="itemgroups">${filterInput('itemgroups', FILTERS.itemgroups.q, 'Code, group, description')}<button class="button" type="button" data-filter-reset="itemgroups">Reset</button></form>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Group</th><th>Description</th><th></th></tr></thead><tbody>${ITEM_GROUPS.filter((g) => hit(FILTERS.itemgroups.q, g.code, g.name, g.description)).map((g) => `<tr class="row-link" ${editorLink('itemgroups', g.code)}><td class="mono">${e(g.code)}</td><td>${e(g.name)}</td><td>${e(g.description || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
         <div class="table-footer">Item groups drive reporting and default accounts or tax rules. Inventory keeps the stock detail; this is the accounting view.</div>
       </section>`,
       taxes: `<section class="panel">
-        <div class="panel-head"><h2>Tax rules</h2><div class="related"><span class="badge">${TAX_RULES.length} rules</span>${newBtn('New tax rule', 'tax')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Effective</th><th>Status</th><th></th></tr></thead><tbody>${TAX_RULES.map((r) => `<tr class="row-link" ${editorLink('tax', r.code)}><td class="mono">${e(r.code)}</td><td>${e(r.name)}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+        <div class="panel-head"><h2>Tax rules</h2><div class="related"><span class="badge">${TAX_RULES.filter((r) => hit(FILTERS.tax.q, r.code, r.name, r.kind) && (!FILTERS.tax.kind || r.kind === FILTERS.tax.kind)).length} of ${TAX_RULES.length} rules</span>${exportBtn}${newBtn('New tax rule', 'tax')}</div></div>
+        <form class="filterbar" data-filter="tax">${filterInput('tax', FILTERS.tax.q, 'Code, rule, kind')}<label>Kind<select name="kind"><option value="">All kinds</option>${['sales', 'purchase', 'withholding', 'advance'].map((k) => `<option value="${k}" ${FILTERS.tax.kind === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label><button class="button" type="button" data-filter-reset="tax">Reset</button></form>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Effective</th><th>Status</th><th></th></tr></thead><tbody>${TAX_RULES.filter((r) => hit(FILTERS.tax.q, r.code, r.name, r.kind, r.scope, r.description) && (!FILTERS.tax.kind || r.kind === FILTERS.tax.kind)).map((r) => `<tr class="row-link" ${editorLink('tax', r.code)}><td class="mono">${e(r.code)}</td><td>${e(r.name)}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
         <div class="table-footer">Rules are defaults for document lines; they never post on their own. The tax registers and returns belong to the comprehensive tax module that comes later.</div>
       </section>
       <section class="panel">
@@ -1268,7 +1285,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <button class="button" type="button" data-filter-reset="cash">Reset to current</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${rows.length} of ${list.length} accounts</span><span class="badge">${asOf ? `balances as at ${e(asOf)}` : 'current balances'}</span></div>
+        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><div class="related"><span class="badge">${rows.length} of ${list.length} accounts</span><span class="badge">${asOf ? `balances as at ${e(asOf)}` : 'current balances'}</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th>Ledger</th></tr></thead>
           <tbody>${rows.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}${asOf ? `<small class="secondary">current ${money(s.current)}</small>` : ''}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td><button class="text-button" data-cash-ledger="${e(s.name)}">Open</button></td></tr>`; }).join('')}</tbody>
@@ -1391,7 +1408,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <button class="button" type="button" data-filter-reset="parties">Reset to current</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>Parties</h2><span class="badge">${rows.length} of ${all.length} records</span><span class="badge">${asOf ? `balances as at ${e(asOf)}` : 'current balances'}</span></div>
+        <div class="panel-head"><h2>Parties</h2><div class="related"><span class="badge">${rows.length} of ${all.length} records</span><span class="badge">${asOf ? `balances as at ${e(asOf)}` : 'current balances'}</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Group</th><th class="numeric">Terms</th><th class="numeric">Limit</th><th class="numeric">Balance</th><th>Status</th><th>Ledger</th></tr></thead>
           <tbody>${rows.map((p) => `<tr class="row-link" data-edit="party:${e(p.code)}"><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}${asOf ? `<small class="secondary">current ${money(p.current)}</small>` : ''}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-ledger="${e(p.name)}">Open</button></td></tr>`).join('') || '<tr><td colspan="9">No parties match these filters.</td></tr>'}</tbody>
@@ -1514,7 +1531,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <button class="button" type="button" data-filter-reset="payments">Reset</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>Payments and receipts</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
+        <div class="panel-head"><h2>Payments and receipts</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Reference</th><th>Type</th><th>Party</th><th>Method</th><th>Cash / bank</th><th>Against</th><th class="numeric">Amount</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e((r.tenders && r.tenders.length > 1) ? `${r.tenders.length} methods` : r.method || '—')}</td><td>${e(r.account || '—')}</td><td>${e(r.against || 'Advance / on account')}</td><td class="numeric">${money(r.amount)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="9">No payments match these filters.</td></tr>'}</tbody>
@@ -1694,7 +1711,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           <button class="button primary" type="button" data-new-return="${kind}">New return</button>
         </form>
         <section class="panel">
-          <div class="panel-head"><h2>Returns</h2><span class="badge">${returns.length} documents</span></div>
+          <div class="panel-head"><h2>Returns</h2><div class="related"><span class="badge">${returns.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
           <div class="table-scroll" data-hscroll><table><thead><tr><th>Date</th><th>Return</th><th>Original</th><th>Party</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>Reason</th></tr></thead>
             <tbody>${returns.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td class="mono">${e(r.invoiceId)}</td><td>${e(r.party)}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${e(r.reason)}</td></tr>`).join('') || '<tr><td colspan="8">No returns yet. Use New return to create one against any open document.</td></tr>'}</tbody>
           </table></div>
@@ -1707,7 +1724,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <button class="button" type="button" data-filter-reset="invoices">Reset</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
+        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Paid</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${r.paid ? money(r.paid) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
@@ -1861,7 +1878,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <button class="button" type="button" data-filter-reset="items">Reset</button>
       </form>
       <section class="panel">
-        <div class="panel-head"><h2>Items</h2><span class="badge">${rows.length} of ${ITEMS.length}</span></div>
+        <div class="panel-head"><h2>Items</h2><div class="related"><span class="badge">${rows.length} of ${ITEMS.length}</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Sales tax</th><th>Purchase tax</th><th>Stock</th><th></th></tr></thead>
           <tbody>${rows.map((i) => `<tr class="row-link" data-edit="item:${e(i.code)}"><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.salesTax || i.tax))}</td><td>${e(ruleName(i.purchaseTax || i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
@@ -2560,6 +2577,24 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <div id="settings-panel">${body}</div>`;
   }
 
+  function bindTableExports() {
+    document.querySelectorAll('[data-export-table]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const panel = btn.closest('section') || document;
+        const table = panel.querySelector('table');
+        if (!table) return;
+        const rows = [...table.querySelectorAll('tr')].map((tr) => [...tr.children].map((td) => td.textContent.replace(/\s+/g, ' ').trim()));
+        const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+        const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `SA7EN-${(table.closest('section')?.querySelector('h2')?.textContent || 'register').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.csv`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      });
+    });
+  }
+
   function bindRegisterFilters(rerender) {
     document.querySelectorAll('[data-filter]').forEach((form) => {
       const key = form.dataset.filter;
@@ -2674,6 +2709,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }
