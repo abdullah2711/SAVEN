@@ -62,6 +62,20 @@ export const TAX_RULES = [
 // Custom fields added in Settings → Forms & fields. Stored on the document.
 export const CUSTOM_FIELDS = [];
 
+// Groups used by parties and items. They are data for reporting and defaults.
+export const PARTY_GROUPS = [
+  {code: 'RET', name: 'Retail', kind: 'customer', description: 'Walk-in and small accounts'},
+  {code: 'WHO', name: 'Wholesale', kind: 'customer', description: 'Trade customers with terms'},
+  {code: 'SVC', name: 'Services', kind: 'supplier', description: 'Service providers'},
+  {code: 'MAT', name: 'Materials', kind: 'supplier', description: 'Goods and packaging suppliers'},
+];
+export const ITEM_GROUPS = [
+  {code: 'SRV', name: 'Services', description: 'Never valued or counted'},
+  {code: 'PKG', name: 'Packaging', description: 'Tracked packaging materials'},
+  {code: 'PRT', name: 'Printing', description: 'Printing consumables'},
+  {code: 'GEN', name: 'General', description: 'Everything else'},
+];
+
 export const ITEMS = [
   {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
   {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},

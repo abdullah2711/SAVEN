@@ -1336,3 +1336,100 @@ The remaining “conflict” is an inconsistency, not a contradiction:
 Both are edit-in-place master data; the difference is only the interaction. The
 question is whether those three should follow the register + form-page rule too, or
 stay inline because they are configuration. **Awaiting the owner’s decision.**
+
+---
+
+# Round 17 — settings registers, parties without a statement page, chart and trial together
+
+## 93. Settings → Accounting is tabs of registers, each with its own form page
+
+The Accounting settings page keeps its tabs, but each list is now a **register** and
+its form opens on a **separate page** — the same rule as every other register.
+
+| Tab | Register | Form |
+|---|---|---|
+| Numbering | series and next numbers | saved in place (configuration form) |
+| Default accounts | account selectors | saved in place (configuration form) |
+| Accounting heads | code, name, class, control, opening, closing, state | separate page |
+| Projects | code, name, manager, state, dates, budget | separate page |
+| Locations | code, name, kind, address, contact | separate page |
+| Party groups | code, name, applies to, description | separate page |
+| Item groups | code, name, description | separate page |
+| Taxes | rules register + default withholding | separate page for a rule |
+| Approvals | policy fields | saved in place (configuration form) |
+
+The editor URL is `mode=editor&form=<tab>&code=<id>`, Save returns to the tab it
+belongs to, and the open tab is remembered for the session. Clicking a row edits it;
+the page action in each register creates a new one.
+
+## 94. Party groups and item groups exist
+
+They were missing. Both are now registers with forms:
+
+- **Party groups** — code, name, applies to (customers, suppliers or both) and a
+  description. A group classifies customers and suppliers for reporting and defaults.
+- **Item groups** — code, name and description; the basis for item reporting and
+  default accounts or tax.
+
+## 95. Parties: no statistics, filters and balances, statement goes to the ledger
+
+- The statistics strip is removed.
+- Filters: search (code, name, group, contact, email, phone), type, status,
+  **balance direction** (debit / credit / zero) and **balances as at** a date, with the
+  current balance kept underneath — the same control the cash register uses.
+- The party page is gone. **Open** on a row sets the party filter on the **general
+  ledger** and goes there; the user chooses the dates. Clicking the row itself opens
+  the party form for editing.
+
+## 96. Cash & bank goes to the ledger too
+
+Each sub-account row has **Open**, which sets the party filter to that sub-account and
+opens the general ledger. The register stays the place for the balance, the search,
+the filters and the balance-as-at date.
+
+## 97. Items carry default sales and purchase tax; tax setup moves to Settings
+
+- The item form now asks for a **default sales tax** and a **default purchase tax**
+  (a tax rule each). Both are defaults: an invoice or bill line may change them.
+- The register shows the two tax columns instead of one.
+- **Taxes leaves Accounting.** Settings → Accounting → Taxes holds the tax rules
+  register and its form, plus **default withholding** for sales tax and income tax on
+  receipts and on payments. The comprehensive tax module (registers, returns,
+  certificates) comes later.
+
+## 98. Chart of accounts and trial balance are one page, two tabs
+
+- The Accounting page is **Chart of accounts**, with tabs **Chart of accounts** and
+  **Trial balance**. The separate Trial balance page is gone.
+- **Chart register**: a normal table, grouped by class (Assets, Liabilities, Equity,
+  Income, Expenses) with a collapsible class row and a class total. Columns: **code**,
+  account name, class, head, control, opening, period debit, period credit, closing
+  (Dr/Cr). Clicking a row opens the account form; **New account** opens the same form
+  empty.
+- **Trial balance**: three descriptive columns — **code**, **class**, **head**,
+  **account name** — then opening, period debit, period credit and closing debit and
+  credit, with totals. Filters: date range, class, head and search. Export CSV.
+- The account form is a separate page (`mode=editor&code=…`) that adds or updates a
+  head and returns to the register.
+
+## 99. Period close moves to Settings
+
+Accounting no longer has a Period close or a Taxes page. **Settings → Periods** lists
+the periods and owns the lock: closing a past period locks it against entries, and
+only an administrator may lock or reopen. The close checklist is retired from the rail
+and its checks live in the periods page and the reports.
+
+## 100. What is left, explicitly
+
+So nothing is forgotten, this is the current remaining list:
+
+1. **Payments** page review (register, form, allocation, defaults from the tax
+   withholding settings).
+2. **Sales and purchase invoice** page review, including returns (credit and debit
+   notes linked to the original).
+3. **Every form reviewed field by field**, with its effect on the register columns.
+4. **Print formats** review for every document.
+5. **Settings pages and their forms** reviewed (Company, People, Periods, Forms,
+   Views, Print).
+6. Posting from invoices and payments into the ledger; persistence; bank
+   reconciliation; permissions enforcement.

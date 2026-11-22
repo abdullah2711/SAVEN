@@ -16,11 +16,8 @@ export const PAGE_MAP = {
     ['items', 'Items', 'Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Customer invoices with item or service lines, tax, due date and totals; session register until posting exists.', 'built'],
     ['purchase-invoices', 'Purchase invoices', 'Supplier bills mirroring the sales invoice, posting to expense and input tax; session register until posting exists.', 'built'],
-    ['coa', 'Chart of accounts', 'The full chart with nature, groups, control and tax flags, add, regroup, archive, import.', 'built'],
-    ['trial', 'Trial balance', 'Opening, movement and closing debit and credit, with a difference that must read zero.', 'built'],
+    ['coa', 'Chart of accounts', 'Two tabs: the trial balance and the chart register, with code, class, head, opening, movement and closing; the account form opens on its own page.', 'built'],
     ['reports', 'Reports', 'Ageing, profit or loss, financial position, cash flow and equity, all derived from the same ledger.', 'built'],
-    ['taxes', 'Taxes', 'One page, five tabs: tax rules with a create form, output and input registers, withholding, advance tax and reconciliation against the control accounts.', 'built'],
-    ['close', 'Period close', 'Checklist with trial balance and tax proof, named sign-off and a session period lock shared with Settings → Periods.', 'built'],
   ],
   inventory: [
     ['dashboard', 'Dashboard', 'Stock value, value by warehouse, below reorder, movements today, movers.', 'planned'],
@@ -142,7 +139,7 @@ export const PAGE_MAP = {
   ],
   settings: [
     ['company', 'Company', 'Legal identity, addresses, base currency, fiscal year and the active period.', 'built'],
-    ['accounting', 'Accounting', 'Numbering, default accounts, accounting heads, projects and locations, approvals and periods.', 'built'],
+    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, party groups, item groups, taxes and withholding, approvals.', 'built'],
     ['people', 'People & access', 'Users, roles, scope and invitations for this business.', 'built'],
     ['periods', 'Periods', 'Every period with its state; the lock is the same switch as the close checklist.', 'built'],
     ['forms', 'Forms & fields', 'Standard field counts per form and the custom fields added to them.', 'built'],

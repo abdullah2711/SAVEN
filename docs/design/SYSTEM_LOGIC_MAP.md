@@ -53,20 +53,31 @@ Companion documents:
 | Sales invoices | complete | customer invoice register and form |
 | Purchase invoices | complete | supplier bill register and form |
 | Chart of accounts | complete | heads, groups, controls, balances |
-| Trial balance | complete | opening, movement, closing |
+| Chart of accounts | complete | two tabs: chart register and trial balance; account form page |
 | Reports | complete | ageing, P&L, position, cash flow, equity |
-| Taxes | complete | rules, registers, withholding, advance, reconciliation |
-| Period close | complete | checklist, sign-off, session lock |
 
 ### Settings (Workspace settings)
 
-Company · Accounting (numbering, default accounts, accounting heads, projects &
-locations, approvals) · People & access · Periods · Forms & fields · Saved views ·
+Company · Accounting · People & access · Periods · Forms & fields · Saved views ·
 Print & templates.
 
-Settings is configuration, not a register, so its pages keep inline forms. The
-registers inside Settings (projects, locations, accounting heads) still use inline
-forms and are **the next candidate for the register/form split**.
+Settings → Accounting is tabs of registers, each with a form page (or a configuration
+form where it edits one object):
+
+| Tab | Kind |
+|---|---|
+| Numbering | configuration form |
+| Default accounts | configuration form |
+| Accounting heads | register + form page |
+| Projects | register + form page |
+| Locations | register + form page |
+| Party groups | register + form page |
+| Item groups | register + form page |
+| Taxes and withholding | rules register + form page, withholding configuration |
+| Approvals | configuration form |
+
+Settings → Periods owns the period lock: closing a past period locks it, and only an
+administrator may lock or reopen.
 
 ---
 
@@ -226,13 +237,20 @@ not claimed.
 | Back to register | always journals | returns to the register being edited | 87 |
 | Journal numbering | `JV-MM-YYYY-0001` in the form vs `JE-2026-` in settings | one source: settings define the series, the form composes it | 89 (resolved) |
 | Cash & bank statistics | four KPI figures | removed; the cash flow report answers it for this phase | 90 (resolved) |
+| Settings registers | tables with inline forms | registers with form pages; groups added | 93/94 (resolved) |
+| Taxes in Accounting | taxes page | moved to Settings → Accounting → Taxes | 97 (resolved) |
+| Period close in Accounting | checklist page | Settings → Periods owns the lock | 99 (resolved) |
+| Party statement page | party page with statement | Open leads to the GL with the party filter; row opens the form | 95 (resolved) |
+| Cash statement page | rows opened the form only | Open leads to the GL with the sub-account filter | 96 (resolved) |
+| Chart and trial | split view + separate trial page | one page, two tabs, register and trial | 98 (resolved) |
 | Document cancel/delete | journals only | every document uses the same lifecycle; returns get their own flow later | 91 (resolved) |
 
-### Open question
+### Open questions
 
-1. Should projects, locations and accounting heads (inside Settings → Accounting) move
-   to the same register + form-page pattern, or stay as inline configuration forms?
-   Everything else in this table is resolved.
+None of the recorded conflicts is open. The remaining work is a scope list, not a
+disagreement: payments and invoices review, every form reviewed field by field, print
+formats, settings pages review, then posting, persistence, bank reconciliation and
+permissions. See §100 of the decision log.
 
 ---
 
@@ -259,10 +277,13 @@ not claimed.
 
 ## 13. Pending and incomplete
 
+- Payments and invoice pages still need their full review, including returns.
+- Every form needs a field-by-field review, and its effect on register columns.
+- Print formats and the remaining settings pages need review.
 - Posting: invoices and payments record session documents but do not write the ledger.
 - Bank statement reconciliation.
 - Party balances by project/location (deferred, needs the subledger).
 - Permission enforcement; settings are not enforced by the server yet.
 - Persistence: every record lives in the browser session and is lost on reload.
 - Custom fields are captured on the journal but not yet shown as register columns.
-- The Settings registers (projects, locations, heads) still use inline forms.
+
