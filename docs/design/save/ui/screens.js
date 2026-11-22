@@ -1234,18 +1234,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       return hit(f.q, x.code, x.name, x.reference, x.kind, head ? head.name : '', x.projects.join(' '), x.locations.join(' '))
         && (!f.kind || x.kind === f.kind) && (!f.control || x.control === f.control) && (!f.status || (x.status || 'Active') === f.status);
     });
-    const led = (code) => Math.abs(ledgerBalance(code));
-    const bankLedger = round2(controls.filter((a) => a.control === 'bank').reduce((n, a) => n + led(a.code), 0));
-    const cashLedger = round2(controls.filter((a) => a.control === 'cash').reduce((n, a) => n + led(a.code), 0));
-    const named = round2(list.reduce((n, s) => n + s.balance, 0));
-    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
-    return `<div class="stats">
-        ${kpi('Bank controls', money(bankLedger), `${controls.filter((a) => a.control === 'bank').length} heads · ${list.filter((s) => s.kind === 'bank').length} sub-accounts`)}
-        ${kpi('Cash controls', money(cashLedger), `${controls.filter((a) => a.control === 'cash').length} heads · ${list.filter((s) => s.kind === 'cash').length} sub-accounts`)}
-        ${kpi('Named to a sub-account', money(named), 'Part of the controls with a name')}
-        ${kpi('Unallocated', money(bankLedger + cashLedger - named), 'Control balance no document has named yet')}
-      </div>
-      <form class="filterbar" data-filter="cash">
+    return `<form class="filterbar" data-filter="cash">
         ${filterInput('cash', f.q, 'Code, name, reference, project, location')}
         <label>Kind<select name="kind"><option value="">All kinds</option><option value="bank" ${f.kind === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${f.kind === 'cash' ? 'selected' : ''}>Cash</option></select></label>
         <label>Control head<select name="control"><option value="">All control heads</option>${controls.map((a) => `<option value="${a.code}" ${f.control === a.code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>

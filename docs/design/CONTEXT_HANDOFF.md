@@ -123,8 +123,10 @@ into the ledger; permissions enforcement; persistence (reload returns to fixture
   (blank = all); it is a data field, not a balance and not access control.
 - **No entry type.** A voucher is a journal entry; the **subtype** classifies it
   (bank, cash, contra, expense, debit/credit note, depreciation, accrual,
-  prepayment, write off, opening, adjustment, reversal). `adjustment` is the only
-  subtype where a control line may omit the party.
+  prepayment, write off, opening, adjustment, reversal).
+- **Every control line needs a party, with no exception.** Adjustment no longer
+  bypasses it. Enforced in the line, the review panel, save/submit and the model
+  validation.
 - **Cancel / delete / reverse.** Cancel removes the ledger effect but keeps the
   register row; delete removes it from the register (draft or cancelled only);
   numbers are never reused; the audit log is the permanent record; reversal is

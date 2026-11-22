@@ -1159,3 +1159,37 @@ Details:
   filtered rows, so a filtered list never pretends to be the whole book.
 - Statistics at the top of the page stay unfiltered: they are control totals, not
   search results.
+
+---
+
+# Round 13 — no cash stats strip, and control accounts always need a party
+
+## 80. Cash & bank loses the statistics strip
+
+The four figures at the top of the page are removed for now. The page opens straight
+into the filter bar and the register. The counts and totals that matter are still
+there: “4 of 4 accounts” in the panel head and the total of the rows shown in the
+footer. The figures can come back when the owner asks for them.
+
+## 81. Every control line needs a party — with no exception
+
+This **revokes the earlier adjustment exception**. A line on a control account can no
+longer exist without a party or sub-account, whatever the subtype.
+
+What the rule covers: any head carrying a control flag — receivable, payable, bank,
+cash, and any future control such as an asset or inventory control — because the rule
+reads the flag, not the account code.
+
+Where it is enforced:
+
+| Place | Behaviour |
+|---|---|
+| Journal line | The party picker only enables on a control account and its list is limited to that kind |
+| Journal review panel | Lists “1100 Trade receivables needs a party or sub-account” and cannot read “Ready to post” |
+| Save draft / Submit / Submit for approval | Blocked with a message naming the line, e.g. “1100 Trade receivables on line 1 is a control account. Choose a party or sub-account before continuing.” |
+| Model validation (`reviewJournal`) | Throws for any control line without a party, for every caller |
+
+The party itself is the sub-account: a customer for 1100, a supplier for 2100, a bank
+sub-account for a bank control, a cash sub-account for a cash control. Those records
+carry the allowed projects and locations, so the picker is narrowed by both the
+account kind and the access rule.
