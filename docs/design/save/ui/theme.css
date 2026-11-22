@@ -277,3 +277,6 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 
 /* Tables keep a permanent horizontal indicator under the rows. */
 .table-scroll + .hscroll{margin:8px 24px 14px}
+
+/* The indicator sits above the table so it is reachable before scrolling. */
+.hscroll--table{margin:8px 24px 8px}

@@ -1209,3 +1209,47 @@ The register has a **Balances as at** date in its filter bar.
 The rule is inclusive: a document dated on the chosen day is included, which is what
 “balance at the end of that day” means. If the owner later wants opening-of-day
 figures, that is a second option on the same control rather than a different report.
+
+---
+
+# Round 14 — journal opens in its form, GL party/sub-account, scrollbar on top
+
+## 83. A journal entry opens in the form that created it
+
+Clicking a row (or the voucher) in the journal register now opens the **journal form**,
+not a separate record view.
+
+- The URL carries `mode=editor&code=<voucher>`; the form loads that document.
+- **Draft or returned from approval** → the form is editable: save, submit, submit for
+  approval, duplicate, delete.
+- **Posted** → the form is read-only: every field is disabled, a banner explains the
+  state, and the menu offers only what is valid — **Cancel entry** (removes the ledger
+  effect, keeps the row), **Duplicate** (starts a correction), and **Delete** once
+  cancelled.
+- **Cancelled** → read-only, with Delete and Duplicate.
+- Numbers are never reused. Save/Submit return to the register; the row shows the new
+  state.
+
+The principle is the same for every document: a register opens the document in its
+own form, and the state decides which actions are offered. Documents that are posted
+are never edited in place — they are cancelled, duplicated or reversed.
+
+## 84. General ledger: Party / sub-account
+
+- The column formerly called **Party** is **Party / sub-account**, and it shows the
+  **line's** party when there is one — so a 1010 line shows *Standard Bank — current
+  0123456789*, a 1000 line shows the cash custodian, and a 1100 line shows the
+  customer.
+- **Party type** follows the account: Bank, Cash, Customer or Supplier.
+- The filter is **Party / sub-account** and lists customers, suppliers and every cash
+  and bank sub-account. Filtering by one sub-account shows exactly its lines, which
+  is the register question “what moved through this account”.
+- Sub-account balances themselves stay out of the party register; the cash & bank
+  page owns those, and the GL shows their transactions.
+
+## 85. The scroll indicator sits above the table
+
+The permanent horizontal indicator moved from below the table to **above it**, so it
+is reachable before scrolling. This matters most in the general ledger, where 470
+rows make a bottom bar useless. It is still always drawn, draggable and clickable,
+and it recalculates on resize.

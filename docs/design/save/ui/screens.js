@@ -458,19 +458,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const docs = fixture(getCompany()).filter((d) => d.date >= GL.from && d.date <= GL.to && !CANCELLED.has(d.id) && !DELETED.has(d.id));
     const out = [];
     for (const d of docs) {
-      if (!inSet(GL.parties, d.party)) continue;
       if (!inSet(GL.types, d.source)) continue;
       if (!inSet(GL.projects, d.project || '')) continue;
       if (!inSet(GL.locations, d.location || '')) continue;
       for (const l of d.lines) {
+        if (!inSet(GL.parties, l.party || d.party)) continue;
         if (GL.accounts.length && !GL.accounts.includes(l.account)) continue;
         if (GL.centres.length && !GL.centres.includes(l.costCentre)) continue;
         const acc = accounts().find((a) => a.code === l.account);
         const hay = `${d.id} ${d.narrative} ${d.party} ${l.account} ${acc ? acc.name : ''} ${l.project} ${l.location} ${l.costCentre}`.toLowerCase();
         if (GL.q && !hay.includes(GL.q.toLowerCase())) continue;
         out.push({
-          id: d.id, date: d.date, party: d.party,
-          partyType: d.partyType || (acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : ''),
+          id: d.id, date: d.date, party: l.party || d.party,
+          partyType: (l.party ? (acc && acc.control === 'bank' ? 'Bank' : acc && acc.control === 'cash' ? 'Cash' : acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : '') : '') || d.partyType || (acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : ''),
           source: d.source, subtype: subtypeOf(d), narrative: d.narrative, doc: d, line: l,
           account: l.account, accountName: acc ? acc.name : l.account,
           against: againstAccount(d, l), againstVoucher: l.againstVoucher || d.againstVoucher || '',
@@ -650,7 +650,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     cols.push(['voucher', 'Voucher no', (r) => `<button class="text-button" data-ac="source" data-value="${e(r.id)}">${e(r.id)}</button>`]);
     cols.push(['against', 'Against account', (r) => e(r.against)]);
     cols.push(['partyType', 'Party type', (r) => e(r.partyType)]);
-    cols.push(['party', 'Party', (r) => e(r.party)]);
+    cols.push(['party', 'Party / sub-account', (r) => e(r.party)]);
     cols.push(['project', 'Project', (r) => e(r.project)]);
     cols.push(['location', 'Location', (r) => e(r.location)]);
     cols.push(['centre', 'Cost centre', (r) => e(r.centre)]);
@@ -690,7 +690,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     }).join('');
 
     const accountOpts = accounts().filter((a) => a.active).map((a) => [a.code, `${a.code} ${a.name}`]);
-    const partyOpts = [...new Set(fixture(getCompany()).map((d) => d.party))].sort().map((p2) => [p2, p2]);
+    const partyOpts = [...new Set(fixture(getCompany()).flatMap((d) => [d.party, ...d.lines.map((l) => l.party)]).filter(Boolean))].sort().map((p2) => [p2, p2]);
     const projectOpts = [['', 'No project'], ...PROJECTS.map((p2) => [p2.code, `${p2.code} · ${p2.name}`])];
     const locOpts = LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]);
     const centreOpts = COST_CENTRES.map((c) => [c, c]);
@@ -701,7 +701,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <label>From<input name="from" type="date" value="${e(GL.from)}" required></label>
         <label>To<input name="to" type="date" value="${e(GL.to)}" required></label>
         ${ms('account', 'Accounts', accountOpts, GL.accounts)}
-        ${ms('party', 'Parties', partyOpts, GL.parties)}
+        ${ms('party', 'Party / sub-account', partyOpts, GL.parties)}
         ${ms('project', 'Projects', projectOpts, GL.projects)}
         ${ms('location', 'Locations', locOpts, GL.locations)}
         ${ms('centre', 'Cost centres', centreOpts, GL.centres)}
@@ -961,6 +961,31 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </section>`;
   }
 
+  function journalDocById(id) {
+    const d = journalDocs().find((x) => x.id === id);
+    if (!d) return null;
+    return {...d, state: CANCELLED.has(id) ? 'cancelled' : (d.state || 'posted')};
+  }
+  function updateJournalDoc(id, patch) {
+    const i = J.session.findIndex((x) => x.id === id);
+    if (i < 0) return false;
+    J.session[i] = {...J.session[i], ...patch};
+    return true;
+  }
+  function cancelJournalDoc(id) { CANCELLED.add(id); }
+  function deleteJournalDoc(id) {
+    CANCELLED.add(id);
+    DELETED.add(id);
+    J.session = J.session.filter((x) => x.id !== id);
+  }
+  function duplicateJournalDoc(id) {
+    const src = journalDocs().find((x) => x.id === id);
+    if (!src) return '';
+    const copy = {...src, id: 'JE-2026-D' + String(J.session.length + 101), state: 'draft', narrative: src.narrative + ' (copy)'};
+    J.session.push(copy);
+    return copy.id;
+  }
+
   function syncJ(form) {
     const pick = (n) => [...form.querySelectorAll(`input[name="${n}"]:checked`)].map((x) => x.value);
     J.parties = pick('party'); J.subtypes = pick('subtype'); J.projects = pick('project');
@@ -968,7 +993,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     J.q = form.q.value;
   }
 
-  function bindJournal(rerender, notify) {
+  function bindJournal(rerender, notify, navigate) {
     bindMS();
     const form = document.querySelector('#jr-filter');
     if (form) form.addEventListener('submit', (ev) => { ev.preventDefault(); syncJ(form); rerender(); });
@@ -983,9 +1008,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     }));
     document.querySelector('#jr-rows')?.addEventListener('click', (ev) => {
       const open = ev.target.closest('[data-jr-open]');
-      if (open) { J.record = open.dataset.jrOpen; rerender(); return; }
       const row = ev.target.closest('[data-jr-row]');
-      if (row) { J.record = row.dataset.jrRow; rerender(); }
+      const id = open ? open.dataset.jrOpen : row ? row.dataset.jrRow : '';
+      if (!id) return;
+      navigate({module: 'accounting', tab: 'journals', mode: 'editor', code: id});
     });
     document.querySelector('[data-jr-back]')?.addEventListener('click', () => { J.record = ''; rerender(); });
     restoreMS();
@@ -2369,6 +2395,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, bindInvoices, close: closeView, bindClose, settings: settingsView, bindSettings: bindSettingsView, bindRegisterFilters, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, bindInvoices, close: closeView, bindClose, settings: settingsView, bindSettings: bindSettingsView, bindRegisterFilters, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

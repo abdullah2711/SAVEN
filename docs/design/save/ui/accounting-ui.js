@@ -96,30 +96,46 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    const d=new Date(), mm=String(d.getMonth()+1).padStart(2,'0'), yyyy=d.getFullYear();
    return `JV-${mm}-${yyyy}-${String(seq++).padStart(4,'0')}`;
  }
+ function resetJournalDraft(){
+   draft={date:'2026-11-30',time:'',number:nextJournalNumber(),reference:'',narrative:'',decision:'direct',entrySubtype:'journal',location:'HQ',evidence:[],editingId:'',state:'draft',locked:false,lines:[{account:'',debit:'0.00',credit:'0.00',party:'',project:'',costCentre:''},{account:'',debit:'0.00',credit:'0.00',party:'',project:'',costCentre:''}]};
+ }
+ function loadJournalDoc(id){
+   const doc=screens.journalDocById(id);
+   if(!doc)return false;
+   const st=String(doc.subtype||'journal').toLowerCase();
+   const known=['journal','bank','cash','contra','expense','debit-note','credit-note','depreciation','accrual','prepayment','writeoff','opening','adjustment','reversal'];
+   draft={
+     editingId:doc.id,state:doc.state,locked:doc.state!=='draft',
+     number:doc.id,reference:doc.id,date:doc.date,time:'00:00:00',
+     narrative:doc.narrative||'',
+     entrySubtype:known.includes(st)?st:'journal',location:doc.location||'HQ',decision:'direct',
+     lines:doc.lines.map(l=>({account:l.account,debit:String(l.debit||'0.00'),credit:String(l.credit||'0.00'),party:l.party||doc.party||'',project:l.project||'',costCentre:l.costCentre||''})),
+     evidence:[]
+   };
+   return true;
+ }
  function journalEditor(){
    if(!draft.number)draft.number=nextJournalNumber();
    const acc=(code)=>accounts.find(a=>a.code===code);
    const partyNeeded=(a)=>Boolean(a&&(a.control||a.code==='1010'||a.code==='1000'));
    const partyList=partyOptions().filter(x=>x[2]!=='none');
    const picker=(i,current)=>ss({key:'account',field:'account',value:current,options:ACCOUNT_OPTIONS(),label:'accounts',placeholder:'Choose account',line:i});
+   const stateLabel=draft.locked?(draft.state==='cancelled'?'cancelled':'posted'):(draft.state==='returned'?'returned':'draft');
+   const menu=draft.locked
+     ? `${draft.state==='cancelled'?'':'<button type="button" data-form-action="cancel">Cancel entry</button>'}${draft.state==='cancelled'?'<button type="button" data-form-action="delete">Delete</button>':''}<button type="button" data-form-action="duplicate">Duplicate</button>`
+     : `<button type="button" data-form-action="save">Save draft</button><button type="button" data-form-action="submit">Submit</button><button type="button" data-form-action="approval">Submit for approval</button><button type="button" data-form-action="duplicate">Duplicate</button><button type="button" data-form-action="delete">Delete</button>`;
    return `<div class="journal-single"><section class="panel">
-     <div class="panel-head"><div><div class="eyebrow">Journal entry · draft</div><h2>${e(draft.number||'New journal')}</h2></div>
+     <div class="panel-head"><div><div class="eyebrow">Journal entry · ${stateLabel}</div><h2>${e(draft.number||'New journal')}</h2></div>
        <div class="related">
-         <span class="badge">${saved?'Saved draft':'Draft'}</span>
+         <span class="badge ${stateLabel==='posted'?'good':stateLabel==='cancelled'?'warn':''}">${stateLabel==='posted'?'Posted · read-only':stateLabel==='cancelled'?'Cancelled · no ledger effect':saved?'Saved draft':'Draft'}</span>
          <button type="button" class="icon-button" data-ac="print" aria-label="Print" title="Print">${icon('printer')}</button>
          <details class="form-menu"><summary class="icon-button" aria-label="More actions" title="More actions">${icon('more')}</summary>
-           <div class="menu">
-             <button type="button" data-form-action="save">Save draft</button>
-             <button type="button" data-form-action="submit">Submit</button>
-             <button type="button" data-form-action="approval">Submit for approval</button>
-             <button type="button" data-form-action="duplicate">Duplicate</button>
-             <button type="button" data-form-action="cancel">Cancel entry</button>
-             <button type="button" data-form-action="delete">Delete</button>
-           </div>
+           <div class="menu">${menu}</div>
          </details>
        </div>
      </div>
      <form id="accounting-journal" class="panel-body">
+       ${draft.locked?`<div class="callout wide" role="status"><strong>${draft.state==='cancelled'?'Cancelled entry':'Posted entry'}.</strong> ${draft.state==='cancelled'?'It has no ledger effect and stays in the register until deleted. Its number is never reused.':'The content is read-only. Cancel removes its ledger effect but keeps it in the register; duplicate it to prepare a correction.'}</div>`:''}
        <div class="form-tabs" role="tablist"><button type="button" role="tab" data-form-tab="entry" aria-selected="${formTab==='entry'}">Entry</button><button type="button" role="tab" data-form-tab="more" aria-selected="${formTab==='more'}">More info</button></div>
        <div class="form-grid" ${formTab==='entry'?'':'hidden'}>
          ${field('date','Posting date',draft.date,'date','required')}
@@ -169,7 +185,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  function dialog(title,body){const d=document.querySelector('#detail-dialog');d.innerHTML=`<div class="dialog-heading"><h2 id="detail-title">${e(title)}</h2><button class="icon-button" data-close="detail" aria-label="Close">${icon('close')}</button></div><div class="dialog-content">${body}</div>`;d.showModal();}
  function source(id){const j=data().find(j=>j.id===id);if(!j)return;dialog(j.id+' - source fixture',`<div class="record-summary"><div><small>Date</small>${j.date}</div><div><small>Source</small>${j.source}</div><div><small>Party</small>${e(j.party)}</div></div><p class="form-note">${e(j.narrative)}</p>${table(['Account','Debit','Credit'],j.lines.map(l=>`<tr><td>${l.account} - ${e(accounts.find(a=>a.code===l.account)?.name)}</td><td>${l.debit}</td><td>${l.credit}</td></tr>`))}<div class="related">${button('Linked correction walkthrough','correction')}${button('Evidence & audit trail','source-evidence')}</div><p class="form-note">Posted fixture is read-only. No real document, attachment or audit event is being retrieved.</p>`);}
  function accountDialog(fresh){const a=fresh?{code:'',name:'',type:'expense'}:accounts.find(a=>a.code===selected);dialog(fresh?'New sample account':'Edit sample account',`<form id="sample-account-form" class="form-grid">${field('code','Account code',a.code,'text',`required pattern="[0-9]{4,8}" ${fresh?'':'readonly'}`)}${field('name','Account name',a.name,'text','required maxlength="80"')}<label>Account class<select name="type" class="inline-input">${options([['asset','Asset'],['liability','Liability'],['equity','Equity'],['income','Income'],['expense','Expense']],a.type)}</select></label></form><p class="form-note">Group, parent hierarchy, currency/control mappings and historical reclassification require further reviewed configuration. This changes only the in-memory sample chart.</p><div class="related">${button('Save sample account','save-account',`data-fresh="${fresh}"`,true)}</div>`);}
- function bind(){setup.bind();screens.bindGL(render);screens.bindJournal(render,notify);
+ function bind(){setup.bind();screens.bindGL(render);screens.bindJournal(render,notify,navigate);
  document.querySelectorAll('[data-form-tab]').forEach(b=>b.addEventListener('click',()=>{formTab=b.dataset.formTab;render();}));screens.bindProjectForm(render,notify);screens.bindTaxes(render,notify,navigate);screens.bindCashBank(render,notify,navigate);screens.bindItems(render,notify,navigate);screens.bindReports(render);screens.bindParties(render,notify,navigate);screens.bindPayments(render,notify,navigate);screens.bindInvoices('sales',render,notify,navigate);screens.bindInvoices('purchase',render,notify,navigate);screens.bindClose(render,notify);screens.bindSettings(render,notify);screens.bindSetup(render);screens.bindDimension('project',render);screens.bindDimension('location',render);screens.bindRegisterFilters(render);bindTableScrollbars();
  const scroller=document.querySelector('#journal-scroll'),track=document.querySelector('#journal-hscroll'),thumb=document.querySelector('#journal-hscroll-thumb');
  if(scroller&&track&&thumb){
@@ -198,6 +214,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    syncScroll();
  }
  const form=document.querySelector('#accounting-journal');
+ if(form&&draft.locked)form.querySelectorAll('input,select,textarea,button').forEach(el=>{el.disabled=true;});
  if(form){
    const needsParty=a=>Boolean(a&&a.control);
    const sync=()=>form.querySelectorAll('[data-journal-line]').forEach(tr=>{
@@ -293,20 +310,21 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
    const act=b.dataset.formAction;
    const controlProblem=()=>{for(const [i,l] of draft.lines.entries()){const a=accounts.find(x=>x.code===l.account);if(a&&a.control&&!String(l.party||'').trim())return `${a.code} ${a.name} on line ${i+1} is a control account. Choose a party or sub-account before continuing.`;}return '';};
-   if(act==='save'){capture();const problem=controlProblem();if(problem){notify(problem);return;}localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}
-   if(act==='submit'||act==='approval'){capture();const problem=controlProblem();if(problem){notify(problem);return;}notify(act==='submit'?'Submitted and posted.':'Submitted for approval.');return;}
-   if(act==='duplicate'){capture();draft={...draft,number:'',reference:'',lines:draft.lines.map(l=>({...l}))};notify('Duplicated into a new draft.');render();return;}
-   if(act==='cancel'){notify('Cancelled. A reversal entry is recorded and the original stays.');return;}
-   if(act==='delete'){notify('Deleted as a draft. A posted entry can only be reversed.');return;}
+   const patch=()=>({date:draft.date,narrative:draft.narrative,location:draft.location,lines:draft.lines.map(l=>({account:l.account,debit:l.debit,credit:l.credit,party:l.party,project:l.project,costCentre:l.costCentre}))});
+   if(act==='save'){capture();const problem=controlProblem();if(problem){notify(problem);return;}if(draft.editingId){screens.updateJournalDoc(draft.editingId,patch());notify('Draft updated. No ledger effect.');navigate({module:'accounting',tab:'journals'});return;}localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}
+   if(act==='submit'||act==='approval'){capture();const problem=controlProblem();if(problem){notify(problem);return;}if(draft.editingId){screens.updateJournalDoc(draft.editingId,{...patch(),state:act==='submit'?'posted':'returned'});notify(act==='submit'?'Submitted and posted.':'Submitted for approval; it comes back editable if returned.');navigate({module:'accounting',tab:'journals'});return;}notify(act==='submit'?'Submitted and posted.':'Submitted for approval.');return;}
+   if(act==='duplicate'){capture();const id=draft.editingId?screens.duplicateJournalDoc(draft.editingId):'';if(id){notify('Duplicated into a new draft.');navigate({module:'accounting',tab:'journals',mode:'editor',code:id});return;}draft={...draft,editingId:'',state:'draft',locked:false,number:nextJournalNumber(),reference:'',lines:draft.lines.map(l=>({...l}))};notify('Duplicated into a new draft.');render();return;}
+   if(act==='cancel'){if(!draft.editingId)return;capture();screens.cancelJournalDoc(draft.editingId);notify('Entry cancelled: removed from the ledger, kept in the register. Delete removes it from the register.');navigate({module:'accounting',tab:'journals'});return;}
+   if(act==='delete'){if(draft.editingId){screens.deleteJournalDoc(draft.editingId);notify('Deleted from the register. The number is never reused and the audit log keeps the record.');navigate({module:'accounting',tab:'journals'});return;}notify('Deleted as a draft. A posted entry can only be cancelled first.');return;}
  }));document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.preventDefault();const values=Object.fromEntries(new FormData(ev.target));try{ledger(data(),values);range={from:values.from,to:values.to};query=values.query;render();}catch(error){notify(error.message);}});document.querySelector('#ledger-account')?.addEventListener('change',ev=>{selected=ev.target.value;render();});document.querySelector('#chart-query')?.addEventListener('change',ev=>{query=ev.target.value;render();});const f=document.querySelector('#accounting-journal');f?.addEventListener('submit',ev=>ev.preventDefault());f?.addEventListener('input',()=>{capture();saved=false;dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});f?.addEventListener('change',()=>{capture();dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});document.querySelector('#journal-evidence')?.addEventListener('change',ev=>{capture();draft.evidence.push(...[...ev.target.files].map(f=>({name:f.name,size:f.size})));dirty(true);render();});}
  function bindTableScrollbars(){
    document.querySelectorAll('[data-hscroll]').forEach(scroller=>{
      if(scroller.dataset.hscrollReady)return;
      scroller.dataset.hscrollReady='1';
-     const track=document.createElement('div');track.className='hscroll';
+     const track=document.createElement('div');track.className='hscroll hscroll--table';
      const thumb=document.createElement('div');thumb.className='hscroll-thumb';
      track.appendChild(thumb);
-     scroller.parentNode.insertBefore(track,scroller.nextSibling);
+     scroller.parentNode.insertBefore(track,scroller);
      const sync=()=>{
        const max=Math.max(scroller.scrollWidth-scroller.clientWidth,0);
        const ratio=scroller.clientWidth/Math.max(scroller.scrollWidth,1);
@@ -344,6 +362,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  };
  function newLabel(tab){return (FORM_META[tab]||FORM_META.journals)[0];}
  function formMeta(tab,code){
+   if(tab==='journals'&&code)return {title:'Journal entry',description:'Opened in the same form it was created in. Drafts and returned entries are editable; posted entries are read-only until cancelled or duplicated.'};
    const meta=FORM_META[tab]||FORM_META.journals;
    return code
      ? {title:'Edit '+meta[1].toLowerCase(),description:'Change the saved values. Saving returns you to the register.'}
@@ -357,6 +376,8 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    if(tab==='payments')return screens.paymentEditor();
    if(tab==='sales-invoices')return screens.invoiceEditor('sales');
    if(tab==='purchase-invoices')return screens.invoiceEditor('purchase');
+   if(code&&draft.editingId!==code)loadJournalDoc(code);
+   if(!code&&draft.editingId)resetJournalDraft();
    return journalEditor();
  }
  return {view,editor,newLabel,formMeta,bind,settings:page=>screens.settings(page)};

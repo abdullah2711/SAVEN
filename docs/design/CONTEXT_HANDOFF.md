@@ -63,8 +63,9 @@ savenuitest.localhost` → `docs/design/save`.
   chooser, sorting, row expand, CSV, and a totals strip above the table (lines
   shown, total debit, total credit, and a net figure labelled net debit or net
   credit depending on the side).
-- Journal register + record page: columns mirror the form, per-column filters,
-  sorting, state-aware actions.
+- Journal register: columns mirror the form, filters, sorting; a row opens the
+  journal form. Drafts are editable, posted entries are read-only with
+  cancel/duplicate/delete.
 - Journal form: auto-numbering (`JV-MM-YYYY-0001`), posting time, guards (no future,
   no date before business start, no closed period), subtype, one **header location**,
   party/sub-account filtered by account kind, project, cost centre, review panel,
