@@ -91,6 +91,9 @@ savenuitest.localhost` → `docs/design/save`.
 - Every master-data form is create-or-edit with an Edit action per row; every form
   carries its full field set (see decision log round 11). Settings custom fields
   show on the journal More info tab.
+- Registers and forms are separate pages: `mode=editor&code=…` opens the form, Save
+  returns to the register. Journal, cash & bank, parties, items, tax rules, payments
+  and invoices all work this way.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 

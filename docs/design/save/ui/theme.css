@@ -269,3 +269,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 /* Chart of accounts: group and head balances on the right of each row. */
 .coa-group .coa-total{margin-left:auto;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 .coa-account .badge{margin-left:4px}
+
+/* Registers open their record form on a page of its own. */
+.row-link{cursor:pointer}
+.row-link:hover td{background:var(--tint)}
+.row-go{color:var(--muted);text-align:right}

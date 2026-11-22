@@ -1053,3 +1053,53 @@ locations.
 All of it is still session state: the forms validate with the browser's required and
 pattern rules plus the accounting rules (control accounts need a party, allowed
 projects and locations narrow the picker), and nothing pretends to persist.
+
+---
+
+# Round 12 — registers and forms are separate pages, everywhere
+
+## 73. A register lists; a form opens on its own page
+
+The inline “New …” form at the bottom of a page is gone. Every accounting register
+now behaves like the journal:
+
+- the page is **only the register**;
+- the **page action** creates a new record (`New sub-account`, `New party`, `New
+  item`, `New tax rule`, `New receipt or payment`, `New invoice`, `New bill`);
+- **clicking a row** opens that record in the same form;
+- **Save** returns to the register, **Cancel** returns without saving.
+
+The URL carries the mode and the record (`mode=editor&code=…`), so an open form is a
+real page: it can be bookmarked, refreshed, reached with the browser back button, and
+shared. The heading shows “New …” or “Edit …” and the badge shows which record is
+open.
+
+Applied to:
+
+| Page | Create from | Edit from |
+|---|---|---|
+| Cash & bank | page action, register button | row click |
+| Parties | page action | party page “Edit party”, register Edit |
+| Items | page action | row click |
+| Taxes → Rules | page action, register button | row click |
+| Payments | page action, register button | — (documents are fixed once saved) |
+| Sales invoices / purchase bills | page action, register button | — |
+| Journal entries | page action | record page (draft) |
+
+## 74. One form, two jobs
+
+There is no separate edit dialog. Each record type has **one form component** that
+accepts an optional record code: empty renders a blank form, a code loads the record
+and switches the labels. That is what keeps create and edit from drifting apart.
+
+The binders are scoped to their own form (`[data-cash-form] [data-form-cancel]`, and
+so on), so two editors on the same page cannot capture each other's buttons. Save
+navigates back to that register.
+
+## 75. What still uses an inline form
+
+Settings is configuration, not a register: Company, Numbering, Default accounts,
+Approvals, People, Forms & fields, Views and Print keep their inline forms because
+each edits one settings object. The registers that live *inside* Settings — projects,
+locations and accounting heads — still use inline forms; moving them onto the same
+page pattern is the next step.
