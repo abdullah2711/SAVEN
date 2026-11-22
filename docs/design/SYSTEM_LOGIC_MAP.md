@@ -53,7 +53,7 @@ Companion documents:
 | Sales invoices | complete | customer invoice register and form |
 | Purchase invoices | complete | supplier bill register and form |
 | Chart of accounts | complete | heads, groups, controls, balances |
-| Chart of accounts | complete | two tabs: chart register and trial balance; account form page |
+| Chart of accounts | complete | two tabs: account register and trial balance; account form page |
 | Reports | complete | ageing, P&L, position, cash flow, equity |
 
 ### Settings (Workspace settings)
@@ -71,6 +71,7 @@ form where it edits one object):
 | Accounting heads | register + form page |
 | Projects | register + form page |
 | Locations | register + form page |
+| Cost centres | register + form page |
 | Party groups | register + form page |
 | Item groups | register + form page |
 | Taxes and withholding | rules register + form page, withholding configuration |

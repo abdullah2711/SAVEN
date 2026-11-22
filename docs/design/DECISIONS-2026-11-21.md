@@ -1433,3 +1433,46 @@ So nothing is forgotten, this is the current remaining list:
    Views, Print).
 6. Posting from invoices and payments into the ledger; persistence; bank
    reconciliation; permissions enforcement.
+
+---
+
+# Round 18 — chart and trial corrections, naming, cost centres
+
+## 101. Chart of accounts is a register, not a trial
+
+- The **New journal** page action is gone from the chart page. Its own **New account**
+  button is the action; nothing else belongs there.
+- The class **collapse/expand** is removed. The tab is a plain register of every
+  account, one row each.
+- Columns are the account's own information: **code, account name, accounting head,
+  accounting group, control, currency, description, state** and its **closing
+  balance**. Opening and period movement belong to the trial tab, not here.
+- Clicking a row opens the account form page; **New account** opens the same form
+  empty.
+
+## 102. Trial balance opening has debit and credit columns
+
+The trial now shows **opening debit** and **opening credit** separately (the net
+opening figure split by sign), alongside period debit, period credit, closing debit
+and closing credit, with matching totals. The columns before the amounts are code,
+accounting head, accounting group and account name.
+
+## 103. Naming: accounting head and accounting group
+
+The names were inverted. From now on:
+
+- **Accounting head** = the class of the account: asset, liability, equity, income,
+  expense. This is the `type` field.
+- **Accounting group** = the reporting bucket the account sits in: Assets,
+  Liabilities, Equity, Income, Expenses. This is the `group` field.
+
+Labels are updated in the settings register, both account forms (which now ask for
+the group explicitly), the chart register and the trial balance. Field names in the
+data are unchanged (`type` and `group`), so nothing else breaks.
+
+## 104. Cost centres are a register in Settings
+
+Cost centres were a hard-coded list with no page. They are now records with a code,
+a name, a description and a state, and Settings → Accounting has a **Cost centres**
+tab like Projects and Locations, with its own form page. The journal's cost-centre
+picker reads the register and follows the names.

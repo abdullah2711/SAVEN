@@ -694,7 +694,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const partyOpts = [...new Set(fixture(getCompany()).flatMap((d) => [d.party, ...d.lines.map((l) => l.party)]).filter(Boolean))].sort().map((p2) => [p2, p2]);
     const projectOpts = [['', 'No project'], ...PROJECTS.map((p2) => [p2.code, `${p2.code} · ${p2.name}`])];
     const locOpts = LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]);
-    const centreOpts = COST_CENTRES.map((c) => [c, c]);
+    const centreOpts = COST_CENTRES.map((c) => [c.name, c.name]);
     const typeOpts = [...new Set(fixture(getCompany()).map((d) => d.source))].sort().map((t) => [t, t]);
     const extras = [['subtype', 'Voucher subtype'], ['against', 'Against account'], ['partyType', 'Party type'], ['project', 'Project'], ['location', 'Location'], ['centre', 'Cost centre'], ['againstVoucher', 'Against voucher'], ['supplierRef', 'Supplier invoice no']];
 
@@ -887,7 +887,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const subtypeOpts = [...new Set(journalDocs().map((d) => subtypeOf(d)))].sort().map((x) => [x, x]);
     const projectOpts = [['', 'No project'], ...PROJECTS.map((p2) => [p2.code, p2.code])];
     const locOpts = LOCATIONS.map((l) => [l.code, l.code]);
-    const centreOpts = COST_CENTRES.map((c) => [c, c]);
+    const centreOpts = COST_CENTRES.map((c) => [c.name, c.name]);
     const extras = [['subtype', 'Subtype'], ['party', 'Party'], ['project', 'Project'], ['location', 'Location'], ['centre', 'Cost centre']];
 
     return `<form id="jr-filter" class="filterbar gl-filter">
@@ -1099,7 +1099,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const control = (a) => (a.control ? badge(a.control, 'plum') : '—');
     const newBtn = (label, form) => `<button class="text-button" data-settings-new="${form}">${label}</button>`;
     const editorLink = (form, code) => `data-settings-edit="${form}:${e(code)}"`;
-    const headRows = accounts().map((a) => `<tr class="row-link" ${editorLink('heads', a.code)}><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${control(a)}</td><td class="numeric">${money(bal(a.code, 'opening'))}</td><td class="numeric">${money(bal(a.code, 'closingDebit') - bal(a.code, 'closingCredit'))}</td><td>${badge(a.active ? 'Active' : 'Archived', a.active ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('');
+    const headRows = accounts().map((a) => `<tr class="row-link" ${editorLink('heads', a.code)}><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${e(a.group)}</td><td>${control(a)}</td><td class="numeric">${money(bal(a.code, 'opening'))}</td><td class="numeric">${money(bal(a.code, 'closingDebit') - bal(a.code, 'closingCredit'))}</td><td>${badge(a.active ? 'Active' : 'Archived', a.active ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('');
     const sections = {
       numbering: `<section class="panel">
         <div class="panel-head"><h2>Numbering</h2><span class="badge">Fixed after the first entry</span></div>
@@ -1136,7 +1136,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </section>`,
       heads: `<section class="panel">
         <div class="panel-head"><h2>Accounting heads</h2><div class="related"><span class="badge">${accounts().length} heads</span>${newBtn('New head', 'heads')}</div></div>
-        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Head</th><th>Class</th><th>Control</th><th class="numeric">Opening</th><th class="numeric">Closing</th><th>State</th><th></th></tr></thead><tbody>${headRows}</tbody></table></div>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Account name</th><th>Accounting head</th><th>Accounting group</th><th>Control</th><th class="numeric">Opening</th><th class="numeric">Closing</th><th>State</th><th></th></tr></thead><tbody>${headRows}</tbody></table></div>
         <div class="table-footer">A head is the account itself. Its class decides where it appears in the trial balance; its control flag decides whether every line needs a party. Click a row to edit it.</div>
       </section>`,
       projects: `<section class="panel">
@@ -1148,6 +1148,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <div class="panel-head"><h2>Locations</h2><div class="related"><span class="badge">${LOCATIONS.length} locations</span>${newBtn('New location', 'location')}</div></div>
         <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Location</th><th>Kind</th><th>Address</th><th>Contact</th><th></th></tr></thead><tbody>${LOCATIONS.map((l) => `<tr class="row-link" ${editorLink('location', l.code)}><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td><td>${e(l.address || '—')}</td><td>${e(l.contact || '—')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
         <div class="table-footer">A branch is a location whose kind is branch. There is no separate branch field.</div>
+      </section>`,
+      centres: `<section class="panel">
+        <div class="panel-head"><h2>Cost centres</h2><div class="related"><span class="badge">${COST_CENTRES.length} cost centres</span>${newBtn('New cost centre', 'centre')}</div></div>
+        <div class="table-scroll" data-hscroll><table><thead><tr><th>Code</th><th>Cost centre</th><th>Description</th><th>State</th><th></th></tr></thead><tbody>${COST_CENTRES.map((c) => `<tr class="row-link" ${editorLink('centre', c.code)}><td class="mono">${e(c.code)}</td><td>${e(c.name)}</td><td>${e(c.description || '—')}</td><td>${badge(c.archived ? 'Archived' : 'Active', c.archived ? 'warn' : 'good')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+        <div class="table-footer">Cost centres slice expense and activity for internal reporting. They never hold a balance.</div>
       </section>`,
       partygroups: `<section class="panel">
         <div class="panel-head"><h2>Party groups</h2><div class="related"><span class="badge">${PARTY_GROUPS.length} groups</span>${newBtn('New party group', 'partygroups')}</div></div>
@@ -1188,7 +1193,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </form>
       </section>`
     };
-    const order = [['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['projects', 'Projects'], ['locations', 'Locations'], ['partygroups', 'Party groups'], ['itemgroups', 'Item groups'], ['taxes', 'Taxes'], ['approval', 'Approvals']];
+    const order = [['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['projects', 'Projects'], ['locations', 'Locations'], ['centres', 'Cost centres'], ['partygroups', 'Party groups'], ['itemgroups', 'Item groups'], ['taxes', 'Taxes'], ['approval', 'Approvals']];
     let current = order.some(([id]) => id === SETUP_TAB) ? SETUP_TAB : 'numbering';
     try { const saved = sessionStorage.getItem('sa7en:settings-tab'); if (saved && order.some(([id]) => id === saved)) current = saved; } catch {}
     SETUP_TAB = current;
@@ -1204,12 +1209,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     }));
     document.querySelectorAll('[data-settings-new]').forEach((b) => b.addEventListener('click', () => {
       const form = b.dataset.settingsNew;
-      SETUP_TAB = form === 'heads' ? 'heads' : form === 'project' ? 'projects' : form === 'location' ? 'locations' : form === 'partygroups' ? 'partygroups' : form === 'itemgroups' ? 'itemgroups' : form === 'tax' ? 'taxes' : SETUP_TAB;
+      SETUP_TAB = form === 'heads' ? 'heads' : form === 'project' ? 'projects' : form === 'location' ? 'locations' : form === 'centre' ? 'centres' : form === 'partygroups' ? 'partygroups' : form === 'itemgroups' ? 'itemgroups' : form === 'tax' ? 'taxes' : SETUP_TAB;
       navigate({module: 'settings', tab: 'accounting', mode: 'editor', form, code: ''});
     }));
     document.querySelectorAll('[data-settings-edit]').forEach((tr) => tr.addEventListener('click', () => {
       const [form, code] = tr.dataset.settingsEdit.split(':');
-      SETUP_TAB = form === 'heads' ? 'heads' : form === 'project' ? 'projects' : form === 'location' ? 'locations' : form === 'partygroups' ? 'partygroups' : form === 'itemgroups' ? 'itemgroups' : form === 'tax' ? 'taxes' : SETUP_TAB;
+      SETUP_TAB = form === 'heads' ? 'heads' : form === 'project' ? 'projects' : form === 'location' ? 'locations' : form === 'centre' ? 'centres' : form === 'partygroups' ? 'partygroups' : form === 'itemgroups' ? 'itemgroups' : form === 'tax' ? 'taxes' : SETUP_TAB;
       navigate({module: 'settings', tab: 'accounting', mode: 'editor', form, code});
     }));
   }
@@ -2147,7 +2152,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <input type="hidden" name="editingCode" value="${e(a.code || '')}">
         <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="5100"></label>
         <label>Name<input name="name" required maxlength="80" value="${e(v('name'))}" placeholder="Marketing expense"></label>
-        <label>Class<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Accounting group<select name="group" class="inline-input">${['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'].map((g) => `<option value="${g}" ${(v('group') || '').toLowerCase().startsWith(g.slice(0, 5).toLowerCase()) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
         <label>Control<select name="control" class="inline-input">${[['', 'Ordinary posting account'], ['receivable', 'Receivable control — customer on every line'], ['payable', 'Payable control — supplier on every line'], ['bank', 'Bank control — needs a bank sub-account'], ['cash', 'Cash control — needs a cash sub-account']].map(([k, l]) => `<option value="${k}" ${v('control') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What this head is used for"></label>
         <label>State<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
@@ -2222,7 +2228,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <input type="hidden" name="editingCode" value="${e(a.code || '')}">
         <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="5100"></label>
         <label>Name<input name="name" required maxlength="80" value="${e(v('name'))}" placeholder="Marketing expense"></label>
-        <label>Class<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label>Accounting group<select name="group" class="inline-input">${['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'].map((g) => `<option value="${g}" ${(v('group') || '').toLowerCase().startsWith(g.slice(0, 5).toLowerCase()) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
         <label>Control<select name="control" class="inline-input">${[['', 'Ordinary posting account'], ['receivable', 'Receivable control — customer on every line'], ['payable', 'Payable control — supplier on every line'], ['bank', 'Bank control — needs a bank sub-account'], ['cash', 'Cash control — needs a cash sub-account']].map(([k, l]) => `<option value="${k}" ${v('control') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What this account is used for"></label>
         <label>State<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
@@ -2250,12 +2257,29 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     });
   }
 
+  function centreEditorForm(code) {
+    const c = code ? (COST_CENTRES.find((x) => x.code === code) || {}) : {};
+    const v = (k, d = '') => (c[k] !== undefined ? c[k] : d);
+    return `<section class="panel">
+      <div class="panel-head"><h2>${c.code ? e(c.name) : 'New cost centre'}</h2><span class="badge">${c.code ? `Editing ${e(c.code)}` : 'Data field'}</span></div>
+      <form data-settings-form="centre" class="panel-body form-grid">
+        <input type="hidden" name="editingCode" value="${e(c.code || '')}">
+        <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${c.code ? 'readonly' : ''} placeholder="CC-ADM"></label>
+        <label>Name<input name="name" required maxlength="50" value="${e(v('name'))}" placeholder="Administration"></label>
+        <label>State<select name="status" class="inline-input"><option ${v('archived') ? '' : 'selected'}>Active</option><option ${v('archived') ? 'selected' : ''}>Archived</option></select></label>
+        <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}"></label>
+        <div class="related"><button class="button primary">${c.code ? 'Save changes' : 'Add cost centre'}</button><button type="button" class="button" data-settings-cancel>Cancel</button></div>
+      </form>
+    </section>`;
+  }
+
   function settingsEditor(form, code) {
     if (form === 'heads') return accountEditor(code);
     if (form === 'project') return projectEditorForm(code);
     if (form === 'location') return locationEditorForm(code);
     if (form === 'partygroups') return groupEditor('party', code);
     if (form === 'itemgroups') return groupEditor('item', code);
+    if (form === 'centre') return centreEditorForm(code);
     if (form === 'tax') return taxEditor(code);
     return `<section class="panel"><div class="panel-head"><h2>Unknown form</h2></div><div class="panel-body"><p class="form-note">This settings form does not exist.</p></div></section>`;
   }
@@ -2271,8 +2295,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const editing = v.editingCode || '';
       if (kind === 'heads') {
         if (!editing && accounts().some((a) => a.code === v.code)) { notify('That head code already exists.'); return; }
-        const group = {asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses'}[v.type];
-        const record = {code: v.code, name: v.name, type: v.type, group, control: v.control || '', description: v.description || '', currency: 'PKR', active: v.status === 'Active'};
+        const record = {code: v.code, name: v.name, type: v.type, group: v.group || 'Assets', control: v.control || '', description: v.description || '', currency: 'PKR', active: v.status === 'Active'};
         if (editing) { const target = accounts().find((a) => a.code === editing); if (target) Object.assign(target, record); notify('Accounting head updated for this session.'); }
         else { accounts().push(record); notify('Accounting head added. It is available in the chart and the journal picker.'); }
         SETUP_TAB = 'heads';
@@ -2288,6 +2311,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         if (editing) { Object.assign(LOCATIONS.find((l) => l.code === editing), record); notify('Location updated for this session.'); }
         else { LOCATIONS.push(record); notify('Location added for this session.'); }
         SETUP_TAB = 'locations';
+      } else if (kind === 'centre') {
+        if (!editing && COST_CENTRES.some((c) => c.code === v.code)) { notify('That cost centre code already exists.'); return; }
+        const record = {code: v.code, name: v.name, description: v.description || '', archived: v.status === 'Archived'};
+        if (editing) { Object.assign(COST_CENTRES.find((c) => c.code === editing), record); notify('Cost centre updated for this session.'); }
+        else { COST_CENTRES.push(record); notify('Cost centre added for this session.'); }
+        SETUP_TAB = 'centres';
       } else if (kind === 'partygroups' || kind === 'itemgroups') {
         const list = kind === 'partygroups' ? PARTY_GROUPS : ITEM_GROUPS;
         if (!editing && list.some((g) => g.code === v.code)) { notify('That group code already exists.'); return; }

@@ -16,7 +16,7 @@ export const PAGE_MAP = {
     ['items', 'Items', 'Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Customer invoices with item or service lines, tax, due date and totals; session register until posting exists.', 'built'],
     ['purchase-invoices', 'Purchase invoices', 'Supplier bills mirroring the sales invoice, posting to expense and input tax; session register until posting exists.', 'built'],
-    ['coa', 'Chart of accounts', 'Two tabs: the trial balance and the chart register, with code, class, head, opening, movement and closing; the account form opens on its own page.', 'built'],
+    ['coa', 'Chart of accounts', 'Two tabs: the account register (code, name, accounting head, accounting group, control, currency, description, state, closing) and the trial balance (opening debit and credit, period movement, closing); the account form opens on its own page.', 'built'],
     ['reports', 'Reports', 'Ageing, profit or loss, financial position, cash flow and equity, all derived from the same ledger.', 'built'],
   ],
   inventory: [
@@ -139,7 +139,7 @@ export const PAGE_MAP = {
   ],
   settings: [
     ['company', 'Company', 'Legal identity, addresses, base currency, fiscal year and the active period.', 'built'],
-    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, party groups, item groups, taxes and withholding, approvals.', 'built'],
+    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals.', 'built'],
     ['people', 'People & access', 'Users, roles, scope and invitations for this business.', 'built'],
     ['periods', 'Periods', 'Every period with its state; the lock is the same switch as the close checklist.', 'built'],
     ['forms', 'Forms & fields', 'Standard field counts per form and the custom fields added to them.', 'built'],

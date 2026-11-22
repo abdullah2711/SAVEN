@@ -109,9 +109,14 @@ export const PARTIES = [
 ];
 
 const locationFor = (i) => LOCATIONS[i % LOCATIONS.length].code;
-export const COST_CENTRES = ['Administration', 'Operations', 'Sales', 'Warehouse'];
+export const COST_CENTRES = [
+  {code: 'CC-ADM', name: 'Administration', description: 'Head office and management'},
+  {code: 'CC-OPS', name: 'Operations', description: 'Delivery and production'},
+  {code: 'CC-SAL', name: 'Sales', description: 'Selling and marketing'},
+  {code: 'CC-WHS', name: 'Warehouse', description: 'Storage and handling'},
+];
 const projectFor = (i) => (i % 5 === 0 ? '' : PROJECTS[i % PROJECTS.length].code);
-const centreFor = (i) => COST_CENTRES[i % COST_CENTRES.length];
+const centreFor = (i) => COST_CENTRES[i % COST_CENTRES.length].name;
 
 const SAMPLE_CUSTOMERS=['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality','Zenith Electrical','Falcon Chemicals'];
 const SAMPLE_SUPPLIERS=['Willow Supplies','Maple Packaging','Cedar Services','Pak Print House','Al-Noor Freight','Metro Office Supply','Secure Line','Digital Systems'];
