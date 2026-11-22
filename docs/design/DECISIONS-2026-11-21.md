@@ -1134,3 +1134,28 @@ button.
 
 Document registers (payments, invoices) stay read-only because their records are not
 editable after saving; their create action is the page button.
+
+## 79. Every register can be searched and filtered
+
+Each accounting register now has a filter bar above the table:
+
+| Register | Search covers | Filters |
+|---|---|---|
+| Cash & bank | code, name, reference, kind, control-head name, project, location | kind, control head, status |
+| Parties | code, name, group, contact, email, phone | type, status |
+| Items | code, name, group, unit, description | — |
+| Taxes → Rules | code, name, kind, scope, description | — |
+| Payments | reference, party, cash/bank account, against, method | direction |
+| Sales and purchase invoices | number, party, date, due date | — |
+
+Details:
+
+- Search is **instant**: typing re-renders the list, and the caret is restored so the
+  field stays usable.
+- The filter state lives outside the page, so it survives a re-render, opening a
+  record and coming back, and switching between register and form.
+- **Reset** clears that register's filters only.
+- The count in the panel head reads “shown of total”, and the footer total follows the
+  filtered rows, so a filtered list never pretends to be the whole book.
+- Statistics at the top of the page stay unfiltered: they are control totals, not
+  search results.

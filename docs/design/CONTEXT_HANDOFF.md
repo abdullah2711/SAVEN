@@ -94,6 +94,9 @@ savenuitest.localhost` → `docs/design/save`.
 - Registers and forms are separate pages: `mode=editor&code=…` opens the form, Save
   returns to the register. Journal, cash & bank, parties, items, tax rules, payments
   and invoices all work this way.
+- Every register has instant search and its own filters (cash: kind, control head,
+  status; parties: type, status; payments: direction). The state lives outside the
+  page and survives navigation.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 

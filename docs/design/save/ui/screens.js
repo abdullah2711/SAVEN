@@ -98,6 +98,17 @@ let PARTY_OPEN = '';
 let PERIOD_LOCKED = false;
 // Inline editing of master-data forms: the same form creates and updates.
 const EDIT = {type: '', code: ''};
+// Per-register filters. They survive a re-render because they live here.
+const FILTERS = {
+  cash: {q: '', kind: '', control: '', status: ''},
+  parties: {q: '', type: '', status: ''},
+  items: {q: ''},
+  tax: {q: ''},
+  payments: {q: '', direction: ''},
+  invoices: {q: ''},
+};
+const hit = (q, ...parts) => !q || parts.join(' ').toLowerCase().includes(String(q).toLowerCase());
+const filterInput = (key, value, placeholder) => `<label>Search<input type="search" name="q" data-filter-focus="${key}" value="${e(value)}" placeholder="${e(placeholder)}"></label>`;
 const editing = (type, code) => EDIT.type === type && EDIT.code === code;
 const editRecord = (type, list) => (EDIT.type === type ? list.find((x) => x.code === EDIT.code) : null);
 const cancelEdit = '<button type="button" class="button" data-edit-cancel>Cancel</button>';
@@ -1217,6 +1228,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function cashBankView() {
     const controls = accounts().filter((a) => a.control === 'bank' || a.control === 'cash');
     const list = cashAccountRows();
+    const f = FILTERS.cash;
+    const rows = list.filter((x) => {
+      const head = accounts().find((a) => a.code === x.control);
+      return hit(f.q, x.code, x.name, x.reference, x.kind, head ? head.name : '', x.projects.join(' '), x.locations.join(' '))
+        && (!f.kind || x.kind === f.kind) && (!f.control || x.control === f.control) && (!f.status || (x.status || 'Active') === f.status);
+    });
     const led = (code) => Math.abs(ledgerBalance(code));
     const bankLedger = round2(controls.filter((a) => a.control === 'bank').reduce((n, a) => n + led(a.code), 0));
     const cashLedger = round2(controls.filter((a) => a.control === 'cash').reduce((n, a) => n + led(a.code), 0));
@@ -1228,12 +1245,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('Named to a sub-account', money(named), 'Part of the controls with a name')}
         ${kpi('Unallocated', money(bankLedger + cashLedger - named), 'Control balance no document has named yet')}
       </div>
+      <form class="filterbar" data-filter="cash">
+        ${filterInput('cash', f.q, 'Code, name, reference, project, location')}
+        <label>Kind<select name="kind"><option value="">All kinds</option><option value="bank" ${f.kind === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${f.kind === 'cash' ? 'selected' : ''}>Cash</option></select></label>
+        <label>Control head<select name="control"><option value="">All control heads</option>${controls.map((a) => `<option value="${a.code}" ${f.control === a.code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+        <label>Status<select name="status"><option value="">All states</option><option ${f.status === 'Active' ? 'selected' : ''}>Active</option><option ${f.status === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
+        <button class="button" type="button" data-filter-reset="cash">Reset</button>
+      </form>
       <section class="panel">
-        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${list.length} accounts</span></div>
+        <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${rows.length} of ${list.length} accounts</span></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th></th></tr></thead>
-          <tbody>${list.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td class="row-go">›</td></tr>`; }).join('')}</tbody>
-          <tfoot><tr><td colspan="6">Total named</td><td class="numeric">${money(named)}</td><td colspan="3"></td></tr></tfoot>
+          <tbody>${rows.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td class="row-go">›</td></tr>`; }).join('')}</tbody>
+          <tfoot><tr><td colspan="6">Total shown · ${rows.length} of ${list.length}</td><td class="numeric">${money(round2(rows.reduce((n, s) => n + s.balance, 0)))}</td><td colspan="3"></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts. Click a row to open its form. Unallocated is the part of the control balances that no document has named yet.</div>
       </section>`;
@@ -1325,7 +1349,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     return lines.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   }
   function partiesView() {
-    const rows = partyRows();
+    const all = partyRows();
+    const pf = FILTERS.parties;
+    const rows = all.filter((p) => hit(pf.q, p.code, p.name, p.group, p.contact, p.email, p.phone) && (!pf.type || p.type === pf.type) && (!pf.status || p.status === pf.status));
     const open = rows.find((p) => p.code === PARTY_OPEN);
     const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
     const receivable = round2(rows.filter((p) => p.type === 'customer').reduce((n, p) => n + p.balance, 0));
@@ -1366,8 +1392,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('On hold', String(rows.filter((p) => p.status !== 'Active').length), 'Blocked for new documents')}
       </div>
       ${page}
+      <form class="filterbar" data-filter="parties">
+        ${filterInput('parties', pf.q, 'Code, name, group, contact, email')}
+        <label>Type<select name="type"><option value="">All types</option><option value="customer" ${pf.type === 'customer' ? 'selected' : ''}>Customers</option><option value="supplier" ${pf.type === 'supplier' ? 'selected' : ''}>Suppliers</option></select></label>
+        <label>Status<select name="status"><option value="">All states</option><option ${pf.status === 'Active' ? 'selected' : ''}>Active</option><option ${pf.status === 'Hold' ? 'selected' : ''}>Hold</option><option ${pf.status === 'Blocked' ? 'selected' : ''}>Blocked</option></select></label>
+        <button class="button" type="button" data-filter-reset="parties">Reset</button>
+      </form>
       <section class="panel">
-        <div class="panel-head"><h2>Parties</h2><span class="badge">${rows.length} records</span></div>
+        <div class="panel-head"><h2>Parties</h2><span class="badge">${rows.length} of ${all.length} records</span></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Group</th><th class="numeric">Terms</th><th class="numeric">Limit</th><th class="numeric">Balance</th><th>Status</th><th></th></tr></thead>
           <tbody>${rows.map((p) => `<tr class="row-link" data-edit="party:${e(p.code)}"><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-open="${e(p.code)}">Statement</button></td></tr>`).join('')}</tbody>
@@ -1496,7 +1528,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     return PAYMENTS.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
   function paymentsView() {
-    const rows = paymentRows();
+    const all = paymentRows();
+    const f = FILTERS.payments;
+    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.account, r.against, r.reference, r.method) && (!f.direction || r.direction === f.direction));
     const parties = PARTIES.filter((p) => (PAY_FORM.direction === 'receive' ? p.type === 'customer' : p.type === 'supplier'));
     const party = PARTIES.find((p) => p.name === PAY_FORM.party);
     const amount = round2(Number(PAY_FORM.amount) || 0);
@@ -1510,8 +1544,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('Paid', money(paid), `${rows.filter((r) => r.direction === 'pay').length} payments`)}
         ${kpi('Open with this party', party ? money(outstanding) : '—', party ? party.name : 'Choose a party in the form')}
       </div>
+      <form class="filterbar" data-filter="payments">
+        ${filterInput('payments', f.q, 'Reference, party, account, document')}
+        <label>Direction<select name="direction"><option value="">Both</option><option value="receive" ${f.direction === 'receive' ? 'selected' : ''}>Receipts</option><option value="pay" ${f.direction === 'pay' ? 'selected' : ''}>Payments</option></select></label>
+        <button class="button" type="button" data-filter-reset="payments">Reset</button>
+      </form>
       <section class="panel">
-        <div class="panel-head"><h2>Receipts and payments</h2><span class="badge">${rows.length} documents</span></div>
+        <div class="panel-head"><h2>Receipts and payments</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Reference</th><th>Direction</th><th>Party</th><th>Cash / bank account</th><th class="numeric">Amount</th><th>Against</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e(r.account || '—')}</td><td class="numeric">${money(r.amount)}</td><td>${e(r.against || '—')}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No payments yet.</td></tr>'}</tbody>
@@ -1622,8 +1661,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
   function invoicesView(kind) {
     const isSales = kind === 'sales';
+    const f = FILTERS.invoices;
     const draft = INV_DRAFT[invKey(kind)];
-    const rows = invoiceRows(kind);
+    const all = invoiceRows(kind);
+    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.date, r.due));
     const totals = invoiceTotals(kind, draft.lines);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
     const open = round2(rows.reduce((n, r) => n + r.gross, 0));
@@ -1633,8 +1674,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi(isSales ? 'Receivable' : 'Payable', money(Math.abs(ledgerBalance(isSales ? '1100' : '2100'))), 'Control account balance')}
         ${kpi('In this draft', money(totals.gross), 'Net plus tax')}
       </div>
+      <form class="filterbar" data-filter="invoices">
+        ${filterInput('invoices', f.q, 'Number, party, date')}
+        <button class="button" type="button" data-filter-reset="invoices">Reset</button>
+      </form>
       <section class="panel">
-        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><span class="badge">${rows.length} documents</span></div>
+        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><span class="badge">${rows.length} of ${all.length} documents</span></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No documents yet.</td></tr>'}</tbody>
@@ -1706,6 +1751,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   /* ------------------------------------------------------------- items */
   function itemsView() {
+    const f = FILTERS.items;
+    const rows = ITEMS.filter((i) => hit(f.q, i.code, i.name, i.group, i.unit, i.description));
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
     const ruleName = (code) => (TAX_RULES.find((r) => r.code === code) || {}).name || 'No tax';
     const tracked = ITEMS.filter((i) => i.tracked).length;
@@ -1717,11 +1764,15 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         ${kpi('Tracked', String(tracked), 'Inventory would value these')}
         ${kpi('Services', String(ITEMS.length - tracked), 'Never valued or counted')}
       </div>
+      <form class="filterbar" data-filter="items">
+        ${filterInput('items', f.q, 'Code, name, group, description')}
+        <button class="button" type="button" data-filter-reset="items">Reset</button>
+      </form>
       <section class="panel">
-        <div class="panel-head"><h2>Items</h2><span class="badge">Accounting view</span></div>
+        <div class="panel-head"><h2>Items</h2><span class="badge">${rows.length} of ${ITEMS.length}</span></div>
         <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Tax rule</th><th>Stock</th><th></th></tr></thead>
-          <tbody>${ITEMS.map((i) => `<tr class="row-link" data-edit="item:${e(i.code)}"><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
+          <tbody>${rows.map((i) => `<tr class="row-link" data-edit="item:${e(i.code)}"><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
         </table></div>
         <div class="table-footer">The item master is shared with Inventory. Accounting stores the accounts and the tax default; Inventory owns quantity, valuation and movement. An item line appears in the ledger only when an invoice or bill is posted.</div>
       </section>
@@ -1809,12 +1860,18 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     </section>`;
   }
   function taxRulesPanel() {
+    const f = FILTERS.tax;
+    const rules = TAX_RULES.filter((r) => hit(f.q, r.code, r.name, r.kind, r.scope, r.description));
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
-    return `<section class="panel">
-      <div class="panel-head"><h2>Tax rules</h2><span class="badge">${TAX_RULES.length} rules</span></div>
+    return `<form class="filterbar" data-filter="tax">
+        ${filterInput('tax', f.q, 'Code, name, kind, scope')}
+        <button class="button" type="button" data-filter-reset="tax">Reset</button>
+      </form>
+      <section class="panel">
+      <div class="panel-head"><h2>Tax rules</h2><span class="badge">${rules.length} of ${TAX_RULES.length} rules</span></div>
       <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Scope</th><th>Effective</th><th>Projects</th><th>Locations</th><th>Status</th><th></th></tr></thead>
-        <tbody>${TAX_RULES.map((r) => `<tr class="row-link" data-edit="tax:${e(r.code)}"><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
+        <tbody>${rules.map((r) => `<tr class="row-link" data-edit="tax:${e(r.code)}"><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
       </table></div>
       <div class="table-footer">A rule is a default. Any document line may override the rate or switch tax off. Withholding and advance rules post to their own liability and asset accounts. Click a row to open its form.</div>
     </section>`;
@@ -2221,6 +2278,28 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       <div id="settings-panel">${body}</div>`;
   }
 
+  function bindRegisterFilters(rerender) {
+    document.querySelectorAll('[data-filter]').forEach((form) => {
+      const key = form.dataset.filter;
+      if (!FILTERS[key]) return;
+      const apply = () => { FILTERS[key] = {...FILTERS[key], ...Object.fromEntries(new FormData(form))}; };
+      form.addEventListener('input', (ev) => {
+        apply();
+        const {name} = ev.target;
+        const pos = ev.target.selectionStart;
+        rerender();
+        const again = document.querySelector(`[data-filter="${key}"] [name="${name}"]`);
+        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
+      });
+      form.addEventListener('change', () => { apply(); rerender(); });
+    });
+    document.querySelectorAll('[data-filter-reset]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.filterReset;
+      FILTERS[key] = Object.fromEntries(Object.keys(FILTERS[key] || {}).map((k) => [k, '']));
+      rerender();
+    }));
+  }
+
   function bindSettingsView(rerender, notify) {
     document.querySelectorAll('[data-settings-save]').forEach((f) => f.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -2297,6 +2376,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, bindInvoices, close: closeView, bindClose, settings: settingsView, bindSettings: bindSettingsView, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, bindInvoices, close: closeView, bindClose, settings: settingsView, bindSettings: bindSettingsView, bindRegisterFilters, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }
