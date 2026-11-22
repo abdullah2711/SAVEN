@@ -28,36 +28,36 @@ States: **built** working screen · **partial** working, covers part of the page
 
 | # | Page | State | Specification |
 |---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Stock value, value by warehouse, below reorder, movements today, movers. |
-| 2 | Items `items` | planned | The shared item master with stock fields: tracked, costing, reorder point. |
-| 3 | Item groups `groups` | planned | Tree for reporting, default accounts and tax defaults. |
-| 4 | Warehouses & locations `warehouses` | planned | Stores and bins with their balances, branch mapping and accounts. |
-| 5 | Stock balances `balances` | planned | Quantity and value per item and warehouse, last movement, average cost. |
-| 6 | Stock movements `movements` | planned | Every in and out line with source document and reason. |
-| 7 | Goods receipt `receipts` | planned | Receive against a bill or order; posts movement and clearing entry. |
-| 8 | Delivery note `delivery` | planned | Issue against an invoice; cost leaves at the item method. |
-| 9 | Transfers `transfers` | planned | Move quantity between warehouses at unchanged total value. |
-| 10 | Stock count `counts` | planned | Count sheet, variance, approval; variance becomes an adjustment. |
-| 11 | Adjustments & write-offs `adjustments` | planned | Every adjustment with reason, account, approval and evidence. |
-| 12 | Valuation & costing `valuation` | planned | Costing method, revaluation, NRV write-down, impairment, landed cost. |
-| 13 | Reorder & alerts `reorder` | planned | Items below reorder point with suggested quantities. |
-| 14 | Reports `reports` | planned | Stock ledger, movement summary, valuation, ageing, margin by item. |
-| 15 | Settings `settings` | planned | Default accounts per movement type, units, costing, negative stock. |
+| 1 | Dashboard `dashboard` | built | Stock value, value by warehouse, below reorder, movements today, movers. |
+| 2 | Items `items` | built | The shared item master with stock fields: tracked, costing, reorder point. |
+| 3 | Item groups `groups` | built | Tree for reporting, default accounts and tax defaults. |
+| 4 | Warehouses & locations `warehouses` | built | Stores and bins with their balances, branch mapping and accounts. |
+| 5 | Stock balances `balances` | built | Quantity and value per item and warehouse, last movement, average cost. |
+| 6 | Stock movements `movements` | built | Every in and out line with source document and reason. |
+| 7 | Goods receipt `receipts` | built | Receive against a bill or order; posts movement and clearing entry. |
+| 8 | Delivery note `delivery` | built | Issue against an invoice; cost leaves at the item method. |
+| 9 | Transfers `transfers` | built | Move quantity between warehouses at unchanged total value. |
+| 10 | Stock count `counts` | built | Count sheet, variance, approval; variance becomes an adjustment. |
+| 11 | Adjustments & write-offs `adjustments` | built | Every adjustment with reason, account, approval and evidence. |
+| 12 | Valuation & costing `valuation` | built | Costing method, revaluation, NRV write-down, impairment, landed cost. |
+| 13 | Reorder & alerts `reorder` | built | Items below reorder point with suggested quantities. |
+| 14 | Reports `reports` | built | Stock ledger, movement summary, valuation, ageing, margin by item. |
+| 15 | Settings `settings` | built | Default accounts per movement type, units, costing, negative stock. |
 
 ## Manufacturing (manufacturing)
 
 | # | Page | State | Specification |
 |---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Open work orders, material shortages, capacity load, cost variance. |
-| 2 | Bills of material `boms` | planned | Versioned components and operations per finished item. |
-| 3 | Routings `routings` | planned | Operation sequence, work centres and standard times. |
-| 4 | Work centres `work-centres` | planned | Capacity, cost rate and calendar per centre. |
-| 5 | Planning `planning` | planned | Demand, shortages, suggested production and purchase. |
-| 6 | Work orders `orders` | planned | Release, material issue, production receipt, close. |
-| 7 | Scrap & rework `scrap` | planned | Loss, rework loops and their cost effect. |
-| 8 | Subcontracting `subcontracting` | planned | Send material out, receive the finished item, reconcile cost. |
-| 9 | Costing `costing` | planned | Standard versus actual, variance analysis per order. |
-| 10 | Reports `reports` | planned | Order status, material consumption, efficiency, yield. |
+| 1 | Dashboard `dashboard` | built | Open work orders, material shortages, capacity load, cost variance. |
+| 2 | Bills of material `boms` | built | Versioned components and operations per finished item. |
+| 3 | Routings `routings` | built | Operation sequence, work centres and standard times. |
+| 4 | Work centres `work-centres` | built | Capacity, cost rate and calendar per centre. |
+| 5 | Planning `planning` | built | Demand, shortages, suggested production and purchase. |
+| 6 | Work orders `orders` | built | Release, material issue, production receipt, close. |
+| 7 | Scrap & rework `scrap` | built | Loss, rework loops and their cost effect. |
+| 8 | Subcontracting `subcontracting` | built | Send material out, receive the finished item, reconcile cost. |
+| 9 | Costing `costing` | built | Standard versus actual, variance analysis per order. |
+| 10 | Reports `reports` | built | Order status, material consumption, efficiency, yield. |
 
 ## Point of sale (pos)
 
@@ -76,15 +76,15 @@ States: **built** working screen · **partial** working, covers part of the page
 
 | # | Page | State | Specification |
 |---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Net book value, depreciation this period, assets due, disposals. |
-| 2 | Asset register `register` | planned | Every asset with cost, accumulated depreciation and location. |
-| 3 | Categories `categories` | planned | Depreciation method and accounts per class of asset. |
-| 4 | Acquisitions & CWIP `acquisitions` | planned | Capitalise cost, including capital work in progress. |
-| 5 | Depreciation `depreciation` | planned | Run the period charge, review before posting. |
-| 6 | Impairment & revaluation `impairment` | planned | Write down or revalue with evidence and approval. |
-| 7 | Transfers `transfers` | planned | Move custody between branches or people. |
-| 8 | Disposals `disposals` | planned | Sell or scrap, with gain or loss posted. |
-| 9 | Reports `reports` | planned | Register, movement schedule, depreciation forecast. |
+| 1 | Dashboard `dashboard` | built | Net book value, depreciation this period, assets due, disposals. |
+| 2 | Asset register `register` | built | Every asset with cost, accumulated depreciation and location. |
+| 3 | Categories `categories` | built | Depreciation method and accounts per class of asset. |
+| 4 | Acquisitions & CWIP `acquisitions` | built | Capitalise cost, including capital work in progress. |
+| 5 | Depreciation `depreciation` | built | Run the period charge, review before posting. |
+| 6 | Impairment & revaluation `impairment` | built | Write down or revalue with evidence and approval. |
+| 7 | Transfers `transfers` | built | Move custody between branches or people. |
+| 8 | Disposals `disposals` | built | Sell or scrap, with gain or loss posted. |
+| 9 | Reports `reports` | built | Register, movement schedule, depreciation forecast. |
 
 ## People & payroll (people)
 
@@ -254,4 +254,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 144 pages · 19 built · 0 partial · 125 planned.**
+**20 modules · 144 pages · 53 built · 0 partial · 91 planned.**

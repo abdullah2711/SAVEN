@@ -49,6 +49,10 @@ the decision index in one place.
 |---|---|
 | `docs/design/save/ui/app.js` | shell, rail, routing, page map wiring |
 | `docs/design/save/ui/accounting-ui.js` | chart, journal register/editor, trial balance, statements, setup routing, single-select picker (`ss`) |
+| `docs/design/save/ui/ops-model.js` | warehouses, stock movements, BOMs, work orders, work centres, asset categories and assets |
+| `docs/design/save/ui/inventory.js` | inventory module: views, forms and binds |
+| `docs/design/save/ui/manufacturing.js` | manufacturing module |
+| `docs/design/save/ui/assets.js` | assets module |
 | `docs/design/save/ui/accounting-setup.js` | opening balances, recurring journals |
 | `docs/design/save/ui/screens.js` | dashboard, ledger, journal register + record, projects/locations pages, parties, taxes, setup, multi-select (`ms`) |
 | `docs/design/save/ui/accounting-model.js` | fixture ledger (~199 documents), chart, numbering, projects, locations, cost centres |

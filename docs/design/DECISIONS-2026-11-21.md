@@ -1564,3 +1564,89 @@ was returned, less what was paid.
   filter** (plus status or kind where it matters) and **Export CSV**.
 - The export is table-based: it writes exactly the rows currently on screen, with the
   filters applied, so what is exported is what is seen.
+
+---
+
+# Round 21 — Inventory, Manufacturing and Assets
+
+## 112. Inventory
+
+Fifteen pages, all working on the shared item master and one stock ledger.
+
+- **Dashboard** — stock value, value by warehouse, below reorder and recent
+  movements.
+- **Items** — the tracked items with on-hand, average cost, value and reorder point.
+- **Groups** — links to the shared item groups in Settings.
+- **Warehouses** — register and form: code, name, accounting location, address,
+  custodian, bins, state.
+- **Balances** — quantity, average cost and value per item per warehouse, derived
+  from movements only.
+- **Movements** — every in/out line with source document, reference, project, reason,
+  filters by warehouse and direction.
+- **Goods receipt, Delivery note, Transfer, Stock count, Adjustment** — form pages
+  that write movements; a transfer writes a matching out and in; a count writes the
+  variance as an adjustment.
+- **Valuation** — weighted average per item with totals.
+- **Reorder** — items below their point with a suggested quantity.
+- **Reports** — value by item, movement summary by warehouse.
+- **Settings** — costing method, negative stock, default accounts and warehouse.
+
+Balances are **never stored**: quantity and value are computed from the movement
+ledger, so the dashboard, balances, valuation and reorder cannot disagree.
+
+## 113. Manufacturing
+
+- **Dashboard** — open orders, produced, scrap, material shortages.
+- **Bills of material** — register and form: finished item, output quantity, one
+  component with quantity, one operation with work centre and minutes, version.
+- **Routings** — the operations of each BOM, with rate and step.
+- **Work centres** — register and form: rate, capacity, calendar.
+- **Planning** — suggested quantity per active BOM, with a short/ready check on
+  components.
+- **Work orders** — register and form, with **Release → Issue → Produce → Close**
+  actions; issue consumes components and produce receives output as stock movements.
+- **Scrap** — recorded against the order and reflected in yield.
+- **Subcontracting** — the flow is described and the document is the next increment.
+- **Costing** — material (issued × average cost) plus labour (routing minutes × rate)
+  per order and per unit.
+- **Reports** — order status and material consumption.
+
+## 114. Assets
+
+- **Dashboard** — net book value, cost, accumulated depreciation, monthly charge.
+- **Register** — code, asset, category, location, custodian, acquisition date, cost,
+  accumulated, NBV, status, with filters and export.
+- **Categories** — method, rate, life and the three accounts.
+- **Acquisitions** — capitalise an asset (the form is the asset form).
+- **Depreciation** — the monthly charge per asset and a **Run November charge** that
+  updates accumulated depreciation for the session and records the run.
+- **Impairment, Transfers, Disposals** — forms that write down, move custody, or
+  dispose with proceeds and gain/loss.
+- **Reports** — movement schedule by category and a twelve-month forecast.
+
+## 115. Linking to Accounting
+
+- Items are the same records in Accounting and Inventory; Accounting holds the
+  accounts and tax defaults, Inventory holds quantity, cost and reorder.
+- Stock movements carry project and location; warehouses point at accounting
+  locations.
+- Manufacturing issues and receipts are stock movements, so inventory value changes
+  follow production.
+- Assets use the accounting locations and will post to asset, depreciation and
+  expense accounts when posting exists.
+- Nothing posts to the ledger yet: every module carries the contract and says so.
+
+## 116. Audit state
+
+Registers all have search, relevant filters, permanent scroll indicator, counts and
+CSV export. Forms open on their own page, validate, and return to their register.
+
+Not yet complete, stated plainly:
+
+- Subcontracting document flow.
+- Standard-cost comparison on the costing page.
+- Inventory and manufacturing defaults are on their module pages, not yet in Settings.
+- Field-by-field form audit across every module is still to be done, and the print
+  formats review.
+- Posting from operations to the ledger, persistence and permissions remain backend
+  work.

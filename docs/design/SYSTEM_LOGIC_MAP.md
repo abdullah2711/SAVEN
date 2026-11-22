@@ -57,6 +57,18 @@ Companion documents:
 | Reports | complete | ageing, trial balance, P&L, position, cash flow, equity |
 | Reports | complete | ageing, P&L, position, cash flow, equity |
 
+### Operations
+
+| Module | State | Covers |
+|---|---|---|
+| Inventory | working | warehouses, balances, movements, receipts, deliveries, transfers, counts, adjustments, valuation, reorder, reports, module settings |
+| Manufacturing | working | BOMs, routings, work centres, planning, work orders with release/issue/produce/close, scrap, costing, reports; subcontracting described |
+| Assets | working | categories, register, acquisitions, depreciation run, impairment, transfers, disposals, reports |
+
+All three are derived from one stock/asset ledger: balances are computed, never stored,
+so the pages cannot disagree. Links: the shared item master, warehouses → accounting
+locations, movements carrying project and location, production changing stock value.
+
 ### Settings (Workspace settings)
 
 Company · Accounting · People & access · Periods · Forms & fields · Saved views ·
@@ -286,7 +298,9 @@ permissions. See §100 of the decision log.
 ## 13. Pending and incomplete
 
 - Every form needs a field-by-field review, and its effect on register columns.
-- Payments page still needs its full review.
+- Subcontracting flow, standard-cost comparison, module defaults moved into Settings.
+- Field-by-field form audit and print formats review.
+- Posting from operations to the ledger, persistence, permissions.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices and payments record session documents but do not write the ledger.
 - Bank statement reconciliation.
