@@ -1109,3 +1109,28 @@ page pattern is the next step.
 The duplicate “New …” button inside the register panel is gone. The page action at
 the top right is the single create entry point; rows still open their own record.
 This applies to cash & bank, tax rules, payments and invoices.
+
+## 77. Permanent scroll indicator on every table
+
+The always-visible horizontal indicator that started on the journal line grid is now
+on **every table**: cash & bank, parties, items, tax rules and registers, payments,
+invoices, trial balance, chart, general ledger and the settings tables.
+
+- The native bar is hidden; a custom track sits under the table and is always drawn,
+  with a draggable thumb and click-to-jump.
+- It follows the table when the table scrolls and recalculates on resize.
+- A table that fits shows a full-width thumb; a wide table shows the real proportion,
+  so nobody has to guess that columns are cut off.
+
+## 78. A whole row opens its form
+
+Clicking anywhere on a register row opens that record — not just the code or a small
+button.
+
+- Cash & bank, items, tax rules: the row opens the editor directly.
+- Parties: the row opens the party form; the **Statement** button inside the row
+  opens the party page, and its click does not bubble to the row.
+- Every clickable row shows a pointer cursor and a highlight on hover.
+
+Document registers (payments, invoices) stay read-only because their records are not
+editable after saving; their create action is the page button.

@@ -274,3 +274,6 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .row-link{cursor:pointer}
 .row-link:hover td{background:var(--tint)}
 .row-go{color:var(--muted);text-align:right}
+
+/* Tables keep a permanent horizontal indicator under the rows. */
+.table-scroll + .hscroll{margin:8px 24px 14px}

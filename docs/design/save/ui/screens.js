@@ -354,7 +354,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     </div>
     <section class="panel">
       <div class="panel-head"><h2>${isAr ? 'Customer balances' : 'Supplier balances'}</h2>${badge('Open documents only')}</div>
-      <div class="table-scroll"><table>
+      <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>${isAr ? 'Customer' : 'Supplier'}</th><th>Documents</th><th class="numeric">Current</th><th class="numeric">Overdue</th><th>Oldest</th><th class="numeric">Balance PKR</th></tr></thead>
         <tbody>${parts.map((p) => `<tr>
           <td>${e(p.name)}<small class="secondary">${e(p.id)}</small></td>
@@ -380,7 +380,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const grand = round2(parts.reduce((n, p) => n + p.balance, 0));
       return `<section class="panel">
         <div class="panel-head"><h2>${label}</h2>${badge('Age measured from due date')}</div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Party</th>${BUCKETS.map((b) => `<th class="numeric">${b}</th>`).join('')}<th class="numeric">Total</th></tr></thead>
           <tbody>${parts.map((p) => `<tr><td>${e(p.name)}</td>${BUCKETS.map((b) => `<td class="numeric">${bucketOf(p.age) === b ? money(p.balance) : '—'}</td>`).join('')}<td class="numeric">${money(p.balance)}</td></tr>`).join('')}</tbody>
           <tfoot><tr><td><strong>Total</strong></td>${BUCKETS.map((b) => `<td class="numeric"><strong>${money(totals[b])}</strong></td>`).join('')}<td class="numeric"><strong>${money(grand)}</strong></td></tr></tfoot>
@@ -390,7 +390,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     return matrix(ar, 'Receivables ageing') + matrix(ap, 'Payables ageing')
       + `<section class="panel">
         <div class="panel-head"><h2>Depreciation schedule</h2>${badge('November charge drafted')}</div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Asset</th><th class="numeric">Cost</th><th class="numeric">Rate</th><th class="numeric">Monthly</th><th class="numeric">Accumulated</th><th class="numeric">Net book value</th></tr></thead>
           <tbody>${[
             ['Furniture & fixtures', 486000, '15.0%', 6075, 128400],
@@ -712,7 +712,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <div><span>Total credit</span><strong class="numeric">${money(credit)}</strong><small>${filtered ? 'filtered' : 'whole period'}</small></div>
           <div><span>${netLabel}</span><strong class="numeric">${money(Math.abs(net))}</strong><small>${net === 0 ? 'in balance' : filtered ? 'balance of the filtered lines' : 'balance of the period'}</small></div>
         </div>
-        <div class="table-scroll gl-scroll">
+        <div class="table-scroll gl-scroll" data-hscroll>
           <table class="gl-table" data-hide="${[...OPTIONAL.filter((k) => !GL.extras.has(k))].join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
               ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
@@ -892,7 +892,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
       <section class="panel">
         <div class="panel-head"><h2>Journals</h2><div class="related"><span class="badge">${rows.length} entries</span><button class="button" data-jr-print>Print</button></div></div>
-        <div class="table-scroll gl-scroll">
+        <div class="table-scroll gl-scroll" data-hscroll>
           <table class="gl-table jr-table" data-hide="${['subtype', 'party', 'project', 'location', 'centre'].filter((k) => !J.extras.has(k)).join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
               ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-jr-sort="${key}" aria-sort="${J.sort.key === key ? (J.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${J.sort.key === key ? (J.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
@@ -1095,7 +1095,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </section>`,
       heads: `<section class="panel">
         <div class="panel-head"><h2>Accounting heads</h2><span class="badge">${accounts().length} heads</span></div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Accounting head</th><th>Class</th><th>Control</th><th>State</th></tr></thead>
           <tbody>${accounts().map((a) => `<tr><td class="mono">${e(a.code)}</td><td>${e(a.name)}</td><td>${e(a.type)}</td><td>${a.control ? badge(a.control, 'plum') : '—'}</td><td>${a.active ? 'Active' : 'Archived'}</td></tr>`).join('')}</tbody>
         </table></div>
@@ -1230,7 +1230,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </div>
       <section class="panel">
         <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${list.length} accounts</span></div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th></th></tr></thead>
           <tbody>${list.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td class="row-go">›</td></tr>`; }).join('')}</tbody>
           <tfoot><tr><td colspan="6">Total named</td><td class="numeric">${money(named)}</td><td colspan="3"></td></tr></tfoot>
@@ -1345,7 +1345,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
             <div><small>Currency</small>${e(open.currency || 'PKR')}</div>
           </div>
         </div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Voucher</th><th>Source</th><th class="numeric">Debit</th><th class="numeric">Credit</th><th class="numeric">Balance</th></tr></thead>
           <tbody>${statement.map((l) => `<tr><td>${e(l.date)}</td><td><button class="text-button" data-ac="source" data-value="${e(l.id)}">${e(l.id)}</button></td><td>${e(l.source)}</td><td class="numeric">${l.dr ? money(l.dr) : ''}</td><td class="numeric">${l.cr ? money(l.cr) : ''}</td><td class="numeric">${money(l.balance)}</td></tr>`).join('') || '<tr><td colspan="6">No statements yet.</td></tr>'}</tbody>
           <tfoot><tr><td colspan="5">Closing balance</td><td class="numeric">${money(open.balance)}</td></tr></tfoot>
@@ -1368,9 +1368,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       ${page}
       <section class="panel">
         <div class="panel-head"><h2>Parties</h2><span class="badge">${rows.length} records</span></div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Group</th><th class="numeric">Terms</th><th class="numeric">Limit</th><th class="numeric">Balance</th><th>Status</th><th></th></tr></thead>
-          <tbody>${rows.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-open="${e(p.code)}">Open</button> <button class="text-button" data-edit="party:${e(p.code)}">Edit</button></td></tr>`).join('')}</tbody>
+          <tbody>${rows.map((p) => `<tr class="row-link" data-edit="party:${e(p.code)}"><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-open="${e(p.code)}">Statement</button></td></tr>`).join('')}</tbody>
           <tfoot><tr><td colspan="6">Total</td><td class="numeric">${money(receivable + payable)}</td><td colspan="2"></td></tr></tfoot>
         </table></div>
         <div class="table-footer">Balance is the party's open position on its control account. A customer sits on 1100, a supplier on 2100. Credit limits and terms are configuration; they do not block posting on their own.</div>
@@ -1410,7 +1410,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   function bindParties(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'parties'});
-    document.querySelectorAll('[data-party-open]').forEach((b) => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-party-open]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
       PARTY_OPEN = b.dataset.partyOpen;
       rerender();
     }));
@@ -1511,7 +1512,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </div>
       <section class="panel">
         <div class="panel-head"><h2>Receipts and payments</h2><span class="badge">${rows.length} documents</span></div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Reference</th><th>Direction</th><th>Party</th><th>Cash / bank account</th><th class="numeric">Amount</th><th>Against</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e(r.account || '—')}</td><td class="numeric">${money(r.amount)}</td><td>${e(r.against || '—')}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No payments yet.</td></tr>'}</tbody>
           <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(received + paid)}</td><td colspan="2"></td></tr></tfoot>
@@ -1542,7 +1543,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <div class="related"><button type="button" class="button" data-pay-calc>Show allocation</button><button class="button primary">Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
       ${party ? `<div class="panel-body"><div class="section-title">Open documents · ${e(party.name)} · ${money(outstanding)} outstanding</div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Document</th><th class="numeric">Total</th><th class="numeric">Settled</th><th class="numeric">Outstanding</th><th class="numeric">This payment</th></tr></thead>
           <tbody>${openItems(party).map((x) => { const hit = allocation.rows.find((a) => a.id === x.id); return `<tr><td>${e(x.date)}</td><td class="mono">${e(x.id)}</td><td class="numeric">${money(x.total)}</td><td class="numeric">${money(x.paid)}</td><td class="numeric">${money(x.outstanding)}</td><td class="numeric">${hit ? money(hit.amount) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="6">Nothing open.</td></tr>'}</tbody>
           <tfoot><tr><td colspan="5">Allocated ${money(round2(amount - allocation.left))} · advance or unallocated ${money(allocation.left)}</td><td class="numeric">${money(amount)}</td></tr></tfoot>
@@ -1634,7 +1635,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </div>
       <section class="panel">
         <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><span class="badge">${rows.length} documents</span></div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>State</th></tr></thead>
           <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No documents yet.</td></tr>'}</tbody>
           <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(open)}</td><td></td></tr></tfoot>
@@ -1718,7 +1719,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </div>
       <section class="panel">
         <div class="panel-head"><h2>Items</h2><span class="badge">Accounting view</span></div>
-        <div class="table-scroll"><table>
+        <div class="table-scroll" data-hscroll><table>
           <thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Tax rule</th><th>Stock</th><th></th></tr></thead>
           <tbody>${ITEMS.map((i) => `<tr class="row-link" data-edit="item:${e(i.code)}"><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
         </table></div>
@@ -1800,7 +1801,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const effective = base ? round2((tax / base) * 100) : 0;
     return `<section class="panel">
       <div class="panel-head"><h2>${kind === 'sales' ? 'Output tax' : 'Input tax'} register</h2><span class="badge">${lines.length} tax lines</span></div>
-      <div class="table-scroll"><table>
+      <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>Date</th><th>Voucher</th><th>Party</th><th class="numeric">Base</th><th class="numeric">Tax</th><th>Project</th><th>Location</th></tr></thead>
         <tbody>${lines.map((l) => `<tr><td>${e(l.date)}</td><td><button class="text-button" data-ac="source" data-value="${e(l.id)}">${e(l.id)}</button></td><td>${e(l.party)}</td><td class="numeric">${money(l.base)}</td><td class="numeric">${money(l.tax)}</td><td>${e(l.project || '—')}</td><td>${e(l.location || '—')}</td></tr>`).join('') || '<tr><td colspan="7">No tax lines in this period.</td></tr>'}</tbody>
         <tfoot><tr><td colspan="3">Total · effective ${effective}%</td><td class="numeric">${money(base)}</td><td class="numeric">${money(tax)}</td><td colspan="2"></td></tr></tfoot>
@@ -1811,7 +1812,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
     return `<section class="panel">
       <div class="panel-head"><h2>Tax rules</h2><span class="badge">${TAX_RULES.length} rules</span></div>
-      <div class="table-scroll"><table>
+      <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Scope</th><th>Effective</th><th>Projects</th><th>Locations</th><th>Status</th><th></th></tr></thead>
         <tbody>${TAX_RULES.map((r) => `<tr class="row-link" data-edit="tax:${e(r.code)}"><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
       </table></div>
@@ -1855,7 +1856,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const expected = round2(rules.reduce((n, r) => n + (base * r.rate) / 100, 0));
     return `<section class="panel">
       <div class="panel-head"><h2>Withholding</h2><span class="badge ${recorded === 0 && expected > 0 ? 'warn' : 'good'}">${recorded === 0 && expected > 0 ? 'Expected, nothing withheld yet' : 'Reconciled'}</span></div>
-      <div class="table-scroll"><table>
+      <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>Rule</th><th class="numeric">Rate</th><th class="numeric">Taxable base</th><th class="numeric">Expected</th><th class="numeric">Recorded</th><th class="numeric">Difference</th></tr></thead>
         <tbody>${rules.map((r) => `<tr><td>${e(r.name)}</td><td class="numeric">${r.rate}%</td><td class="numeric">${money(base)}</td><td class="numeric">${money((base * r.rate) / 100)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money((base * r.rate) / 100 - recorded)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td>Total</td><td></td><td class="numeric">${money(base)}</td><td class="numeric">${money(expected)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money(expected - recorded)}</td></tr></tfoot>
@@ -1871,7 +1872,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const expected = round2(rules.reduce((n, r) => n + (base * r.rate) / 100, 0));
     return `<section class="panel">
       <div class="panel-head"><h2>Advance tax</h2><span class="badge">${recorded === 0 && expected > 0 ? 'Expected, nothing recorded yet' : 'Reconciled'}</span></div>
-      <div class="table-scroll"><table>
+      <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>Rule</th><th class="numeric">Rate</th><th class="numeric">Taxable base</th><th class="numeric">Expected</th><th class="numeric">Recorded</th><th class="numeric">Difference</th></tr></thead>
         <tbody>${rules.map((r) => `<tr><td>${e(r.name)}</td><td class="numeric">${r.rate}%</td><td class="numeric">${money(base)}</td><td class="numeric">${money((base * r.rate) / 100)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money((base * r.rate) / 100 - recorded)}</td></tr>`).join('')}</tbody>
         <tfoot><tr><td>Total</td><td></td><td class="numeric">${money(base)}</td><td class="numeric">${money(expected)}</td><td class="numeric">${money(recorded)}</td><td class="numeric">${money(expected - recorded)}</td></tr></tfoot>
@@ -1890,7 +1891,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     ];
     return `<section class="panel">
       <div class="panel-head"><h2>Reconciliation</h2><span class="badge">${rows.every((r) => round2(r[1] - r[2]) === 0) ? 'Agrees' : 'Differences to review'}</span></div>
-      <div class="table-scroll"><table>
+      <div class="table-scroll" data-hscroll><table>
         <thead><tr><th>Tax account</th><th class="numeric">Register</th><th class="numeric">Ledger</th><th class="numeric">Difference</th><th>Status</th></tr></thead>
         <tbody>${rows.map(([name, reg, led]) => { const diff = round2(reg - led); return `<tr><td>${e(name)}</td><td class="numeric">${money(reg)}</td><td class="numeric">${money(led)}</td><td class="numeric">${money(diff)}</td><td>${diff === 0 ? badge('Agrees', 'good') : badge('Review', 'warn')}</td></tr>`; }).join('')}</tbody>
       </table></div>
@@ -2124,7 +2125,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const body = current === 'accounting' ? setup()
       : current === 'people' ? `<section class="panel">
           <div class="panel-head"><h2>People &amp; access</h2><span class="badge">${PEOPLE.length} people</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Scope</th><th>Status</th></tr></thead><tbody>${PEOPLE.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.email)}</td><td>${e(p.phone || '—')}</td><td>${e(p.role)}</td><td>${e(p.scope)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Scope</th><th>Status</th></tr></thead><tbody>${PEOPLE.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.email)}</td><td>${e(p.phone || '—')}</td><td>${e(p.role)}</td><td>${e(p.scope)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>
           <form data-people-form class="panel-body form-grid">
             <label>Name<input name="name" required maxlength="50"></label>
             <label>Email<input name="email" type="email" required maxlength="70"></label>
@@ -2138,7 +2139,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </section>`
       : current === 'periods' ? `<section class="panel">
           <div class="panel-head"><h2>Periods</h2><span class="badge ${PERIOD_LOCKED ? 'good' : ''}">${PERIOD_LOCKED ? 'November locked' : 'November open'}</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Period</th><th>From</th><th>To</th><th>State</th><th></th></tr></thead><tbody>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Period</th><th>From</th><th>To</th><th>State</th><th></th></tr></thead><tbody>
             ${[['Jul 2026', '2026-07-01', '2026-07-31'], ['Aug 2026', '2026-08-01', '2026-08-31'], ['Sep 2026', '2026-09-01', '2026-09-30'], ['Oct 2026', '2026-10-01', '2026-10-31'], ['Nov 2026', '2026-11-01', '2026-11-30']].map(([label, from, to]) => {
               const locked = label === 'Nov 2026' && PERIOD_LOCKED;
               return `<tr><td>${label}</td><td>${from}</td><td>${to}</td><td>${badge(locked ? 'Locked' : 'Open', locked ? 'good' : '')}</td><td>${label === 'Nov 2026' ? `<button class="text-button" data-period-toggle>${locked ? 'Reopen' : 'Lock'}</button>` : ''}</td></tr>`;
@@ -2148,7 +2149,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </section>`
       : current === 'forms' ? `<section class="panel">
           <div class="panel-head"><h2>Forms &amp; fields</h2><span class="badge">Versioned per business</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Form</th><th class="numeric">Standard fields</th><th>Custom fields</th><th>Last change</th></tr></thead><tbody>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Form</th><th class="numeric">Standard fields</th><th>Custom fields</th><th>Last change</th></tr></thead><tbody>
             ${[['Journal entry', 12], ['Sales invoice', 9], ['Purchase bill', 9], ['Receipt / payment', 7], ['Party', 9], ['Item', 7], ['Cash / bank sub-account', 6]].map(([name, count]) => `<tr><td>${e(name)}</td><td class="numeric">${count}</td><td>${CUSTOM_FIELDS.filter((f) => f.form === name).map((f) => `${e(f.name)}${f.required ? ' (required)' : ''}`).join(', ') || '—'}</td><td>This session</td></tr>`).join('')}
           </tbody></table></div>
           <form data-field-form class="panel-body form-grid">
@@ -2163,7 +2164,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </section>`
       : current === 'views' ? `<section class="panel">
           <div class="panel-head"><h2>Saved views</h2><span class="badge">${SAVED_VIEWS.length} views</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Scope</th><th>Columns, filters, sort</th></tr></thead><tbody>${SAVED_VIEWS.map((v) => `<tr><td>${e(v.name)}</td><td>${e(v.scope)}</td><td>${e(v.detail)}</td></tr>`).join('')}</tbody></table></div>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Name</th><th>Scope</th><th>Columns, filters, sort</th></tr></thead><tbody>${SAVED_VIEWS.map((v) => `<tr><td>${e(v.name)}</td><td>${e(v.scope)}</td><td>${e(v.detail)}</td></tr>`).join('')}</tbody></table></div>
           <form data-view-form class="panel-body form-grid">
             <label>Name<input name="name" required maxlength="40" placeholder="Overdue customers"></label>
             <label>Scope<select name="scope" class="inline-input">${['Journal entries', 'General ledger', 'Parties', 'Payments', 'Items', 'Taxes'].map((n) => `<option>${n}</option>`).join('')}</select></label>
@@ -2174,7 +2175,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </section>`
       : current === 'print' ? `<section class="panel">
           <div class="panel-head"><h2>Print &amp; templates</h2><span class="badge">${PRINT_TEMPLATES.length} templates</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Template</th><th>Size</th><th>Logo</th><th>QR</th><th>Footer</th></tr></thead><tbody>${PRINT_TEMPLATES.map((t) => `<tr><td>${e(t.name)}</td><td>${e(t.size)}</td><td>${t.logo ? 'Yes' : 'No'}</td><td>${t.qr ? 'Yes' : 'No'}</td><td>${e(t.footer)}</td></tr>`).join('')}</tbody></table></div>
+          <div class="table-scroll" data-hscroll><table><thead><tr><th>Template</th><th>Size</th><th>Logo</th><th>QR</th><th>Footer</th></tr></thead><tbody>${PRINT_TEMPLATES.map((t) => `<tr><td>${e(t.name)}</td><td>${e(t.size)}</td><td>${t.logo ? 'Yes' : 'No'}</td><td>${t.qr ? 'Yes' : 'No'}</td><td>${e(t.footer)}</td></tr>`).join('')}</tbody></table></div>
           <form data-print-form class="panel-body form-grid">
             <label>Name<input name="name" required maxlength="40" placeholder="A5 invoice"></label>
             <label>Size<select name="size" class="inline-input"><option>A4</option><option>A5</option><option>80 mm</option></select></label>
