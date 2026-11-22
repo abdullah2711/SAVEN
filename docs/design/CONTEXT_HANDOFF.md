@@ -88,6 +88,9 @@ savenuitest.localhost` → `docs/design/save`.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →
   Periods.
 - Supplied print and vertical-menu glyphs wired into the journal header.
+- Every master-data form is create-or-edit with an Edit action per row; every form
+  carries its full field set (see decision log round 11). Settings custom fields
+  show on the journal More info tab.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 

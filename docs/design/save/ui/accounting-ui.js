@@ -1,7 +1,7 @@
 import {escape as e,cents,decimal} from './model.js';
 import {chart,fixture,ledger,trial,statements,reviewJournal,csv} from './accounting-model.js';
 import {icon} from './icons.js';
-import {PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK} from './accounting-model.js';
+import {PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,CUSTOM_FIELDS} from './accounting-model.js';
 import {createAccountingSetup} from './accounting-setup.js';
 import {createScreens,plannedPage} from './screens.js';
 const button=(label,action,extra='',primary=false)=>`<button type="button" class="button ${primary?'primary':''}" data-ac="${action}" ${extra}>${label}</button>`;
@@ -137,7 +137,8 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
            <div><small>Submitted by</small>${e(draft.submittedBy||'Not submitted')}</div>
            <div><small>Source</small>${e(draft.origin||'User')}</div>
          </div>
-         <p class="form-note wide">Fields added to this form in Setup appear here. Created and submitted are separate identities: one person may do both, or a preparer may submit for an approver.</p>
+         ${CUSTOM_FIELDS.filter(f=>f.form==='Journal entry').map(f=>`<label>${e(f.name)}${f.required?' *':''}<input name="custom_${e(f.name.toLowerCase().replace(/[^a-z0-9]+/g,'_'))}" ${f.required?'required':''} value="${e(draft['custom_'+f.name.toLowerCase().replace(/[^a-z0-9]+/g,'_')]||'')}">${f.help?`<small class="secondary">${e(f.help)}</small>`:''}</label>`).join('')}
+         <p class="form-note wide">Fields added in Settings → Forms & fields appear here. Created and submitted are separate identities: one person may do both, or a preparer may submit for an approver.</p>
        </div>
 
        <div class="line-editor-heading"><h3>Journal lines</h3>${button('Add line','add-line')}</div>

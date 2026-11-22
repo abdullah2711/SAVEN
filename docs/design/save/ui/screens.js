@@ -3,7 +3,7 @@
 // no shader, no animation. Every total that duplicates a ledger figure is
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
-import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES} from './accounting-model.js';
+import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES,CUSTOM_FIELDS} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
@@ -96,6 +96,11 @@ const TAX_TABS = [
 let TAX_ACTIVE = 'rules';
 let PARTY_OPEN = '';
 let PERIOD_LOCKED = false;
+// Inline editing of master-data forms: the same form creates and updates.
+const EDIT = {type: '', code: ''};
+const editing = (type, code) => EDIT.type === type && EDIT.code === code;
+const editRecord = (type, list) => (EDIT.type === type ? list.find((x) => x.code === EDIT.code) : null);
+const cancelEdit = '<button type="button" class="button" data-edit-cancel>Cancel</button>';
 const PEOPLE = [
   {name: 'A. Rehman', email: 'owner@northstar.pk', role: 'Business owner', scope: 'Every module', status: 'Active'},
   {name: 'S. Iqbal', email: 's.iqbal@northstar.pk', role: 'Accountant', scope: 'Accounting, reports', status: 'Active'},
@@ -108,7 +113,6 @@ const SAVED_VIEWS = [
   {name: 'Unposted drafts', scope: 'Journal entries', detail: 'State draft · newest first'},
   {name: 'Customer balances', scope: 'Parties', detail: 'Customers only · balance descending'},
 ];
-const CUSTOM_FIELDS = [];
 const PRINT_TEMPLATES = [{name: 'A4 letterhead', size: 'A4', logo: true, qr: false, footer: 'Northstar Trading (Pvt) Ltd'}, {name: 'Thermal receipt', size: '80 mm', logo: false, qr: true, footer: 'Thank you'}];
 let PAY_FORM = {direction: 'receive', party: '', account: '', amount: ''};
 const PAYMENTS = [];
@@ -1011,18 +1015,28 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   /* Project and location master data lives in Setup; there are no separate
      pages for them. This is the only shared piece: the create-form handler. */
   function bindDimension(kind, rerender) {
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const [type, code] = b.dataset.edit.split(':');
+      if (type !== kind) return;
+      EDIT.type = kind; EDIT.code = code;
+      rerender();
+    }));
+    document.querySelector('[data-edit-cancel]')?.addEventListener('click', () => { EDIT.type = ''; EDIT.code = ''; rerender(); });
     document.querySelectorAll(`[data-dim-form="${kind}"]`).forEach((form) => form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const v = Object.fromEntries(new FormData(form));
       if (kind === 'project') {
-        if (PROJECTS.some((p) => p.code === v.code)) { notify('That project code already exists.'); return; }
-        PROJECTS.push({code: v.code, name: v.name, status: v.status, manager: v.manager, accounts: []});
-        notify('Project added for this session. It has no postings yet.');
+        if (!EDIT.code && PROJECTS.some((p) => p.code === v.code)) { notify('That project code already exists.'); return; }
+        const record = {code: v.code, name: v.name, status: v.status, manager: v.manager, start: v.start || '', end: v.end || '', budget: round2(Number(v.budget) || 0), description: v.description || ''};
+        if (EDIT.code) { Object.assign(PROJECTS.find((p) => p.code === EDIT.code), record); notify('Project updated for this session.'); }
+        else { PROJECTS.push({...record, accounts: []}); notify('Project added for this session. It has no postings yet.'); }
       } else {
-        if (LOCATIONS.some((l) => l.code === v.code)) { notify('That location code already exists.'); return; }
-        LOCATIONS.push({code: v.code, name: v.name, kind: v.kind, address: v.address || ''});
-        notify('Location added for this session. A branch is simply a location with kind branch.');
+        if (!EDIT.code && LOCATIONS.some((l) => l.code === v.code)) { notify('That location code already exists.'); return; }
+        const record = {code: v.code, name: v.name, kind: v.kind, address: v.address || '', contact: v.contact || '', phone: v.phone || '', notes: v.notes || ''};
+        if (EDIT.code) { Object.assign(LOCATIONS.find((l) => l.code === EDIT.code), record); notify('Location updated for this session.'); }
+        else { LOCATIONS.push(record); notify('Location added for this session. A branch is simply a location with kind branch.'); }
       }
+      EDIT.type = ''; EDIT.code = '';
       rerender();
     }));
   }
@@ -1031,7 +1045,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function setup() {
     const byControl = (kind) => accounts().filter((a) => a.control === kind).map((a) => `${a.code} ${a.name}`).join(', ') || 'Not set';
     const taxAccounts = accounts().filter((a) => ['1300', '2200'].includes(a.code)).map((a) => `${a.code} ${a.name}`).join(', ');
-    const field = (label, value, hint = '') => `<label>${e(label)}<input value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
+    const field = (label, value, hint = '', name = '') => `<label>${e(label)}<input ${name ? `name="${name}"` : ''} value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
     const row = (label, value) => `<div class="quiet-row"><div><strong>${e(label)}</strong></div><span>${e(value)}</span></div>`;
     const sections = {
       organisation: `<section class="panel">
@@ -1048,28 +1062,36 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </section>`,
       numbering: `<section class="panel">
         <div class="panel-head"><h2>Numbering</h2><span class="badge">Fixed after the first entry</span></div>
-        <div class="panel-body form-grid">
-          ${field('Journal prefix', 'JE-2026-')}
-          ${field('Sales invoice prefix', 'SI-')}
-          ${field('Purchase invoice prefix', 'PI-')}
-          ${field('Payment prefix', 'PMT-')}
-          ${field('Receipt prefix', 'RCT-')}
-          ${field('Next journal number', '0201')}
-        </div>
+        <form class="panel-body form-grid" data-settings-save="numbering">
+          ${field('Journal prefix', 'JE-2026-', '', 'journalPrefix')}
+          ${field('Next journal number', '0201', '', 'journalNext')}
+          ${field('Sales invoice prefix', 'SI-', '', 'salesPrefix')}
+          ${field('Next sales number', '0301', '', 'salesNext')}
+          ${field('Purchase invoice prefix', 'PI-', '', 'purchasePrefix')}
+          ${field('Next purchase number', '0301', '', 'purchaseNext')}
+          ${field('Payment prefix', 'PMT-', '', 'paymentPrefix')}
+          ${field('Next payment number', '0201', '', 'paymentNext')}
+          ${field('Receipt prefix', 'RCT-', '', 'receiptPrefix')}
+          ${field('Next receipt number', '0201', '', 'receiptNext')}
+          ${field('Number padding', '4', 'Digits after the prefix', 'padding')}
+          <div class="related"><button class="button primary">Save numbering</button></div>
+        </form>
         <div class="panel-body"><p class="form-note">A series is frozen once its first document exists; a deleted or cancelled number is never reused. Changing a prefix only affects documents that have not been created yet.</p></div>
       </section>`,
       accounts: `<section class="panel">
         <div class="panel-head"><h2>Default accounts</h2><span class="badge">From chart flags</span></div>
-        <div class="panel-body">
-          ${row('Trade receivables control', byControl('receivable'))}
-          ${row('Trade payables control', byControl('payable'))}
-          ${row('Tax accounts', taxAccounts)}
-          ${row('Inventory account', '1200 Inventory — finished goods')}
-          ${row('Bank account', '1010 Operating bank')}
-          ${row('Cash account', '1000 Cash')}
-          ${row('Rounding account', '6500 Bank charges')}
-          <p class="form-note">Control and tax accounts are set on the account itself, so a new account of that type appears here automatically. A control head requires a party or sub-account on every line that uses it.</p>
-        </div>
+        <form class="panel-body form-grid" data-settings-save="defaults">
+          <label>Trade receivables control<select name="ar" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '1100' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Trade payables control<select name="ap" class="inline-input">${accounts().filter((a) => a.type === 'liability').map((a) => `<option value="${a.code}" ${a.code === '2100' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Input tax account<select name="inputTax" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '1300' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Output tax account<select name="outputTax" class="inline-input">${accounts().filter((a) => a.type === 'liability').map((a) => `<option value="${a.code}" ${a.code === '2200' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Inventory account<select name="inventory" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '1200' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Rounding / bank charges<select name="rounding" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === '6500' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Default bank control<select name="bank" class="inline-input">${accounts().filter((a) => a.control === 'bank').map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Default cash control<select name="cash" class="inline-input">${accounts().filter((a) => a.control === 'cash').map((a) => `<option value="${a.code}" ${a.code === '1000' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <div class="related"><button class="button primary">Save defaults</button></div>
+        </form>
+        <div class="panel-body"><p class="form-note">Control and tax accounts are set on the account itself, so a new account of that type appears here automatically. A control head requires a party or sub-account on every line that uses it.</p></div>
       </section>`,
       heads: `<section class="panel">
         <div class="panel-head"><h2>Accounting heads</h2><span class="badge">${accounts().length} heads</span></div>
@@ -1082,37 +1104,50 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <label>Name<input name="name" required maxlength="80" placeholder="Marketing expense"></label>
           <label>Class<select name="type" class="inline-input"><option value="expense">Expense</option><option value="income">Income</option><option value="asset">Asset</option><option value="liability">Liability</option><option value="equity">Equity</option></select></label>
           <label>Control<select name="control" class="inline-input"><option value="">Ordinary posting account</option><option value="receivable">Receivable control — customer on every line</option><option value="payable">Payable control — supplier on every line</option><option value="bank">Bank control — needs a bank sub-account</option><option value="cash">Cash control — needs a cash sub-account</option></select></label>
+          <label class="wide">Description<input name="description" maxlength="100" placeholder="What this head is used for"></label>
           <div class="related"><button class="button primary">Add accounting head</button></div>
         </form>
         <div class="panel-body"><p class="form-note">A head created here appears in the chart, the journal picker and the default-account list immediately. A control head demands a party or sub-account on every line; that is how a chart balance keeps its subledger.</p></div>
       </section>`,
-      dimensions: `<div class="two-column">
+      dimensions: (() => {
+        const pr = editRecord('project', PROJECTS) || {};
+        const lc = editRecord('location', LOCATIONS) || {};
+        const pv = (key, fallback = '') => (pr[key] !== undefined ? pr[key] : fallback);
+        const lv = (key, fallback = '') => (lc[key] !== undefined ? lc[key] : fallback);
+        return `<div class="two-column">
         <section class="panel">
           <div class="panel-head"><h2>Projects</h2><span class="badge">Data field</span></div>
           <table>
-            <thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th></tr></thead>
-            <tbody>${PROJECTS.length ? PROJECTS.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager)}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td></tr>`).join('') : '<tr><td colspan="4">No projects yet.</td></tr>'}</tbody>
+            <thead><tr><th>Code</th><th>Project</th><th>Manager</th><th>State</th><th></th></tr></thead>
+            <tbody>${PROJECTS.length ? PROJECTS.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.manager)}</td><td>${badge(p.status, p.status === 'active' ? 'good' : 'warn')}</td><td><button class="text-button" data-edit="project:${e(p.code)}">Edit</button></td></tr>`).join('') : '<tr><td colspan="5">No projects yet.</td></tr>'}</tbody>
           </table>
           <form data-dim-form="project" class="panel-body form-grid">
-            <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="PRJ-NORTH"></label>
-            <label>Name<input name="name" required maxlength="60" placeholder="North depot"></label>
-            <label>Manager<input name="manager" required maxlength="40" value="A. Rehman"></label>
-            <label>State<select name="status" class="inline-input"><option value="active">Active</option><option value="on hold">On hold</option></select></label>
-            <div class="related"><button class="button primary">Add project</button></div>
+            <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(pv('code'))}" ${pr.code ? 'readonly' : ''} placeholder="PRJ-NORTH"></label>
+            <label>Name<input name="name" required maxlength="60" value="${e(pv('name'))}" placeholder="North depot"></label>
+            <label>Manager<input name="manager" maxlength="40" value="${e(pv('manager', 'A. Rehman'))}"></label>
+            <label>State<select name="status" class="inline-input"><option value="active" ${pv('status', 'active') === 'active' ? 'selected' : ''}>Active</option><option value="on hold" ${pv('status') === 'on hold' ? 'selected' : ''}>On hold</option><option value="closed" ${pv('status') === 'closed' ? 'selected' : ''}>Closed</option></select></label>
+            <label>Start date<input name="start" type="date" value="${e(pv('start'))}"></label>
+            <label>End date<input name="end" type="date" value="${e(pv('end'))}"></label>
+            <label>Budget<input name="budget" inputmode="decimal" value="${e(pv('budget', '0.00'))}"></label>
+            <label class="wide">Description<input name="description" maxlength="100" value="${e(pv('description'))}" placeholder="What the project covers"></label>
+            <div class="related"><button class="button primary">${pr.code ? 'Save changes' : 'Add project'}</button>${pr.code ? cancelEdit : ''}</div>
           </form>
         </section>
         <section class="panel">
           <div class="panel-head"><h2>Locations</h2><span class="badge">A branch is a location kind</span></div>
           <table>
-            <thead><tr><th>Code</th><th>Location</th><th>Kind</th></tr></thead>
-            <tbody>${LOCATIONS.map((l) => `<tr><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td></tr>`).join('')}</tbody>
+            <thead><tr><th>Code</th><th>Location</th><th>Kind</th><th></th></tr></thead>
+            <tbody>${LOCATIONS.map((l) => `<tr><td class="mono">${e(l.code)}</td><td>${e(l.name)}</td><td>${e(l.kind)}</td><td><button class="text-button" data-edit="location:${e(l.code)}">Edit</button></td></tr>`).join('')}</tbody>
           </table>
           <form data-dim-form="location" class="panel-body form-grid">
-            <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BR-KHI-03"></label>
-            <label>Name<input name="name" required maxlength="60" placeholder="Saddar branch"></label>
-            <label>Kind<select name="kind" class="inline-input"><option value="branch">Branch</option><option value="office">Office</option><option value="outlet">Outlet</option><option value="warehouse">Warehouse</option><option value="site">Site</option></select></label>
-            <label>Address<input name="address" maxlength="80" placeholder="Optional"></label>
-            <div class="related"><button class="button primary">Add location</button></div>
+            <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(lv('code'))}" ${lc.code ? 'readonly' : ''} placeholder="BR-KHI-03"></label>
+            <label>Name<input name="name" required maxlength="60" value="${e(lv('name'))}" placeholder="Saddar branch"></label>
+            <label>Kind<select name="kind" class="inline-input"><option value="branch" ${lv('kind') === 'branch' ? 'selected' : ''}>Branch</option><option value="office" ${lv('kind') === 'office' ? 'selected' : ''}>Office</option><option value="outlet" ${lv('kind') === 'outlet' ? 'selected' : ''}>Outlet</option><option value="warehouse" ${lv('kind') === 'warehouse' ? 'selected' : ''}>Warehouse</option><option value="site" ${lv('kind') === 'site' ? 'selected' : ''}>Site</option></select></label>
+            <label>Address<input name="address" maxlength="80" value="${e(lv('address'))}" placeholder="Street, city"></label>
+            <label>Contact person<input name="contact" maxlength="50" value="${e(lv('contact'))}"></label>
+            <label>Phone<input name="phone" maxlength="30" value="${e(lv('phone'))}"></label>
+            <label class="wide">Notes<input name="notes" maxlength="100" value="${e(lv('notes'))}" placeholder="Opening hours, access, custodian"></label>
+            <div class="related"><button class="button primary">${lc.code ? 'Save changes' : 'Add location'}</button>${lc.code ? cancelEdit : ''}</div>
           </form>
         </section>
       </div>
@@ -1121,17 +1156,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <div class="panel-body"><ul class="contract-list">${COST_CENTRES.map((c) => `<li>${e(c)}</li>`).join('')}</ul>
           <p class="form-note">Project and location are data fields on a transaction: project says what the work was for, location says where it happened, and both slice the reports. Neither holds a balance. Which projects and locations a party or a bank/cash sub-account may be used on is set on that party or sub-account, not here.</p>
         </div>
-      </section>`,
+      </section>`;
+      })(),
       approval: `<section class="panel">
         <div class="panel-head"><h2>Approvals and periods</h2></div>
-        <div class="panel-body form-grid">
-          ${field('Review required above', '100,000.00', 'Debits above this need an independent reviewer')}
-          ${field('Self approval', 'Not permitted')}
-          ${field('Period lock', 'Requires checklist and sign-off')}
-          ${field('Reopen authority', 'Business administrator only')}
-          ${field('Post into closed period', 'Administrator, with reason')}
-          ${field('Correction route', 'Cancel, then delete; a reversal only when the correction must stay visible')}
-        </div>
+        <form class="panel-body form-grid" data-settings-save="approvals">
+          ${field('Review required above', '100,000.00', 'Debits above this need an independent reviewer', 'reviewAbove')}
+          <label>Self approval<select name="selfApproval" class="inline-input"><option>Not permitted</option><option>Allowed below the threshold</option><option>Allowed with reason</option></select></label>
+          <label>Period lock<select name="periodLock" class="inline-input"><option>Requires checklist and sign-off</option><option>Automatic on close</option><option>Manual only</option></select></label>
+          ${field('Reopen authority', 'Business administrator only', '', 'reopenAuthority')}
+          ${field('Post into closed period', 'Administrator, with reason', '', 'closedPeriod')}
+          ${field('Correction route', 'Cancel, then delete; a reversal only when the correction must stay visible', '', 'correction')}
+          <div class="related"><button class="button primary">Save policy</button></div>
+        </form>
       </section>`
     };
     const order = [['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['dimensions', 'Projects & locations'], ['approval', 'Approvals & periods']];
@@ -1152,7 +1189,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const v = Object.fromEntries(new FormData(form));
       if (accounts().some((a) => a.code === v.code)) { notify('That accounting head code already exists.'); return; }
       const group = {asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses'}[v.type];
-      accounts().push({code: v.code, name: v.name, type: v.type, group, control: v.control, currency: 'PKR', active: true});
+      accounts().push({code: v.code, name: v.name, type: v.type, group, control: v.control, description: v.description || '', currency: 'PKR', active: true});
       notify('Accounting head added for this session. It is now available in the journal form.');
       rerender();
     });
@@ -1180,11 +1217,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function cashBankView() {
     const controls = accounts().filter((a) => a.control === 'bank' || a.control === 'cash');
     const list = cashAccountRows();
+    const editingRow = editRecord('cash', CASH_BANK) || {};
     const led = (code) => Math.abs(ledgerBalance(code));
     const bankLedger = round2(controls.filter((a) => a.control === 'bank').reduce((n, a) => n + led(a.code), 0));
     const cashLedger = round2(controls.filter((a) => a.control === 'cash').reduce((n, a) => n + led(a.code), 0));
     const named = round2(list.reduce((n, s) => n + s.balance, 0));
     const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    const v = (key, fallback = '') => (editingRow[key] !== undefined ? editingRow[key] : fallback);
     return `<div class="stats">
         ${kpi('Bank controls', money(bankLedger), `${controls.filter((a) => a.control === 'bank').length} heads · ${list.filter((s) => s.kind === 'bank').length} sub-accounts`)}
         ${kpi('Cash controls', money(cashLedger), `${controls.filter((a) => a.control === 'cash').length} heads · ${list.filter((s) => s.kind === 'cash').length} sub-accounts`)}
@@ -1194,38 +1233,59 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       <section class="panel">
         <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${list.length} accounts</span></div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th></tr></thead>
-          <tbody>${list.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference)}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td></tr>`; }).join('')}</tbody>
-          <tfoot><tr><td colspan="5">Total named</td><td class="numeric">${money(named)}</td><td colspan="2"></td></tr></tfoot>
+          <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th></th></tr></thead>
+          <tbody>${list.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td><button class="text-button" data-edit="cash:${e(s.code)}">Edit</button></td></tr>`; }).join('')}</tbody>
+          <tfoot><tr><td colspan="6">Total named</td><td class="numeric">${money(named)}</td><td colspan="3"></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts — add another control head in Settings → Accounting and it appears in the form below. Unallocated is the part of the control balances that no document has named yet.</div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>New cash or bank sub-account</h2><span class="badge">Blank access means all</span></div>
+        <div class="panel-head"><h2>${editingRow.code ? `Edit ${e(editingRow.name)}` : 'New cash or bank sub-account'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'Blank access means all'}</span></div>
         <form data-cash-form class="panel-body form-grid">
-          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BANK-HBL"></label>
-          <label>Name<input name="name" required maxlength="70" placeholder="HBL — current 1234"></label>
-          <label>Control head<select name="control" class="inline-input" required>${controls.map((a) => `<option value="${a.code}" ${a.code === '1010' ? 'selected' : ''}>${a.code} · ${e(a.name)} (${a.control})</option>`).join('')}</select></label>
-          <label>Kind<select name="kind" class="inline-input"><option value="bank">Bank</option><option value="cash">Cash</option></select></label>
-          <label>Reference<input name="reference" maxlength="40" placeholder="IBAN, card or till number"></label>
-          ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
-          ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
-          <div class="related"><button class="button primary">Add sub-account</button></div>
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="BANK-HBL"></label>
+          <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="HBL — current 1234"></label>
+          <label>Control head<select name="control" class="inline-input" required>${controls.map((a) => `<option value="${a.code}" ${a.code === v('control', '1010') ? 'selected' : ''}>${a.code} · ${e(a.name)} (${a.control})</option>`).join('')}</select></label>
+          <label>Kind<select name="kind" class="inline-input"><option value="bank" ${v('kind') === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${v('kind') === 'cash' ? 'selected' : ''}>Cash</option></select></label>
+          <label>Bank name<input name="bank" maxlength="60" value="${e(v('bank'))}" placeholder="Habib Bank"></label>
+          <label>Branch<input name="branch" maxlength="60" value="${e(v('branch'))}" placeholder="Clifton"></label>
+          <label>Account / IBAN / till<input name="reference" maxlength="40" value="${e(v('reference'))}" placeholder="PK00XXXX0000000000000000"></label>
+          <label>Currency<input name="currency" maxlength="3" value="${e(v('currency', 'PKR'))}"></label>
+          <label>Opening balance<input name="opening" inputmode="decimal" value="${e(v('opening', '0.00'))}"></label>
+          <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
+          <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Authorised signatories, cut-off, card machine"></label>
+          ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
+          ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
+          <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add sub-account'}</button>${editingRow.code ? cancelEdit : ''}</div>
         </form>
         <div class="panel-body"><p class="form-note">The control head decides where the balance sits; the kind decides which journal lines may pick the sub-account. A bank control takes bank lines, a cash control takes cash lines, and the chosen projects and locations narrow it further.</p></div>
       </section>`;
   }
 
   function bindCashBank(rerender, notify) {
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const [type, code] = b.dataset.edit.split(':');
+      if (type !== 'cash') return;
+      EDIT.type = 'cash'; EDIT.code = code;
+      rerender();
+    }));
+    document.querySelector('[data-edit-cancel]')?.addEventListener('click', () => { EDIT.type = ''; EDIT.code = ''; rerender(); });
     document.querySelector('[data-cash-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
       if (!form.reportValidity()) return;
-      const v = Object.fromEntries(new FormData(form));
-      if (CASH_BANK.some((s) => s.code === v.code || s.name.trim().toLowerCase() === v.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
+      const v2 = Object.fromEntries(new FormData(form));
+      if (!EDIT.code && CASH_BANK.some((s) => s.code === v2.code || s.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      CASH_BANK.push({code: v.code, name: v.name.trim(), kind: v.kind, control: v.control, reference: v.reference || '', projects: picked(proj), locations: picked(loc)});
-      notify('Sub-account added for this session. It is available in the journal and belongs to the chosen projects and locations.');
+      const record = {code: v2.code, name: v2.name.trim(), kind: v2.kind, control: v2.control, reference: v2.reference || '', bank: v2.bank || '', branch: v2.branch || '', currency: v2.currency || 'PKR', opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
+      if (EDIT.code) {
+        const target = CASH_BANK.find((s) => s.code === EDIT.code);
+        if (target) Object.assign(target, record);
+        notify('Sub-account updated for this session.');
+      } else {
+        CASH_BANK.push(record);
+        notify('Sub-account added for this session. It is available in the journal and belongs to the chosen projects and locations.');
+      }
+      EDIT.type = ''; EDIT.code = '';
       rerender();
     });
   }
@@ -1262,20 +1322,24 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   function partiesView() {
     const rows = partyRows();
     const open = rows.find((p) => p.code === PARTY_OPEN);
+    const editingRow = editRecord('party', PARTIES) || {};
     const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
     const receivable = round2(rows.filter((p) => p.type === 'customer').reduce((n, p) => n + p.balance, 0));
     const payable = round2(rows.filter((p) => p.type === 'supplier').reduce((n, p) => n + p.balance, 0));
     const statement = open ? partyStatement(open) : [];
+    const v = (key, fallback = '') => (editingRow[key] !== undefined ? editingRow[key] : fallback);
     const page = open ? `<section class="panel">
         <div class="panel-head"><div><div class="eyebrow">${e(open.code)} · ${e(open.type)}</div><h2>${e(open.name)}</h2></div><div class="related">${badge(open.status, open.status === 'Active' ? 'good' : 'warn')}<button class="text-button" data-party-close>Close</button></div></div>
         <div class="panel-body">
           <div class="record-summary">
             <div><small>Balance</small><strong>${money(open.balance)}</strong></div>
             <div><small>Terms</small>${open.terms ? `${open.terms} days` : 'Due on receipt'}</div>
-            <div><small>Credit limit</small>${open.limit ? `${money(open.limit)} · ${open.limit ? Math.round((open.balance / open.limit) * 100) : 0}% used` : 'Not set'}</div>
-            <div><small>Tax identity</small>${e(open.taxId)}</div>
+            <div><small>Credit limit</small>${open.limit ? `${money(open.limit)} · ${Math.round((open.balance / open.limit) * 100)}% used` : 'Not set'}</div>
+            <div><small>Contact</small>${e(open.contact || '—')}<small>${e(open.phone || '')} ${e(open.email || '')}</small></div>
+            <div><small>Tax identity</small>${e(open.taxId || '—')}</div>
             <div><small>Group</small>${e(open.group)}</div>
             <div><small>Allowed</small>${e(scopeText(open.projects))} · ${e(scopeText(open.locations))}</div>
+            <div><small>Currency</small>${e(open.currency || 'PKR')}</div>
           </div>
         </div>
         <div class="table-scroll"><table>
@@ -1288,7 +1352,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <form data-party-access="${e(open.code)}" class="form-grid">
             ${ms('pa-projects', 'Projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), open.projects)}
             ${ms('pa-locations', 'Locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), open.locations)}
-            <div class="related"><button class="button primary">Save access</button><button class="button" data-party-hold="${e(open.code)}">${open.status === 'Active' ? 'Put on hold' : 'Reactivate'}</button></div>
+            <div class="related"><button class="button primary">Save access</button><button class="button" data-party-hold="${e(open.code)}">${open.status === 'Active' ? 'Put on hold' : 'Reactivate'}</button><button class="button" data-edit="party:${e(open.code)}">Edit party</button></div>
           </form>
           <p class="form-note">Access narrows where this party can be picked in the journal. It never changes a balance and it is not a permission.</p>
         </div>
@@ -1303,24 +1367,32 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         <div class="panel-head"><h2>Parties</h2><span class="badge">${rows.length} records</span></div>
         <div class="table-scroll"><table>
           <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Group</th><th class="numeric">Terms</th><th class="numeric">Limit</th><th class="numeric">Balance</th><th>Status</th><th></th></tr></thead>
-          <tbody>${rows.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-open="${e(p.code)}">Open</button></td></tr>`).join('')}</tbody>
+          <tbody>${rows.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-open="${e(p.code)}">Open</button> <button class="text-button" data-edit="party:${e(p.code)}">Edit</button></td></tr>`).join('')}</tbody>
           <tfoot><tr><td colspan="6">Total</td><td class="numeric">${money(receivable + payable)}</td><td colspan="2"></td></tr></tfoot>
         </table></div>
         <div class="table-footer">Balance is the party's open position on its control account. A customer sits on 1100, a supplier on 2100. Credit limits and terms are configuration; they do not block posting on their own.</div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>New party</h2><span class="badge">Access is set here</span></div>
+        <div class="panel-head"><h2>${editingRow.code ? `Edit ${e(editingRow.name)}` : 'New party'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'Access is set here'}</span></div>
         <form data-party-form class="panel-body form-grid">
-          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="CUS-130"></label>
-          <label>Name<input name="name" required maxlength="70" placeholder="New customer"></label>
-          <label>Type<select name="type" class="inline-input"><option value="customer">Customer</option><option value="supplier">Supplier</option></select></label>
-          <label>Group<input name="group" maxlength="30" placeholder="Wholesale"></label>
-          <label>Payment terms (days)<input name="terms" type="number" min="0" max="365" value="30"></label>
-          <label>Credit limit<input name="limit" inputmode="decimal" value="0.00"></label>
-          <label>Tax identity<input name="taxId" maxlength="30" placeholder="NTN-"></label>
-          ${ms('party-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
-          ${ms('party-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
-          <div class="related"><button class="button primary">Add party</button></div>
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="CUS-130"></label>
+          <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="New customer"></label>
+          <label>Type<select name="type" class="inline-input"><option value="customer" ${v('type') !== 'supplier' ? 'selected' : ''}>Customer</option><option value="supplier" ${v('type') === 'supplier' ? 'selected' : ''}>Supplier</option></select></label>
+          <label>Group<input name="group" maxlength="30" value="${e(v('group'))}" placeholder="Wholesale"></label>
+          <label>Contact person<input name="contact" maxlength="50" value="${e(v('contact'))}" placeholder="Finance manager"></label>
+          <label>Phone<input name="phone" maxlength="30" value="${e(v('phone'))}" placeholder="+92 300 0000000"></label>
+          <label>Email<input name="email" type="email" maxlength="70" value="${e(v('email'))}" placeholder="accounts@customer.pk"></label>
+          <label>Currency<input name="currency" maxlength="3" value="${e(v('currency', 'PKR'))}"></label>
+          <label>Payment terms (days)<input name="terms" type="number" min="0" max="365" value="${e(v('terms', '30'))}"></label>
+          <label>Credit limit<input name="limit" inputmode="decimal" value="${e(v('limit', '0.00'))}"></label>
+          <label>Opening balance<input name="opening" inputmode="decimal" value="${e(v('opening', '0.00'))}"></label>
+          <label>Tax identity<input name="taxId" maxlength="30" value="${e(v('taxId'))}" placeholder="NTN-"></label>
+          <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Hold' ? 'selected' : ''}>Hold</option><option ${v('status') === 'Blocked' ? 'selected' : ''}>Blocked</option></select></label>
+          <label>Billing address<input name="address" maxlength="90" value="${e(v('address'))}" placeholder="Street, city"></label>
+          <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Delivery instructions, special terms"></label>
+          ${ms('party-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
+          ${ms('party-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
+          <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add party'}</button>${editingRow.code ? cancelEdit : ''}</div>
         </form>
         <div class="panel-body"><p class="form-note">A customer or supplier is a sub-account of 1100 or 2100. The journal only offers a party where its account kind and its allowed projects and locations agree.</p></div>
       </section>`;
@@ -1332,6 +1404,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       rerender();
     }));
     document.querySelector('[data-party-close]')?.addEventListener('click', () => { PARTY_OPEN = ''; rerender(); });
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const [type, code] = b.dataset.edit.split(':');
+      if (type !== 'party') return;
+      EDIT.type = 'party'; EDIT.code = code;
+      rerender();
+    }));
+    document.querySelector('[data-edit-cancel]')?.addEventListener('click', () => { EDIT.type = ''; EDIT.code = ''; rerender(); });
     document.querySelector('[data-party-hold]')?.addEventListener('click', (ev) => {
       const p = PARTIES.find((x) => x.code === ev.target.dataset.partyHold);
       if (!p) return;
@@ -1354,29 +1433,22 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       ev.preventDefault();
       const form = ev.target;
       if (!form.reportValidity()) return;
-      const v = Object.fromEntries(new FormData(form));
-      if (PARTIES.some((p) => p.code === v.code || p.name.trim().toLowerCase() === v.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
+      const v2 = Object.fromEntries(new FormData(form));
+      if (!EDIT.code && PARTIES.some((p) => p.code === v2.code || p.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      PARTIES.push({code: v.code, name: v.name.trim(), type: v.type, group: v.group || 'General', terms: Number(v.terms) || 0, limit: round2(Number(v.limit) || 0), status: 'Active', taxId: v.taxId || '', projects: picked(proj), locations: picked(loc)});
-      notify('Party added for this session. It is available in the journal and in payments.');
+      const record = {code: v2.code, name: v2.name.trim(), type: v2.type, group: v2.group || 'General', terms: Number(v2.terms) || 0, limit: round2(Number(v2.limit) || 0), opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', taxId: v2.taxId || '', contact: v2.contact || '', phone: v2.phone || '', email: v2.email || '', address: v2.address || '', currency: v2.currency || 'PKR', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
+      if (EDIT.code) {
+        const target = PARTIES.find((p) => p.code === EDIT.code);
+        if (target) Object.assign(target, record);
+        notify('Party updated for this session.');
+      } else {
+        PARTIES.push(record);
+        notify('Party added for this session. It is available in the journal and in payments.');
+      }
+      EDIT.type = ''; EDIT.code = '';
       rerender();
     });
   }
-
-  /* ----------------------------------------------------------- invoices */
-  const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
-  const INV_DRAFT = {
-    sales: {party: '', date: '2026-11-30', due: '2026-12-30', narration: 'Service invoiced', lines: [
-      {account: '4000', description: 'Service', qty: '1', price: '0.00'},
-      {account: '4000', description: '', qty: '1', price: '0.00'},
-      {account: '4000', description: '', qty: '1', price: '0.00'},
-    ]},
-    purchase: {party: '', date: '2026-11-30', due: '2026-12-30', narration: 'Supplier bill', lines: [
-      {account: '5000', description: 'Service', qty: '1', price: '0.00'},
-      {account: '5000', description: '', qty: '1', price: '0.00'},
-      {account: '5000', description: '', qty: '1', price: '0.00'},
-    ]},
-  };
 
   /* ----------------------------------------------------------- payments */
   function openItems(party) {
@@ -1443,8 +1515,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <label>Party<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === PAY_FORM.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
           <label>Cash / bank<select name="account" class="inline-input" required><option value="">Choose a sub-account</option>${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === PAY_FORM.account ? 'selected' : ''}>${e(c.name)} · ${e(c.control)}</option>`).join('')}</select></label>
           <label>Date<input name="date" type="date" value="2026-11-30" required></label>
+          <label>Method<select name="method" class="inline-input"><option>Bank transfer</option><option>Cheque</option><option>Cash</option><option>Card</option><option>Online</option></select></label>
           <label>Reference<input name="reference" maxlength="40" placeholder="Cheque, transfer or slip"></label>
+          <label>Instrument number<input name="instrument" maxlength="30" placeholder="Cheque / transaction number"></label>
+          <label>Instrument date<input name="instrumentDate" type="date" value="2026-11-30"></label>
           <label>Amount<input name="amount" inputmode="decimal" value="${PAY_FORM.amount || ''}" placeholder="0.00" required></label>
+          <label class="wide">Notes<input name="notes" maxlength="100" placeholder="What this money is for"></label>
           <div class="related"><button type="button" class="button" data-pay-calc>Show allocation</button><button class="button primary">Save for this session</button></div>
         </form>
         ${party ? `<div class="panel-body"><div class="section-title">Open documents · ${e(party.name)}</div>
@@ -1474,7 +1550,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const amount = round2(Number(v.amount) || 0);
       if (amount <= 0) { notify('Enter an amount greater than zero.'); return; }
       const allocation = autoAllocate(party, amount);
-      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: v.account, amount, direction: v.direction, against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, session: true});
+      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: v.account, amount, direction: v.direction, method: v.method || '', reference: v.reference || '', instrument: v.instrument || '', instrumentDate: v.instrumentDate || '', notes: v.notes || '', against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, session: true});
       notify(`Saved for this session: ${allocation.rows.length} documents settled${allocation.left ? `, ${allocation.left.toFixed(2)} left as an advance` : ''}.`);
       PAY_FORM.amount = '';
       rerender();
@@ -1537,8 +1613,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <label>${isSales ? 'Customer' : 'Supplier'}<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === draft.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
           <label>Date<input name="date" type="date" value="${e(draft.date)}" required></label>
           <label>Due date<input name="due" type="date" value="${e(draft.due)}" required></label>
+          <label>Terms (days)<input name="terms" type="number" min="0" max="365" value="${e(draft.terms || '30')}"></label>
+          <label>${isSales ? 'Customer reference' : 'Supplier invoice no'}<input name="reference" maxlength="40" value="${e(draft.reference || '')}" placeholder="PO or their document number"></label>
+          <label>Location<select name="location" class="inline-input">${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${e(l.code) === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
           <label>Narration<input name="narration" maxlength="80" value="${e(draft.narration)}"></label>
-          <div class="wide"></div>
+          <label class="wide">Notes<input name="notes" maxlength="100" value="${e(draft.notes || '')}" placeholder="What the document covers"></label>
         </form>
         <div class="table-scroll"><table class="invoice-lines">
           <thead><tr><th>Line</th><th>Account</th><th>Description</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th></tr></thead>
@@ -1561,7 +1640,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       qty: tr.querySelector('[data-inv-field="qty"]').value,
       price: tr.querySelector('[data-inv-field="price"]').value,
     }));
-    Object.assign(draft, {party: v.party, date: v.date, due: v.due, narration: v.narration, lines});
+    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, narration: v.narration, notes: v.notes, lines});
     return draft;
   }
   function bindInvoices(kind, rerender, notify) {
@@ -1573,7 +1652,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       if (!draft.party) { notify('Choose a party first.'); return; }
       const totals = invoiceTotals(kind, draft.lines);
       if (totals.net <= 0) { notify('Enter at least one line with a quantity and a price.'); return; }
-      INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, narration: draft.narration, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
+      INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
       notify(`Saved for this session: ${draft.party} · gross ${totals.gross.toFixed(2)}.`);
       INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', lines: INV_DRAFT[invKey(kind)].lines.map((l) => ({...l, price: '0.00', qty: '1'}))};
       rerender();
@@ -1585,6 +1664,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
     const ruleName = (code) => (TAX_RULES.find((r) => r.code === code) || {}).name || 'No tax';
     const tracked = ITEMS.filter((i) => i.tracked).length;
+    const editingRow = editRecord('item', ITEMS) || {};
+    const v = (key, fallback = '') => (editingRow[key] !== undefined ? editingRow[key] : fallback);
     const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
     return `<div class="stats">
         ${kpi('Items', String(ITEMS.length), 'Shared with Inventory')}
@@ -1594,35 +1675,55 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       <section class="panel">
         <div class="panel-head"><h2>Items</h2><span class="badge">Accounting view</span></div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Code</th><th>Item</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Tax rule</th><th>Stock</th></tr></thead>
-          <tbody>${ITEMS.map((i) => `<tr><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td></tr>`).join('')}</tbody>
+          <thead><tr><th>Code</th><th>Item</th><th>Group</th><th>Unit</th><th>Income head</th><th>Expense head</th><th>Tax rule</th><th>Stock</th><th></th></tr></thead>
+          <tbody>${ITEMS.map((i) => `<tr><td class="mono">${e(i.code)}</td><td>${e(i.name)}</td><td>${e(i.group || 'General')}</td><td>${e(i.unit)}</td><td>${e(i.income)} · ${e(accountName(i.income))}</td><td>${e(i.expense)} · ${e(accountName(i.expense))}</td><td>${e(ruleName(i.tax))}</td><td>${i.tracked ? badge('Tracked', 'good') : badge('Service')}</td><td><button class="text-button" data-edit="item:${e(i.code)}">Edit</button></td></tr>`).join('')}</tbody>
         </table></div>
         <div class="table-footer">The item master is shared with Inventory. Accounting stores the accounts and the tax default; Inventory owns quantity, valuation and movement. An item line appears in the ledger only when an invoice or bill is posted.</div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>New item</h2></div>
+        <div class="panel-head"><h2>${editingRow.code ? `Edit ${e(editingRow.name)}` : 'New item'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'Accounts and tax default'}</span></div>
         <form data-item-form class="panel-body form-grid">
-          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="ITM-BOX"></label>
-          <label>Name<input name="name" required maxlength="70" placeholder="Shipping box"></label>
-          <label>Unit<input name="unit" required maxlength="10" value="piece"></label>
-          <label>Stock<select name="tracked" class="inline-input"><option value="no">Service or untracked</option><option value="yes">Tracked in Inventory</option></select></label>
-          <label>Income head<select name="income" class="inline-input">${accounts().filter((a) => a.type === 'income').map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-          <label>Expense head<select name="expense" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-          <label>Tax rule<select name="tax" class="inline-input">${TAX_RULES.filter((r) => r.kind === 'sales' || r.kind === 'purchase').map((r) => `<option value="${r.code}">${e(r.name)}</option>`).join('')}</select></label>
-          <div class="related"><button class="button primary">Add item</button></div>
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="ITM-BOX"></label>
+          <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="Shipping box"></label>
+          <label>Group<input name="group" maxlength="30" value="${e(v('group'))}" placeholder="Packaging"></label>
+          <label>Unit<input name="unit" required maxlength="10" value="${e(v('unit', 'piece'))}"></label>
+          <label class="wide">Description<input name="description" maxlength="120" value="${e(v('description'))}" placeholder="What the item is; prints on documents"></label>
+          <label>Income head<select name="income" class="inline-input">${accounts().filter((a) => a.type === 'income').map((a) => `<option value="${a.code}" ${a.code === v('income', '4000') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Expense head<select name="expense" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === v('expense', '5000') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Tax rule<select name="tax" class="inline-input">${TAX_RULES.filter((r) => r.kind === 'sales' || r.kind === 'purchase').map((r) => `<option value="${r.code}" ${r.code === v('tax') ? 'selected' : ''}>${e(r.name)}</option>`).join('')}</select></label>
+          <label>Stock<select name="tracked" class="inline-input"><option value="no" ${v('tracked') ? '' : 'selected'}>Service or untracked</option><option value="yes" ${v('tracked') ? 'selected' : ''}>Tracked in Inventory</option></select></label>
+          <label>Sale price<input name="salePrice" inputmode="decimal" value="${e(v('salePrice', '0.00'))}"></label>
+          <label>Purchase price<input name="purchasePrice" inputmode="decimal" value="${e(v('purchasePrice', '0.00'))}"></label>
+          <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Archived' ? 'selected' : ''}>Archived</option></select></label>
+          <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add item'}</button>${editingRow.code ? cancelEdit : ''}</div>
         </form>
       </section>`;
   }
 
   function bindItems(rerender, notify) {
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const [type, code] = b.dataset.edit.split(':');
+      if (type !== 'item') return;
+      EDIT.type = 'item'; EDIT.code = code;
+      rerender();
+    }));
+    document.querySelector('[data-edit-cancel]')?.addEventListener('click', () => { EDIT.type = ''; EDIT.code = ''; rerender(); });
     document.querySelector('[data-item-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
       if (!form.reportValidity()) return;
-      const v = Object.fromEntries(new FormData(form));
-      if (ITEMS.some((i) => i.code === v.code)) { notify('That item code already exists.'); return; }
-      ITEMS.push({code: v.code, name: v.name, unit: v.unit, income: v.income, expense: v.expense, tax: v.tax, tracked: v.tracked === 'yes'});
-      notify('Item added for this session. Its accounts and tax default are ready for invoices.');
+      const v2 = Object.fromEntries(new FormData(form));
+      if (!EDIT.code && ITEMS.some((i) => i.code === v2.code)) { notify('That item code already exists.'); return; }
+      const record = {code: v2.code, name: v2.name, group: v2.group || 'General', unit: v2.unit, description: v2.description || '', income: v2.income, expense: v2.expense, tax: v2.tax, tracked: v2.tracked === 'yes', salePrice: round2(Number(v2.salePrice) || 0), purchasePrice: round2(Number(v2.purchasePrice) || 0), status: v2.status || 'Active'};
+      if (EDIT.code) {
+        const target = ITEMS.find((i) => i.code === EDIT.code);
+        if (target) Object.assign(target, record);
+        notify('Item updated for this session.');
+      } else {
+        ITEMS.push(record);
+        notify('Item added for this session. Its accounts and tax default are ready for invoices.');
+      }
+      EDIT.type = ''; EDIT.code = '';
       rerender();
     });
   }
@@ -1657,30 +1758,37 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
   function taxRulesPanel() {
     const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
+    const editingRow = editRecord('tax', TAX_RULES) || {};
+    const v = (key, fallback = '') => (editingRow[key] !== undefined ? editingRow[key] : fallback);
+    const ordering = (a, b) => Number(/tax/i.test(b.name)) - Number(/tax/i.test(a.name));
     return `<section class="panel">
       <div class="panel-head"><h2>Tax rules</h2><span class="badge">${TAX_RULES.length} rules</span></div>
       <div class="table-scroll"><table>
-        <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Scope</th><th>From</th><th>Projects</th><th>Locations</th></tr></thead>
-        <tbody>${TAX_RULES.map((r) => `<tr><td class="mono">${e(r.code)}</td><td>${e(r.name)}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td></tr>`).join('')}</tbody>
+        <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Basis</th><th>Account</th><th>Scope</th><th>Effective</th><th>Projects</th><th>Locations</th><th>Status</th><th></th></tr></thead>
+        <tbody>${TAX_RULES.map((r) => `<tr><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(r.kind)}</td><td class="numeric">${r.rate}%</td><td>${e(r.basis)}</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${e(r.scope)}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-edit="tax:${e(r.code)}">Edit</button></td></tr>`).join('')}</tbody>
       </table></div>
       <div class="table-footer">A rule is a default. Any document line may override the rate or switch tax off. Withholding and advance rules post to their own liability and asset accounts.</div>
     </section>
     <section class="panel">
-      <div class="panel-head"><h2>New tax rule</h2><span class="badge">Blank access means all</span></div>
+      <div class="panel-head"><h2>${editingRow.code ? `Edit ${e(editingRow.name)}` : 'New tax rule'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'Blank access means all'}</span></div>
       <form data-tax-form class="panel-body form-grid">
-        <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="STD-SALE"></label>
-        <label>Name<input name="name" required maxlength="70" placeholder="Sales tax 10%"></label>
-        <label>Kind<select name="kind" class="inline-input"><option value="sales">Sales tax</option><option value="purchase">Purchase tax</option><option value="withholding">Withholding</option><option value="advance">Advance tax</option></select></label>
-        <label>Rate %<input name="rate" required inputmode="decimal" value="10.00"></label>
-        <label>Basis<select name="basis" class="inline-input"><option value="exclusive">Tax exclusive</option><option value="inclusive">Tax inclusive</option></select></label>
-        <label>Account<select name="account" class="inline-input">${accounts().filter((a) => a.type === 'liability' || a.type === 'asset').sort((a, b) => Number(/tax/i.test(b.name)) - Number(/tax/i.test(a.name))).map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-        <label>Scope<select name="scope" class="inline-input"><option value="all">Everything</option><option value="group">An item group</option><option value="item">One item or service</option></select></label>
-        <label>Effective from<input name="from" type="date" value="2026-11-01" required></label>
-        ${ms('tax-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
-        ${ms('tax-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
-        <div class="related"><button class="button primary">Add tax rule</button></div>
+        <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="STD-SALE"></label>
+        <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="Sales tax 10%"></label>
+        <label>Kind<select name="kind" class="inline-input"><option value="sales" ${v('kind', 'sales') === 'sales' ? 'selected' : ''}>Sales tax</option><option value="purchase" ${v('kind') === 'purchase' ? 'selected' : ''}>Purchase tax</option><option value="withholding" ${v('kind') === 'withholding' ? 'selected' : ''}>Withholding</option><option value="advance" ${v('kind') === 'advance' ? 'selected' : ''}>Advance tax</option></select></label>
+        <label>Rate %<input name="rate" required inputmode="decimal" value="${e(v('rate', '10.00'))}"></label>
+        <label>Basis<select name="basis" class="inline-input"><option value="exclusive" ${v('basis', 'exclusive') === 'exclusive' ? 'selected' : ''}>Tax exclusive</option><option value="inclusive" ${v('basis') === 'inclusive' ? 'selected' : ''}>Tax inclusive</option></select></label>
+        <label>Account<select name="account" class="inline-input">${accounts().filter((a) => a.type === 'liability' || a.type === 'asset').sort(ordering).map((a) => `<option value="${a.code}" ${a.code === v('account', '2200') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+        <label>Scope<select name="scope" class="inline-input"><option value="all" ${v('scope', 'all') === 'all' ? 'selected' : ''}>Everything</option><option value="group" ${v('scope') === 'group' ? 'selected' : ''}>An item group</option><option value="item" ${v('scope') === 'item' ? 'selected' : ''}>One item or service</option></select></label>
+        <label>Effective from<input name="from" type="date" value="${e(v('from', '2026-11-01'))}" required></label>
+        <label>Effective to<input name="to" type="date" value="${e(v('to'))}"></label>
+        <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Archived' ? 'selected' : ''}>Archived</option></select></label>
+        <label>Override on a line<select name="override" class="inline-input"><option value="yes" ${v('override', 'yes') === 'yes' ? 'selected' : ''}>Allowed</option><option value="no" ${v('override') === 'no' ? 'selected' : ''}>Not allowed</option></select></label>
+        <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What the rule covers and where it comes from"></label>
+        ${ms('tax-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
+        ${ms('tax-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
+        <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add tax rule'}</button>${editingRow.code ? cancelEdit : ''}</div>
       </form>
-      <div class="panel-body"><p class="form-note">Scope narrows where the rule is offered; the effective date decides when it applies. Rules never post on their own — they fill a document line, and the document posts the tax.</p></div>
+      <div class="panel-body"><p class="form-note">Scope narrows where the rule is offered; the effective dates decide when it applies. Rules never post on their own — they fill a document line, and the document posts the tax.</p></div>
     </section>`;
   }
   function withholdingPanel() {
@@ -1750,15 +1858,30 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       TAX_ACTIVE = btn.dataset.taxTab;
       rerender();
     }));
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      const [type, code] = b.dataset.edit.split(':');
+      if (type !== 'tax') return;
+      EDIT.type = 'tax'; EDIT.code = code;
+      rerender();
+    }));
+    document.querySelector('[data-edit-cancel]')?.addEventListener('click', () => { EDIT.type = ''; EDIT.code = ''; rerender(); });
     document.querySelector('[data-tax-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
-      if (TAX_RULES.some((r) => r.code === v.code)) { notify('That tax rule code already exists.'); return; }
+      if (!EDIT.code && TAX_RULES.some((r) => r.code === v.code)) { notify('That tax rule code already exists.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      TAX_RULES.push({code: v.code, name: v.name, kind: v.kind, rate: Number(v.rate), basis: v.basis, account: v.account, scope: v.scope, from: v.from, to: '', projects: picked(proj), locations: picked(loc)});
-      notify('Tax rule added for this session. It is available to documents from its effective date.');
+      const record = {code: v.code, name: v.name, kind: v.kind, rate: Number(v.rate), basis: v.basis, account: v.account, scope: v.scope, from: v.from, to: v.to || '', status: v.status || 'Active', override: v.override || 'yes', description: v.description || '', projects: picked(proj), locations: picked(loc)};
+      if (EDIT.code) {
+        const target = TAX_RULES.find((r) => r.code === EDIT.code);
+        if (target) Object.assign(target, record);
+        notify('Tax rule updated for this session.');
+      } else {
+        TAX_RULES.push(record);
+        notify('Tax rule added for this session. It is available to documents from its effective date.');
+      }
+      EDIT.type = ''; EDIT.code = '';
       rerender();
     });
   }
@@ -1939,18 +2062,20 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
   /* ----------------------------------------------------------- settings */
   const SETTINGS_TABS = [['company', 'Company'], ['accounting', 'Accounting'], ['people', 'People & access'], ['periods', 'Periods'], ['forms', 'Forms & fields'], ['views', 'Saved views'], ['print', 'Print & templates']];
-  const field = (label, value, hint = '') => `<label>${e(label)}<input value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
+  const field = (label, value, hint = '', name = '') => `<label>${e(label)}<input ${name ? `name="${name}"` : ''} value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
   function settingsView(page) {
     const current = SETTINGS_TABS.some(([k]) => k === page) ? page : 'company';
     const body = current === 'accounting' ? setup()
       : current === 'people' ? `<section class="panel">
           <div class="panel-head"><h2>People &amp; access</h2><span class="badge">${PEOPLE.length} people</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Scope</th><th>Status</th></tr></thead><tbody>${PEOPLE.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.email)}</td><td>${e(p.role)}</td><td>${e(p.scope)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>
+          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Scope</th><th>Status</th></tr></thead><tbody>${PEOPLE.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.email)}</td><td>${e(p.phone || '—')}</td><td>${e(p.role)}</td><td>${e(p.scope)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>
           <form data-people-form class="panel-body form-grid">
             <label>Name<input name="name" required maxlength="50"></label>
             <label>Email<input name="email" type="email" required maxlength="70"></label>
+            <label>Phone<input name="phone" maxlength="30" placeholder="+92 300 0000000"></label>
             <label>Role<select name="role" class="inline-input"><option>Accountant</option><option>Bookkeeper</option><option>Cashier</option><option>Storekeeper</option><option>Auditor (read only)</option></select></label>
             <label>Scope<input name="scope" maxlength="50" value="Accounting"></label>
+            <label>Status<select name="status" class="inline-input"><option>Invited</option><option>Active</option><option>Suspended</option></select></label>
             <div class="related"><button class="button primary">Invite</button></div>
           </form>
           <div class="panel-body"><p class="form-note">Roles grant what the role grants; a custom role name grants nothing protected. One active owner per business. Invitations are session-only in this build.</p></div>
@@ -1968,12 +2093,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       : current === 'forms' ? `<section class="panel">
           <div class="panel-head"><h2>Forms &amp; fields</h2><span class="badge">Versioned per business</span></div>
           <div class="table-scroll"><table><thead><tr><th>Form</th><th class="numeric">Standard fields</th><th>Custom fields</th><th>Last change</th></tr></thead><tbody>
-            ${[['Journal entry', 12], ['Sales invoice', 9], ['Purchase bill', 9], ['Receipt / payment', 7], ['Party', 9], ['Item', 7], ['Cash / bank sub-account', 6]].map(([name, count]) => `<tr><td>${e(name)}</td><td class="numeric">${count}</td><td>${CUSTOM_FIELDS.filter((f) => f.form === name).map((f) => e(f.name)).join(', ') || '—'}</td><td>This session</td></tr>`).join('')}
+            ${[['Journal entry', 12], ['Sales invoice', 9], ['Purchase bill', 9], ['Receipt / payment', 7], ['Party', 9], ['Item', 7], ['Cash / bank sub-account', 6]].map(([name, count]) => `<tr><td>${e(name)}</td><td class="numeric">${count}</td><td>${CUSTOM_FIELDS.filter((f) => f.form === name).map((f) => `${e(f.name)}${f.required ? ' (required)' : ''}`).join(', ') || '—'}</td><td>This session</td></tr>`).join('')}
           </tbody></table></div>
           <form data-field-form class="panel-body form-grid">
             <label>Form<select name="form" class="inline-input">${['Journal entry', 'Sales invoice', 'Purchase bill', 'Receipt / payment', 'Party', 'Item', 'Cash / bank sub-account'].map((n) => `<option>${n}</option>`).join('')}</select></label>
             <label>Field label<input name="name" required maxlength="40" placeholder="Cost centre note"></label>
             <label>Type<select name="type" class="inline-input"><option>Text</option><option>Number</option><option>Date</option><option>Yes / no</option><option>Choice</option></select></label>
+            <label>Required<select name="required" class="inline-input"><option value="no">Optional</option><option value="yes">Required</option></select></label>
+            <label>Help text<input name="help" maxlength="70" placeholder="Shown under the field"></label>
             <div class="related"><button class="button primary">Add field</button></div>
           </form>
           <div class="panel-body"><p class="form-note">Custom fields are added to the form and stored with the document. On the journal they appear on the More info tab. Field permissions, required rules and version history are enforced by the backend, not by this page.</p></div>
@@ -1985,6 +2112,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
             <label>Name<input name="name" required maxlength="40" placeholder="Overdue customers"></label>
             <label>Scope<select name="scope" class="inline-input">${['Journal entries', 'General ledger', 'Parties', 'Payments', 'Items', 'Taxes'].map((n) => `<option>${n}</option>`).join('')}</select></label>
             <label>Detail<input name="detail" maxlength="70" placeholder="Filter, columns and sort"></label>
+            <label>Shared<select name="shared" class="inline-input"><option value="yes">Everyone in the business</option><option value="no">Only me</option></select></label>
             <div class="related"><button class="button primary">Save view</button></div>
           </form>
         </section>`
@@ -1996,48 +2124,58 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
             <label>Size<select name="size" class="inline-input"><option>A4</option><option>A5</option><option>80 mm</option></select></label>
             <label>Footer<input name="footer" maxlength="70" value="Northstar Trading (Pvt) Ltd"></label>
             <label>Show logo<select name="logo" class="inline-input"><option value="yes">Yes</option><option value="no">No</option></select></label>
+            <label>Show QR<select name="qr" class="inline-input"><option value="no">No</option><option value="yes">Yes</option></select></label>
+            <label>Margin (mm)<input name="margin" type="number" min="0" max="30" value="12"></label>
             <div class="related"><button class="button primary">Add template</button></div>
           </form>
           <div class="panel-body"><p class="form-note">The journal print action uses the browser print sheet today. A template selection, letterhead upload and QR prove the document without a server round trip.</p></div>
         </section>`
-      : `<div class="two-column">
+      : `<form class="two-column" data-settings-save="company">
           <section class="panel">
             <div class="panel-head"><h2>Business identity</h2><span class="badge">Session only</span></div>
             <div class="panel-body form-grid">
-              ${field('Legal name', 'Northstar Trading (Pvt) Ltd')}
-              ${field('Trading name', 'Northstar Trading')}
-              ${field('Tax identity', 'NTN-4100000')}
-              ${field('Registration', 'SECP-0188221')}
-              ${field('Base currency', 'PKR')}
-              ${field('Fiscal year', 'Jul 2026 – Jun 2027')}
-              ${field('Current period', 'Nov 2026')}
-              ${field('Week starts', 'Monday')}
+              ${field('Legal name', 'Northstar Trading (Pvt) Ltd', '', 'legalName')}
+              ${field('Trading name', 'Northstar Trading', '', 'tradingName')}
+              ${field('Tax identity', 'NTN-4100000', '', 'taxId')}
+              ${field('Registration', 'SECP-0188221', '', 'registration')}
+              ${field('Base currency', 'PKR', '', 'currency')}
+              ${field('Fiscal year', 'Jul 2026 – Jun 2027', '', 'fiscalYear')}
+              ${field('Current period', 'Nov 2026', '', 'currentPeriod')}
+              ${field('Week starts', 'Monday', '', 'weekStart')}
+              ${field('Time zone', 'Asia/Karachi', '', 'timezone')}
+              ${field('Date format', 'DD MMM YYYY', 'Prints on documents', 'dateFormat')}
             </div>
           </section>
           <section class="panel">
             <div class="panel-head"><h2>Addresses and contact</h2></div>
             <div class="panel-body form-grid">
-              ${field('Registered address', 'Office 4, Clifton Block 5')}
-              ${field('City', 'Karachi')}
-              ${field('Country', 'Pakistan')}
-              ${field('Phone', '+92 21 000 0000')}
-              ${field('Email', 'accounts@northstar.pk')}
-              ${field('Website', 'northstar.pk')}
+              ${field('Registered address', 'Office 4, Clifton Block 5', '', 'address')}
+              ${field('City', 'Karachi', '', 'city')}
+              ${field('Country', 'Pakistan', '', 'country')}
+              ${field('Phone', '+92 21 000 0000', '', 'phone')}
+              ${field('Email', 'accounts@northstar.pk', '', 'email')}
+              ${field('Website', 'northstar.pk', '', 'website')}
             </div>
-            <div class="panel-body"><p class="form-note">The business is chosen once at sign-in. Its identity prints on every document; changing the base currency or fiscal year after posting needs a migration, not a form.</p></div>
+            <div class="panel-body"><div class="related"><button class="button primary">Save company settings</button></div>
+              <p class="form-note">The business is chosen once at sign-in. Its identity prints on every document; changing the base currency or fiscal year after posting needs a migration, not a form.</p></div>
           </section>
-        </div>`;
+        </form>`;
     return `<div class="tabs" role="tablist" aria-label="Settings sections">${SETTINGS_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-module="settings" data-tab="${id}">${label}</button>`).join('')}</div>
       <div id="settings-panel">${body}</div>`;
   }
 
   function bindSettingsView(rerender, notify) {
+    document.querySelectorAll('[data-settings-save]').forEach((f) => f.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      notify('Settings saved for this session. A real deployment versions these values and applies them from their effective date.');
+      rerender();
+    }));
     document.querySelector('[data-people-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
-      PEOPLE.push({name: v.name, email: v.email, role: v.role, scope: v.scope || '—', status: 'Invited'});
+      PEOPLE.push({name: v.name, email: v.email, phone: v.phone || '', role: v.role, scope: v.scope || '—', status: v.status || 'Invited'});
       notify('Invitation recorded for this session. Delivery and acceptance need the backend.');
       rerender();
     });
@@ -2046,7 +2184,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const form = ev.target;
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
-      CUSTOM_FIELDS.push({form: v.form, name: v.name, type: v.type});
+      CUSTOM_FIELDS.push({form: v.form, name: v.name, type: v.type, required: v.required === 'yes', help: v.help || ''});
       notify('Custom field added for this session.');
       rerender();
     });
@@ -2055,7 +2193,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const form = ev.target;
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
-      SAVED_VIEWS.push({name: v.name, scope: v.scope, detail: v.detail || 'Default columns'});
+      SAVED_VIEWS.push({name: v.name, scope: v.scope, detail: (v.detail || 'Default columns') + (v.shared === 'no' ? ' · private' : ' · shared')});
       notify('View saved for this session.');
       rerender();
     });
@@ -2064,7 +2202,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const form = ev.target;
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
-      PRINT_TEMPLATES.push({name: v.name, size: v.size, logo: v.logo === 'yes', qr: false, footer: v.footer});
+      PRINT_TEMPLATES.push({name: v.name, size: v.size, logo: v.logo === 'yes', qr: v.qr === 'yes', margin: Number(v.margin) || 12, footer: v.footer});
       notify('Print template added for this session.');
       rerender();
     });

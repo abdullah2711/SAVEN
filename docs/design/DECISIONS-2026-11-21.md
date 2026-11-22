@@ -1004,3 +1004,52 @@ seven working pages, reached from the rail:
 | Print & templates | letterheads, sizes and what prints |
 
 The journal's "more info" guidance now points at Forms & fields for custom fields.
+
+---
+
+# Round 11 — every form is complete and can be amended
+
+## 70. The same form creates and updates
+
+Every master-data form is now **create-or-edit**: the list has an **Edit** action, the
+form loads that record, the heading says which record is being edited, and **Save
+changes** updates it in place. **Cancel** returns the form to create mode. There is
+no second, separate edit dialog, so the fields cannot drift apart.
+
+This applies to cash and bank sub-accounts, parties, items, tax rules, projects and
+locations.
+
+## 71. Field completeness
+
+| Form | Fields |
+|---|---|
+| Cash / bank sub-account | code, name, control head, kind, bank name, branch, account/IBAN/till, currency, opening balance, status, notes, allowed projects, allowed locations |
+| Party | code, name, type, group, contact person, phone, email, currency, terms, credit limit, opening balance, tax identity, status, billing address, notes, allowed projects, allowed locations |
+| Item | code, name, group, unit, description, income head, expense head, tax rule, tracked flag, sale price, purchase price, status |
+| Tax rule | code, name, kind, rate, basis, account, scope, effective from, effective to, status, line override, description, allowed projects, allowed locations |
+| Project | code, name, manager, state, start, end, budget, description |
+| Location | code, name, kind, address, contact person, phone, notes |
+| Journal entry | date, time, number, subtype, location, narration, lines (account, project, party, cost centre, debit, credit), evidence, audit strip, custom fields |
+| Receipt / payment | direction, party, cash/bank account, date, method, reference, instrument number and date, amount, notes |
+| Sales invoice / purchase bill | party, date, due date, terms, reference, location, narration, three lines, notes |
+| Company settings | legal name, trading name, tax identity, registration, currency, fiscal year, period, week start, time zone, date format, address, city, country, phone, email, website |
+| Numbering | prefix and next number for journals, sales, purchases, payments, receipts, plus padding |
+| Default accounts | eight real account selectors (receivables, payables, input tax, output tax, inventory, rounding, bank, cash) |
+| Approvals | review threshold, self-approval policy, period lock policy, reopen authority, closed-period posting, correction route |
+| People | name, email, phone, role, scope, status |
+| Forms & fields | form, label, type, required, help text |
+| Saved views | name, scope, detail, shared or private |
+| Print | name, size, logo, QR, margin, footer |
+
+## 72. Settings and Accounting are one chain
+
+- Custom fields added in Settings → Forms & fields appear on the journal's **More
+  info** tab, marked required when they are required, and are saved with the draft.
+- Default accounts, numbering and approval policy are edited in Settings → Accounting
+  and take effect in the forms that use them.
+- The company identity edited in Settings → Company is the identity printed on every
+  document.
+
+All of it is still session state: the forms validate with the browser's required and
+pattern rules plus the accounting rules (control accounts need a party, allowed
+projects and locations narrow the picker), and nothing pretends to persist.

@@ -49,6 +49,9 @@ export const TAX_RULES = [
 
 // Light item master for accounting. Tracked items are the only ones Inventory
 // would value; quantities never live here.
+// Custom fields added in Settings → Forms & fields. Stored on the document.
+export const CUSTOM_FIELDS = [];
+
 export const ITEMS = [
   {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
   {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
