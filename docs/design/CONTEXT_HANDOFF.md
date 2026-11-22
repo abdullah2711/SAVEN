@@ -42,6 +42,9 @@ savenuitest.localhost` → `docs/design/save`.
 
 ## Where things live
 
+**Start with `SYSTEM_LOGIC_MAP.md`** — it maps the pages, the rules, the conflicts and
+the decision index in one place.
+
 | Path | Contents |
 |---|---|
 | `docs/design/save/ui/app.js` | shell, rail, routing, page map wiring |
@@ -93,8 +96,9 @@ savenuitest.localhost` → `docs/design/save`.
   carries its full field set (see decision log round 11). Settings custom fields
   show on the journal More info tab.
 - Registers and forms are separate pages: `mode=editor&code=…` opens the form, Save
-  returns to the register. Journal, cash & bank, parties, items, tax rules, payments
-  and invoices all work this way.
+  returns to that register, and “Back to register” respects the page. Journal, cash &
+  bank, parties, items, tax rules, payments and invoices all work this way. The journal
+  register also exports CSV; a GL row opens the document it belongs to.
 - Every register has instant search and its own filters (cash: kind, control head,
   status; parties: type, status; payments: direction). The state lives outside the
   page and survives navigation.

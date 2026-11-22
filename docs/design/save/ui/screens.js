@@ -684,7 +684,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
 
     const body = rows.map((r) => {
       const open = GL.open === r.id + ':' + r.account;
-      return `<tr data-gl-row="${e(r.id)}:${e(r.account)}" class="${open ? 'gl-open' : ''}">
+      const dest = r.source === 'Sales invoice' ? `sales-invoices:${r.id}` : r.source === 'Supplier bill' ? `purchase-invoices:${r.id}` : r.source === 'Payment' ? `payments:${r.id}` : `journals:${r.id}`;
+      return `<tr class="row-link" data-gl-row="${e(r.id)}:${e(r.account)}" data-gl-go="${e(dest)}" class="${open ? 'gl-open' : ''}">
           ${cols.map(([key, , cell, cls]) => `<td class="col col-${key} ${cls || ''}">${cell(r)}</td>`).join('')}
         </tr>` + (open ? detailRow(r, cols.length) : '');
     }).join('');
@@ -781,7 +782,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     GL.open = '';
   }
 
-  function bindGL(rerender) {
+  function bindGL(rerender, navigate) {
     bindMS();
     const filter = document.querySelector('#gl-filter');
     filter?.addEventListener('submit', (ev) => { ev.preventDefault(); syncGL(ev.target); rerender(); });
@@ -796,10 +797,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     }));
     document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-ac]')) return;
-      const tr = ev.target.closest('[data-gl-row]');
+      const tr = ev.target.closest('[data-gl-go]');
       if (!tr) return;
-      GL.open = GL.open === tr.dataset.glRow ? '' : tr.dataset.glRow;
-      rerender();
+      const [tab, id] = tr.dataset.glGo.split(':');
+      if (tab === 'journals') { navigate({module: 'accounting', tab, mode: 'editor', code: id}); return; }
+      const key = tab === 'payments' ? 'payments' : 'invoices';
+      FILTERS[key].q = id;
+      navigate({module: 'accounting', tab});
     });
     restoreMS();
     document.querySelector('[data-gl-reset]')?.addEventListener('click', () => {
@@ -902,7 +906,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       </div>
 
       <section class="panel">
-        <div class="panel-head"><h2>Journals</h2><div class="related"><span class="badge">${rows.length} entries</span><button class="button" data-jr-print>Print</button></div></div>
+        <div class="panel-head"><h2>Journals</h2><div class="related"><span class="badge">${rows.length} entries</span><button class="button" data-jr-export>Export CSV</button><button class="button" data-jr-print>Print</button></div></div>
         <div class="table-scroll gl-scroll" data-hscroll>
           <table class="gl-table jr-table" data-hide="${['subtype', 'party', 'project', 'location', 'centre'].filter((k) => !J.extras.has(k)).join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
@@ -1016,6 +1020,15 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     document.querySelector('[data-jr-back]')?.addEventListener('click', () => { J.record = ''; rerender(); });
     restoreMS();
     document.querySelector('[data-jr-print]')?.addEventListener('click', () => window.print());
+    document.querySelector('[data-jr-export]')?.addEventListener('click', () => {
+      const list = sortRows(journalRows(), J.sort);
+      const head = ['Date', 'Voucher', 'Description', 'Debit', 'Credit', 'State', 'Voucher type', 'Subtype', 'Party / sub-account', 'Project', 'Location', 'Cost centre'];
+      const body = list.map((r) => [r.date, r.id, r.narrative, r.debit.toFixed(2), r.credit.toFixed(2), r.state, r.doc.source, r.subtype, r.party, r.project, r.location, r.centre]);
+      const csv = [head, ...body].map((l) => l.map((c) => `"${String(c ?? '').replaceAll('"', '""')}"`).join(',')).join('\r\n');
+      const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+      const a = document.createElement('a'); a.href = url; a.download = 'SA7EN-journal-register.csv'; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
     document.querySelector('[data-jr-duplicate]')?.addEventListener('click', () => {
       const src = journalDocs().find((x) => x.id === J.record);
       if (!src) return;

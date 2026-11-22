@@ -1253,3 +1253,37 @@ The permanent horizontal indicator moved from below the table to **above it**, s
 is reachable before scrolling. This matters most in the general ledger, where 470
 rows make a bottom bar useless. It is still always drawn, draggable and clickable,
 and it recalculates on resize.
+
+---
+
+# Round 15 — journal export, correct back button, GL rows open their document
+
+## 86. Journal register exports
+
+The register has **Export CSV** beside Print. It exports the rows currently shown,
+with the columns the register uses: date, voucher, description, debit, credit, state,
+voucher type, subtype, party/sub-account, project, location and cost centre. Export
+respects the filters and the sort.
+
+## 87. “Back to register” returns to the page you came from
+
+The editor’s back button used a generic `register` route that always resolved to the
+journal register, so leaving a cash sub-account form dropped you in Journals. It now
+returns to **the register of the page being edited** (`tab` preserved, editor mode
+cleared). Cash & bank → cash, parties → parties, items → items, taxes → taxes,
+payments → payments, invoices → invoices, journals → journals.
+
+## 88. A ledger row opens the document, not a detail dialog
+
+Clicking a general-ledger row no longer expands an inline detail. It opens the
+transaction where it belongs:
+
+| Row source | Destination |
+|---|---|
+| Journal | journal form at that voucher (`mode=editor&code=…`) |
+| Sales invoice | Sales invoices register, filtered to that document |
+| Supplier bill | Purchase invoices register, filtered to that document |
+| Payment | Payments register, filtered to that document |
+
+The register filter is pre-filled with the voucher, so the document is the only row
+shown and its surrounding context is intact.
