@@ -78,16 +78,21 @@ savenuitest.localhost` → `docs/design/save`.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
 - Taxes: rules register and form, output/input registers, withholding, advance tax,
   reconciliation.
-- **Setup** is tabbed: organisation, numbering, default accounts, accounting heads,
-  projects & locations, approvals & periods. Projects and locations are created
-  there; they have no pages of their own.
+- **Settings** is a separate module with seven pages: Company, Accounting,
+  People & access, Periods, Forms & fields, Saved views, Print & templates.
+  Accounting holds numbering, default accounts, accounting heads, projects &
+  locations and approvals. Projects and locations have no pages of their own.
+- **Parties**: register and party page (statement, terms, limit, access).
+- **Payments**: receipts and payments with oldest-first allocation and advances.
+- **Sales/purchase invoices**: register and a line form; session documents only.
+- **Period close**: checklist, sign-off and a session lock shared with Settings →
+  Periods.
 - Supplied print and vertical-menu glyphs wired into the journal header.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 
-**Known gaps**: parties register and page; payments allocation; invoices; bank
-statement reconciliation; period close lock; quick entry grid; forms register;
-persistence (reload returns to fixtures).
+**Known gaps**: bank statement reconciliation; posting from invoices and payments
+into the ledger; permissions enforcement; persistence (reload returns to fixtures).
 
 ## Decisions already made (do not re-litigate)
 

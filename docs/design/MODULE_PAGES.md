@@ -15,18 +15,17 @@ States: **built** working screen · **partial** working, covers part of the page
 | 1 | Dashboard `dashboard` | built | Position and work waiting: four figures with their basis, what needs action, one real trend, recent journals. |
 | 2 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
 | 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
-| 4 | Parties `parties` | planned | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page. |
+| 4 | Parties `parties` | built | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page with its statement and access. |
 | 5 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
-| 6 | Payments `payments` | planned | Receipts and payments with an allocation table covering settlement, discount, withholding and retention. |
+| 6 | Payments `payments` | built | Receipts and payments with oldest-first allocation across open documents and the remainder kept as an advance. |
 | 7 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
-| 8 | Sales invoices `sales-invoices` | planned | Customer invoices that create receivable open items, with source references into Selling. |
-| 9 | Purchase invoices `purchase-invoices` | planned | Supplier bills that create payable open items, with source references into Buying. |
+| 8 | Sales invoices `sales-invoices` | built | Customer invoices with item or service lines, tax, due date and totals; session register until posting exists. |
+| 9 | Purchase invoices `purchase-invoices` | built | Supplier bills mirroring the sales invoice, posting to expense and input tax; session register until posting exists. |
 | 10 | Chart of accounts `coa` | built | The full chart with nature, groups, control and tax flags, add, regroup, archive, import. |
 | 11 | Trial balance `trial` | built | Opening, movement and closing debit and credit, with a difference that must read zero. |
 | 12 | Reports `reports` | built | Ageing, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
 | 13 | Taxes `taxes` | built | One page, five tabs: tax rules with a create form, output and input registers, withholding, advance tax and reconciliation against the control accounts. |
-| 14 | Setup `setup` | built | One page, six tabs: organisation, numbering, default accounts, accounting heads, projects and locations, approvals and periods. |
-| 15 | Period close `close` | partial | Checklist with evidence, trial balance proof, sign-off and an evidenced period lock. |
+| 14 | Period close `close` | built | Checklist with trial balance and tax proof, named sign-off and a session period lock shared with Settings → Periods. |
 
 ## Inventory (inventory)
 
@@ -186,17 +185,13 @@ States: **built** working screen · **partial** working, covers part of the page
 
 | # | Page | State | Specification |
 |---|---|---|---|
-| 1 | Company `company` | planned | Legal identity, addresses, fiscal year and base currency. |
-| 2 | Branches `branches` | planned | Locations and their accounting scope. |
-| 3 | People & access `people` | planned | Users, roles, permissions and delegation. |
-| 4 | Numbering `numbering` | planned | Document series, prefixes and next numbers. |
-| 5 | Periods `periods` | planned | Open, close and lock accounting periods. |
-| 6 | Currencies & precision `currencies` | planned | Currencies, rates and decimal rules. |
-| 7 | Document defaults `defaults` | planned | Default accounts, terms and tax per document type. |
-| 8 | Approval policies `approvals` | planned | When a document needs review and who may approve. |
-| 9 | Forms & fields `forms` | planned | Which fields a form asks for, per company, versioned. |
-| 10 | Saved views `views` | planned | Shared list views: columns, filters, sorting. |
-| 11 | Print & templates `print` | planned | Letterheads, layouts and numbering on printed documents. |
+| 1 | Company `company` | built | Legal identity, addresses, base currency, fiscal year and the active period. |
+| 2 | Accounting `accounting` | built | Numbering, default accounts, accounting heads, projects and locations, approvals and periods. |
+| 3 | People & access `people` | built | Users, roles, scope and invitations for this business. |
+| 4 | Periods `periods` | built | Every period with its state; the lock is the same switch as the close checklist. |
+| 5 | Forms & fields `forms` | built | Standard field counts per form and the custom fields added to them. |
+| 6 | Saved views `views` | built | Named list views with their filters, columns and sorting. |
+| 7 | Print & templates `print` | built | Letterheads, paper sizes and what prints on a document. |
 
 ## Administration (admin)
 
@@ -262,4 +257,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 152 pages · 11 built · 1 partial · 140 planned.**
+**20 modules · 147 pages · 22 built · 0 partial · 125 planned.**

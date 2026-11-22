@@ -137,7 +137,6 @@ Accounting
 ├── Trial balance
 ├── Reports                    (ageing, schedules, P&L, position, cash flow, equity)
 ├── Taxes                      (5 horizontal tabs: rules, registers, withholding, advance tax, adjustments)
-├── Setup                      (accounting configuration)
 └── Period close
 ```
 
@@ -158,11 +157,23 @@ Status of every Accounting page:
 | Reports | built | ageing, P&L, financial position, cash flow, equity |
 | Taxes | built | rules register and form, output/input registers, withholding, advance, reconciliation |
 | Setup | built | six tabs: organisation, numbering, default accounts, heads, projects & locations, approvals |
-| Parties | planned | register and party page, with allowed projects and locations on the form |
-| Payments | planned | receipts and payments with allocation |
-| Sales invoices | planned | customer invoice posting to receivables |
-| Purchase invoices | planned | supplier bill posting to payables |
-| Period close | partial | checklist visible; no enforced lock |
+| Parties | built | register, party page with statement, access editable on the party |
+| Payments | built | receipts and payments with oldest-first allocation and advances |
+| Sales invoices | built | register and line form; session documents until posting exists |
+| Purchase invoices | built | same for supplier bills |
+| Period close | built | checklist, sign-off and a session lock shared with Settings → Periods |
+
+Settings module (separate from Accounting):
+
+| Page | State | What works now |
+|---|---|---|
+| Company | built | identity, addresses, currency, fiscal year, active period |
+| Accounting | built | numbering, default accounts, accounting heads, projects & locations, approvals |
+| People & access | built | users, roles, scope, invitations |
+| Periods | built | period list and the shared lock |
+| Forms & fields | built | standard field counts and custom fields |
+| Saved views | built | named views |
+| Print & templates | built | letterheads and sizes |
 
 
 ### 2.2 Pages

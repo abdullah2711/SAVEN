@@ -1,6 +1,6 @@
 // Independent synthetic UI fixtures. No business storage or posting endpoint.
 import {cents,decimal} from './model.js';
-export const chart=[['1000','Cash','asset','Assets'],['1010','Operating bank','asset','Assets'],['1100','Trade receivables','asset','Assets','receivable'],['1300','Recoverable input tax','asset','Assets'],['2100','Trade payables','liability','Liabilities','payable'],['2200','Output tax payable','liability','Liabilities'],['3000','Owner capital','equity','Equity'],['4000','Service revenue','income','Income'],['5000','Operating expenses','expense','Expenses'],['1200','Inventory — finished goods','asset','Assets'],['1020','Petty cash','asset','Assets'],['1400','Advance tax receivable','asset','Assets'],['2150','Withholding tax payable','liability','Liabilities'],['6500','Bank charges','expense','Expenses']].map(([code,name,type,group,control])=>({code,name,type,group,control:control||'',currency:'PKR',active:true}));
+export const chart=[['1000','Cash','asset','Assets','cash'],['1010','Operating bank','asset','Assets','bank'],['1100','Trade receivables','asset','Assets','receivable'],['1300','Recoverable input tax','asset','Assets'],['2100','Trade payables','liability','Liabilities','payable'],['2200','Output tax payable','liability','Liabilities'],['3000','Owner capital','equity','Equity'],['4000','Service revenue','income','Income'],['5000','Operating expenses','expense','Expenses'],['1200','Inventory — finished goods','asset','Assets'],['1020','Petty cash','asset','Assets','cash'],['1400','Advance tax receivable','asset','Assets'],['2150','Withholding tax payable','liability','Liabilities'],['6500','Bank charges','expense','Expenses']].map(([code,name,type,group,control])=>({code,name,type,group,control:control||'',currency:'PKR',active:true}));
 const line=(account,debit,credit,meta={})=>({account,debit,credit,project:'',location:'',costCentre:'',againstVoucher:'',supplierRef:'',...meta});
 export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital introduced',party:'Owner',source:'Journal',lines:[line('1010','5000.00','0.00'),line('3000','0.00','5000.00')]},{id:'DEMO-SI-001',date:'2026-11-03',narrative:'Service invoice',party:'Atlas Studio',source:'Sales invoice',lines:[line('1100','110.00','0.00'),line('4000','0.00','100.00'),line('2200','0.00','10.00')]},{id:'DEMO-PY-001',date:'2026-11-05',narrative:'Invoice settlement',party:'Atlas Studio',source:'Payment',lines:[line('1010','110.00','0.00'),line('1100','0.00','110.00')]},{id:'DEMO-PI-001',date:'2026-11-07',narrative:'Purchased services',party:'Willow Supplies',source:'Supplier bill',lines:[line('5000','50.00','0.00'),line('1300','5.00','0.00'),line('2100','0.00','55.00')]}];
 
@@ -24,11 +24,9 @@ export const LOCATIONS = [
 // Which projects and locations a party or sub-account may be used on. An empty
 // list means every project or every location. Configuration, not a balance: it
 // is set on the party or sub-account form and only narrows the journal picker.
-export const PARTY_ACCESS = {
-  'Atlas Studio': {projects: ['PRJ-MERIDIAN'], locations: ['HQ', 'OUT-KHI-01']},
-  'Meridian Pharma': {projects: ['PRJ-MERIDIAN'], locations: ['OUT-LHE-02']},
-  'Willow Supplies': {projects: ['PRJ-FALCON'], locations: []},
-};
+// Access is read from PARTIES and CASH_BANK, so a form that sets membership
+// takes effect everywhere immediately.
+
 // Cash and bank sub-accounts. A sub-account is a party inside the control
 // account (1010 bank, 1000 cash). Membership of projects and locations is a
 // data field on the sub-account: blank means all.
@@ -38,7 +36,7 @@ export const CASH_BANK = [
   {code: 'BANK-STD', name: BANK_NAMES[0], kind: 'bank', control: '1010', reference: 'PK36STAN0000123456789012', projects: [], locations: []},
   {code: 'BANK-MZN', name: BANK_NAMES[1], kind: 'bank', control: '1010', reference: 'PK36MEZN0000987654321098', projects: [], locations: []},
   {code: 'CASH-FRONT', name: CASH_NAMES[0], kind: 'cash', control: '1000', reference: 'Front desk till', projects: [], locations: ['HQ']},
-  {code: 'CASH-STORE', name: CASH_NAMES[1], kind: 'cash', control: '1000', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
+  {code: 'CASH-STORE', name: CASH_NAMES[1], kind: 'cash', control: '1020', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
 ];
 
 // Tax rules. A rule is a default; a document line may override it.
@@ -56,6 +54,31 @@ export const ITEMS = [
   {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
   {code: 'ITM-PACK', name: 'Packaging carton', unit: 'piece', income: '4000', expense: '5000', tax: 'STD-PURCHASE', tracked: true},
   {code: 'ITM-INK', name: 'Printing ink', unit: 'litre', income: '4000', expense: '5000', tax: 'STD-PURCHASE', tracked: true},
+];
+
+export const CUSTOMER_NAMES = ['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality','Zenith Electrical','Falcon Chemicals'];
+export const SUPPLIER_NAMES = ['Willow Supplies','Maple Packaging','Cedar Services','Pak Print House','Al-Noor Freight','Metro Office Supply','Secure Line','Digital Systems'];
+const TERMS = [30, 15, 45, 0];
+const LIMITS = [500000, 250000, 1000000, 0];
+export const PARTIES = [
+  ...CUSTOMER_NAMES.map((name, i) => ({
+    code: 'CUS-' + String(101 + i), name, type: 'customer',
+    group: i % 3 === 0 ? 'Retail' : 'Wholesale',
+    terms: TERMS[i % 4], limit: LIMITS[i % 4],
+    status: name === 'Marina Hospitality' ? 'Hold' : 'Active',
+    taxId: 'NTN-' + String(4100000 + i * 37),
+    projects: name === 'Atlas Studio' ? ['PRJ-MERIDIAN'] : name === 'Meridian Pharma' ? ['PRJ-MERIDIAN'] : [],
+    locations: name === 'Atlas Studio' ? ['HQ', 'OUT-KHI-01'] : name === 'Meridian Pharma' ? ['OUT-LHE-02'] : [],
+  })),
+  ...SUPPLIER_NAMES.map((name, i) => ({
+    code: 'SUP-' + String(201 + i), name, type: 'supplier',
+    group: i % 2 === 0 ? 'Services' : 'Materials',
+    terms: TERMS[(i + 1) % 4], limit: LIMITS[(i + 2) % 4],
+    status: 'Active',
+    taxId: 'NTN-' + String(5200000 + i * 53),
+    projects: name === 'Willow Supplies' ? ['PRJ-FALCON'] : [],
+    locations: [],
+  })),
 ];
 
 const locationFor = (i) => LOCATIONS[i % LOCATIONS.length].code;

@@ -3,7 +3,7 @@
 // no shader, no animation. Every total that duplicates a ledger figure is
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
-import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTY_ACCESS,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES} from './accounting-model.js';
+import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
@@ -21,7 +21,7 @@ const textButton = (label, action, extra = '') => `<button type="button" class="
 
 // Which Setup section is open. Membership of projects and locations lives on
 // the party and sub-account forms, not here.
-let SETUP_TAB = 'organisation';
+let SETUP_TAB = 'numbering';
 
 
 /* ------------------------------------------------------------------ projects */
@@ -94,6 +94,27 @@ const TAX_TABS = [
   ['adjustments', 'Reconciliation'],
 ];
 let TAX_ACTIVE = 'rules';
+let PARTY_OPEN = '';
+let PERIOD_LOCKED = false;
+const PEOPLE = [
+  {name: 'A. Rehman', email: 'owner@northstar.pk', role: 'Business owner', scope: 'Every module', status: 'Active'},
+  {name: 'S. Iqbal', email: 's.iqbal@northstar.pk', role: 'Accountant', scope: 'Accounting, reports', status: 'Active'},
+  {name: 'N. Farooq', email: 'n.farooq@northstar.pk', role: 'Bookkeeper', scope: 'Accounting, no approval', status: 'Active'},
+  {name: 'A. Khan', email: 'a.khan@northstar.pk', role: 'Cashier', scope: 'POS, cash', status: 'Active'},
+  {name: 'S. Ali', email: 's.ali@northstar.pk', role: 'Storekeeper', scope: 'Inventory', status: 'Invited'},
+];
+const SAVED_VIEWS = [
+  {name: 'November journals', scope: 'Journal entries', detail: 'Period 2026-11 · all states'},
+  {name: 'Unposted drafts', scope: 'Journal entries', detail: 'State draft · newest first'},
+  {name: 'Customer balances', scope: 'Parties', detail: 'Customers only · balance descending'},
+];
+const CUSTOM_FIELDS = [];
+const PRINT_TEMPLATES = [{name: 'A4 letterhead', size: 'A4', logo: true, qr: false, footer: 'Northstar Trading (Pvt) Ltd'}, {name: 'Thermal receipt', size: '80 mm', logo: false, qr: true, footer: 'Thank you'}];
+let PAY_FORM = {direction: 'receive', party: '', account: '', amount: ''};
+const PAYMENTS = [];
+let PAY_SEQ = 1;
+const INVOICES = [];
+let INV_SEQ = 1;
 let REPORT_TAB = 'ageing';
 
 /** Generic "being built" page for any module in the page map. */
@@ -1060,7 +1081,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
           <label>Code<input name="code" required pattern="[0-9]{4,8}" placeholder="5100"></label>
           <label>Name<input name="name" required maxlength="80" placeholder="Marketing expense"></label>
           <label>Class<select name="type" class="inline-input"><option value="expense">Expense</option><option value="income">Income</option><option value="asset">Asset</option><option value="liability">Liability</option><option value="equity">Equity</option></select></label>
-          <label>Control<select name="control" class="inline-input"><option value="">Ordinary posting account</option><option value="receivable">Receivable control — customer on every line</option><option value="payable">Payable control — supplier on every line</option></select></label>
+          <label>Control<select name="control" class="inline-input"><option value="">Ordinary posting account</option><option value="receivable">Receivable control — customer on every line</option><option value="payable">Payable control — supplier on every line</option><option value="bank">Bank control — needs a bank sub-account</option><option value="cash">Cash control — needs a cash sub-account</option></select></label>
           <div class="related"><button class="button primary">Add accounting head</button></div>
         </form>
         <div class="panel-body"><p class="form-note">A head created here appears in the chart, the journal picker and the default-account list immediately. A control head demands a party or sub-account on every line; that is how a chart balance keeps its subledger.</p></div>
@@ -1113,8 +1134,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
         </div>
       </section>`
     };
-    const order = [['organisation', 'Organisation'], ['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['dimensions', 'Projects & locations'], ['approval', 'Approvals & periods']];
-    const current = order.some(([id]) => id === SETUP_TAB) ? SETUP_TAB : 'organisation';
+    const order = [['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['dimensions', 'Projects & locations'], ['approval', 'Approvals & periods']];
+    const current = order.some(([id]) => id === SETUP_TAB) ? SETUP_TAB : 'numbering';
     return `<div class="tabs" role="tablist" aria-label="Setup sections">${order.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-setup-tab="${id}">${label}</button>`).join('')}</div>
       <div id="setup-panel">${sections[current]}</div>`;
   }
@@ -1157,38 +1178,41 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   function cashBankView() {
+    const controls = accounts().filter((a) => a.control === 'bank' || a.control === 'cash');
     const list = cashAccountRows();
-    const sum = (kind) => round2(list.filter((s) => s.kind === kind).reduce((n, s) => n + s.balance, 0));
-    const bankTotal = sum('bank'), cashTotal = sum('cash');
-    const bankLedger = ledgerBalance('1010'), cashLedger = ledgerBalance('1000');
+    const led = (code) => Math.abs(ledgerBalance(code));
+    const bankLedger = round2(controls.filter((a) => a.control === 'bank').reduce((n, a) => n + led(a.code), 0));
+    const cashLedger = round2(controls.filter((a) => a.control === 'cash').reduce((n, a) => n + led(a.code), 0));
+    const named = round2(list.reduce((n, s) => n + s.balance, 0));
     const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
     return `<div class="stats">
-        ${kpi('Bank', money(bankLedger), `${list.filter((s) => s.kind === 'bank').length} sub-accounts · control 1010`)}
-        ${kpi('Cash', money(cashLedger), `${list.filter((s) => s.kind === 'cash').length} sub-accounts · control 1000`)}
-        ${kpi('Named to a sub-account', money(bankTotal + cashTotal), 'Part of the controls with a name')}
-        ${kpi('Unallocated', money(bankLedger + cashLedger - bankTotal - cashTotal), 'Control balance no document has named yet')}
+        ${kpi('Bank controls', money(bankLedger), `${controls.filter((a) => a.control === 'bank').length} heads · ${list.filter((s) => s.kind === 'bank').length} sub-accounts`)}
+        ${kpi('Cash controls', money(cashLedger), `${controls.filter((a) => a.control === 'cash').length} heads · ${list.filter((s) => s.kind === 'cash').length} sub-accounts`)}
+        ${kpi('Named to a sub-account', money(named), 'Part of the controls with a name')}
+        ${kpi('Unallocated', money(bankLedger + cashLedger - named), 'Control balance no document has named yet')}
       </div>
       <section class="panel">
         <div class="panel-head"><h2>Cash and bank sub-accounts</h2><span class="badge">${list.length} accounts</span></div>
         <div class="table-scroll"><table>
-          <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th></tr></thead>
-          <tbody>${list.map((s) => `<tr><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference)}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td class="mono">${e(s.control)}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td></tr>`).join('')}</tbody>
-          <tfoot><tr><td colspan="5">Total named</td><td class="numeric">${money(bankTotal + cashTotal)}</td><td colspan="2"></td></tr></tfoot>
+          <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th></tr></thead>
+          <tbody>${list.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference)}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td></tr>`; }).join('')}</tbody>
+          <tfoot><tr><td colspan="5">Total named</td><td class="numeric">${money(named)}</td><td colspan="2"></td></tr></tfoot>
         </table></div>
-        <div class="table-footer">A sub-account is the party inside the control head. The head keeps the balance; this table keeps the name, the bank reference and the projects and locations it may be used on. Unallocated is the part of the control balance that no document has named yet.</div>
+        <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts — add another control head in Settings → Accounting and it appears in the form below. Unallocated is the part of the control balances that no document has named yet.</div>
       </section>
       <section class="panel">
         <div class="panel-head"><h2>New cash or bank sub-account</h2><span class="badge">Blank access means all</span></div>
         <form data-cash-form class="panel-body form-grid">
           <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="BANK-HBL"></label>
           <label>Name<input name="name" required maxlength="70" placeholder="HBL — current 1234"></label>
+          <label>Control head<select name="control" class="inline-input" required>${controls.map((a) => `<option value="${a.code}" ${a.code === '1010' ? 'selected' : ''}>${a.code} · ${e(a.name)} (${a.control})</option>`).join('')}</select></label>
           <label>Kind<select name="kind" class="inline-input"><option value="bank">Bank</option><option value="cash">Cash</option></select></label>
           <label>Reference<input name="reference" maxlength="40" placeholder="IBAN, card or till number"></label>
           ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
           ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
           <div class="related"><button class="button primary">Add sub-account</button></div>
         </form>
-        <div class="panel-body"><p class="form-note">Bank sub-accounts belong to control 1010, cash sub-accounts to 1000. The journal only offers a bank account on a bank line and a cash custodian on a cash line, narrowed further by the projects and locations chosen here.</p></div>
+        <div class="panel-body"><p class="form-note">The control head decides where the balance sits; the kind decides which journal lines may pick the sub-account. A bank control takes bank lines, a cash control takes cash lines, and the chosen projects and locations narrow it further.</p></div>
       </section>`;
   }
 
@@ -1200,8 +1224,358 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
       const v = Object.fromEntries(new FormData(form));
       if (CASH_BANK.some((s) => s.code === v.code || s.name.trim().toLowerCase() === v.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      CASH_BANK.push({code: v.code, name: v.name.trim(), kind: v.kind, control: v.kind === 'cash' ? '1000' : '1010', reference: v.reference || '', projects: picked(proj), locations: picked(loc)});
+      CASH_BANK.push({code: v.code, name: v.name.trim(), kind: v.kind, control: v.control, reference: v.reference || '', projects: picked(proj), locations: picked(loc)});
       notify('Sub-account added for this session. It is available in the journal and belongs to the chosen projects and locations.');
+      rerender();
+    });
+  }
+
+  /* ------------------------------------------------------------ parties */
+  function partyControl(type) { return type === 'customer' ? '1100' : '2100'; }
+  function partyRows() {
+    return PARTIES.map((p) => {
+      const code = partyControl(p.type);
+      let debit = 0, credit = 0, count = 0;
+      for (const d of fixture(getCompany())) {
+        if (d.party !== p.name) continue;
+        for (const l of d.lines) if (l.account === code) { debit += num(l.debit); credit += num(l.credit); count++; }
+      }
+      const balance = p.type === 'customer' ? round2(debit - credit) : round2(credit - debit);
+      return {...p, balance, postings: count};
+    });
+  }
+  function partyStatement(p) {
+    const code = partyControl(p.type);
+    const lines = [];
+    let run = 0;
+    for (const d of fixture(getCompany())) {
+      if (d.party !== p.name) continue;
+      for (const l of d.lines) {
+        if (l.account !== code) continue;
+        const dr = num(l.debit), cr = num(l.credit);
+        run = round2(run + (p.type === 'customer' ? dr - cr : cr - dr));
+        lines.push({date: d.date, id: d.id, source: d.source, dr, cr, balance: run});
+      }
+    }
+    return lines.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  }
+  function partiesView() {
+    const rows = partyRows();
+    const open = rows.find((p) => p.code === PARTY_OPEN);
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    const receivable = round2(rows.filter((p) => p.type === 'customer').reduce((n, p) => n + p.balance, 0));
+    const payable = round2(rows.filter((p) => p.type === 'supplier').reduce((n, p) => n + p.balance, 0));
+    const statement = open ? partyStatement(open) : [];
+    const page = open ? `<section class="panel">
+        <div class="panel-head"><div><div class="eyebrow">${e(open.code)} · ${e(open.type)}</div><h2>${e(open.name)}</h2></div><div class="related">${badge(open.status, open.status === 'Active' ? 'good' : 'warn')}<button class="text-button" data-party-close>Close</button></div></div>
+        <div class="panel-body">
+          <div class="record-summary">
+            <div><small>Balance</small><strong>${money(open.balance)}</strong></div>
+            <div><small>Terms</small>${open.terms ? `${open.terms} days` : 'Due on receipt'}</div>
+            <div><small>Credit limit</small>${open.limit ? `${money(open.limit)} · ${open.limit ? Math.round((open.balance / open.limit) * 100) : 0}% used` : 'Not set'}</div>
+            <div><small>Tax identity</small>${e(open.taxId)}</div>
+            <div><small>Group</small>${e(open.group)}</div>
+            <div><small>Allowed</small>${e(scopeText(open.projects))} · ${e(scopeText(open.locations))}</div>
+          </div>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Date</th><th>Voucher</th><th>Source</th><th class="numeric">Debit</th><th class="numeric">Credit</th><th class="numeric">Balance</th></tr></thead>
+          <tbody>${statement.map((l) => `<tr><td>${e(l.date)}</td><td><button class="text-button" data-ac="source" data-value="${e(l.id)}">${e(l.id)}</button></td><td>${e(l.source)}</td><td class="numeric">${l.dr ? money(l.dr) : ''}</td><td class="numeric">${l.cr ? money(l.cr) : ''}</td><td class="numeric">${money(l.balance)}</td></tr>`).join('') || '<tr><td colspan="6">No statements yet.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="5">Closing balance</td><td class="numeric">${money(open.balance)}</td></tr></tfoot>
+        </table></div>
+        <div class="panel-body">
+          <div class="section-title">Allowed projects and locations</div>
+          <form data-party-access="${e(open.code)}" class="form-grid">
+            ${ms('pa-projects', 'Projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), open.projects)}
+            ${ms('pa-locations', 'Locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), open.locations)}
+            <div class="related"><button class="button primary">Save access</button><button class="button" data-party-hold="${e(open.code)}">${open.status === 'Active' ? 'Put on hold' : 'Reactivate'}</button></div>
+          </form>
+          <p class="form-note">Access narrows where this party can be picked in the journal. It never changes a balance and it is not a permission.</p>
+        </div>
+      </section>` : '';
+    return `<div class="stats">
+        ${kpi('Customers', String(rows.filter((p) => p.type === 'customer').length), `${money(receivable)} receivable`)}
+        ${kpi('Suppliers', String(rows.filter((p) => p.type === 'supplier').length), `${money(payable)} payable`)}
+        ${kpi('On hold', String(rows.filter((p) => p.status !== 'Active').length), 'Blocked for new documents')}
+      </div>
+      ${page}
+      <section class="panel">
+        <div class="panel-head"><h2>Parties</h2><span class="badge">${rows.length} records</span></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Group</th><th class="numeric">Terms</th><th class="numeric">Limit</th><th class="numeric">Balance</th><th>Status</th><th></th></tr></thead>
+          <tbody>${rows.map((p) => `<tr><td class="mono">${e(p.code)}</td><td>${e(p.name)}</td><td>${e(p.type)}</td><td>${e(p.group)}</td><td class="numeric">${p.terms || '—'}</td><td class="numeric">${p.limit ? money(p.limit) : '—'}</td><td class="numeric">${money(p.balance)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td><td><button class="text-button" data-party-open="${e(p.code)}">Open</button></td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="6">Total</td><td class="numeric">${money(receivable + payable)}</td><td colspan="2"></td></tr></tfoot>
+        </table></div>
+        <div class="table-footer">Balance is the party's open position on its control account. A customer sits on 1100, a supplier on 2100. Credit limits and terms are configuration; they do not block posting on their own.</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>New party</h2><span class="badge">Access is set here</span></div>
+        <form data-party-form class="panel-body form-grid">
+          <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" placeholder="CUS-130"></label>
+          <label>Name<input name="name" required maxlength="70" placeholder="New customer"></label>
+          <label>Type<select name="type" class="inline-input"><option value="customer">Customer</option><option value="supplier">Supplier</option></select></label>
+          <label>Group<input name="group" maxlength="30" placeholder="Wholesale"></label>
+          <label>Payment terms (days)<input name="terms" type="number" min="0" max="365" value="30"></label>
+          <label>Credit limit<input name="limit" inputmode="decimal" value="0.00"></label>
+          <label>Tax identity<input name="taxId" maxlength="30" placeholder="NTN-"></label>
+          ${ms('party-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), [])}
+          ${ms('party-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), [])}
+          <div class="related"><button class="button primary">Add party</button></div>
+        </form>
+        <div class="panel-body"><p class="form-note">A customer or supplier is a sub-account of 1100 or 2100. The journal only offers a party where its account kind and its allowed projects and locations agree.</p></div>
+      </section>`;
+  }
+
+  function bindParties(rerender, notify) {
+    document.querySelectorAll('[data-party-open]').forEach((b) => b.addEventListener('click', () => {
+      PARTY_OPEN = b.dataset.partyOpen;
+      rerender();
+    }));
+    document.querySelector('[data-party-close]')?.addEventListener('click', () => { PARTY_OPEN = ''; rerender(); });
+    document.querySelector('[data-party-hold]')?.addEventListener('click', (ev) => {
+      const p = PARTIES.find((x) => x.code === ev.target.dataset.partyHold);
+      if (!p) return;
+      p.status = p.status === 'Active' ? 'Hold' : 'Active';
+      notify(`Party set to ${p.status} for this session.`);
+      rerender();
+    });
+    const access = document.querySelector('[data-party-access]');
+    if (access) access.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const p = PARTIES.find((x) => x.code === access.dataset.partyAccess);
+      if (!p) return;
+      const [proj, loc] = access.querySelectorAll('.ms');
+      p.projects = picked(proj);
+      p.locations = picked(loc);
+      notify('Party access saved for this session. The journal picker follows it immediately.');
+      rerender();
+    });
+    document.querySelector('[data-party-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      if (PARTIES.some((p) => p.code === v.code || p.name.trim().toLowerCase() === v.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
+      const [proj, loc] = form.querySelectorAll('.ms');
+      PARTIES.push({code: v.code, name: v.name.trim(), type: v.type, group: v.group || 'General', terms: Number(v.terms) || 0, limit: round2(Number(v.limit) || 0), status: 'Active', taxId: v.taxId || '', projects: picked(proj), locations: picked(loc)});
+      notify('Party added for this session. It is available in the journal and in payments.');
+      rerender();
+    });
+  }
+
+  /* ----------------------------------------------------------- invoices */
+  const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
+  const INV_DRAFT = {
+    sales: {party: '', date: '2026-11-30', due: '2026-12-30', narration: 'Service invoiced', lines: [
+      {account: '4000', description: 'Service', qty: '1', price: '0.00'},
+      {account: '4000', description: '', qty: '1', price: '0.00'},
+      {account: '4000', description: '', qty: '1', price: '0.00'},
+    ]},
+    purchase: {party: '', date: '2026-11-30', due: '2026-12-30', narration: 'Supplier bill', lines: [
+      {account: '5000', description: 'Service', qty: '1', price: '0.00'},
+      {account: '5000', description: '', qty: '1', price: '0.00'},
+      {account: '5000', description: '', qty: '1', price: '0.00'},
+    ]},
+  };
+
+  /* ----------------------------------------------------------- payments */
+  function openItems(party) {
+    if (!party) return [];
+    const isCustomer = party.type === 'customer';
+    const code = isCustomer ? '1100' : '2100';
+    const docs = fixture(getCompany());
+    return docs
+      .filter((d) => d.party === party.name && (d.subtype === 'Invoice' || d.subtype === 'Bill'))
+      .map((d) => {
+        const total = round2(d.lines.filter((l) => l.account === code).reduce((n, l) => n + (isCustomer ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
+        const paid = round2(docs.filter((x) => x.againstVoucher === d.id).reduce((n, x) => n + x.lines.filter((l) => l.account === code).reduce((m, l) => m + (isCustomer ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0), 0));
+        return {id: d.id, date: d.date, total, paid: Math.min(paid, total), outstanding: round2(Math.max(total - paid, 0))};
+      })
+      .filter((x) => x.outstanding > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+  function autoAllocate(party, amount) {
+    let left = round2(Number(amount) || 0);
+    const rows = [];
+    for (const item of openItems(party)) {
+      if (left <= 0) break;
+      const take = Math.min(left, item.outstanding);
+      if (take > 0) { rows.push({id: item.id, amount: round2(take)}); left = round2(left - take); }
+    }
+    return {rows, left};
+  }
+  function paymentRows() {
+    const isReceipt = (d) => d.lines.some((l) => ['1010', '1000', '1020'].includes(l.account) && num(l.debit) > 0);
+    const fromFixture = fixture(getCompany()).filter((d) => d.source === 'Payment').map((d) => {
+      const bank = d.lines.find((l) => ['1010', '1000', '1020'].includes(l.account));
+      return {id: d.id, date: d.date, party: d.party, account: bank ? bank.party || '' : '', amount: round2(Math.abs(num(bank ? bank.debit : 0) - num(bank ? bank.credit : 0))), direction: isReceipt(d) ? 'receive' : 'pay', against: d.againstVoucher || '', session: false};
+    });
+    return PAYMENTS.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }
+  function paymentsView() {
+    const rows = paymentRows();
+    const parties = PARTIES.filter((p) => (PAY_FORM.direction === 'receive' ? p.type === 'customer' : p.type === 'supplier'));
+    const party = PARTIES.find((p) => p.name === PAY_FORM.party);
+    const amount = round2(Number(PAY_FORM.amount) || 0);
+    const allocation = party && amount ? autoAllocate(party, amount) : {rows: [], left: 0};
+    const outstanding = party ? round2(openItems(party).reduce((n, x) => n + x.outstanding, 0)) : 0;
+    const received = round2(rows.filter((r) => r.direction === 'receive').reduce((n, r) => n + r.amount, 0));
+    const paid = round2(rows.filter((r) => r.direction === 'pay').reduce((n, r) => n + r.amount, 0));
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    return `<div class="stats">
+        ${kpi('Received', money(received), `${rows.filter((r) => r.direction === 'receive').length} receipts`)}
+        ${kpi('Paid', money(paid), `${rows.filter((r) => r.direction === 'pay').length} payments`)}
+        ${kpi('Open with this party', party ? money(outstanding) : '—', party ? party.name : 'Choose a party in the form')}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><h2>Receipts and payments</h2><span class="badge">${rows.length} documents</span></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Date</th><th>Reference</th><th>Direction</th><th>Party</th><th>Cash / bank account</th><th class="numeric">Amount</th><th>Against</th><th>State</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e(r.account || '—')}</td><td class="numeric">${money(r.amount)}</td><td>${e(r.against || '—')}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No payments yet.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(received + paid)}</td><td colspan="2"></td></tr></tfoot>
+        </table></div>
+        <div class="table-footer">Money in is a receipt, money out is a payment. The document posts the bank or cash sub-account and the party control together; the allocation decides which open documents it settles and what remains as an advance.</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>New receipt or payment</h2><span class="badge">Oldest first</span></div>
+        <form data-pay-form class="panel-body form-grid">
+          <label>Direction<select name="direction" class="inline-input"><option value="receive" ${PAY_FORM.direction === 'receive' ? 'selected' : ''}>Receive money</option><option value="pay" ${PAY_FORM.direction === 'pay' ? 'selected' : ''}>Pay money</option></select></label>
+          <label>Party<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === PAY_FORM.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+          <label>Cash / bank<select name="account" class="inline-input" required><option value="">Choose a sub-account</option>${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === PAY_FORM.account ? 'selected' : ''}>${e(c.name)} · ${e(c.control)}</option>`).join('')}</select></label>
+          <label>Date<input name="date" type="date" value="2026-11-30" required></label>
+          <label>Reference<input name="reference" maxlength="40" placeholder="Cheque, transfer or slip"></label>
+          <label>Amount<input name="amount" inputmode="decimal" value="${PAY_FORM.amount || ''}" placeholder="0.00" required></label>
+          <div class="related"><button type="button" class="button" data-pay-calc>Show allocation</button><button class="button primary">Save for this session</button></div>
+        </form>
+        ${party ? `<div class="panel-body"><div class="section-title">Open documents · ${e(party.name)}</div>
+          <div class="table-scroll"><table>
+            <thead><tr><th>Date</th><th>Document</th><th class="numeric">Total</th><th class="numeric">Settled</th><th class="numeric">Outstanding</th><th class="numeric">This payment</th></tr></thead>
+            <tbody>${openItems(party).map((x) => { const hit = allocation.rows.find((a) => a.id === x.id); return `<tr><td>${e(x.date)}</td><td class="mono">${e(x.id)}</td><td class="numeric">${money(x.total)}</td><td class="numeric">${money(x.paid)}</td><td class="numeric">${money(x.outstanding)}</td><td class="numeric">${hit ? money(hit.amount) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="6">Nothing open.</td></tr>'}</tbody>
+            <tfoot><tr><td colspan="5">Allocated ${money(round2(amount - allocation.left))} · advance or unallocated ${money(allocation.left)}</td><td class="numeric">${money(amount)}</td></tr></tfoot>
+          </table></div></div>` : ''}
+        <div class="panel-body"><p class="form-note">The preview settles the oldest open documents first. Anything left over is an advance on account. Nothing in this build posts to the ledger; a saved document lives in this session only.</p></div>
+      </section>`;
+  }
+
+  function capturePay(form) {
+    const v = Object.fromEntries(new FormData(form));
+    PAY_FORM = {direction: v.direction, party: v.party, account: v.account, amount: v.amount};
+    return v;
+  }
+  function bindPayments(rerender, notify) {
+    const form = document.querySelector('[data-pay-form]');
+    if (!form) return;
+    form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!form.reportValidity()) return;
+      const v = capturePay(form);
+      const party = PARTIES.find((p) => p.name === v.party);
+      if (!party) { notify('Choose a party first.'); return; }
+      const amount = round2(Number(v.amount) || 0);
+      if (amount <= 0) { notify('Enter an amount greater than zero.'); return; }
+      const allocation = autoAllocate(party, amount);
+      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: v.account, amount, direction: v.direction, against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, session: true});
+      notify(`Saved for this session: ${allocation.rows.length} documents settled${allocation.left ? `, ${allocation.left.toFixed(2)} left as an advance` : ''}.`);
+      PAY_FORM.amount = '';
+      rerender();
+    });
+    form.addEventListener('change', (ev) => {
+      if (!ev.target.matches('select')) return;
+      capturePay(form);
+      rerender();
+    });
+    form.querySelector('[data-pay-calc]')?.addEventListener('click', () => { capturePay(form); rerender(); });
+  }
+
+  /* -------------------------------------------------- invoices and bills */
+  function invoiceTotals(kind, lines) {
+    const rate = kind === 'sales' ? 10 : 10;
+    const net = round2(lines.reduce((n, l) => n + (Number(l.qty) || 0) * (Number(l.price) || 0), 0));
+    const tax = round2((net * rate) / 100);
+    return {net, tax, gross: round2(net + tax), rate};
+  }
+  function invoiceRows(kind) {
+    const isSales = kind === 'sales';
+    const control = isSales ? '1100' : '2100';
+    const fromFixture = fixture(getCompany())
+      .filter((d) => (isSales ? d.subtype === 'Invoice' : d.subtype === 'Bill'))
+      .map((d) => {
+        const net = round2(d.lines.filter((l) => (isSales ? String(l.account).startsWith('4') : String(l.account).startsWith('5'))).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
+        const tax = round2(d.lines.filter((l) => l.account === (isSales ? '2200' : '1300')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
+        const gross = round2(d.lines.filter((l) => l.account === control).reduce((n, l) => n + (isSales ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
+        const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
+        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, session: false};
+      });
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, session: true}));
+    return session.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  }
+  function invoicesView(kind) {
+    const isSales = kind === 'sales';
+    const draft = INV_DRAFT[invKey(kind)];
+    const rows = invoiceRows(kind);
+    const totals = invoiceTotals(kind, draft.lines);
+    const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
+    const open = round2(rows.reduce((n, r) => n + r.gross, 0));
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    return `<div class="stats">
+        ${kpi(isSales ? 'Invoiced' : 'Billed', money(open), `${rows.length} documents`)}
+        ${kpi(isSales ? 'Receivable' : 'Payable', money(Math.abs(ledgerBalance(isSales ? '1100' : '2100'))), 'Control account balance')}
+        ${kpi('In this draft', money(totals.gross), 'Net plus tax')}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase invoices'}</h2><span class="badge">${rows.length} documents</span></div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>State</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="8">No documents yet.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(open)}</td><td></td></tr></tfoot>
+        </table></div>
+        <div class="table-footer">${isSales ? 'A posted invoice debits receivables and credits income plus output tax.' : 'A posted bill debits expense and input tax and credits payables.'} Session documents exist only in this browser.</div>
+      </section>
+      <section class="panel">
+        <div class="panel-head"><h2>New ${isSales ? 'sales invoice' : 'purchase bill'}</h2><span class="badge">Tax ${totals.rate}%</span></div>
+        <form data-invoice-form="${kind}" class="panel-body form-grid">
+          <label>${isSales ? 'Customer' : 'Supplier'}<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === draft.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+          <label>Date<input name="date" type="date" value="${e(draft.date)}" required></label>
+          <label>Due date<input name="due" type="date" value="${e(draft.due)}" required></label>
+          <label>Narration<input name="narration" maxlength="80" value="${e(draft.narration)}"></label>
+          <div class="wide"></div>
+        </form>
+        <div class="table-scroll"><table class="invoice-lines">
+          <thead><tr><th>Line</th><th>Account</th><th>Description</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th></tr></thead>
+          <tbody>${draft.lines.map((l, i) => `<tr data-inv-line="${i}"><td>${i + 1}</td><td><select class="inline-input" data-inv-field="account">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td><input data-inv-field="description" value="${e(l.description)}" aria-label="Line ${i + 1} description"></td><td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td><td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td><td class="numeric">${money((Number(l.qty) || 0) * (Number(l.price) || 0))}</td></tr>`).join('')}</tbody>
+          <tfoot><tr><td colspan="5">Net ${money(totals.net)} · tax ${money(totals.tax)} · gross <strong>${money(totals.gross)}</strong></td><td class="numeric">${money(totals.gross)}</td></tr></tfoot>
+        </table></div>
+        <div class="panel-body"><div class="related"><button type="button" class="button" data-inv-calc>Calculate</button><button type="button" class="button primary" data-inv-save>Save for this session</button></div>
+          <p class="form-note">Enter quantity and price, then Calculate to refresh the totals. A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
+      </section>`;
+  }
+
+  function captureInvoice(kind, root) {
+    const form = root.querySelector('[data-invoice-form]');
+    const draft = INV_DRAFT[invKey(kind)];
+    if (!form) return draft;
+    const v = Object.fromEntries(new FormData(form));
+    const lines = [...root.querySelectorAll('[data-inv-line]')].map((tr) => ({
+      account: tr.querySelector('[data-inv-field="account"]').value,
+      description: tr.querySelector('[data-inv-field="description"]').value,
+      qty: tr.querySelector('[data-inv-field="qty"]').value,
+      price: tr.querySelector('[data-inv-field="price"]').value,
+    }));
+    Object.assign(draft, {party: v.party, date: v.date, due: v.due, narration: v.narration, lines});
+    return draft;
+  }
+  function bindInvoices(kind, rerender, notify) {
+    const root = document.querySelector(`[data-invoice-form="${kind}"]`)?.closest('section');
+    if (!root) return;
+    root.querySelector('[data-inv-calc]')?.addEventListener('click', () => { captureInvoice(kind, root); rerender(); });
+    root.querySelector('[data-inv-save]')?.addEventListener('click', () => {
+      const draft = captureInvoice(kind, root);
+      if (!draft.party) { notify('Choose a party first.'); return; }
+      const totals = invoiceTotals(kind, draft.lines);
+      if (totals.net <= 0) { notify('Enter at least one line with a quantity and a price.'); return; }
+      INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, narration: draft.narration, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
+      notify(`Saved for this session: ${draft.party} · gross ${totals.gross.toFixed(2)}.`);
+      INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', lines: INV_DRAFT[invKey(kind)].lines.map((l) => ({...l, price: '0.00', qty: '1'}))};
       rerender();
     });
   }
@@ -1510,6 +1884,197 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
     }));
   }
 
+  /* ------------------------------------------------------ period close */
+  const CLOSE_STEPS = [
+    ['tb', 'Trial balance agrees', 'Closing debits equal credits'],
+    ['tax', 'Tax registers agree', 'Output and input tax against their control accounts'],
+    ['ar', 'Party control schedules', 'Receivable and payable balances against the party ledgers'],
+    ['bank', 'Bank and cash proof', 'Statement reconciliation is not built yet'],
+    ['drafts', 'No unposted drafts', 'Drafts are visible in the journal register'],
+    ['signoff', 'Named sign-off', 'The person who locks the period'],
+  ];
+  function closeView() {
+    const tb = rows();
+    const dr = round2(tb.reduce((n, a) => n + num(a.closingDebit), 0));
+    const cr = round2(tb.reduce((n, a) => n + num(a.closingCredit), 0));
+    const balanced = Math.abs(dr - cr) < 0.01;
+    const kpi = (label, value, basis) => `<section class="stat"><span class="stat-label">${e(label)}</span><strong class="value numeric">${value}</strong><small>${e(basis)}</small></section>`;
+    return `<div class="stats">
+        ${kpi('Closing debit', money(dr), 'All heads')}
+        ${kpi('Closing credit', money(cr), balanced ? 'Agrees' : 'Difference to investigate')}
+        ${kpi('Period', 'Nov 2026', PERIOD_LOCKED ? 'Locked' : 'Open')}
+      </div>
+      <section class="panel">
+        <div class="panel-head"><h2>Close checklist</h2><span class="badge ${balanced ? 'good' : 'warn'}">${balanced ? 'Trial balance agrees' : 'Trial balance differs'}</span></div>
+        <div class="panel-body">
+          <ul class="close-list">${CLOSE_STEPS.map(([id, title, detail]) => `<li><div><strong>${e(title)}</strong><small class="secondary">${e(detail)}</small></div><label class="check-inline"><input type="checkbox" data-close-step="${id}" ${id === 'tb' && balanced ? 'checked' : ''} ${PERIOD_LOCKED ? 'disabled' : ''}> Done</label></li>`).join('')}</ul>
+        </div>
+        <form class="panel-body form-grid" data-close-form>
+          <label>Signed off by<input name="signoff" maxlength="60" placeholder="Name of the person closing" ${PERIOD_LOCKED ? 'disabled' : ''}></label>
+          <label>Lock date<input name="lockdate" type="date" value="2026-11-30" ${PERIOD_LOCKED ? 'disabled' : ''}></label>
+          <div class="related"><button class="button primary" data-close-lock ${PERIOD_LOCKED ? 'disabled' : ''}>${PERIOD_LOCKED ? 'Period locked' : 'Lock November 2026'}</button><button type="button" class="button" data-close-reopen ${PERIOD_LOCKED ? '' : 'disabled'}>Reopen for this session</button></div>
+        </form>
+        <div class="panel-body"><p class="form-note">Locking is a session state here. In the real build it writes an immutable close record, blocks posting into the period and requires the business administrator to reopen with a reason. Bank reconciliation is the one checklist line that cannot be ticked yet.</p></div>
+      </section>`;
+  }
+  function bindClose(rerender, notify) {
+    document.querySelector('[data-close-lock]')?.addEventListener('click', () => {
+      if (!document.querySelector('[data-close-form]')?.reportValidity()) return;
+      if (!document.querySelector('[data-close-step="signoff"]')?.checked) {
+        document.querySelector('[data-close-step="signoff"]').checked = true;
+        rerender();
+        notify('Signed off. Lock the period now.');
+        return;
+      }
+      PERIOD_LOCKED = true;
+      notify('November 2026 locked for this session. Posting into it should now be refused.');
+      rerender();
+    });
+    document.querySelector('[data-close-reopen]')?.addEventListener('click', () => {
+      PERIOD_LOCKED = false;
+      notify('Period reopened for this session. A real reopen needs a reason and an administrator.');
+      rerender();
+    });
+  }
+
+  /* ----------------------------------------------------------- settings */
+  const SETTINGS_TABS = [['company', 'Company'], ['accounting', 'Accounting'], ['people', 'People & access'], ['periods', 'Periods'], ['forms', 'Forms & fields'], ['views', 'Saved views'], ['print', 'Print & templates']];
+  const field = (label, value, hint = '') => `<label>${e(label)}<input value="${e(value)}">${hint ? `<small class="secondary">${e(hint)}</small>` : ''}</label>`;
+  function settingsView(page) {
+    const current = SETTINGS_TABS.some(([k]) => k === page) ? page : 'company';
+    const body = current === 'accounting' ? setup()
+      : current === 'people' ? `<section class="panel">
+          <div class="panel-head"><h2>People &amp; access</h2><span class="badge">${PEOPLE.length} people</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Scope</th><th>Status</th></tr></thead><tbody>${PEOPLE.map((p) => `<tr><td>${e(p.name)}</td><td>${e(p.email)}</td><td>${e(p.role)}</td><td>${e(p.scope)}</td><td>${badge(p.status, p.status === 'Active' ? 'good' : 'warn')}</td></tr>`).join('')}</tbody></table></div>
+          <form data-people-form class="panel-body form-grid">
+            <label>Name<input name="name" required maxlength="50"></label>
+            <label>Email<input name="email" type="email" required maxlength="70"></label>
+            <label>Role<select name="role" class="inline-input"><option>Accountant</option><option>Bookkeeper</option><option>Cashier</option><option>Storekeeper</option><option>Auditor (read only)</option></select></label>
+            <label>Scope<input name="scope" maxlength="50" value="Accounting"></label>
+            <div class="related"><button class="button primary">Invite</button></div>
+          </form>
+          <div class="panel-body"><p class="form-note">Roles grant what the role grants; a custom role name grants nothing protected. One active owner per business. Invitations are session-only in this build.</p></div>
+        </section>`
+      : current === 'periods' ? `<section class="panel">
+          <div class="panel-head"><h2>Periods</h2><span class="badge ${PERIOD_LOCKED ? 'good' : ''}">${PERIOD_LOCKED ? 'November locked' : 'November open'}</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Period</th><th>From</th><th>To</th><th>State</th><th></th></tr></thead><tbody>
+            ${[['Jul 2026', '2026-07-01', '2026-07-31'], ['Aug 2026', '2026-08-01', '2026-08-31'], ['Sep 2026', '2026-09-01', '2026-09-30'], ['Oct 2026', '2026-10-01', '2026-10-31'], ['Nov 2026', '2026-11-01', '2026-11-30']].map(([label, from, to]) => {
+              const locked = label === 'Nov 2026' && PERIOD_LOCKED;
+              return `<tr><td>${label}</td><td>${from}</td><td>${to}</td><td>${badge(locked ? 'Locked' : 'Open', locked ? 'good' : '')}</td><td>${label === 'Nov 2026' ? `<button class="text-button" data-period-toggle>${locked ? 'Reopen' : 'Lock'}</button>` : ''}</td></tr>`;
+            }).join('')}
+          </tbody></table></div>
+          <div class="panel-body"><p class="form-note">The close checklist lives in Accounting → Period close. This page is the list of periods and their state; locking here and there is the same switch.</p></div>
+        </section>`
+      : current === 'forms' ? `<section class="panel">
+          <div class="panel-head"><h2>Forms &amp; fields</h2><span class="badge">Versioned per business</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Form</th><th class="numeric">Standard fields</th><th>Custom fields</th><th>Last change</th></tr></thead><tbody>
+            ${[['Journal entry', 12], ['Sales invoice', 9], ['Purchase bill', 9], ['Receipt / payment', 7], ['Party', 9], ['Item', 7], ['Cash / bank sub-account', 6]].map(([name, count]) => `<tr><td>${e(name)}</td><td class="numeric">${count}</td><td>${CUSTOM_FIELDS.filter((f) => f.form === name).map((f) => e(f.name)).join(', ') || '—'}</td><td>This session</td></tr>`).join('')}
+          </tbody></table></div>
+          <form data-field-form class="panel-body form-grid">
+            <label>Form<select name="form" class="inline-input">${['Journal entry', 'Sales invoice', 'Purchase bill', 'Receipt / payment', 'Party', 'Item', 'Cash / bank sub-account'].map((n) => `<option>${n}</option>`).join('')}</select></label>
+            <label>Field label<input name="name" required maxlength="40" placeholder="Cost centre note"></label>
+            <label>Type<select name="type" class="inline-input"><option>Text</option><option>Number</option><option>Date</option><option>Yes / no</option><option>Choice</option></select></label>
+            <div class="related"><button class="button primary">Add field</button></div>
+          </form>
+          <div class="panel-body"><p class="form-note">Custom fields are added to the form and stored with the document. On the journal they appear on the More info tab. Field permissions, required rules and version history are enforced by the backend, not by this page.</p></div>
+        </section>`
+      : current === 'views' ? `<section class="panel">
+          <div class="panel-head"><h2>Saved views</h2><span class="badge">${SAVED_VIEWS.length} views</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Name</th><th>Scope</th><th>Columns, filters, sort</th></tr></thead><tbody>${SAVED_VIEWS.map((v) => `<tr><td>${e(v.name)}</td><td>${e(v.scope)}</td><td>${e(v.detail)}</td></tr>`).join('')}</tbody></table></div>
+          <form data-view-form class="panel-body form-grid">
+            <label>Name<input name="name" required maxlength="40" placeholder="Overdue customers"></label>
+            <label>Scope<select name="scope" class="inline-input">${['Journal entries', 'General ledger', 'Parties', 'Payments', 'Items', 'Taxes'].map((n) => `<option>${n}</option>`).join('')}</select></label>
+            <label>Detail<input name="detail" maxlength="70" placeholder="Filter, columns and sort"></label>
+            <div class="related"><button class="button primary">Save view</button></div>
+          </form>
+        </section>`
+      : current === 'print' ? `<section class="panel">
+          <div class="panel-head"><h2>Print &amp; templates</h2><span class="badge">${PRINT_TEMPLATES.length} templates</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Template</th><th>Size</th><th>Logo</th><th>QR</th><th>Footer</th></tr></thead><tbody>${PRINT_TEMPLATES.map((t) => `<tr><td>${e(t.name)}</td><td>${e(t.size)}</td><td>${t.logo ? 'Yes' : 'No'}</td><td>${t.qr ? 'Yes' : 'No'}</td><td>${e(t.footer)}</td></tr>`).join('')}</tbody></table></div>
+          <form data-print-form class="panel-body form-grid">
+            <label>Name<input name="name" required maxlength="40" placeholder="A5 invoice"></label>
+            <label>Size<select name="size" class="inline-input"><option>A4</option><option>A5</option><option>80 mm</option></select></label>
+            <label>Footer<input name="footer" maxlength="70" value="Northstar Trading (Pvt) Ltd"></label>
+            <label>Show logo<select name="logo" class="inline-input"><option value="yes">Yes</option><option value="no">No</option></select></label>
+            <div class="related"><button class="button primary">Add template</button></div>
+          </form>
+          <div class="panel-body"><p class="form-note">The journal print action uses the browser print sheet today. A template selection, letterhead upload and QR prove the document without a server round trip.</p></div>
+        </section>`
+      : `<div class="two-column">
+          <section class="panel">
+            <div class="panel-head"><h2>Business identity</h2><span class="badge">Session only</span></div>
+            <div class="panel-body form-grid">
+              ${field('Legal name', 'Northstar Trading (Pvt) Ltd')}
+              ${field('Trading name', 'Northstar Trading')}
+              ${field('Tax identity', 'NTN-4100000')}
+              ${field('Registration', 'SECP-0188221')}
+              ${field('Base currency', 'PKR')}
+              ${field('Fiscal year', 'Jul 2026 – Jun 2027')}
+              ${field('Current period', 'Nov 2026')}
+              ${field('Week starts', 'Monday')}
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h2>Addresses and contact</h2></div>
+            <div class="panel-body form-grid">
+              ${field('Registered address', 'Office 4, Clifton Block 5')}
+              ${field('City', 'Karachi')}
+              ${field('Country', 'Pakistan')}
+              ${field('Phone', '+92 21 000 0000')}
+              ${field('Email', 'accounts@northstar.pk')}
+              ${field('Website', 'northstar.pk')}
+            </div>
+            <div class="panel-body"><p class="form-note">The business is chosen once at sign-in. Its identity prints on every document; changing the base currency or fiscal year after posting needs a migration, not a form.</p></div>
+          </section>
+        </div>`;
+    return `<div class="tabs" role="tablist" aria-label="Settings sections">${SETTINGS_TABS.map(([id, label]) => `<button role="tab" aria-selected="${current === id}" data-module="settings" data-tab="${id}">${label}</button>`).join('')}</div>
+      <div id="settings-panel">${body}</div>`;
+  }
+
+  function bindSettingsView(rerender, notify) {
+    document.querySelector('[data-people-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      PEOPLE.push({name: v.name, email: v.email, role: v.role, scope: v.scope || '—', status: 'Invited'});
+      notify('Invitation recorded for this session. Delivery and acceptance need the backend.');
+      rerender();
+    });
+    document.querySelector('[data-field-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      CUSTOM_FIELDS.push({form: v.form, name: v.name, type: v.type});
+      notify('Custom field added for this session.');
+      rerender();
+    });
+    document.querySelector('[data-view-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      SAVED_VIEWS.push({name: v.name, scope: v.scope, detail: v.detail || 'Default columns'});
+      notify('View saved for this session.');
+      rerender();
+    });
+    document.querySelector('[data-print-form]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const form = ev.target;
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      PRINT_TEMPLATES.push({name: v.name, size: v.size, logo: v.logo === 'yes', qr: false, footer: v.footer});
+      notify('Print template added for this session.');
+      rerender();
+    });
+    document.querySelector('[data-period-toggle]')?.addEventListener('click', () => {
+      PERIOD_LOCKED = !PERIOD_LOCKED;
+      notify(PERIOD_LOCKED ? 'November 2026 locked for this session.' : 'November 2026 reopened for this session.');
+      rerender();
+    });
+  }
+
   const projectsView = () => projectsScreen(getCompany());
 
   const PLANNED = {
@@ -1537,6 +2102,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts}) {
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, bindCashBank, items: itemsView, bindItems, reports: reportsView, bindReports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, bindCashBank, items: itemsView, bindItems, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, bindInvoices, close: closeView, bindClose, settings: settingsView, bindSettings: bindSettingsView, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

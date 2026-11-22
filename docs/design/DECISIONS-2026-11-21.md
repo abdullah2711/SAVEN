@@ -926,3 +926,81 @@ include.
 - Bank statement reconciliation.
 - Period close with an enforced lock.
 - Quick entry grid, forms register, custom fields as columns, persistence.
+
+---
+
+# Round 10 — parties, payments, invoices, close, and a real Settings module
+
+## 64. Cash and bank controls are data, not fixed codes
+
+- The chart marks a head as a **bank control** or a **cash control**; 1010, 1000 and
+  1020 now carry that flag.
+- The sub-account form **chooses the control head** from every head flagged bank or
+  cash, so a business with two cash controls sees both and can attach accounts to
+  either.
+- The cash & bank page totals are computed from those controls, not from fixed
+  codes: bank controls, cash controls, the part named to a sub-account, and what is
+  unallocated.
+- The journal follows the same flag: a bank control accepts bank sub-accounts, a
+  cash control accepts cash ones. No code is hard-coded any more.
+- New control heads are created in Settings → Accounting → Accounting heads.
+
+## 65. Parties
+
+- One register of customers and suppliers: code, name, type, group, terms, credit
+  limit, control balance, status.
+- A row opens the party: balance, terms, limit use, tax identity, group, allowed
+  projects and locations, and the statement (date, voucher, source, debit, credit,
+  running balance).
+- The party form collects the allowed projects and locations at creation; the party
+  page can change them later. The journal reads the party record directly, so an
+  access change applies immediately.
+- Balances come from the party's control account lines, so they agree with the
+  receivables and payables control heads by construction.
+
+## 66. Payments
+
+- Register of receipts and payments with direction, party, cash/bank sub-account,
+  amount, what it settles and its state.
+- The form allocates **oldest open document first** and shows the remainder as an
+  advance on account. Open documents are derived from invoices and bills minus
+  what already settled them.
+- Session documents are numbered `RCT-…` / `PMT-…` and appear in the register. They
+  do not write a ledger entry in this build.
+
+## 67. Sales and purchase invoices
+
+- Register of invoices and bills with date, number, party, due date, net, tax, gross
+  and state.
+- The form has party, dates, narration and three service lines with quantity and
+  unit price; **Calculate** refreshes the totals, **Save** adds a session document
+  numbered in the `SI-` / `PI-` series.
+- The documents say plainly that nothing posts yet. When posting exists, the same
+  form writes receivables/payables, income/expense and the tax control.
+
+## 68. Period close
+
+- Checklist with the trial balance proof (computed), tax registers, party control
+  schedules, bank proof, drafts and named sign-off.
+- **Lock November 2026** requires a sign-off name and a date, then sets a session
+  lock; **Reopen** is available with the warning that a real reopen needs an
+  administrator and a reason.
+- The lock is the same switch as Settings → Periods, so the two pages cannot
+  disagree.
+
+## 69. Settings is its own module
+
+Accounting no longer carries a Setup page. Settings (Workspace settings) now holds
+seven working pages, reached from the rail:
+
+| Page | Contents |
+|---|---|
+| Company | legal identity, addresses, base currency, fiscal year, active period |
+| Accounting | numbering, default accounts, accounting heads, projects & locations, approvals — the five accounting tabs |
+| People & access | users, roles, scope, invitations |
+| Periods | every period with its state and the shared lock |
+| Forms & fields | standard field counts per form and custom fields added to them |
+| Saved views | named list views with their scope and detail |
+| Print & templates | letterheads, sizes and what prints |
+
+The journal's "more info" guidance now points at Forms & fields for custom fields.
