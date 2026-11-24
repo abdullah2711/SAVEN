@@ -308,6 +308,7 @@ permissions. See §100 of the decision log.
 | 30 | 154–158 | one custom select component, CB numbering, cash and payments register parity |
 | 31 | 159–165 | payment module settles documents, PAY/RCPT numbering, no tax on payments |
 | 32 | 166–169 | floating lists escape table cells, cheque removed, invoice balances follow settlements |
+| 33 | 170–173 | every list searchable, inner scroll keeps it open, placement stays beside the field |
 
 ---
 

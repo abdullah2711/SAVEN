@@ -2235,3 +2235,52 @@ Recorded for the backend work even though this build is session-only:
   bank account.
 - The number series (`RCPT-MM-YYYY-nnnn`, `PAY-MM-YYYY-nnnn`) is allocated only on
   successful save, and never reused after cancellation.
+
+
+---
+
+# Round 33 — every list is searchable, scrolling it no longer closes it
+
+Owner review: the party list had a search box but the lists inside the settlement
+rows did not; scrolling a list closed it; and the party list sometimes appeared away
+from its field.
+
+## 170. Search is part of the list, not a large-list extra
+
+The search box used to appear only when a select had more than seven options. That
+made the party list searchable and the row lists (documents, methods, two bank
+accounts) not. Every list now renders the search field and the filter runs on the
+visible options, whatever their number. The counts and “No match” line follow the
+search.
+
+## 171. Scrolling inside the list closed it
+
+`bindSelects()` listened for `scroll` on the window with capture, so a scroll event
+coming from the list's own options area was treated as a page scroll and closed the
+panel. The listener now ignores events whose target is inside `.ss-panel`; a real page
+scroll still closes the list and removes its floated copy from the body.
+
+A dropdown that survives a page scroll would otherwise sit at old viewport
+coordinates while the field moves, so page scroll and window resize both close it on
+purpose. Inner-list scrolling only moves the options.
+
+## 172. Why a list sometimes opened away from its field
+
+When there was not enough room below, the old code flipped upward and then clamped
+the top to 8px from the top of the screen. A tall list in a short space could therefore
+detach from its trigger and appear somewhere else. The placement now:
+
+- caps the list height to the room actually available above or below (minimum 120px),
+- puts it 4px from the trigger on the chosen side,
+- never lets it cross the viewport top, and
+- clamps its left edge inside the window.
+
+Verified with the field near the bottom of a 620px viewport: trigger top 480, bottom
+523; the 215px list was placed at 261–476 with a 4px gap above and stayed fully on
+screen.
+
+## 173. What did not change
+
+The values, the search of the option list, the disabled handling, the selection and
+the page data are unchanged. These are presentation fixes only; the backend contract
+from §169 still stands.

@@ -399,3 +399,4 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .pay-register th,.pay-register td{padding-left:13px;padding-right:13px}
 .pay-register td.col-against,.pay-register th.col-against{white-space:normal;min-width:130px}
 .pay-register td.col-account{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ss-options{overscroll-behavior:contain}

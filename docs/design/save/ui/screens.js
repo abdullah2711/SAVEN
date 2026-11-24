@@ -3549,9 +3549,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         btn.disabled = sel.disabled;
       };
       const build = () => {
-        panel.innerHTML = sel.options.length > 7
-          ? '<div class="ss-searchrow"><input class="ss-search" type="search" placeholder="Search" aria-label="Search options" autocomplete="off"></div><div class="ss-options"></div>'
-          : '<div class="ss-options"></div>';
+        panel.innerHTML = '<div class="ss-searchrow"><input class="ss-search" type="search" placeholder="Search" aria-label="Search options" autocomplete="off"></div><div class="ss-options"></div>';
         const list = panel.querySelector('.ss-options');
         [...sel.options].forEach((opt, i) => {
           if (opt.hidden) return;
@@ -3597,20 +3595,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         btn.setAttribute('aria-expanded', 'true');
         panel.classList.add('ss-panel--fixed');
         const r = btn.getBoundingClientRect();
-        const width = Math.max(220, Math.min(r.width, window.innerWidth - 16));
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const width = Math.max(220, Math.min(r.width, vw - 16));
         panel.style.width = Math.round(width) + 'px';
-        panel.style.left = Math.round(Math.min(Math.max(8, r.left), window.innerWidth - width - 12)) + 'px';
-        const below = Math.round(window.innerHeight - r.bottom - 10);
-        const above = Math.round(r.top - 10);
-        const wanted = Math.min(340, Math.max(160, panel.scrollHeight || 240));
-        if (below < Math.min(wanted, 200) && above > below) {
-          const h = Math.min(wanted, above);
-          panel.style.top = Math.round(r.top - h - 4) + 'px';
-          panel.style.maxHeight = h + 'px';
-        } else {
-          panel.style.top = Math.round(r.bottom + 4) + 'px';
-          panel.style.maxHeight = Math.min(wanted, Math.max(below, 160)) + 'px';
-        }
+        panel.style.left = Math.round(Math.min(Math.max(8, r.left), Math.max(8, vw - width - 8))) + 'px';
+        const below = Math.round(vh - r.bottom - 8);
+        const above = Math.round(r.top - 8);
+        const wanted = Math.min(340, Math.max(120, panel.scrollHeight || 240));
+        const placeAbove = below < Math.min(wanted, 220) && above > below;
+        const room = Math.max(120, placeAbove ? above : below);
+        const height = Math.min(wanted, room);
+        panel.style.maxHeight = Math.round(height) + 'px';
+        panel.style.top = Math.round(placeAbove ? Math.max(8, r.top - height - 4) : Math.min(r.bottom + 4, vh - height - 8)) + 'px';
         const search = panel.querySelector('.ss-search');
         if (search) { search.value = ''; search.focus(); }
         filterSS(panel);
@@ -3640,15 +3637,23 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     if (!ssBound) {
       ssBound = true;
       document.addEventListener('click', (ev) => {
-        if (ev.target.closest('.ss')) return;
+        if (ev.target.closest('.ss') || ev.target.closest('.ss-panel')) return;
         document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
       });
       document.addEventListener('keydown', (ev) => {
         if (ev.key !== 'Escape') return;
         document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
       });
-      window.addEventListener('scroll', () => {
+      window.addEventListener('resize', () => {
         document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
+      });
+      window.addEventListener('scroll', (ev) => {
+        const inside = ev.target && ev.target.nodeType === 1 && ev.target.closest('.ss-panel');
+        if (inside) return;   // scrolling the option list is not leaving the control
+        document.querySelectorAll('.ss-panel').forEach((p) => {
+          p.hidden = true;
+          if (p.dataset.ssFloat && p.parentElement === document.body) p.remove();
+        });
       }, true);
     }
     enhanceSelects();

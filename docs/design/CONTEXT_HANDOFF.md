@@ -113,8 +113,10 @@ the decision index in one place.
 - Supplied print and vertical-menu glyphs wired into the journal header.
 - Every accounting `<select>` is enhanced into one dropdown component: the native
   select keeps the value, validation and FormData, while the visible control and list
-  are ours (chevron, tick on the current option, search past seven options, flip and
-  height cap). The shell top bar and dialogs stay native.
+  are ours (chevron, tick on the current option, a search box on every list,
+  placement capped to the room above or below the field). Scrolling inside the list
+  does not close it; a page scroll or window resize does. The shell top bar and
+  dialogs stay native.
 - Every master-data form is create-or-edit with an Edit action per row; every form
   carries its full field set (see decision log round 11). Settings custom fields
   show on the journal More info tab.
