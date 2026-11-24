@@ -2275,7 +2275,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const items = party ? openItems(party) : [];
     const total = round2(PAY_FORM.lines.reduce((n, l) => n + (Number(l.amount) || 0), 0));
     const outstanding = round2(items.reduce((n, x) => n + x.outstanding, 0));
-    const methodOptions = [['bank', 'Bank transfer'], ['cheque', 'Cheque'], ['cash', 'Cash']];
+    const methodOptions = [['bank', 'Bank transfer'], ['cash', 'Cash']];
     const lineHtml = (l, i) => {
       const item = items.find((x) => x.id === l.doc);
       const used = new Set(PAY_FORM.lines.filter((_, j) => j !== i).map((x) => x.doc).filter(Boolean));
@@ -2454,7 +2454,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const key = v.direction === 'receive' ? 'receipt' : 'payment';
       const number = nextDocNumber(key, v.date);
       NUMBERING[key].next = (NUMBERING[key].next || 1) + 1;
-      const methodLabel = (m) => ({bank: 'Bank transfer', cheque: 'Cheque', cash: 'Cash'}[m] || m);
+      const methodLabel = (m) => ({bank: 'Bank transfer', cash: 'Cash'}[m] || m);
       PAYMENTS.push({
         id: number, date: v.date, party: v.party, direction: v.direction,
         account: lines.length > 1 ? `${lines.length} accounts` : lines[0].account,
@@ -3574,11 +3574,25 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           list.appendChild(none);
         }
       };
-      const close = () => { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+      const close = () => {
+        panel.hidden = true;
+        btn.setAttribute('aria-expanded', 'false');
+        if (panel.dataset.ssFloat && panel.parentElement === document.body && wrap.isConnected) {
+          wrap.appendChild(panel);
+          delete panel.dataset.ssFloat;
+        }
+      };
       const open = () => {
         if (sel.disabled) return;
         document.querySelectorAll('.ss-panel').forEach((p) => { if (p !== panel) p.hidden = true; });
         build();
+        if (panel.parentElement !== document.body) {
+          const id = 'ssp-' + Math.random().toString(36).slice(2, 9);
+          panel.id = id;
+          panel.dataset.ssOwner = id;
+          panel.dataset.ssFloat = '1';
+          document.body.appendChild(panel);
+        }
         panel.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
         panel.classList.add('ss-panel--fixed');
@@ -3622,6 +3636,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     });
   }
   function bindSelects() {
+    document.querySelectorAll('body > .ss-panel').forEach((p) => p.remove());
     if (!ssBound) {
       ssBound = true;
       document.addEventListener('click', (ev) => {

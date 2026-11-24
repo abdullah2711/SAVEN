@@ -2174,3 +2174,64 @@ scrolling; long account names truncate with a tooltip.
 - A saved payment cannot be edited, cancelled or deleted yet.
 - Nothing posts to the ledger in this build, and multi-currency settlement is not
   modelled.
+
+
+---
+
+# Round 32 — payment rows open, cheque removed, balances follow
+
+Owner review of the payment form: the row dropdowns did not visibly open, the
+cheque method should not exist, and the invoice balances must move with a settlement.
+
+## 166. Why the row dropdowns did not open, and the fix
+
+The options were in the DOM, sized and hit-testable, but painted underneath the
+settlement table. The control lives inside a table cell inside a scroll container,
+and the floating list was still a descendant of that container. Hovering and
+clicking the coordinates worked; the user saw nothing.
+
+The list is now **moved to `document.body` while open** and positioned in viewport
+coordinates; on close it returns to its control, and a re-render removes any list
+left in the body. This is a property of the one select component, so it also fixes
+the same situation in journal line cells and any future table form. Verified: the
+document list opens with all open invoices and their due amounts, and the
+sub-account list opens with only the accounts that match the chosen method.
+
+## 167. Cheque is not a method
+
+A cheque is bank money: it is deposited into a bank account or cashed at a counter.
+Keeping it beside “bank transfer” and “cash” implied a third channel with its own
+account, which is wrong. The method list is now **Bank transfer** and **Cash**; the
+sub-account list follows the method (bank accounts or cash accounts). If cheque
+tracking is needed later it belongs in an instrument/reference field or a clearing
+account on the bank row, not as a method — recorded here so the backend models it
+that way.
+
+## 168. A settlement updates the document balance
+
+`openItems` now subtracts both fixture settlements and payments saved in this session
+from the document's control amount. The invoice register reads the same allocations,
+so **Paid** and **Balance** move together.
+
+Verified on DEMO-SI-124 (Atlas Studio): before the receipt the register showed Paid
+“—” and Balance 69,447.55; after a 100.00 part-receipt it showed Paid 100.00 and
+Balance 69,347.55, with the gross unchanged at 69,447.55. The receivable/payable
+control line is the figure being settled; the document gross is not.
+
+## 169. Backend contract for this module
+
+Recorded for the backend work even though this build is session-only:
+
+- A payment or receipt is one durable document with its own number, date, party,
+  direction and state.
+- Each allocation row is durable and points at a document: `payment_id`,
+  `document_id`, `amount`, `method`, `cash_bank_account_id`.
+- At post time the server must re-read the document's outstanding under a lock,
+  reject amounts above it, and update the subledger and the control account in the
+  same transaction. A document may be settled by many payments and a payment may
+  settle many documents.
+- Tax is never recalculated here: the tax control entries were created by the
+  invoice or bill. The payment moves only the receivable/payable and the cash or
+  bank account.
+- The number series (`RCPT-MM-YYYY-nnnn`, `PAY-MM-YYYY-nnnn`) is allocated only on
+  successful save, and never reused after cancellation.

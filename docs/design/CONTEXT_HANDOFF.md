@@ -103,7 +103,9 @@ the decision index in one place.
   settles named invoices or bills: one row per document with the method
   (bank transfer, cheque, cash), the matching cash or bank sub-account, the system
   outstanding and an editable amount, so partial, full and combined settlements are
-  all possible. No tax fields and no header reference. Receipts are numbered
+  all possible. Methods are bank transfer and cash only; a cheque is deposited or
+  cashed, not a third channel. A settlement reduces the invoice register's Paid and
+  Balance. No tax fields and no header reference. Receipts are numbered
   `RCPT-MM-YYYY-0001` and payments `PAY-MM-YYYY-0001` in separate series.
 - **Sales/purchase invoices**: register and a line form; session documents only.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →

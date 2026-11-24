@@ -307,6 +307,7 @@ permissions. See §100 of the decision log.
 | 29 | 147–153 | form dropdown row fix, optional policy fields, policy log, recon header menus, field styling |
 | 30 | 154–158 | one custom select component, CB numbering, cash and payments register parity |
 | 31 | 159–165 | payment module settles documents, PAY/RCPT numbering, no tax on payments |
+| 32 | 166–169 | floating lists escape table cells, cheque removed, invoice balances follow settlements |
 
 ---
 
@@ -326,5 +327,7 @@ permissions. See §100 of the decision log.
 - The invoices form still needs its field-by-field review. The payments form now
   settles documents; advances, editing a saved payment, posting and multi-currency
   remain.
+- Cheque tracking, if required, needs an instrument/reference field or clearing
+  account; it is deliberately not a payment method (§167).
 - Reconciliation is a recording tool; there is no automatic statement matching.
 
