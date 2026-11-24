@@ -1800,3 +1800,25 @@ Opening a reconciliation uses the same page with the editor (`tab=cash|parties`,
 - Supporting files are chosen through a proper button and listed with a remove action.
 - Save stores every difference, the system and original balances, the unreconciled
   result, the files and the state; Print prints the document or the register.
+
+---
+
+# Round 26 — real column menus in the ledger header
+
+## 132. The header filter is a menu, not a text box
+
+Each column header now has a small **▾** that opens a column menu:
+
+1. **Sort ascending** and **Sort descending** for that column, at the top.
+2. A **search** for the values.
+3. **Select all / Clear** with the value count.
+4. A **checkbox list of the distinct values** in that column — tick one or several.
+
+The selected count shows on the ▾ button, the menu reopens after a selection so more
+values can be picked, and the register filters to exactly the ticked values (empty
+means all). Clicking outside closes it; choosing a sort closes it.
+
+The date column keeps sorting only, because the date range is a top-bar filter.
+
+This replaces the plain text inputs from the previous attempt. The top bar still holds
+the date range, search, reset and column chooser.
