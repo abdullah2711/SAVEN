@@ -99,9 +99,12 @@ the decision index in one place.
 - **Reconciliations**: cash and party tabs each have a register (search, dates,
   column menus, click a row to open) and a form whose difference rows use the full
   width. Saved records can be cancelled (stay with a badge) or deleted.
-- **Payments**: register with From/To, search and the common column menus; receipts
-  and payments with oldest-first allocation and advances. The form is still to be
-  reviewed field by field.
+- **Payments**: register with From/To, search and the common column menus. The form
+  settles named invoices or bills: one row per document with the method
+  (bank transfer, cheque, cash), the matching cash or bank sub-account, the system
+  outstanding and an editable amount, so partial, full and combined settlements are
+  all possible. No tax fields and no header reference. Receipts are numbered
+  `RCPT-MM-YYYY-0001` and payments `PAY-MM-YYYY-0001` in separate series.
 - **Sales/purchase invoices**: register and a line form; session documents only.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →
   Periods.
@@ -127,7 +130,8 @@ the decision index in one place.
   their specification.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
-tool); posting from invoices and payments into the ledger; permissions enforcement;
+tool); posting from invoices and payments into the ledger; advances inside the
+payments form; editing or cancelling a saved payment; permissions enforcement;
 persistence (reload returns to fixtures).
 
 ## Decisions already made (do not re-litigate)

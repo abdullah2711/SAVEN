@@ -306,6 +306,7 @@ permissions. See §100 of the decision log.
 | 28 | 141–146 | journal dates, party form corrections, opening journal, reconciliation register |
 | 29 | 147–153 | form dropdown row fix, optional policy fields, policy log, recon header menus, field styling |
 | 30 | 154–158 | one custom select component, CB numbering, cash and payments register parity |
+| 31 | 159–165 | payment module settles documents, PAY/RCPT numbering, no tax on payments |
 
 ---
 
@@ -322,7 +323,8 @@ permissions. See §100 of the decision log.
 - Persistence: every record lives in the browser session and is lost on reload.
 - Per-line invoice tax override, withholding allocation and negative-stock
   enforcement are not built.
-- Payments and invoices forms still need the field-by-field review; their registers
-  are done.
+- The invoices form still needs its field-by-field review. The payments form now
+  settles documents; advances, editing a saved payment, posting and multi-currency
+  remain.
 - Reconciliation is a recording tool; there is no automatic statement matching.
 

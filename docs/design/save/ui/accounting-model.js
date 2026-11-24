@@ -46,8 +46,8 @@ export const NUMBERING = {
   journal: {prefix: 'JV', month: true, year: true, next: 1, padding: 4},
   sales: {prefix: 'SI-2026-', next: 301, padding: 4},
   purchase: {prefix: 'PI-2026-', next: 301, padding: 4},
-  payment: {prefix: 'PMT-2026-', next: 201, padding: 4},
-  receipt: {prefix: 'RCT-2026-', next: 201, padding: 4},
+  payment: {prefix: 'PAY', month: true, year: true, next: 1, padding: 4},
+  receipt: {prefix: 'RCPT', month: true, year: true, next: 1, padding: 4},
 };
 
 export const TAX_RULES = [

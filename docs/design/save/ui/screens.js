@@ -136,9 +136,8 @@ const SAVED_VIEWS = [
 const PRINT_DOCUMENTS = ['Journal entry', 'Sales invoice', 'Purchase bill', 'Receipt', 'Payment', 'Delivery note', 'Goods receipt', 'Stock transfer', 'Stock count', 'Stock adjustment', 'Work order', 'Bill of material', 'Asset register', 'Depreciation schedule', 'Party statement', 'Trial balance', 'Financial statements'];
 const PRINT_TEMPLATES = PRINT_DOCUMENTS.map((doc) => ({document: doc, name: doc + ' template', size: doc === 'Receipt' || doc === 'Payment' ? '80 mm' : 'A4', logo: true, qr: doc !== 'Journal entry', copies: doc === 'Sales invoice' || doc === 'Delivery note' ? 2 : 1, margin: 12, footer: 'Northstar Trading (Pvt) Ltd'}));
 let WITHHOLD = {salesTax: 0, incomeTax: 0, salesTaxPayable: 0, incomeTaxPayable: 4.5};
-let PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}], salesTaxRate: '', incomeTaxRate: ''};
+let PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', notes: '', lines: [{doc: '', method: 'bank', account: '', amount: ''}]};
 const PAYMENTS = [];
-let PAY_SEQ = 1;
 const INVOICES = [];
 const INV_TAB = {sales: 'invoices', purchase: 'invoices'};
 const RETURNS = {sales: [], purchase: []};
@@ -1339,9 +1338,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           ${field('Next sales number', String(NUMBERING.sales.next).padStart(NUMBERING.sales.padding || 4, '0'), '', 'salesNext')}
           ${field('Purchase invoice prefix', NUMBERING.purchase.prefix, '', 'purchasePrefix')}
           ${field('Next purchase number', String(NUMBERING.purchase.next).padStart(NUMBERING.purchase.padding || 4, '0'), '', 'purchaseNext')}
-          ${field('Payment prefix', NUMBERING.payment.prefix, '', 'paymentPrefix')}
+          ${field('Payment prefix', NUMBERING.payment.prefix, `Number looks like ${NUMBERING.payment.prefix}-MM-YYYY-0001`, 'paymentPrefix')}
           ${field('Next payment number', String(NUMBERING.payment.next).padStart(NUMBERING.payment.padding || 4, '0'), '', 'paymentNext')}
-          ${field('Receipt prefix', NUMBERING.receipt.prefix, '', 'receiptPrefix')}
+          ${field('Receipt prefix', NUMBERING.receipt.prefix, `Number looks like ${NUMBERING.receipt.prefix}-MM-YYYY-0001`, 'receiptPrefix')}
           ${field('Next receipt number', String(NUMBERING.receipt.next).padStart(NUMBERING.receipt.padding || 4, '0'), '', 'receiptNext')}
           ${field('Number padding', String(NUMBERING.journal.padding), 'Digits after the prefix', 'padding')}
           <div class="related"><button class="button primary">Save numbering</button></div>
@@ -1406,7 +1405,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <div class="table-footer">Rules are defaults for document lines; they never post on their own. The tax registers and returns belong to the comprehensive tax module that comes later.</div>
       </section>
       <section class="panel">
-        <div class="panel-head"><h2>Default withholding</h2><span class="badge">Applied to payment and receipt defaults</span></div>
+        <div class="panel-head"><h2>Default withholding</h2><span class="badge">Invoice tax defaults</span></div>
         <form class="panel-body form-grid" data-settings-save="withholding">
           ${field('Sales tax withheld on receipts %', '0.00', 'Deducted by the customer and paid to the authority', 'salesTaxWithheld')}
           ${field('Income tax withheld on receipts %', '0.00', 'Advance tax deducted by the customer', 'incomeTaxWithheld')}
@@ -1414,7 +1413,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           ${field('Income tax withheld on payments %', '4.50', 'We deduct and owe to the authority', 'incomeTaxPayable')}
           <div class="related"><button class="button primary">Save withholding defaults</button></div>
         </form>
-        <div class="panel-body"><p class="form-note">These are defaults only; a payment or invoice line can change them. The four figures are stored for this session.</p></div>
+        <div class="panel-body"><p class="form-note">These are defaults for invoice and bill tax lines only. A payment or receipt settles the net receivable or payable the invoice created; it does not recalculate tax, because the tax already sits in its own control account. The four figures are stored for this session.</p></div>
       </section>`,
       approval: `<section class="panel">
         <div class="panel-head"><h2>Approvals and periods</h2></div>
@@ -2167,6 +2166,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   /* ----------------------------------------------------------- payments */
+  function nextDocNumber(key, date) {
+    const n = NUMBERING[key] || {prefix: key === 'receipt' ? 'RCPT' : 'PAY', next: 1, padding: 4};
+    const fallback = new Date('2026-11-30T00:00:00');
+    const d = date ? new Date(date + 'T00:00:00') : fallback;
+    const when = Number.isNaN(d.getTime()) ? fallback : d;
+    const mm = String(when.getMonth() + 1).padStart(2, '0');
+    return `${n.prefix}-${mm}-${when.getFullYear()}-${String(n.next).padStart(n.padding || 4, '0')}`;
+  }
   function openItems(party) {
     if (!party) return [];
     const isCustomer = party.type === 'customer';
@@ -2176,21 +2183,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       .filter((d) => d.party === party.name && (d.subtype === 'Invoice' || d.subtype === 'Bill'))
       .map((d) => {
         const total = round2(d.lines.filter((l) => l.account === code).reduce((n, l) => n + (isCustomer ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
-        const paid = round2(docs.filter((x) => x.againstVoucher === d.id).reduce((n, x) => n + x.lines.filter((l) => l.account === code).reduce((m, l) => m + (isCustomer ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0), 0));
-        return {id: d.id, date: d.date, total, paid: Math.min(paid, total), outstanding: round2(Math.max(total - paid, 0))};
+        const fromFixture = round2(docs.filter((x) => x.againstVoucher === d.id).reduce((n, x) => n + x.lines.filter((l) => l.account === code).reduce((m, l) => m + (isCustomer ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0), 0));
+        const fromSession = round2(PAYMENTS.reduce((n, p) => n + (p.allocations || []).filter((a) => a.id === d.id).reduce((m, a) => m + (Number(a.amount) || 0), 0), 0));
+        const paid = round2(Math.min(total, fromFixture + fromSession));
+        return {id: d.id, date: d.date, total, paid, outstanding: round2(Math.max(total - paid, 0))};
       })
       .filter((x) => x.outstanding > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
-  }
-  function autoAllocate(party, amount) {
-    let left = round2(Number(amount) || 0);
-    const rows = [];
-    for (const item of openItems(party)) {
-      if (left <= 0) break;
-      const take = Math.min(left, item.outstanding);
-      if (take > 0) { rows.push({id: item.id, amount: round2(take)}); left = round2(left - take); }
-    }
-    return {rows, left};
   }
   function paymentRows() {
     const isReceipt = (d) => d.lines.some((l) => ['1010', '1000', '1020'].includes(l.account) && num(l.debit) > 0);
@@ -2224,7 +2223,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function paymentsView() {
     const all = paymentRows();
     const f = FILTERS.payments;
-    const cols = [['date', 'Date'], ['id', 'Reference'], ['type', 'Type'], ['party', 'Party'], ['method', 'Method'], ['account', 'Cash / bank'], ['against', 'Against'], ['amount', 'Amount', 'numeric'], ['withheld', 'Withheld', 'numeric'], ['net', 'Net', 'numeric'], ['state', 'State']];
+    const cols = [['date', 'Date'], ['id', 'Number'], ['type', 'Type'], ['party', 'Party'], ['method', 'Method'], ['account', 'Cash / bank'], ['against', 'Settled'], ['amount', 'Amount', 'numeric'], ['state', 'State']];
     let rows = all.filter((r) => hit(f.q, r.id, r.party, r.account, r.against, r.reference)
       && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to)
       && Object.entries(f.cf || {}).every(([k, v]) => !v || !v.length || v.includes(String(payColValue(r, k)))));
@@ -2239,11 +2238,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       type: (r) => `<td class="col col-type">${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td>`,
       party: (r) => `<td class="col col-party">${e(r.party)}</td>`,
       method: (r) => `<td class="col col-method">${e(payColValue(r, 'method'))}</td>`,
-      account: (r) => `<td class="col col-account">${e(payColValue(r, 'account'))}</td>`,
-      against: (r) => `<td class="col col-against">${e(payColValue(r, 'against'))}</td>`,
+      account: (r) => `<td class="col col-account" title="${e(payColValue(r, 'account'))}">${e(payColValue(r, 'account'))}</td>`,
+      against: (r) => `<td class="col col-against" title="${e(payColValue(r, 'against'))}">${e(payColValue(r, 'against'))}</td>`,
       amount: (r) => `<td class="col col-amount numeric">${money(r.amount)}</td>`,
-      withheld: (r) => `<td class="col col-withheld numeric">${r.withheld ? money(r.withheld) : '—'}</td>`,
-      net: (r) => `<td class="col col-net numeric">${money(r.net ?? r.amount)}</td>`,
       state: (r) => `<td class="col col-state">${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td>`,
     };
     return `<form class="filterbar" data-filter="payments" data-pay-filter>
@@ -2254,7 +2251,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       </form>
       <section class="panel">
         <div class="panel-head"><h2>Payments and receipts</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
-        <div class="table-scroll" data-hscroll><table>
+        <div class="table-scroll" data-hscroll><table class="pay-register">
           <thead><tr>${cols.map(([key, label, cls]) => {
             const sel = (f.cf && f.cf[key]) || [];
             return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-pay-sort="${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-payf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
@@ -2265,56 +2262,69 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
               <div class="gl-applyrow"><button type="button" class="button primary" data-payapply="${key}">Apply filter</button></div></div></th>`;
           }).join('')}</tr></thead>
           <tbody>${rows.map((r) => `<tr>${cols.map(([key]) => cells[key](r)).join('')}</tr>`).join('') || '<tr><td colspan="11">No payments match these filters.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="7">Total shown · ${rows.length} of ${all.length}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.withheld || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.net ?? r.amount), 0)))}</td><td></td></tr></tfoot>
+          <tfoot><tr><td colspan="7">Total shown · ${rows.length} of ${all.length}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A receipt brings money in, a payment sends it out. The document may use more than one method — bank, cash or an existing advance — and the total is allocated across the party's open invoices, oldest first. Anything left is an advance.</div>
       </section>`;
   }
 
   function paymentEditor() {
-    const parties = PARTIES.filter((p) => (PAY_FORM.direction === 'receive' ? p.type === 'customer' : p.type === 'supplier'));
+    const isReceipt = PAY_FORM.direction === 'receive';
+    const parties = PARTIES.filter((p) => (isReceipt ? p.type === 'customer' : p.type === 'supplier'));
     const party = PARTIES.find((p) => p.name === PAY_FORM.party);
-    const total = round2(PAY_FORM.tenders.reduce((n, t) => n + (Number(t.amount) || 0), 0));
-    const allocation = party && total ? autoAllocate(party, total) : {rows: [], left: 0};
-    const outstanding = party ? round2(openItems(party).reduce((n, x) => n + x.outstanding, 0)) : 0;
-    const methodOptions = [['bank', 'Bank'], ['cash', 'Cash'], ['advance', 'Advance already paid']];
+    const items = party ? openItems(party) : [];
+    const total = round2(PAY_FORM.lines.reduce((n, l) => n + (Number(l.amount) || 0), 0));
+    const outstanding = round2(items.reduce((n, x) => n + x.outstanding, 0));
+    const methodOptions = [['bank', 'Bank transfer'], ['cheque', 'Cheque'], ['cash', 'Cash']];
+    const lineHtml = (l, i) => {
+      const item = items.find((x) => x.id === l.doc);
+      const used = new Set(PAY_FORM.lines.filter((_, j) => j !== i).map((x) => x.doc).filter(Boolean));
+      const accounts = CASH_BANK.filter((c) => (l.method === 'cash' ? c.kind === 'cash' : c.kind === 'bank'));
+      return `<tr data-pay-line="${i}">
+        <td><select data-line-field="doc" class="inline-input"><option value="">Choose document</option>${items.map((x) => `<option value="${e(x.id)}" ${x.id === l.doc ? 'selected' : ''} ${used.has(x.id) ? 'disabled' : ''}>${e(x.id)} · ${e(x.date)} · ${money(x.outstanding)} due</option>`).join('')}</select></td>
+        <td><select data-line-field="method" class="inline-input">${methodOptions.map(([k, label]) => `<option value="${k}" ${l.method === k ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
+        <td><select data-line-field="account" class="inline-input"><option value="">Choose sub-account</option>${accounts.map((c) => `<option value="${e(c.name)}" ${c.name === l.account ? 'selected' : ''}>${e(c.name)} · ${e(c.control)}</option>`).join('')}</select></td>
+        <td class="numeric" data-line-outstanding>${item ? money(item.outstanding) : '—'}</td>
+        <td><input class="numeric" data-line-field="amount" value="${e(l.amount)}" inputmode="decimal" placeholder="0.00" aria-label="Amount set off"></td>
+        <td><button type="button" class="text-button" data-pay-line-remove="${i}" ${PAY_FORM.lines.length === 1 ? 'disabled' : ''}>Remove</button></td>
+      </tr>`;
+    };
     return `<section class="panel">
-      <div class="panel-head"><h2>${PAY_FORM.direction === 'receive' ? 'New receipt' : 'New payment'}</h2><span class="badge">${party ? e(party.name) : 'Choose a party'}</span></div>
-      <form data-pay-form class="panel-body form-grid">
-        <label>Type<select name="direction" class="inline-input"><option value="receive" ${PAY_FORM.direction === 'receive' ? 'selected' : ''}>Receipt — money in</option><option value="pay" ${PAY_FORM.direction === 'pay' ? 'selected' : ''}>Payment — money out</option></select></label>
-        <label>Party<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === PAY_FORM.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="${e(PAY_FORM.date || '2026-11-30')}" required></label>
-        <label>Reference<input name="reference" maxlength="40" value="${e(PAY_FORM.reference || '')}" placeholder="Cheque, transfer or slip"></label>
-        <label>Sales tax withheld %<input name="salesTaxRate" value="${e(PAY_FORM.salesTaxRate ?? (PAY_FORM.direction === 'receive' ? WITHHOLD.salesTax : WITHHOLD.salesTaxPayable))}" inputmode="decimal"></label>
-        <label>Income tax withheld %<input name="incomeTaxRate" value="${e(PAY_FORM.incomeTaxRate ?? (PAY_FORM.direction === 'receive' ? WITHHOLD.incomeTax : WITHHOLD.incomeTaxPayable))}" inputmode="decimal"></label>
-        <label class="wide">Notes<input name="notes" maxlength="100" value="${e(PAY_FORM.notes || '')}" placeholder="What this money is for"></label>
+      <div class="panel-head"><h2>${isReceipt ? 'New receipt' : 'New payment'}</h2><span class="badge">${nextDocNumber(isReceipt ? 'receipt' : 'payment', PAY_FORM.date)}</span></div>
+      <form data-pay-form>
+        <div class="panel-body form-grid">
+          <label>Type<select name="direction" class="inline-input"><option value="receive" ${isReceipt ? 'selected' : ''}>Receipt — money in</option><option value="pay" ${!isReceipt ? 'selected' : ''}>Payment — money out</option></select></label>
+          <label>Party<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === PAY_FORM.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+          <label>Date<input name="date" type="date" value="${e(PAY_FORM.date || '2026-11-30')}" required></label>
+          <label>Party outstanding<input readonly value="${party ? money(outstanding) : 'Choose a party first'}"></label>
+          <label class="wide">Notes<input name="notes" maxlength="100" value="${e(PAY_FORM.notes || '')}" placeholder="What this money is for"></label>
+        </div>
+        <div class="panel-body">
+          <div class="section-title">Documents settled${party ? ` · ${money(outstanding)} outstanding for ${e(party.name)}` : ''}</div>
+          <div class="table-scroll"><table class="invoice-lines pay-lines">
+            <thead><tr><th>Invoice or bill</th><th>Method</th><th>Cash / bank sub-account</th><th class="numeric">Outstanding</th><th class="numeric">Amount set off</th><th></th></tr></thead>
+            <tbody>${PAY_FORM.lines.map(lineHtml).join('')}</tbody>
+            <tfoot><tr><td colspan="4">Total set off</td><td class="numeric" data-pay-total>${money(total)}</td><td></td></tr></tfoot>
+          </table></div>
+          <div class="related"><button type="button" class="button" data-pay-add>Add document row</button></div>
+          <p class="form-note">Each row settles the receivable or payable the invoice created, not its gross total — tax sits in its own control account. A row may be part-paid, and one payment can settle several documents.</p>
+        </div>
+        <div class="panel-body"><div class="related"><button class="button primary">Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+          <p class="form-note">Nothing here posts to the ledger in this build.</p></div>
       </form>
-      <div class="table-scroll"><table class="invoice-lines">
-        <thead><tr><th>Method</th><th>Cash / bank account or advance reference</th><th>Reference</th><th class="numeric">Amount</th></tr></thead>
-        <tbody>${PAY_FORM.tenders.map((t, i) => `<tr data-tender="${i}"><td><select class="inline-input" data-tender-field="method">${methodOptions.map(([k, l]) => `<option value="${k}" ${t.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td>${t.method === 'advance' ? `<input data-tender-field="reference" value="${e(t.reference || '')}" placeholder="Advance document / receipt">` : `<select class="inline-input" data-tender-field="account">${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)} · ${c.control}</option>`).join('')}</select>`}</td><td><input data-tender-field="reference" value="${e(t.reference || '')}" aria-label="Tender ${i + 1} reference"></td><td><input class="numeric" data-tender-field="amount" value="${e(t.amount)}" inputmode="decimal" aria-label="Tender ${i + 1} amount"></td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="3">Total tender</td><td class="numeric">${money(total)}</td></tr></tfoot>
-      </table></div>
-      ${party ? `<div class="panel-body"><div class="section-title">Allocation · ${e(party.name)} · ${money(outstanding)} outstanding</div>
-        <div class="table-scroll"><table>
-          <thead><tr><th>Date</th><th>Document</th><th class="numeric">Total</th><th class="numeric">Settled</th><th class="numeric">Outstanding</th><th class="numeric">This document</th></tr></thead>
-          <tbody>${openItems(party).map((x) => { const h = allocation.rows.find((a) => a.id === x.id); return `<tr><td>${e(x.date)}</td><td class="mono">${e(x.id)}</td><td class="numeric">${money(x.total)}</td><td class="numeric">${money(x.paid)}</td><td class="numeric">${money(x.outstanding)}</td><td class="numeric">${h ? money(h.amount) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="6">Nothing open.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="5">Allocated ${money(round2(total - allocation.left))} · advance ${money(allocation.left)}</td><td class="numeric">${money(total)}</td></tr></tfoot>
-        </table></div></div>` : ''}
-      <div class="panel-body"><div class="related"><button type="button" class="button" data-pay-calc>Recalculate</button><button class="button primary">Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
-        <p class="form-note">Use as many methods as needed. An advance row points at money already received or paid, and the rest can be split between cash and bank. Nothing here posts to the ledger in this build.</p></div>
     </section>`;
   }
 
   function capturePay(form) {
     const v = Object.fromEntries(new FormData(form));
-    const tenders = [...document.querySelectorAll('[data-tender]')].map((tr) => ({
-      method: tr.querySelector('[data-tender-field="method"]').value,
-      account: tr.querySelector('[data-tender-field="account"]') ? tr.querySelector('[data-tender-field="account"]').value : '',
-      reference: tr.querySelector('[data-tender-field="reference"]') ? tr.querySelector('[data-tender-field="reference"]').value : '',
-      amount: tr.querySelector('[data-tender-field="amount"]').value,
+    const lines = [...document.querySelectorAll('[data-pay-line]')].map((tr) => ({
+      doc: tr.querySelector('[data-line-field="doc"]')?.value || '',
+      method: tr.querySelector('[data-line-field="method"]')?.value || 'bank',
+      account: tr.querySelector('[data-line-field="account"]')?.value || '',
+      amount: tr.querySelector('[data-line-field="amount"]')?.value || '',
     }));
-    PAY_FORM = {direction: v.direction, party: v.party, date: v.date, reference: v.reference || '', notes: v.notes || '', tenders, salesTaxRate: v.salesTaxRate, incomeTaxRate: v.incomeTaxRate};
-    return {...v, tenders};
+    PAY_FORM = {direction: v.direction, party: v.party, date: v.date, notes: v.notes || '', lines};
+    return {...v, lines};
   }
   function bindPayments(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'payments'});
@@ -2384,26 +2394,81 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const form = document.querySelector('[data-pay-form]');
     if (!form) return;
     document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
+    const syncTotal = () => {
+      const total = round2([...document.querySelectorAll('[data-pay-line]')].reduce((n, tr) => n + (Number(tr.querySelector('[data-line-field="amount"]')?.value) || 0), 0));
+      const cell = document.querySelector('[data-pay-total]');
+      if (cell) cell.textContent = money(total);
+    };
+    form.addEventListener('input', (ev) => {
+      if (!ev.target.matches('[data-line-field="amount"], [name="notes"]')) return;
+      capturePay(form);
+      syncTotal();
+    });
     form.addEventListener('change', (ev) => {
       if (!ev.target.matches('select')) return;
+      const field = ev.target.dataset.lineField;
+      const tr = ev.target.closest('[data-pay-line]');
+      const i = tr ? Number(tr.dataset.payLine) : -1;
       capturePay(form);
+      if (field === 'doc' && i >= 0) {
+        const party = PARTIES.find((p) => p.name === PAY_FORM.party);
+        const item = party ? openItems(party).find((x) => x.id === PAY_FORM.lines[i].doc) : null;
+        if (item) PAY_FORM.lines[i].amount = item.outstanding.toFixed(2);
+      }
+      if (field === 'method' && i >= 0) {
+        const line = PAY_FORM.lines[i];
+        const acc = CASH_BANK.find((c) => c.name === line.account);
+        if (acc && (line.method === 'cash' ? acc.kind !== 'cash' : acc.kind !== 'bank')) PAY_FORM.lines[i].account = '';
+      }
       rerender();
     });
-    form.querySelector('[data-pay-calc]')?.addEventListener('click', () => { capturePay(form); rerender(); });
+    document.querySelector('[data-pay-add]')?.addEventListener('click', () => {
+      capturePay(form);
+      PAY_FORM.lines.push({doc: '', method: 'bank', account: '', amount: ''});
+      rerender();
+    });
+    document.querySelectorAll('[data-pay-line-remove]').forEach((b) => b.addEventListener('click', () => {
+      capturePay(form);
+      PAY_FORM.lines.splice(Number(b.dataset.payLineRemove), 1);
+      if (!PAY_FORM.lines.length) PAY_FORM.lines.push({doc: '', method: 'bank', account: '', amount: ''});
+      rerender();
+    }));
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       if (!form.reportValidity()) return;
       const v = capturePay(form);
       const party = PARTIES.find((p) => p.name === v.party);
       if (!party) { notify('Choose a party first.'); return; }
-      const tenders = v.tenders.filter((t) => Number(t.amount) > 0);
-      const total = round2(tenders.reduce((n, t) => n + Number(t.amount), 0));
-      if (!tenders.length || total <= 0) { notify('Add at least one method with an amount.'); return; }
-      const withheld = round2(total * ((Number(v.salesTaxRate) || 0) + (Number(v.incomeTaxRate) || 0)) / 100);
-      const allocation = autoAllocate(party, total - withheld);
-      PAYMENTS.push({id: (v.direction === 'receive' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: v.date, party: v.party, account: tenders.find((t) => t.account)?.account || '', amount: total, withheld, net: round2(total - withheld), direction: v.direction, method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: v.reference, notes: v.notes, against: allocation.rows.map((a) => a.id).join(', '), allocations: allocation.rows, advance: allocation.left, tenders, session: true});
-      notify(`Saved for this session: ${allocation.rows.length} documents settled${allocation.left ? `, ${allocation.left.toFixed(2)} left as an advance` : ''}.`);
-      PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', reference: '', notes: '', tenders: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
+      const items = openItems(party);
+      const lines = v.lines.filter((l) => l.doc && Number(l.amount) > 0);
+      if (!lines.length) { notify('Add at least one document and an amount to set off.'); return; }
+      const sums = {};
+      for (const line of lines) {
+        const item = items.find((x) => x.id === line.doc);
+        if (!item) { notify(`${line.doc} is not open for ${party.name}.`); return; }
+        if (!line.account) { notify(`Choose the cash or bank sub-account for ${line.doc}.`); return; }
+        sums[line.doc] = round2((sums[line.doc] || 0) + Number(line.amount));
+        if (sums[line.doc] > item.outstanding + 0.005) { notify(`The amount for ${line.doc} is more than the ${item.outstanding.toFixed(2)} outstanding.`); return; }
+      }
+      const total = round2(lines.reduce((n, l) => n + Number(l.amount), 0));
+      const key = v.direction === 'receive' ? 'receipt' : 'payment';
+      const number = nextDocNumber(key, v.date);
+      NUMBERING[key].next = (NUMBERING[key].next || 1) + 1;
+      const methodLabel = (m) => ({bank: 'Bank transfer', cheque: 'Cheque', cash: 'Cash'}[m] || m);
+      PAYMENTS.push({
+        id: number, date: v.date, party: v.party, direction: v.direction,
+        account: lines.length > 1 ? `${lines.length} accounts` : lines[0].account,
+        amount: total, withheld: 0, net: total,
+        method: lines.length > 1 ? `${lines.length} documents` : methodLabel(lines[0].method),
+        reference: '', notes: v.notes || '',
+        against: lines.map((l) => l.doc).join(', '),
+        allocations: lines.map((l) => ({id: l.doc, amount: round2(Number(l.amount)), method: l.method, account: l.account})),
+        advance: 0,
+        tenders: lines.map((l) => ({method: l.method, account: l.account, reference: '', amount: l.amount})),
+        session: true,
+      });
+      notify(`Saved ${number}: ${lines.length} document${lines.length > 1 ? 's' : ''}, ${money(total)}.`);
+      PAY_FORM = {direction: 'receive', party: '', date: '2026-11-30', notes: '', lines: [{doc: '', method: 'bank', account: '', amount: ''}]};
       goBack();
     });
   }
@@ -2625,8 +2690,17 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           const total = round2(tenders.reduce((n, t) => n + Number(t.amount), 0));
           if (tenders.length && total > 0) {
             const invId = editing || INVOICES[INVOICES.length - 1].id;
-            const applied = Math.min(total, totals.gross);
-            PAYMENTS.push({id: (kind === 'sales' ? 'RCT-' : 'PMT-') + String(200 + PAY_SEQ++), date: draft.date, party: draft.party, account: tenders.find((t) => t.account)?.account || '', amount: total, direction: kind === 'sales' ? 'receive' : 'pay', method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: draft.reference || '', notes: '', against: invId, allocations: [{id: invId, amount: applied}], advance: round2(total - applied), tenders, session: true});
+            const applied = Math.min(total, totals.net);
+            const key = kind === 'sales' ? 'receipt' : 'payment';
+            const number = nextDocNumber(key, draft.date);
+            NUMBERING[key].next = (NUMBERING[key].next || 1) + 1;
+            let left = applied;
+            const allocations = tenders.map((t) => {
+              const amount = round2(Math.min(Number(t.amount) || 0, left));
+              left = round2(left - amount);
+              return {id: invId, amount, method: t.method, account: t.account || ''};
+            }).filter((a) => a.amount > 0);
+            PAYMENTS.push({id: number, date: draft.date, party: draft.party, account: tenders.length > 1 ? `${tenders.length} accounts` : (tenders[0].account || ''), amount: total, direction: kind === 'sales' ? 'receive' : 'pay', method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: '', notes: '', against: invId, allocations, advance: round2(total - applied), tenders, session: true});
           }
           INV_PAY[kind] = false;
           INV_TENDERS[kind] = [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}];
@@ -3487,6 +3561,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           b.setAttribute('role', 'option');
           b.setAttribute('aria-selected', String(i === sel.selectedIndex));
           b.dataset.index = String(i);
+          if (opt.disabled) b.disabled = true;
           const span = document.createElement('span');
           span.textContent = opt.textContent.replace(/\s+/g, ' ').trim();
           b.appendChild(span);
@@ -3616,8 +3691,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         set('journal', v.journalPrefix || 'JV', v.journalNext);
         set('sales', v.salesPrefix || 'SI-', v.salesNext);
         set('purchase', v.purchasePrefix || 'PI-', v.purchaseNext);
-        set('payment', v.paymentPrefix || 'PMT-', v.paymentNext);
-        set('receipt', v.receiptPrefix || 'RCT-', v.receiptNext);
+        set('payment', v.paymentPrefix || 'PAY', v.paymentNext);
+        set('receipt', v.receiptPrefix || 'RCPT', v.receiptNext);
         notify(`Numbering saved. The next journal is ${NUMBERING.journal.prefix}-MM-YYYY-${String(NUMBERING.journal.next).padStart(NUMBERING.journal.padding, '0')}.`);
         rerender();
         return;
@@ -3690,7 +3765,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   const PLANNED = {
     parties: ['Parties', 'One register for customers and suppliers: type, group, tax identity, currency, credit limit, payment terms, opening and current balance, overdue amount and status. Opening a party shows its ledger, its documents and its ageing in one place.', ['Credit limits and payment terms per party', 'Allowed projects and locations, chosen on the party form', 'Opening balance and running ledger', 'Documents, allocations and ageing', 'Hold, block and reactivate']],
     registers: ['Registers', 'Document registers by type — sales invoices, purchase invoices, payments and journals — filtered by party, date range, amount and state. This answers “every transaction with this party in this period” without opening the ledger.', ['Filter by party, type, period, amount, state', 'Column totals and export', 'Row opens the document']],
-    payments: ['Payments', 'Money in and money out with a party, a bank or cash account, a reference and an allocation table. Allocation can follow oldest first, newest first or a manual selection across several documents, with any remainder kept as an advance.', ['Receipts and supplier payments', 'Allocation against open invoices or bills', 'Advance and on-account balances', 'Posts the ledger entry and the allocation together']],
+    payments: ['Payments', 'Money in and money out settled against the party\'s open invoices or bills. Each row picks the document, the method and the cash or bank sub-account, shows the system outstanding and records the amount set off, so one payment can settle several documents in full or in part. Tax belongs to the invoice, not here.', ['Receipts and supplier payments', 'A row per invoice or bill, fetched by party', 'System outstanding, partial or full set-off', 'Numbered PAY- and RCPT- in month and year order']],
     banking: ['Banking & cash', 'Bank and cash accounts with balances and a cash-flow strip, a register per account, and reconciliation with statement import, suggested matches and unmatched lines. A reconciliation cannot be closed with a difference.', ['Bank and cash account list', 'Each bank or cash sub-account records its allowed projects and locations', 'Cash-flow summary', 'Account register', 'Statement import and reconciliation']],
     items: ['Items', 'Light item master for accounting: code, name, unit, income account, expense account, tax treatment and an “inventory tracked” flag. Tracked items are the only ones the Inventory module will value.', ['Sell and buy accounts per item', 'Tax treatment', 'Inventory-tracked flag', 'No quantities or valuation here']],
     sales: ['Sales invoices', 'Customer invoice with item or free-text lines, tax, due date and payment terms. Posting creates a receivable open item, updates the party balance and writes the ledger entry.', ['Line items with tax', 'Due date and terms', 'Submit, cancel with reversal, print', 'Credit note against the original']],

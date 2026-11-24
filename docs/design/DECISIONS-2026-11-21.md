@@ -2097,3 +2097,80 @@ The payments **form** is untouched in this round and remains the next page to re
 A leftover “enter an exchange rate” guard from removed currency fields stopped every
 new sub-account save. It was the last occurrence and is gone; the save path is now the
 generated code, name, control head and access only.
+
+
+---
+
+# Round 31 — payments settle documents, not tax
+
+Owner direction: the payment/receipt module exists to point at the exact invoice or
+bill and track what is still open. Tax is already dealt with in invoicing, so it has
+no place on this form.
+
+## 159. What the module is for
+
+A journal entry can move money, but it cannot say which invoice paid for it. This
+module records a receipt or a payment against one or more named invoices or bills,
+shows the outstanding on each, and lets the amount be settled in full or in part.
+One document can settle two invoices; one invoice can be settled over two documents.
+
+## 160. The form no longer carries tax or a header reference
+
+The sales-tax and income-tax percentage fields are gone, and so is the top reference
+block. The header is now **type, party, date, notes** plus a read-only **party
+outstanding**. The document number is shown in the panel head.
+
+## 161. Rows, not a hidden automatic allocation
+
+Each row is one document:
+
+| Invoice or bill | Method | Cash / bank sub-account | Outstanding | Amount set off |
+|---|---|---|---|---|
+
+- The document list is fetched for the chosen party and contains only documents with
+  something still open. Choosing one fills **Outstanding** from the system and puts
+  that figure in the amount, which stays editable.
+- **Method** is bank transfer, cheque or cash. A cash row lists cash sub-accounts; a
+  bank or cheque row lists bank sub-accounts, so the wrong kind cannot be picked.
+- **Amount set off** may be less than the outstanding. Several rows are allowed.
+- A document already used in another row is disabled in the list, and the same
+  document cannot be over-settled: the save check compares each row and the sum per
+  document with the system outstanding.
+- A saved document reduces every later outstanding for that party, so the next
+  payment sees the new figure.
+
+## 162. Outstanding means the receivable or payable, not the gross invoice
+
+The figure comes from the invoice line on the control account (1100 or 2100). Tax is
+already credited or debited to its own tax control account, so the invoice gross
+(100) and the receivable (say 80 after withholding) are different numbers, and it is
+the 80 that a settlement reduces. The row cap, the party total and the saved
+allocation all use the control amount. Verified on a 69,447.55 receivable: a 100.00
+part-payment left 69,347.55 open on the same document, and the next document saved
+without touching the first one's balance.
+
+## 163. Numbering is PAY- and RCPT- with month and year
+
+- Receipts: `RCPT-MM-YYYY-0001`, `RCPT-MM-YYYY-0002`, …
+- Payments: `PAY-MM-YYYY-0001`, `PAY-MM-YYYY-0002`, …
+
+The two series count separately and take the month and year from the document date.
+The number is shown before saving and is consumed only when the document saves.
+Settings → Accounting → Numbering now defaults to the prefixes `PAY` and `RCPT` and
+shows the exact format beside each field. The quick-payment path inside the invoice
+form uses the same series, and applies no more than the invoice's net receivable.
+
+## 164. The register loses columns that no longer mean anything
+
+**Withheld** and **Net** are gone; with no withholding on this document, net would
+always equal amount. The table is Date · Number · Type · Party · Method · Cash/bank ·
+Settled · Amount · State, tightened so the amount and state are visible without
+scrolling; long account names truncate with a tooltip.
+
+## 165. Still to do on this module
+
+- Advances and on-account money are not recorded here; the invoice path still keeps a
+  remainder as an advance, but the payments form settles documents only.
+- A saved payment cannot be edited, cancelled or deleted yet.
+- Nothing posts to the ledger in this build, and multi-currency settlement is not
+  modelled.

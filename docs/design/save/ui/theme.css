@@ -394,3 +394,8 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .ss-empty{padding:10px;color:var(--muted);font-size:12px;text-align:center}
 .setup-lines .ss{min-width:105px}
 .journal-lines .ss{width:100%}
+.ss-option[disabled]{opacity:.45;cursor:not-allowed}
+.ss-option[disabled]:hover{background:transparent}
+.pay-register th,.pay-register td{padding-left:13px;padding-right:13px}
+.pay-register td.col-against,.pay-register th.col-against{white-space:normal;min-width:130px}
+.pay-register td.col-account{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
