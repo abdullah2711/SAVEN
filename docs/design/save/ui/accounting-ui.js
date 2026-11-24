@@ -155,7 +155,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
    const picker=(i,current)=>ss({key:'account',field:'account',value:current,options:ACCOUNT_OPTIONS(),label:'accounts',placeholder:'Choose account',line:i});
    const stateLabel=draft.locked?(draft.state==='cancelled'?'cancelled':'posted'):(draft.state==='returned'?'returned':'draft');
    const menu=draft.locked
-     ? `${draft.state==='cancelled'?'':'<button type="button" data-form-action="cancel">Cancel entry</button>'}${draft.state==='cancelled'?'<button type="button" data-form-action="delete">Delete</button>':''}<button type="button" data-form-action="duplicate">Duplicate</button>`
+     ? `${draft.state==='posted'?'<button type="button" data-form-action="reversal">Reverse entry</button>':''}${draft.state==='cancelled'?'':'<button type="button" data-form-action="cancel">Cancel entry</button>'}${draft.state==='cancelled'?'<button type="button" data-form-action="delete">Delete</button>':''}<button type="button" data-form-action="duplicate">Duplicate</button>`
      : `<button type="button" data-form-action="save">Save draft</button><button type="button" data-form-action="submit">Submit</button><button type="button" data-form-action="approval">Submit for approval</button><button type="button" data-form-action="duplicate">Duplicate</button><button type="button" data-form-action="delete">Delete</button>`;
    return `<div class="journal-single"><section class="panel">
      <div class="panel-head"><div><div class="eyebrow">Journal entry · ${stateLabel}</div><h2>${e(draft.number||'New journal')}</h2></div>
@@ -262,7 +262,14 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      if(!need&&hidden.value){hidden.value='';box.querySelector('.ms-text').textContent='Choose party / sub-account';}
    });
    sync();
-   form.addEventListener('change',ev=>{if(ev.target.matches('[data-journal-field="account"]'))sync();});
+   form.addEventListener('change',ev=>{
+     if(ev.target.matches('[data-journal-field="account"]')){
+       const tr=ev.target.closest('[data-journal-line]');
+       const party=tr?.querySelector('.ss[data-ss="party"]');
+       if(party){const hidden=party.querySelector('input[type="hidden"]');if(hidden)hidden.value='';const label=party.querySelector('.ms-text');if(label)label.textContent='Choose party / sub-account';}
+       sync();
+     }
+   });
    const revalidate=()=>{
      const location=form.querySelector('input[name="location"]')?.value||draft.location||'HQ';
      form.querySelectorAll('[data-journal-line]').forEach(tr=>{
@@ -344,10 +351,12 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
    const act=b.dataset.formAction;
    const controlProblem=()=>{for(const [i,l] of draft.lines.entries()){const a=accounts.find(x=>x.code===l.account);if(a&&a.control&&!String(l.party||'').trim())return `${a.code} ${a.name} on line ${i+1} is a control account. Choose a party or sub-account before continuing.`;}return '';};
-   const patch=()=>({date:draft.date,narrative:draft.narrative,location:draft.location,lines:draft.lines.map(l=>({account:l.account,debit:l.debit,credit:l.credit,party:l.party,project:l.project,costCentre:l.costCentre}))});
+   const customPatch=()=>{const out={};CUSTOM_FIELDS.filter(f=>f.form==='Journal entry').forEach(f=>{const k='custom_'+f.name.toLowerCase().replace(/[^a-z0-9]+/g,'_');out[k]=draft[k]||'';});return out;};
+   const patch=()=>({date:draft.date,narrative:draft.narrative,location:draft.location,lines:draft.lines.map(l=>({account:l.account,debit:l.debit,credit:l.credit,party:l.party,project:l.project,costCentre:l.costCentre})),...customPatch()});
    if(act==='save'){capture();const problem=controlProblem();if(problem){notify(problem);return;}if(draft.editingId){screens.updateJournalDoc(draft.editingId,patch());notify('Draft updated. No ledger effect.');navigate({module:'accounting',tab:'journals'});return;}localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}
    if(act==='submit'||act==='approval'){capture();const problem=controlProblem();if(problem){notify(problem);return;}if(draft.editingId){screens.updateJournalDoc(draft.editingId,{...patch(),state:act==='submit'?'posted':'returned'});notify(act==='submit'?'Submitted and posted.':'Submitted for approval; it comes back editable if returned.');navigate({module:'accounting',tab:'journals'});return;}notify(act==='submit'?'Submitted and posted.':'Submitted for approval.');return;}
    if(act==='duplicate'){capture();const id=draft.editingId?screens.duplicateJournalDoc(draft.editingId):'';if(id){notify('Duplicated into a new draft.');navigate({module:'accounting',tab:'journals',mode:'editor',code:id});return;}draft={...draft,editingId:'',state:'draft',locked:false,number:nextJournalNumber(),reference:'',lines:draft.lines.map(l=>({...l}))};notify('Duplicated into a new draft.');render();return;}
+   if(act==='reversal'){if(!draft.editingId)return;const id=screens.reverseJournalDoc(draft.editingId);if(id){notify('Reversal drafted with the debits and credits swapped. Review and submit it.');navigate({module:'accounting',tab:'journals',mode:'editor',code:id});}return;}
    if(act==='cancel'){if(!draft.editingId)return;capture();screens.cancelJournalDoc(draft.editingId);notify('Entry cancelled: removed from the ledger, kept in the register. Delete removes it from the register.');navigate({module:'accounting',tab:'journals'});return;}
    if(act==='delete'){if(draft.editingId){screens.deleteJournalDoc(draft.editingId);notify('Deleted from the register. The number is never reused and the audit log keeps the record.');navigate({module:'accounting',tab:'journals'});return;}notify('Deleted as a draft. A posted entry can only be cancelled first.');return;}
  }));document.querySelector('#tb-filter')?.addEventListener('submit',ev=>{ev.preventDefault();const v=Object.fromEntries(new FormData(ev.target));try{range={from:v.from,to:v.to};query=v.q;tbClass=v.type;tbGroup=v.group;render();}catch(error){notify(error.message);}});

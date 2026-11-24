@@ -1863,3 +1863,34 @@ Apply, then filtered it to 160 and closed the menu.
 
 Debit, credit and closing values in the menu show thousands separators and two
 decimals, while the stored value stays exact for matching.
+
+---
+
+# Round 27 — journal register matches the ledger, reversal, party reset
+
+## 137. The journal register uses the ledger's table pattern
+
+- Top bar keeps only the universal filters: **search**, **Reset** and the column
+  chooser.
+- Every column header has the same menu as the ledger: **sort toggle** (↕ → ↑ → ↓),
+  value search, select all/clear, checkbox list and **Apply filter**. All columns sort.
+- Rows filter to exactly the chosen values.
+
+## 138. Custom fields become register columns
+
+Fields added in Settings → Forms & fields for the journal form appear **automatically**
+as columns in the register, with their own header menu and sort, and their values are
+stored with the draft when saved. No register change is needed when a field is added.
+
+## 139. Reversal is an action on a posted entry
+
+The overflow menu on a posted journal now offers **Reverse entry**. It drafts a new
+journal with every debit and credit swapped, numbers it in the session series and
+opens it for review; the original stays posted. Cancelling remains the way to remove
+the ledger effect without a visible correction; reversal is the visible alternative.
+
+## 140. Party resets when the account changes
+
+Changing a line's account clears the chosen party/sub-account immediately, so a party
+from a receivable can never remain on a bank line. The list is then filtered by the new
+account kind and the allowed projects and locations.

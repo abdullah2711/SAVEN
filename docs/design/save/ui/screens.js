@@ -939,7 +939,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       rerender();
     });
     document.querySelector('[data-jr-reset]')?.addEventListener('click', () => {
-      Object.assign(J, {parties: [], subtypes: [], projects: [], locations: [], centres: [], q: ''});
+      Object.assign(J, {parties: [], subtypes: [], projects: [], locations: [], centres: [], q: '', cf: {}});
       rerender();
     });
     document.querySelector('[data-gl-print]')?.addEventListener('click', () => window.print());
@@ -961,7 +961,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
 
   const J = {
     parties: [], projects: [], locations: [], centres: [], subtypes: [], q: '',
-    sort: {key: 'date', dir: 'desc'}, record: '', session: [], removed: new Set(),
+    sort: {key: 'date', dir: 'desc'}, record: '', session: [], removed: new Set(), cf: {}, openFilter: '',
     extras: new Set(['subtype', 'project', 'location', 'centre', 'party']),
   };
 
@@ -992,9 +992,32 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     return sortRows(rows, J.sort);
   }
 
+  function journalColValue(r, key) {
+    if (key.startsWith('custom:')) return r.doc['custom_' + key.slice(7).toLowerCase().replace(/[^a-z0-9]+/g, '_')] || '';
+    const map = {date: r.date, voucher: r.id, description: r.narrative, debit: r.debit, credit: r.credit, state: r.state, type: r.doc.source, subtype: r.subtype, party: r.party, project: r.project, location: r.location, centre: r.centre};
+    return map[key] !== undefined ? map[key] : r[key];
+  }
+  function sortRowsJ(rows, sort) {
+    const dir = sort.dir === 'desc' ? -1 : 1;
+    return rows.slice().sort((a, b) => {
+      const x = journalColValue(a, sort.key), y = journalColValue(b, sort.key);
+      if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
+      return String(x ?? '').localeCompare(String(y ?? '')) * dir;
+    });
+  }
+  function journalColValues(key) {
+    const saved = J.cf; J.cf = {};
+    const rows = journalRows();
+    J.cf = saved;
+    return [...new Set(rows.map((r) => String(journalColValue(r, key) ?? '')).filter((v) => v !== ''))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+
   function journalRegister() {
     if (J.record) return recordPage(J.record);
-    const rows = journalRows();
+    const cf = J.cf || {};
+    const rows = journalRows().filter((r) => Object.entries(cf).every(([k, v]) => !v || !v.length || v.includes(String(journalColValue(r, k)))));
+    const sortedRows = sortRowsJ(rows, J.sort);
+    const customCols = CUSTOM_FIELDS.filter((f) => f.form === 'Journal entry').map((f) => [`custom:${f.name}`, f.name, (r) => e(r.doc['custom_' + f.name.toLowerCase().replace(/[^a-z0-9]+/g, '_')] || '—')]);
     const cols = [
       ['date', 'Date', (r) => e(r.date)],
       ['voucher', 'Voucher', (r) => `<button class="text-button" data-jr-open="${e(r.id)}">${e(r.id)}</button>`],
@@ -1008,6 +1031,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       ['project', 'Project', (r) => e(r.project || '—')],
       ['location', 'Location', (r) => e(r.location || '—')],
       ['centre', 'Cost centre', (r) => e(r.centre || '—')],
+      ...customCols,
     ];
     const sortable = new Set(['date', 'voucher', 'description', 'debit', 'credit', 'subtype', 'party', 'project', 'location', 'centre']);
 
@@ -1019,13 +1043,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const extras = [['subtype', 'Subtype'], ['party', 'Party'], ['project', 'Project'], ['location', 'Location'], ['centre', 'Cost centre']];
 
     return `<form id="jr-filter" class="filterbar gl-filter">
-        ${ms('party', 'Parties', partyOpts, J.parties)}
-        ${ms('subtype', 'Subtypes', subtypeOpts, J.subtypes)}
-        ${ms('project', 'Projects', projectOpts, J.projects)}
-        ${ms('location', 'Locations', locOpts, J.locations)}
-        ${ms('centre', 'Cost centres', centreOpts, J.centres)}
         <label>Search<input name="q" type="search" value="${e(J.q)}" placeholder="Voucher, party or description"></label>
-        <button class="button" type="button" data-jr-reset>Reset</button><button class="button primary">Apply</button>
+        <button class="button" type="button" data-jr-reset>Reset</button>
       </form>
 
       <div class="gl-toolrow">
@@ -1037,13 +1056,21 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <div class="panel-head"><h2>Journals</h2><div class="related"><span class="badge">${rows.length} entries</span><button class="button" data-jr-export>Export CSV</button><button class="button" data-jr-print>Print</button></div></div>
         <div class="table-scroll gl-scroll" data-hscroll>
           <table class="gl-table jr-table" data-hide="${['subtype', 'party', 'project', 'location', 'centre'].filter((k) => !J.extras.has(k)).join(' ')}">
-            <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
-              ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-jr-sort="${key}" aria-sort="${J.sort.key === key ? (J.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${J.sort.key === key ? (J.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
-              : `<th class="col col-${key} ${cls || ''}">${label}</th>`).join('')}</tr></thead>
-            <tbody id="jr-rows">${rows.map((r) => `<tr data-jr-row="${e(r.id)}">
+            <thead><tr>${cols.map(([key, label, , cls]) => {
+              const sel = (J.cf && J.cf[key]) || [];
+              return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-jr-sort="${key}" aria-sort="${J.sort.key === key ? (J.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${J.sort.key === key ? (J.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-jrf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
+                <div class="col-filter-panel" data-jrp="${key}" hidden>
+                  <div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${J.sort.key === key ? 'active' : ''}" data-jrtoggle="${key}">${J.sort.key === key ? (J.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+                  <div class="ms-searchrow"><input class="ms-search jr-filter-search" type="search" placeholder="Search values"></div>
+                  <div class="ms-head"><button type="button" class="text-button" data-jrall="${key}">Select all</button><span class="ms-count">${journalColValues(key).length}</span><button type="button" class="text-button" data-jrnone="${key}">Clear</button></div>
+                  <div class="ms-list">${journalColValues(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(v)}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+                  <div class="gl-applyrow"><button type="button" class="button primary" data-jrapply="${key}">Apply filter</button></div>
+                </div></th>`;
+            }).join('')}</tr></thead>
+            <tbody id="jr-rows">${sortedRows.map((r) => `<tr data-jr-row="${e(r.id)}">
                 ${cols.map(([key, , cell, cls]) => `<td class="col col-${key} ${cls || ''}">${cell(r)}</td>`).join('')}
               </tr>`).join('') || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No journals</h2><p>No entry matches these filters.</p></div></td></tr>`}</tbody>
-            <tfoot><tr><td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td><td class="numeric">${money(rows.reduce((n, r) => n + r.debit, 0))}</td><td class="numeric">${money(rows.reduce((n, r) => n + r.credit, 0))}</td><td colspan="${Math.max(0, cols.length - cols.findIndex(([k]) => k === 'debit') - 2)}"></td></tr></tfoot>
+            <tfoot><tr><td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td><td class="numeric">${money(sortedRows.reduce((n, r) => n + r.debit, 0))}</td><td class="numeric">${money(sortedRows.reduce((n, r) => n + r.credit, 0))}</td><td colspan="${Math.max(0, cols.length - cols.findIndex(([k]) => k === 'debit') - 2)}"></td></tr></tfoot>
           </table>
         </div>
         <div class="table-footer">${rows.length} entries. Click a voucher to open the complete record.</div>
@@ -1110,6 +1137,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     DELETED.add(id);
     J.session = J.session.filter((x) => x.id !== id);
   }
+  function reverseJournalDoc(id) {
+    const src = journalDocs().find((x) => x.id === id);
+    if (!src) return '';
+    const copy = {...src, id: 'JE-2026-R' + String(J.session.length + 101), state: 'draft', narrative: 'Reversal of ' + src.id, lines: src.lines.map((l) => ({...l, debit: l.credit, credit: l.debit}))};
+    J.session.push(copy);
+    return copy.id;
+  }
   function duplicateJournalDoc(id) {
     const src = journalDocs().find((x) => x.id === id);
     if (!src) return '';
@@ -1136,6 +1170,68 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     document.querySelectorAll('[data-jr-sort]').forEach((btn) => btn.addEventListener('click', () => {
       const k = btn.dataset.jrSort;
       J.sort = {key: k, dir: J.sort.key === k && J.sort.dir === 'asc' ? 'desc' : 'asc'};
+      rerender();
+    }));
+    const jrForm = document.querySelector('#jr-filter');
+    jrForm?.querySelector('[name="q"]')?.addEventListener('input', (ev) => {
+      const pos = ev.target.selectionStart;
+      J.q = ev.target.value;
+      rerender();
+      const again = document.querySelector('#jr-filter [name="q"]');
+      if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
+    });
+    let jrOpen = '';
+    const closeJrMenus = (except) => {
+      document.querySelectorAll('[data-jrp]').forEach((p) => { if (p !== except) p.hidden = true; });
+      document.querySelectorAll('[data-jrf]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    };
+    const openJrMenu = (key) => {
+      const btn = document.querySelector(`[data-jrf="${key}"]`);
+      const panel = document.querySelector(`[data-jrp="${key}"]`);
+      if (!btn || !panel) return;
+      closeJrMenus(panel);
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      const r = btn.getBoundingClientRect();
+      panel.classList.add('col-filter-panel--fixed');
+      const left = r.left > window.innerWidth / 2 ? r.right - 270 : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - 278)) + 'px';
+      const top = Math.round(r.bottom + 4);
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, window.innerHeight - top - 12)) + 'px';
+      const search = panel.querySelector('.jr-filter-search');
+      if (search) { search.value = ''; search.focus(); }
+      jrOpen = key;
+    };
+    document.querySelectorAll('[data-jrf]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (jrOpen === b.dataset.jrf) { closeJrMenus(); jrOpen = ''; return; }
+      openJrMenu(b.dataset.jrf);
+    }));
+    document.addEventListener('click', (ev) => {
+      if (ev.target.closest('.col-filter-panel') || ev.target.closest('[data-jrf]')) return;
+      closeJrMenus(); jrOpen = '';
+    });
+    document.querySelectorAll('[data-jrp]').forEach((panel) => {
+      panel.addEventListener('click', (ev) => ev.stopPropagation());
+      panel.querySelector('.jr-filter-search')?.addEventListener('input', (ev) => {
+        const q = ev.target.value.toLowerCase();
+        panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
+      });
+      panel.querySelector('[data-jrall]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { if (!b.closest('.ms-row').hidden) b.checked = true; }); });
+      panel.querySelector('[data-jrnone]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = false; }); });
+    });
+    document.querySelectorAll('[data-jrapply]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.jrapply;
+      const panel = document.querySelector(`[data-jrp="${key}"]`);
+      J.cf = {...(J.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      closeJrMenus(); jrOpen = '';
+      rerender();
+    }));
+    document.querySelectorAll('[data-jrtoggle]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.jrtoggle;
+      J.sort = {key, dir: J.sort.key === key && J.sort.dir === 'asc' ? 'desc' : 'asc'};
+      closeJrMenus(); jrOpen = '';
       rerender();
     }));
     document.querySelector('#jr-rows')?.addEventListener('click', (ev) => {
@@ -3044,6 +3140,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

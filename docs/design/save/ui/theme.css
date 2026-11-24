@@ -340,3 +340,5 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .sort-toggle{width:30px;height:24px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-size:12px;line-height:1}
 .sort-toggle:hover{background:var(--tint)}
 .sort-toggle.active{background:var(--accent);border-color:var(--accent);color:var(--primary-ink)}
+.th-flex .sortable{padding:0;min-height:0}
+.th-flex{align-items:center}
