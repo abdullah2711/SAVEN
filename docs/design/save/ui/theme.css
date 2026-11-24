@@ -342,3 +342,8 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .sort-toggle.active{background:var(--accent);border-color:var(--accent);color:var(--primary-ink)}
 .th-flex .sortable{padding:0;min-height:0}
 .th-flex{align-items:center}
+
+/* Reconciliation difference rows: give reason and reference real width. */
+.recon-reason input,.recon-ref input{width:100%;min-width:260px}
+.recon-amt input{width:140px;max-width:140px}
+.recon-remove{width:1%}

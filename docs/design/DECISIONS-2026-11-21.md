@@ -1894,3 +1894,51 @@ the ledger effect without a visible correction; reversal is the visible alternat
 Changing a line's account clears the chosen party/sub-account immediately, so a party
 from a receivable can never remain on a bank line. The list is then filtered by the new
 account kind and the allowed projects and locations.
+
+---
+
+# Round 28 — journal data filters and party corrections
+
+## 141. Journal register has its data filters back
+
+The top bar carries **From/To**, **Search** and **Reset**; the register filters by
+period and text, while each header keeps its own value menu and sort. Columns,
+custom fields and filtering stay as built in round 27.
+
+## 142. Parties register matches the ledger
+
+- Top: **search**, **balances as at** (the date) and reset.
+- Every header has the same menu as the ledger and journal: sort toggle, value search,
+  select all/clear, checkbox values and Apply.
+- Type, status and balance moved out of the top bar into their column menus.
+
+## 143. Party form corrected
+
+- **Party no. is system generated** in sequence (`Party-0001`, …) and read-only.
+- **Group is a dropdown** of the party groups created in Settings.
+- **Control account** is chosen from the receivable heads for a customer and the
+  payable heads for a supplier; a saved party keeps its own control account.
+- **Currency and exchange rate removed** from the party form: a party is master data,
+  not a transaction. Currency and rates apply to journals, invoices and payments.
+- Bank name placeholder is simply “Party bank name”.
+
+## 144. Opening balances keep the control reconciled
+
+An opening balance on a party posts an **opening journal**: the control account
+(1100/2100) against **3100 Opening balance equity**, dated at the business start. The
+party balance and the control account therefore move together and the trial balance
+still agrees. Editing the opening replaces that journal instead of duplicating it.
+
+## 145. Reconciliation register and form
+
+- Register: top **search and From/To date filters**, export, print and New; the row is
+  clickable and opens the form (no per-row Open/Print buttons).
+- Saved reconciliations expose **Cancel record** and **Delete record**; cancelled
+  records stay in the register with a cancelled badge, deleted ones are removed.
+- Difference rows use the full form width with wide reason and reference fields.
+
+## 146. Still to do
+
+Reconciliation register does not yet have the per-column value menus; it has the top
+filters, clickable rows and the same table style. Adding its header menus is the next
+small step.
