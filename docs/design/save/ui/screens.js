@@ -1381,7 +1381,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Reason</th><th>Reference</th><th class="numeric">Amount</th><th></th></tr></thead><tbody id="recon-diffs">
             ${f.diffs.map((d, i) => `<tr data-recon-diff="${i}"><td><input data-rd="reason" value="${e(d.reason)}" placeholder="Bank charges, timing, error"></td><td><input data-rd="reference" value="${e(d.reference)}" placeholder="Slip or document"></td><td><input class="numeric" data-rd="amount" value="${e(d.amount)}" inputmode="decimal"></td><td><button type="button" class="text-button" data-recon-remove="${i}">Remove</button></td></tr>`).join('')}
           </tbody></table></div>
-          <div class="related"><button type="button" class="text-button" data-recon-add>Add difference row</button></div>
+          <div class="related"><button type="button" class="button" data-recon-add>Add difference row</button></div>
           <p class="form-note">Differences explain the gap; unreconciled = original − (system + differences).</p>
         </div>
         <div class="wide"><div class="record-summary recon-summary" id="recon-summary"><div><small>System</small>${money(system)}</div><div><small>Differences</small>${money(total)}</div><div><small>Original</small>${money(Number(f.original) || 0)}</div><div><small>Unreconciled</small><span class="badge ${Math.abs(unrec) < 0.01 ? 'good' : 'warn'}">${money(unrec)}</span></div></div></div>
