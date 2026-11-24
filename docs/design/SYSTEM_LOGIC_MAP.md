@@ -305,6 +305,7 @@ permissions. See §100 of the decision log.
 | 25–27 | 133–140 | journal register columns, reversal, party reset, custom columns |
 | 28 | 141–146 | journal dates, party form corrections, opening journal, reconciliation register |
 | 29 | 147–153 | form dropdown row fix, optional policy fields, policy log, recon header menus, field styling |
+| 30 | 154–158 | one custom select component, CB numbering, cash and payments register parity |
 
 ---
 
@@ -321,5 +322,7 @@ permissions. See §100 of the decision log.
 - Persistence: every record lives in the browser session and is lost on reload.
 - Per-line invoice tax override, withholding allocation and negative-stock
   enforcement are not built.
+- Payments and invoices forms still need the field-by-field review; their registers
+  are done.
 - Reconciliation is a recording tool; there is no automatic statement matching.
 

@@ -99,11 +99,17 @@ the decision index in one place.
 - **Reconciliations**: cash and party tabs each have a register (search, dates,
   column menus, click a row to open) and a form whose difference rows use the full
   width. Saved records can be cancelled (stay with a badge) or deleted.
-- **Payments**: receipts and payments with oldest-first allocation and advances.
+- **Payments**: register with From/To, search and the common column menus; receipts
+  and payments with oldest-first allocation and advances. The form is still to be
+  reviewed field by field.
 - **Sales/purchase invoices**: register and a line form; session documents only.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →
   Periods.
 - Supplied print and vertical-menu glyphs wired into the journal header.
+- Every accounting `<select>` is enhanced into one dropdown component: the native
+  select keeps the value, validation and FormData, while the visible control and list
+  are ours (chevron, tick on the current option, search past seven options, flip and
+  height cap). The shell top bar and dialogs stay native.
 - Every master-data form is create-or-edit with an Edit action per row; every form
   carries its full field set (see decision log round 11). Settings custom fields
   show on the journal More info tab.

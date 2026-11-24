@@ -367,3 +367,30 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .form-grid .ms-row input{flex:0 0 auto;width:15px;height:15px;margin:0}
 .form-grid .ms-row span{line-height:1.4;text-align:left}
 .form-grid .ms-panel{text-align:left}
+
+/* ---------------------------------------------------- single select */
+/* The native select is kept for value, validation and FormData, but it is
+   transparent over our own trigger; the visible list is ours. */
+.ss{position:relative;display:block;min-width:0}
+.ss-native{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;pointer-events:none;z-index:1}
+.ss-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;min-height:39px;padding:10px 34px 10px 12px;border:1px solid transparent;border-radius:7px;background-color:var(--field);background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) calc(50% - 1px),calc(100% - 12px) calc(50% - 1px);background-size:5px 5px,5px 5px;background-repeat:no-repeat;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);font-size:13px;text-align:left}
+.ss-trigger:hover{box-shadow:inset 0 0 0 1px var(--accent)}
+.ss:focus-within .ss-trigger{box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px var(--tint)}
+.ss-trigger[disabled]{color:var(--muted);background-color:var(--soft);cursor:not-allowed;opacity:.75}
+.ss-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ss-text.is-placeholder{color:var(--muted)}
+.ss-caret{display:none}
+.ss-panel{position:absolute;z-index:1600;display:flex;flex-direction:column;gap:6px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 26px 70px #0003}
+.ss-panel--fixed{position:fixed}
+.ss-panel[hidden]{display:none}
+.ss-searchrow{padding:1px}
+.ss-search{width:100%;min-height:34px;padding:7px 9px;font-size:12px;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:7px}
+.ss-search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--tint)}
+.ss-options{display:grid;gap:2px;flex:1;min-height:0;overflow:auto;padding:1px}
+.ss-option{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border-radius:7px;font-size:13px;color:var(--ink);text-align:left}
+.ss-option:hover{background:var(--tint)}
+.ss-option.is-selected{background:var(--tint);color:var(--accent);font-weight:600}
+.ss-option.is-selected:after{content:'✓';margin-left:auto;font-size:12px}
+.ss-empty{padding:10px;color:var(--muted);font-size:12px;text-align:center}
+.setup-lines .ss{min-width:105px}
+.journal-lines .ss{width:100%}

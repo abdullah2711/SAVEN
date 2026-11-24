@@ -33,10 +33,10 @@ export const LOCATIONS = [
 export const BANK_NAMES = ['Standard Bank — current 0123456789', 'Meezan Bank — current 0987654321'];
 export const CASH_NAMES = ['Front desk — A. Khan', 'Store counter — S. Ali'];
 export const CASH_BANK = [
-  {code: 'BANK-STD', name: BANK_NAMES[0], kind: 'bank', control: '1010', reference: 'PK36STAN0000123456789012', projects: [], locations: []},
-  {code: 'BANK-MZN', name: BANK_NAMES[1], kind: 'bank', control: '1010', reference: 'PK36MEZN0000987654321098', projects: [], locations: []},
-  {code: 'CASH-FRONT', name: CASH_NAMES[0], kind: 'cash', control: '1000', reference: 'Front desk till', projects: [], locations: ['HQ']},
-  {code: 'CASH-STORE', name: CASH_NAMES[1], kind: 'cash', control: '1020', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
+  {code: 'CB-0001', name: BANK_NAMES[0], kind: 'bank', control: '1010', reference: 'PK36STAN0000123456789012', projects: [], locations: []},
+  {code: 'CB-0002', name: BANK_NAMES[1], kind: 'bank', control: '1010', reference: 'PK36MEZN0000987654321098', projects: [], locations: []},
+  {code: 'CB-0003', name: CASH_NAMES[0], kind: 'cash', control: '1000', reference: 'Front desk till', projects: [], locations: ['HQ']},
+  {code: 'CB-0004', name: CASH_NAMES[1], kind: 'cash', control: '1020', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
 ];
 
 // Tax rules. A rule is a default; a document line may override it.

@@ -2030,3 +2030,70 @@ the right-hand field column.
 Party numbering confirmed at `Party-0001`. The opening journal is keyed by party
 code (`OB-Party-0001`), so editing the opening replaces that entry; verified one
 entry only, with 7,000 after changing 5,000 to 7,000, and the party balance matching.
+
+
+---
+
+# Round 30 — one real dropdown, cash numbering, cash and payment registers
+
+Owner review: native form dropdowns read as old software; the cash sub-account number
+was typed by hand; the cash register and the payments register did not match the
+ledger-style filters and table.
+
+## 154. One dropdown component for every form select
+
+The browser's own select popup cannot be styled, so `bindSelects()` enhances every
+`<select>` on the accounting screens at bind time:
+
+- the native select stays in the form, transparent and sized over the control, so its
+  value, `required` validation and `FormData` entry are unchanged and existing change
+  listeners still fire;
+- the visible control is a button with the selected text and one quiet chevron;
+- the list is ours: rounded surface, hover tint, a tick and accent text on the current
+  option, search when there are more than seven options, and the same flip/height cap
+  as the multi-select;
+- picking an option sets the native value, dispatches `change`, updates the label and
+  closes. Programmatic option swaps dispatch `change` too, which is how the party
+  control account follows a type change.
+
+It applies to forms, filters and settings on the accounting pages, including journal
+line selects and settings currency/period fields. Selects in the shell top bar and in
+dialogs are deliberately left native.
+
+## 155. Cash and bank sub-accounts are numbered CB-0001
+
+The code is generated in sequence (`CB-0001`, `CB-0002`, …), shown read-only on the
+form with a note, and independent of the control head. The sample accounts were
+renumbered CB-0001–CB-0004 so the register reads as one series. Verified: the new form
+offers CB-0005 and a saved sub-account appears as CB-0005.
+
+## 156. Cash register uses the common register UI
+
+- Top bar: **search**, **balances as at** (the date) and **Reset to current**.
+- Every column — code, account, kind, control head, status, postings, balance,
+  projects, locations — has the shared menu: sort toggle, value search, select
+  all/clear, checkbox values and Apply.
+- Kind, control head, status and location therefore left the top bar and now live in
+  their column menus. Clicking a row still opens the form and Open still goes to the
+  ledger.
+- Filtering is applied, not live: ticking values changes nothing until **Apply**.
+  Verified: kind = bank shows CB-0001 and CB-0002; sort by balance ascending puts the
+  smaller balance first; reset restores all four.
+
+## 157. Payments register uses the common register UI
+
+- Top bar: **search**, **From/To**, **Reset**.
+- All eleven columns have the shared menu and sort: date, reference, type, party,
+  method, cash/bank, against, amount, withheld, net, state.
+- Type (receipt/payment) and party moved from the top bar into the column menus.
+- Totals still sum the filtered rows; the footer states “Total shown · n of n”.
+  Verified: type = payment narrows 80 to 24; From 2026-11-29 narrows further; reset
+  restores 80.
+
+The payments **form** is untouched in this round and remains the next page to review.
+
+## 158. The cash form had the same blocked-save bug as the party form
+
+A leftover “enter an exchange rate” guard from removed currency fields stopped every
+new sub-account save. It was the last occurrence and is gone; the save path is now the
+generated code, name, control head and access only.

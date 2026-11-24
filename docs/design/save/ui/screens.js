@@ -100,11 +100,11 @@ let PERIOD_LOCKED = false;
 const EDIT = {type: '', code: ''};
 // Per-register filters. They survive a re-render because they live here.
 const FILTERS = {
-  cash: {q: '', kind: '', control: '', status: '', asof: '', location: ''},
+  cash: {q: '', kind: '', control: '', status: '', asof: '', location: '', cf: {}, sort: {key: 'code', dir: 'asc'}},
   parties: {q: '', type: '', status: '', asof: '', balance: '', cf: {}, sort: {key: 'code', dir: 'asc'}},
   items: {q: '', group: '', stock: '', status: ''},
   tax: {q: ''},
-  payments: {q: '', direction: '', party: ''},
+  payments: {q: '', direction: '', party: '', from: '', to: '', cf: {}, sort: {key: 'date', dir: 'desc'}},
   invoices: {q: '', party: ''},
   heads: {q: ''},
   projects: {q: ''},
@@ -1463,6 +1463,26 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   };
   const scopeText = (list) => (list && list.length ? list.join(', ') : 'All');
 
+  function nextCashCode() {
+    const nums = CASH_BANK.filter((s) => /^CB-\d+$/.test(s.code)).map((s) => Number(s.code.slice(3)) || 0);
+    return 'CB-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0');
+  }
+  function cashColValue(x, key) {
+    if (key === 'projects') return scopeText(x.projects);
+    if (key === 'locations') return scopeText(x.locations);
+    if (key === 'status') return x.status || 'Active';
+    return x[key];
+  }
+  function cashColValues(key) {
+    const rows = cashAccountRows(FILTERS.cash.asof || '');
+    return [...new Set(rows.map((x) => String(cashColValue(x, key) ?? '')).filter((v) => v !== ''))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+  function cashColLabel(key, v) {
+    if (key === 'balance') return money(Number(v) || 0);
+    if (key === 'control') { const head = accounts().find((a) => a.code === v); return head ? `${v} · ${head.name}` : v; }
+    return v;
+  }
+
   function cashAccountRows(asOf = '') {
     return CASH_BANK.map((s) => {
       let postings = 0, dr = 0, cr = 0, current = 0;
@@ -1480,30 +1500,48 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const tab = CASH_TAB === 'recon' ? 'recon' : 'register';
     const tabs = `<div class="tabs" role="tablist" aria-label="Cash and bank views"><button role="tab" aria-selected="${tab === 'register'}" data-cash-tab="register">Register</button><button role="tab" aria-selected="${tab === 'recon'}" data-cash-tab="recon">Reconciliation</button></div>`;
     if (tab === 'recon') return tabs + reconView('cash');
-    const controls = accounts().filter((a) => a.control === 'bank' || a.control === 'cash');
     const f = FILTERS.cash;
     const asOf = f.asof || '';
     const list = cashAccountRows(asOf);
-    const rows = list.filter((x) => {
-      const head = accounts().find((a) => a.code === x.control);
-      return hit(f.q, x.code, x.name, x.reference, x.kind, head ? head.name : '', x.projects.join(' '), x.locations.join(' '))
-        && (!f.kind || x.kind === f.kind) && (!f.control || x.control === f.control) && (!f.status || (x.status || 'Active') === f.status) && (!f.location || !x.locations.length || x.locations.includes(f.location));
+    const head = (code) => accounts().find((a) => a.code === code);
+    let rows = list.filter((x) => hit(f.q, x.code, x.name, x.reference, x.kind, head(x.control) ? head(x.control).name : '', x.projects.join(' '), x.locations.join(' '))
+      && Object.entries(f.cf || {}).every(([k, v]) => !v || !v.length || v.includes(String(cashColValue(x, k)))));
+    rows = rows.slice().sort((a, b) => {
+      const x = cashColValue(a, f.sort.key), y = cashColValue(b, f.sort.key);
+      const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), undefined, {numeric: true});
+      return f.sort.dir === 'desc' ? -d : d;
     });
-    return tabs + `<form class="filterbar" data-filter="cash">
+    const cols = [['code', 'Code'], ['name', 'Account'], ['kind', 'Kind'], ['control', 'Control head'], ['status', 'Status'], ['postings', 'Postings', 'numeric'], ['balance', 'Balance', 'numeric'], ['projects', 'Projects'], ['locations', 'Locations']];
+    const cells = {
+      code: (x) => `<td class="col col-code mono">${e(x.code)}</td>`,
+      name: (x) => `<td class="col col-name">${e(x.name)}<small class="secondary">${e(x.reference || '')}</small></td>`,
+      kind: (x) => `<td class="col col-kind">${badge(x.kind, x.kind === 'bank' ? 'plum' : '')}</td>`,
+      control: (x) => `<td class="col col-control">${e(x.control)} · ${e(head(x.control) ? head(x.control).name : 'Unknown head')}</td>`,
+      status: (x) => `<td class="col col-status">${badge(x.status || 'Active', (x.status || 'Active') === 'Active' ? 'good' : 'warn')}</td>`,
+      postings: (x) => `<td class="col col-postings numeric">${x.postings}</td>`,
+      balance: (x) => `<td class="col col-balance numeric">${money(x.balance)}${asOf ? `<small class="secondary">current ${money(x.current)}</small>` : ''}</td>`,
+      projects: (x) => `<td class="col col-projects">${e(scopeText(x.projects))}</td>`,
+      locations: (x) => `<td class="col col-locations">${e(scopeText(x.locations))}</td>`,
+    };
+    return tabs + `<form class="filterbar" data-filter="cash" data-cash-filter>
         ${filterInput('cash', f.q, 'Code, name, reference, project, location')}
-        <label>Kind<select name="kind"><option value="">All kinds</option><option value="bank" ${f.kind === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${f.kind === 'cash' ? 'selected' : ''}>Cash</option></select></label>
-        <label>Control head<select name="control"><option value="">All control heads</option>${controls.map((a) => `<option value="${a.code}" ${f.control === a.code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-        <label>Status<select name="status"><option value="">All states</option><option ${f.status === 'Active' ? 'selected' : ''}>Active</option><option ${f.status === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
-        <label>Location<select name="location"><option value="">All locations</option>${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${f.location === l.code ? 'selected' : ''}>${e(l.name)}</option>`).join('')}</select></label>
         <label>Balances as at<input type="date" name="asof" value="${e(asOf)}" max="2026-12-31"></label>
-        <button class="button" type="button" data-filter-reset="cash">Reset to current</button>
+        <button class="button" type="button" data-cash-reset>Reset to current</button>
       </form>
       <section class="panel">
         <div class="panel-head"><h2>Cash and bank sub-accounts</h2><div class="related"><span class="badge">${rows.length} of ${list.length} accounts</span><span class="badge">${asOf ? `balances as at ${e(asOf)}` : 'current balances'}</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Code</th><th>Account</th><th>Kind</th><th>Control head</th><th>Status</th><th class="numeric">Postings</th><th class="numeric">Balance</th><th>Projects</th><th>Locations</th><th>Ledger</th></tr></thead>
-          <tbody>${rows.map((s) => { const head = accounts().find((a) => a.code === s.control); return `<tr class="row-link" data-edit="cash:${e(s.code)}"><td class="mono">${e(s.code)}</td><td>${e(s.name)}<small class="secondary">${e(s.reference || '')}</small></td><td>${badge(s.kind, s.kind === 'bank' ? 'plum' : '')}</td><td>${e(s.control)} · ${e(head ? head.name : 'Unknown head')}</td><td>${badge(s.status || 'Active', (s.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="numeric">${s.postings}</td><td class="numeric">${money(s.balance)}${asOf ? `<small class="secondary">current ${money(s.current)}</small>` : ''}</td><td>${e(scopeText(s.projects))}</td><td>${e(scopeText(s.locations))}</td><td><button class="text-button" data-cash-ledger="${e(s.name)}">Open</button></td></tr>`; }).join('')}</tbody>
-          <tfoot><tr><td colspan="6">Total shown · ${rows.length} of ${list.length}${asOf ? ` · as at ${e(asOf)}` : ' · current'}</td><td class="numeric">${money(round2(rows.reduce((n, s) => n + s.balance, 0)))}</td><td colspan="3"></td></tr></tfoot>
+          <thead><tr>${cols.map(([key, label, cls]) => {
+            const sel = (f.cf && f.cf[key]) || [];
+            return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-cash-sort="${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-cashf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
+              <div class="col-filter-panel" data-cashp="${key}" hidden><div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${f.sort.key === key ? 'active' : ''}" data-cashtoggle="${key}">${f.sort.key === key ? (f.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+              <div class="ms-searchrow"><input class="ms-search cash-filter-search" type="search" placeholder="Search values"></div>
+              <div class="ms-head"><button type="button" class="text-button" data-cashall="${key}">Select all</button><span class="ms-count">${cashColValues(key).length}</span><button type="button" class="text-button" data-cashnone="${key}">Clear</button></div>
+              <div class="ms-list">${cashColValues(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(cashColLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+              <div class="gl-applyrow"><button type="button" class="button primary" data-cashapply="${key}">Apply filter</button></div></div></th>`;
+          }).join('')}<th>Ledger</th></tr></thead>
+          <tbody>${rows.map((x) => `<tr class="row-link" data-edit="cash:${e(x.code)}">${cols.map(([key]) => cells[key](x)).join('')}<td><button class="text-button" data-cash-ledger="${e(x.name)}">Open</button></td></tr>`).join('') || `<tr><td colspan="10">No cash or bank sub-account matches these filters.</td></tr>`}</tbody>
+          <tfoot><tr><td colspan="6">Total shown · ${rows.length} of ${list.length}${asOf ? ` · as at ${e(asOf)}` : ' · current'}</td><td class="numeric">${money(round2(rows.reduce((n, x) => n + x.balance, 0)))}</td><td colspan="3"></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts. Click a row to open its form. Set a date to see the balance as it stood then; the small figure under it stays the current balance. Reset returns to current.</div>
       </section>`;
@@ -1765,7 +1803,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <div class="panel-head"><h2>${editingRow.code ? e(editingRow.name) : 'New cash or bank sub-account'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'Blank access means all'}</span></div>
       <form data-cash-form class="panel-body form-grid">
         <input type="hidden" name="editingCode" value="${e(editingRow.code || '')}">
-        <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="BANK-HBL"></label>
+        <label>Sub-account no. (system)<input name="code" required readonly value="${e(v('code', nextCashCode()))}"><small class="secondary">Assigned in order, CB-0001, CB-0002, …</small></label>
         <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="HBL — current 1234"></label>
         <label>Control head<select name="control" class="inline-input" required>${controls.map((a) => `<option value="${a.code}" ${a.code === v('control', '1010') ? 'selected' : ''}>${a.code} · ${e(a.name)} (${a.control})</option>`).join('')}</select></label>
         <label>Kind<select name="kind" class="inline-input"><option value="bank" ${v('kind') === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${v('kind') === 'cash' ? 'selected' : ''}>Cash</option></select></label>
@@ -1785,6 +1823,69 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
 
   function bindCashBank(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'cash'});
+    document.querySelector('[data-cash-reset]')?.addEventListener('click', () => {
+      Object.assign(FILTERS.cash, {q: '', asof: '', kind: '', control: '', status: '', location: '', cf: {}});
+      rerender();
+    });
+    document.querySelectorAll('[data-cash-sort]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.cashSort;
+      FILTERS.cash.sort = {key, dir: FILTERS.cash.sort.key === key && FILTERS.cash.sort.dir === 'asc' ? 'desc' : 'asc'};
+      rerender();
+    }));
+    let cashOpen = '';
+    const closeCashMenus = (except) => {
+      document.querySelectorAll('[data-cashp]').forEach((p) => { if (p !== except) p.hidden = true; });
+      document.querySelectorAll('[data-cashf]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    };
+    const openCashMenu = (key) => {
+      const btn = document.querySelector(`[data-cashf="${key}"]`);
+      const panel = document.querySelector(`[data-cashp="${key}"]`);
+      if (!btn || !panel) return;
+      closeCashMenus(panel);
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      const r = btn.getBoundingClientRect();
+      panel.classList.add('col-filter-panel--fixed');
+      const left = r.left > window.innerWidth / 2 ? r.right - 270 : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - 278)) + 'px';
+      const top = Math.round(r.bottom + 4);
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, window.innerHeight - top - 12)) + 'px';
+      const search = panel.querySelector('.cash-filter-search');
+      if (search) { search.value = ''; search.focus(); }
+      cashOpen = key;
+    };
+    document.querySelectorAll('[data-cashf]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (cashOpen === b.dataset.cashf) { closeCashMenus(); cashOpen = ''; return; }
+      openCashMenu(b.dataset.cashf);
+    }));
+    document.addEventListener('click', (ev) => {
+      if (ev.target.closest('.col-filter-panel') || ev.target.closest('[data-cashf]')) return;
+      closeCashMenus(); cashOpen = '';
+    });
+    document.querySelectorAll('[data-cashp]').forEach((panel) => {
+      panel.addEventListener('click', (ev) => ev.stopPropagation());
+      panel.querySelector('.cash-filter-search')?.addEventListener('input', (ev) => {
+        const q = ev.target.value.toLowerCase();
+        panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
+      });
+      panel.querySelector('[data-cashall]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { if (!b.closest('.ms-row').hidden) b.checked = true; }); });
+      panel.querySelector('[data-cashnone]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = false; }); });
+    });
+    document.querySelectorAll('[data-cashapply]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.cashapply;
+      const panel = document.querySelector(`[data-cashp="${key}"]`);
+      FILTERS.cash.cf = {...(FILTERS.cash.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      closeCashMenus(); cashOpen = '';
+      rerender();
+    }));
+    document.querySelectorAll('[data-cashtoggle]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.cashtoggle;
+      FILTERS.cash.sort = {key, dir: FILTERS.cash.sort.key === key && FILTERS.cash.sort.dir === 'asc' ? 'desc' : 'asc'};
+      closeCashMenus(); cashOpen = '';
+      rerender();
+    }));
     document.querySelectorAll('[data-cash-ledger]').forEach((b) => b.addEventListener('click', (ev) => {
       ev.stopPropagation();
       GL.parties = [b.dataset.cashLedger];
@@ -1804,7 +1905,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const v2 = Object.fromEntries(new FormData(form));
       const editingCode = v2.editingCode || '';
       if (!editingCode && CASH_BANK.some((s) => s.code === v2.code || s.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
-      if (v2.currency !== CURRENCIES.primary && !(Number(v2.rate) > 0)) { notify('Enter the exchange rate for a currency other than ' + CURRENCIES.primary + '.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
       const record = {code: v2.code, name: v2.name.trim(), kind: v2.kind, control: v2.control, reference: v2.reference || '', bank: v2.bank || '', branch: v2.branch || '', currency: v2.currency || CURRENCIES.primary, rate: Number(v2.rate) || 1, opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
       if (editingCode) {
@@ -2037,6 +2137,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const type = ev.target.value;
       const fallback = partyControl(type);
       control.innerHTML = partyControlOptions(type).map((a) => `<option value="${a.code}" ${a.code === fallback ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+      control.dispatchEvent(new Event('change', {bubbles: true}));
     });
     document.querySelector('[data-party-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -2101,23 +2202,70 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     });
     return PAYMENTS.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
+  function payColValue(r, key) {
+    if (key === 'type') return r.direction === 'receive' ? 'receipt' : 'payment';
+    if (key === 'state') return r.session ? 'Session' : 'Posted';
+    if (key === 'method') return (r.tenders && r.tenders.length > 1) ? `${r.tenders.length} methods` : (r.method || '—');
+    if (key === 'withheld') return round2(Number(r.withheld) || 0);
+    if (key === 'net') return round2(Number(r.net ?? r.amount) || 0);
+    if (key === 'amount') return round2(Number(r.amount) || 0);
+    if (key === 'against') return r.against || 'Advance / on account';
+    if (key === 'account') return r.account || '—';
+    return r[key] ?? '';
+  }
+  function payColValues(key) {
+    return [...new Set(paymentRows().map((r) => String(payColValue(r, key))))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+  function payColLabel(key, v) {
+    if (['amount', 'withheld', 'net'].includes(key)) return money(Number(v) || 0);
+    if (key === 'type') return v === 'receive' ? 'Receipt' : 'Payment';
+    return v;
+  }
   function paymentsView() {
     const all = paymentRows();
     const f = FILTERS.payments;
-    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.account, r.against, r.reference) && (!f.direction || r.direction === f.direction) && (!f.party || r.party === f.party));
-    const parties = PARTIES;
-    return `<form class="filterbar" data-filter="payments">
+    const cols = [['date', 'Date'], ['id', 'Reference'], ['type', 'Type'], ['party', 'Party'], ['method', 'Method'], ['account', 'Cash / bank'], ['against', 'Against'], ['amount', 'Amount', 'numeric'], ['withheld', 'Withheld', 'numeric'], ['net', 'Net', 'numeric'], ['state', 'State']];
+    let rows = all.filter((r) => hit(f.q, r.id, r.party, r.account, r.against, r.reference)
+      && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to)
+      && Object.entries(f.cf || {}).every(([k, v]) => !v || !v.length || v.includes(String(payColValue(r, k)))));
+    rows = rows.slice().sort((a, b) => {
+      const x = payColValue(a, f.sort.key), y = payColValue(b, f.sort.key);
+      const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), undefined, {numeric: true});
+      return f.sort.dir === 'desc' ? -d : d;
+    });
+    const cells = {
+      date: (r) => `<td class="col col-date">${e(r.date)}</td>`,
+      id: (r) => `<td class="col col-id mono">${e(r.id)}</td>`,
+      type: (r) => `<td class="col col-type">${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td>`,
+      party: (r) => `<td class="col col-party">${e(r.party)}</td>`,
+      method: (r) => `<td class="col col-method">${e(payColValue(r, 'method'))}</td>`,
+      account: (r) => `<td class="col col-account">${e(payColValue(r, 'account'))}</td>`,
+      against: (r) => `<td class="col col-against">${e(payColValue(r, 'against'))}</td>`,
+      amount: (r) => `<td class="col col-amount numeric">${money(r.amount)}</td>`,
+      withheld: (r) => `<td class="col col-withheld numeric">${r.withheld ? money(r.withheld) : '—'}</td>`,
+      net: (r) => `<td class="col col-net numeric">${money(r.net ?? r.amount)}</td>`,
+      state: (r) => `<td class="col col-state">${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td>`,
+    };
+    return `<form class="filterbar" data-filter="payments" data-pay-filter>
         ${filterInput('payments', f.q, 'Reference, party, account, document')}
-        <label>Type<select name="direction"><option value="">Payments and receipts</option><option value="receive" ${f.direction === 'receive' ? 'selected' : ''}>Receipts</option><option value="pay" ${f.direction === 'pay' ? 'selected' : ''}>Payments</option></select></label>
-        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p) => `<option value="${e(p.name)}" ${f.party === p.name ? 'selected' : ''}>${e(p.name)}</option>`).join('')}</select></label>
-        <button class="button" type="button" data-filter-reset="payments">Reset</button>
+        <label>From<input type="date" name="from" value="${e(f.from || '')}"></label>
+        <label>To<input type="date" name="to" value="${e(f.to || '')}"></label>
+        <button class="button" type="button" data-pay-reset>Reset</button>
       </form>
       <section class="panel">
         <div class="panel-head"><h2>Payments and receipts</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
         <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Reference</th><th>Type</th><th>Party</th><th>Method</th><th>Cash / bank</th><th>Against</th><th class="numeric">Amount</th><th class="numeric">Withheld</th><th class="numeric">Net</th><th>State</th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${badge(r.direction === 'receive' ? 'receipt' : 'payment', r.direction === 'receive' ? 'good' : '')}</td><td>${e(r.party)}</td><td>${e((r.tenders && r.tenders.length > 1) ? `${r.tenders.length} methods` : r.method || '—')}</td><td>${e(r.account || '—')}</td><td>${e(r.against || 'Advance / on account')}</td><td class="numeric">${money(r.amount)}</td><td class="numeric">${r.withheld ? money(r.withheld) : '—'}</td><td class="numeric">${money(r.net ?? r.amount)}</td><td>${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td></tr>`).join('') || '<tr><td colspan="11">No payments match these filters.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="7">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.withheld || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.net ?? r.amount), 0)))}</td><td></td></tr></tfoot>
+          <thead><tr>${cols.map(([key, label, cls]) => {
+            const sel = (f.cf && f.cf[key]) || [];
+            return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-pay-sort="${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-payf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
+              <div class="col-filter-panel" data-payp="${key}" hidden><div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${f.sort.key === key ? 'active' : ''}" data-paytoggle="${key}">${f.sort.key === key ? (f.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+              <div class="ms-searchrow"><input class="ms-search pay-filter-search" type="search" placeholder="Search values"></div>
+              <div class="ms-head"><button type="button" class="text-button" data-payall="${key}">Select all</button><span class="ms-count">${payColValues(key).length}</span><button type="button" class="text-button" data-paynone="${key}">Clear</button></div>
+              <div class="ms-list">${payColValues(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(payColLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+              <div class="gl-applyrow"><button type="button" class="button primary" data-payapply="${key}">Apply filter</button></div></div></th>`;
+          }).join('')}</tr></thead>
+          <tbody>${rows.map((r) => `<tr>${cols.map(([key]) => cells[key](r)).join('')}</tr>`).join('') || '<tr><td colspan="11">No payments match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="7">Total shown · ${rows.length} of ${all.length}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.withheld || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.net ?? r.amount), 0)))}</td><td></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A receipt brings money in, a payment sends it out. The document may use more than one method — bank, cash or an existing advance — and the total is allocated across the party's open invoices, oldest first. Anything left is an advance.</div>
       </section>`;
@@ -2170,6 +2318,69 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
   function bindPayments(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'payments'});
+    document.querySelector('[data-pay-reset]')?.addEventListener('click', () => {
+      Object.assign(FILTERS.payments, {q: '', from: '', to: '', direction: '', party: '', cf: {}});
+      rerender();
+    });
+    document.querySelectorAll('[data-pay-sort]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.paySort;
+      FILTERS.payments.sort = {key, dir: FILTERS.payments.sort.key === key && FILTERS.payments.sort.dir === 'asc' ? 'desc' : 'asc'};
+      rerender();
+    }));
+    let payOpen = '';
+    const closePayMenus = (except) => {
+      document.querySelectorAll('[data-payp]').forEach((p) => { if (p !== except) p.hidden = true; });
+      document.querySelectorAll('[data-payf]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    };
+    const openPayMenu = (key) => {
+      const btn = document.querySelector(`[data-payf="${key}"]`);
+      const panel = document.querySelector(`[data-payp="${key}"]`);
+      if (!btn || !panel) return;
+      closePayMenus(panel);
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      const r = btn.getBoundingClientRect();
+      panel.classList.add('col-filter-panel--fixed');
+      const left = r.left > window.innerWidth / 2 ? r.right - 270 : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - 278)) + 'px';
+      const top = Math.round(r.bottom + 4);
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, window.innerHeight - top - 12)) + 'px';
+      const search = panel.querySelector('.pay-filter-search');
+      if (search) { search.value = ''; search.focus(); }
+      payOpen = key;
+    };
+    document.querySelectorAll('[data-payf]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (payOpen === b.dataset.payf) { closePayMenus(); payOpen = ''; return; }
+      openPayMenu(b.dataset.payf);
+    }));
+    document.addEventListener('click', (ev) => {
+      if (ev.target.closest('.col-filter-panel') || ev.target.closest('[data-payf]')) return;
+      closePayMenus(); payOpen = '';
+    });
+    document.querySelectorAll('[data-payp]').forEach((panel) => {
+      panel.addEventListener('click', (ev) => ev.stopPropagation());
+      panel.querySelector('.pay-filter-search')?.addEventListener('input', (ev) => {
+        const q = ev.target.value.toLowerCase();
+        panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
+      });
+      panel.querySelector('[data-payall]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { if (!b.closest('.ms-row').hidden) b.checked = true; }); });
+      panel.querySelector('[data-paynone]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = false; }); });
+    });
+    document.querySelectorAll('[data-payapply]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.payapply;
+      const panel = document.querySelector(`[data-payp="${key}"]`);
+      FILTERS.payments.cf = {...(FILTERS.payments.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      closePayMenus(); payOpen = '';
+      rerender();
+    }));
+    document.querySelectorAll('[data-paytoggle]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.paytoggle;
+      FILTERS.payments.sort = {key, dir: FILTERS.payments.sort.key === key && FILTERS.payments.sort.dir === 'asc' ? 'desc' : 'asc'};
+      closePayMenus(); payOpen = '';
+      rerender();
+    }));
     const form = document.querySelector('[data-pay-form]');
     if (!form) return;
     document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
@@ -3219,6 +3430,140 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     });
   }
 
+  /* Single-select polish: the native select stays in the form (value, required
+     validation, FormData) but the visible control is our own button and list. */
+  let ssBound = false;
+  function filterSS(panel) {
+    const q = (panel.querySelector('.ss-search')?.value || '').trim().toLowerCase();
+    panel.querySelectorAll('.ss-option').forEach((b) => { b.hidden = Boolean(q) && !b.textContent.toLowerCase().includes(q); });
+    const any = [...panel.querySelectorAll('.ss-option')].some((b) => !b.hidden);
+    let empty = panel.querySelector('.ss-empty');
+    if (!empty) { empty = document.createElement('span'); empty.className = 'ss-empty'; empty.textContent = 'No match'; panel.querySelector('.ss-options')?.appendChild(empty); }
+    if (empty) empty.hidden = any;
+  }
+  function enhanceSelects() {
+    document.querySelectorAll('select').forEach((sel) => {
+      if (sel.dataset.ss || sel.multiple || sel.size > 1) return;
+      if (sel.closest('.ss') || sel.closest('.topbar') || sel.closest('.sidebar') || sel.closest('dialog')) return;
+      if (sel.hidden || sel.closest('[hidden]')) return;
+      const wrap = document.createElement('span');
+      wrap.className = 'ss';
+      sel.parentNode.insertBefore(wrap, sel);
+      wrap.appendChild(sel);
+      sel.classList.add('ss-native');
+      sel.dataset.ss = '1';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ss-trigger';
+      btn.setAttribute('aria-haspopup', 'listbox');
+      btn.setAttribute('aria-expanded', 'false');
+      const text = document.createElement('span');
+      text.className = 'ss-text';
+      const caret = document.createElement('span');
+      caret.className = 'ss-caret';
+      caret.setAttribute('aria-hidden', 'true');
+      btn.append(text, caret);
+      const panel = document.createElement('div');
+      panel.className = 'ss-panel';
+      panel.setAttribute('role', 'listbox');
+      panel.hidden = true;
+      wrap.append(btn, panel);
+      const sync = () => {
+        const opt = sel.options[sel.selectedIndex];
+        text.textContent = opt ? opt.textContent.replace(/\s+/g, ' ').trim() : '';
+        text.classList.toggle('is-placeholder', !sel.value);
+        btn.disabled = sel.disabled;
+      };
+      const build = () => {
+        panel.innerHTML = sel.options.length > 7
+          ? '<div class="ss-searchrow"><input class="ss-search" type="search" placeholder="Search" aria-label="Search options" autocomplete="off"></div><div class="ss-options"></div>'
+          : '<div class="ss-options"></div>';
+        const list = panel.querySelector('.ss-options');
+        [...sel.options].forEach((opt, i) => {
+          if (opt.hidden) return;
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'ss-option' + (i === sel.selectedIndex ? ' is-selected' : '');
+          b.setAttribute('role', 'option');
+          b.setAttribute('aria-selected', String(i === sel.selectedIndex));
+          b.dataset.index = String(i);
+          const span = document.createElement('span');
+          span.textContent = opt.textContent.replace(/\s+/g, ' ').trim();
+          b.appendChild(span);
+          list.appendChild(b);
+        });
+        if (!list.children.length) {
+          const none = document.createElement('span');
+          none.className = 'ss-empty';
+          none.textContent = 'No options';
+          list.appendChild(none);
+        }
+      };
+      const close = () => { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+      const open = () => {
+        if (sel.disabled) return;
+        document.querySelectorAll('.ss-panel').forEach((p) => { if (p !== panel) p.hidden = true; });
+        build();
+        panel.hidden = false;
+        btn.setAttribute('aria-expanded', 'true');
+        panel.classList.add('ss-panel--fixed');
+        const r = btn.getBoundingClientRect();
+        const width = Math.max(220, Math.min(r.width, window.innerWidth - 16));
+        panel.style.width = Math.round(width) + 'px';
+        panel.style.left = Math.round(Math.min(Math.max(8, r.left), window.innerWidth - width - 12)) + 'px';
+        const below = Math.round(window.innerHeight - r.bottom - 10);
+        const above = Math.round(r.top - 10);
+        const wanted = Math.min(340, Math.max(160, panel.scrollHeight || 240));
+        if (below < Math.min(wanted, 200) && above > below) {
+          const h = Math.min(wanted, above);
+          panel.style.top = Math.round(r.top - h - 4) + 'px';
+          panel.style.maxHeight = h + 'px';
+        } else {
+          panel.style.top = Math.round(r.bottom + 4) + 'px';
+          panel.style.maxHeight = Math.min(wanted, Math.max(below, 160)) + 'px';
+        }
+        const search = panel.querySelector('.ss-search');
+        if (search) { search.value = ''; search.focus(); }
+        filterSS(panel);
+        panel.querySelector('.is-selected')?.scrollIntoView({block: 'nearest'});
+      };
+      btn.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (panel.hidden) open(); else close();
+      });
+      panel.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const opt = ev.target.closest('.ss-option');
+        if (!opt) return;
+        sel.selectedIndex = Number(opt.dataset.index);
+        sel.dispatchEvent(new Event('change', {bubbles: true}));
+        sync();
+        close();
+      });
+      panel.addEventListener('input', (ev) => { if (ev.target.classList.contains('ss-search')) filterSS(panel); });
+      sel.addEventListener('change', sync);
+      sync();
+    });
+  }
+  function bindSelects() {
+    if (!ssBound) {
+      ssBound = true;
+      document.addEventListener('click', (ev) => {
+        if (ev.target.closest('.ss')) return;
+        document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
+      });
+      document.addEventListener('keydown', (ev) => {
+        if (ev.key !== 'Escape') return;
+        document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
+      });
+      window.addEventListener('scroll', () => {
+        document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
+      }, true);
+    }
+    enhanceSelects();
+  }
+
   function bindRegisterFilters(rerender) {
     document.querySelectorAll('[data-filter]').forEach((form) => {
       const key = form.dataset.filter;
@@ -3367,6 +3712,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }
