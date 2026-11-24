@@ -1822,3 +1822,18 @@ The date column keeps sorting only, because the date range is a top-bar filter.
 
 This replaces the plain text inputs from the previous attempt. The top bar still holds
 the date range, search, reset and column chooser.
+
+## 133. Column menu refinements
+
+- **Sort** is one row: the word “Sort” with ↑ and ↓ arrow buttons. The active direction
+  is highlighted; there are no longer two stacked text rows.
+- **Apply filter** closes the menu and applies the ticked values. Ticking values no
+  longer changes the register immediately, so a filter cannot jump while several
+  values are being chosen.
+- The menu is **left-aligned to its column** and clamped inside the viewport, so the
+  Debit and Credit menus no longer hang off the edge or look misaligned.
+- The panel clips its own content: long values are truncated with an ellipsis inside
+  the list, not spilled outside the menu.
+
+Verified: ticking Payment in the voucher-type menu left the register at 470 rows until
+Apply, then filtered it to 160 and closed the menu.

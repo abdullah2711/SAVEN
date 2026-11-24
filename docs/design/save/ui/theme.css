@@ -299,7 +299,25 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .col-filter-panel{position:absolute;z-index:130;width:270px;display:grid;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 18px 44px #0002;overflow:hidden}
 .col-filter-panel[hidden]{display:none}
 .col-filter-panel--fixed{position:fixed}
-.gl-sortrow{display:flex;flex-direction:column;gap:2px;padding:8px;border-bottom:1px solid var(--line);background:var(--soft)}
+
 .gl-sortrow .text-button{justify-content:flex-start;text-align:left;font-size:11px;padding:5px 6px}
 .col-filter-panel .ms-list{max-height:210px;overflow:auto}
 .col-filter-panel .ms-empty{font-size:11px}
+
+/* Column menu: one sort row with arrows, then a single Apply. */
+.gl-sortrow{display:flex;flex-direction:row;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--line);background:var(--soft)}
+.gl-sortlabel{font-size:11px;color:var(--muted);margin-right:auto}
+.sort-arrow{width:28px;height:24px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-size:13px;line-height:1}
+.sort-arrow:hover{background:var(--tint)}
+.sort-arrow.active{background:var(--accent);color:var(--primary-ink);border-color:var(--accent)}
+.gl-applyrow{padding:8px;border-top:1px solid var(--line);background:var(--surface)}
+.gl-applyrow .button{width:100%}
+
+/* Column menu list must never spill outside the panel. */
+.col-filter-panel{overflow:hidden}
+.col-filter-panel .ms-list{overflow:auto;max-height:210px}
+.col-filter-panel .ms-row{min-width:0}
+.col-filter-panel .ms-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.col-filter-panel{text-align:left}
+.col-filter-panel .ms-row{justify-content:flex-start}
+.col-filter-panel .ms-row span{flex:1;text-align:left}

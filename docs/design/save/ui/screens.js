@@ -767,11 +767,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
             <thead><tr>${cols.map(([key, label, , cls]) => {
               const sel = (GL.cf && GL.cf[key]) || [];
               const panel = key === 'date' ? '' : `<div class="col-filter-panel" data-glpp="${key}" hidden>
-                  <div class="gl-sortrow"><button type="button" class="text-button" data-glpsort="${key}:asc">Sort ascending ↑</button><button type="button" class="text-button" data-glpsort="${key}:desc">Sort descending ↓</button></div>
+                  <div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-arrow ${GL.sort.key === key && GL.sort.dir === 'asc' ? 'active' : ''}" data-glpsort="${key}:asc" aria-label="Sort ascending" title="Sort ascending">↑</button><button type="button" class="sort-arrow ${GL.sort.key === key && GL.sort.dir === 'desc' ? 'active' : ''}" data-glpsort="${key}:desc" aria-label="Sort descending" title="Sort descending">↓</button></div>
                   <div class="ms-searchrow"><input class="ms-search col-filter-search" type="search" placeholder="Search values" aria-label="Search ${e(label)} values"></div>
                   <div class="ms-head"><button type="button" class="text-button" data-glpall="${key}">Select all</button><span class="ms-count">${colValueList(key).length}</span><button type="button" class="text-button" data-glpnone="${key}">Clear</button></div>
                   <div class="ms-list">${colValueList(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(v)}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
                   <div class="ms-empty" hidden>No match</div>
+                  <div class="gl-applyrow"><button type="button" class="button primary" data-glpapply="${key}">Apply filter</button></div>
                 </div>`;
               return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button>${key === 'date' ? '' : `<button type="button" class="col-filter-btn" data-glpf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">▾${sel.length ? `<b>${sel.length}</b>` : ''}</button>`}</div>${panel}</th>`;
             }).join('')}</tr></thead>
@@ -860,10 +861,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       btn.setAttribute('aria-expanded', 'true');
       const r = btn.getBoundingClientRect();
       panel.classList.add('col-filter-panel--fixed');
-      panel.style.left = Math.round(r.left - 180) + 'px';
+      const width = 270;
+      const left = r.left > window.innerWidth / 2 ? r.right - width : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - width - 8)) + 'px';
       panel.style.top = Math.round(r.bottom + 6) + 'px';
-      if (r.bottom + 360 > window.innerHeight) panel.style.top = Math.max(8, r.top - 350) + 'px';
-      if (panel.getBoundingClientRect().left < 8) panel.style.left = '8px';
+      if (r.bottom + 380 > window.innerHeight) panel.style.top = Math.max(8, r.top - 370) + 'px';
       const search = panel.querySelector('.col-filter-search');
       if (search) { search.value = ''; search.focus(); }
       openFilter = key;
@@ -885,34 +887,34 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       panel.querySelector('.col-filter-search')?.addEventListener('input', (ev) => {
         const q = ev.target.value.toLowerCase();
         panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
-        const empty = panel.querySelector('.ms-list + .ms-empty, .ms-empty:last-child');
+        const empty = panel.querySelector('.ms-list ~ .ms-empty');
         if (empty) empty.hidden = [...panel.querySelectorAll('.ms-row')].some((r) => !r.hidden);
       });
       panel.querySelectorAll('input[type=checkbox]').forEach((box) => box.addEventListener('change', () => {
-        const key = panel.dataset.glpp;
-        GL.cf = {...(GL.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value)};
-        GL.openFilter = key;
-        rerender();
+        panel.dataset.dirty = '1';
       }));
+      panel.querySelector('[data-glpall]')?.addEventListener('click', () => {
+        panel.querySelectorAll('input[type=checkbox]').forEach((b) => { if (!b.closest('.ms-row').hidden) b.checked = true; });
+        panel.dataset.dirty = '1';
+      });
+      panel.querySelector('[data-glpnone]')?.addEventListener('click', () => {
+        panel.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = false; });
+        panel.dataset.dirty = '1';
+      });
     });
+    document.querySelectorAll('[data-glpapply]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.glpapply;
+      const panel = document.querySelector(`[data-glpp="${key}"]`);
+      GL.cf = {...(GL.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      GL.openFilter = '';
+      rerender();
+    }));
     document.querySelectorAll('[data-glpsort]').forEach((b) => b.addEventListener('click', () => {
       const [key, dir] = b.dataset.glpsort.split(':');
       GL.sort = {key, dir};
       closePanels(); GL.openFilter = '';
       rerender();
     }));
-    document.querySelectorAll('[data-glpall]').forEach((b) => b.addEventListener('click', () => {
-      const panel = document.querySelector(`[data-glpp="${b.dataset.glpall}"]`);
-      GL.cf = {...(GL.cf || {}), [b.dataset.glpall]: [...panel.querySelectorAll('input[type=checkbox]')].map((x) => x.value)};
-      GL.openFilter = b.dataset.glpall;
-      rerender();
-    }));
-    document.querySelectorAll('[data-glpnone]').forEach((b) => b.addEventListener('click', () => {
-      GL.cf = {...(GL.cf || {}), [b.dataset.glpnone]: []};
-      GL.openFilter = b.dataset.glpnone;
-      rerender();
-    }));
-    if (GL.openFilter) openPanel(GL.openFilter);
     document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-ac]')) return;
       const tr = ev.target.closest('[data-gl-go]');
