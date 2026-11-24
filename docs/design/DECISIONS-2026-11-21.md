@@ -1941,4 +1941,4 @@ still agrees. Editing the opening replaces that journal instead of duplicating i
 
 Reconciliation register does not yet have the per-column value menus; it has the top
 filters, clickable rows and the same table style. Adding its header menus is the next
-small step.
+small step. Party numbering confirmed as Party-0001 for the first generated code.

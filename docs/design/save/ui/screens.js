@@ -1737,8 +1737,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   /* ------------------------------------------------------------ parties */
   function partyControl(type) { return type === 'customer' ? '1100' : '2100'; }
   function nextPartyCode() {
-    const nums = PARTIES.map((p) => Number((String(p.code).match(/(\d+)$/) || [0, 0])[1]) || 0);
-    return 'Party-' + String(Math.max(0, ...nums) + 1).padStart(4, '0');
+    const nums = PARTIES.filter((p) => /^Party-\d+$/.test(p.code)).map((p) => Number(p.code.slice(6)) || 0);
+    return 'Party-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0');
   }
   function partyControlOptions(type) {
     return accounts().filter((a) => a.control === (type === 'customer' ? 'receivable' : 'payable'));
