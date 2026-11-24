@@ -286,3 +286,6 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .gl-filterrow input{height:26px;min-height:26px;font-size:11px;padding:2px 7px;border-radius:6px;width:100%;min-width:64px;max-width:128px}
 .gl-filterrow .col-date{padding:0}
 .gl-filterrow th .sortable{display:block;width:100%}
+
+/* Reconciliation summary and file picker. */
+.recon-summary{grid-template-columns:repeat(4,minmax(0,1fr))}

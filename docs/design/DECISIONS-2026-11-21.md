@@ -1774,3 +1774,29 @@ permanent scroll indicator above the rows.
 
 This is applied to the general ledger first. Once approved it becomes the shared
 pattern for every register.
+
+---
+
+# Round 25 — reconciliation is a tab, and the form works
+
+## 130. Reconciliation lives inside its page
+
+The separate rail pages are gone. **Cash & bank** and **Parties** each have two tabs:
+
+- **Register** — the accounts/parties.
+- **Reconciliation** — the register of reconciliations for that page, with its own
+  **New reconciliation** button.
+
+Opening a reconciliation uses the same page with the editor (`tab=cash|parties`,
+`form=recon`), and saving returns to the Reconciliation tab.
+
+## 131. The form actually works
+
+- Choosing the account/party **re-renders and pulls the system closing balance** for
+  the date; changing the date pulls it again.
+- Differences are **rows you add and remove**, not a fixed three.
+- The summary (system, differences, original, unreconciled) updates **as you type**
+  the amounts or the original balance.
+- Supporting files are chosen through a proper button and listed with a remove action.
+- Save stores every difference, the system and original balances, the unreconciled
+  result, the files and the state; Print prints the document or the register.

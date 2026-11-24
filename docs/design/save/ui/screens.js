@@ -1293,6 +1293,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   function cashBankView() {
+    const tab = CASH_TAB === 'recon' ? 'recon' : 'register';
+    const tabs = `<div class="tabs" role="tablist" aria-label="Cash and bank views"><button role="tab" aria-selected="${tab === 'register'}" data-cash-tab="register">Register</button><button role="tab" aria-selected="${tab === 'recon'}" data-cash-tab="recon">Reconciliation</button></div>`;
+    if (tab === 'recon') return tabs + reconView('cash');
     const controls = accounts().filter((a) => a.control === 'bank' || a.control === 'cash');
     const f = FILTERS.cash;
     const asOf = f.asof || '';
@@ -1302,7 +1305,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       return hit(f.q, x.code, x.name, x.reference, x.kind, head ? head.name : '', x.projects.join(' '), x.locations.join(' '))
         && (!f.kind || x.kind === f.kind) && (!f.control || x.control === f.control) && (!f.status || (x.status || 'Active') === f.status) && (!f.location || !x.locations.length || x.locations.includes(f.location));
     });
-    return `<form class="filterbar" data-filter="cash">
+    return tabs + `<form class="filterbar" data-filter="cash">
         ${filterInput('cash', f.q, 'Code, name, reference, project, location')}
         <label>Kind<select name="kind"><option value="">All kinds</option><option value="bank" ${f.kind === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${f.kind === 'cash' ? 'selected' : ''}>Cash</option></select></label>
         <label>Control head<select name="control"><option value="">All control heads</option>${controls.map((a) => `<option value="${a.code}" ${f.control === a.code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
@@ -1323,8 +1326,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   /* -------------------------------------------------- reconciliations */
+  let CASH_TAB = 'register';
+  let PARTY_TAB = 'register';
   const RECONCILIATIONS = {cash: [], party: []};
-  const RECON_DRAFT = {cash: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}], files: []}, party: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}], files: []}};
+  const RECON_FORM = {
+    cash: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []},
+    party: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []},
+  };
 
   function systemBalanceCash(name, date) {
     const row = cashAccountRows(date).find((r) => r.name === name);
@@ -1334,73 +1342,123 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const row = partyRows(date).find((p) => p.name === name);
     return row ? round2(row.balance) : 0;
   }
-  function reconRows(kind) {
-    return RECONCILIATIONS[kind].slice().sort((a, b) => b.date.localeCompare(a.date));
-  }
+  function reconRows(kind) { return RECONCILIATIONS[kind].slice().sort((a, b) => b.date.localeCompare(a.date)); }
+  function reconSystem(kind, account, date) { return kind === 'cash' ? systemBalanceCash(account, date) : systemBalanceParty(account, date); }
+  function reconTotal(form) { return round2((form.diffs || []).reduce((n, d) => n + (Number(d.amount) || 0), 0)); }
+  function reconUnreconciled(kind, form) { const system = form.account ? reconSystem(kind, form.account, form.date) : 0; return round2((Number(form.original) || 0) - (system + reconTotal(form))); }
+
   function reconView(kind) {
     const isCash = kind === 'cash';
     const rows = reconRows(kind);
     return `<section class="panel">
       <div class="panel-head"><h2>${isCash ? 'Cash and bank reconciliations' : 'Party reconciliations'}</h2><div class="related"><span class="badge">${rows.length} records</span><button class="button" data-export-table>Export CSV</button><button class="button" data-recon-print-all>Print register</button><button class="button" data-recon-new="${kind}">New reconciliation</button></div></div>
       <div class="table-scroll" data-hscroll><table><thead><tr><th>Date</th><th>${isCash ? 'Cash / bank account' : 'Party'}</th><th class="numeric">System balance</th><th class="numeric">Differences</th><th class="numeric">Original balance</th><th class="numeric">Unreconciled</th><th>State</th><th></th></tr></thead>
-      <tbody>${rows.map((r) => `<tr><td>${r.date}</td><td>${e(r.account)}</td><td class="numeric">${money(r.system)}</td><td class="numeric">${money(r.diffTotal)}</td><td class="numeric">${money(r.original)}</td><td class="numeric">${money(r.unreconciled)}</td><td>${badge(Math.abs(r.unreconciled) < 0.01 ? 'Reconciled' : 'Difference', Math.abs(r.unreconciled) < 0.01 ? 'good' : 'warn')}</td><td><button class="text-button" data-recon-print="${r.id}">Print</button></td></tr>`).join('') || `<tr><td colspan="8">No ${isCash ? 'cash' : 'party'} reconciliations recorded yet.</td></tr>`}</tbody></table></div>
+      <tbody>${rows.map((r) => `<tr><td>${r.date}</td><td>${e(r.account)}</td><td class="numeric">${money(r.system)}</td><td class="numeric">${money(r.diffTotal)}</td><td class="numeric">${money(r.original)}</td><td class="numeric">${money(r.unreconciled)}</td><td>${badge(Math.abs(r.unreconciled) < 0.01 ? 'Reconciled' : 'Difference', Math.abs(r.unreconciled) < 0.01 ? 'good' : 'warn')}</td><td><button class="text-button" data-recon-open="${kind}:${e(r.id)}">Open</button> <button class="text-button" data-recon-print="${e(r.id)}">Print</button></td></tr>`).join('') || `<tr><td colspan="8">No ${isCash ? 'cash' : 'party'} reconciliations recorded yet.</td></tr>`}</tbody></table></div>
       <div class="table-footer">A reconciliation records what was checked, when, against which balance, with each difference and its reference. It is a record, not an automatic matching engine.</div></section>`;
   }
+
   function reconEditor(kind, code) {
     const isCash = kind === 'cash';
     const editing = code ? RECONCILIATIONS[kind].find((r) => r.id === code) : null;
-    const d = editing || RECON_DRAFT[kind];
+    if (editing && !RECON_FORM[kind].editingId) {
+      RECON_FORM[kind] = {editingId: editing.id, account: editing.account, date: editing.date, original: String(editing.original), diffs: (editing.diffs || []).map((d) => ({...d})), files: (editing.files || []).slice()};
+    }
+    if (!editing) RECON_FORM[kind].editingId = '';
+    const f = RECON_FORM[kind];
     const options = isCash ? CASH_BANK.map((c) => [c.name, `${c.name} · ${c.control}`]) : PARTIES.map((p) => [p.name, `${p.name} · ${p.code}`]);
-    const system = d.account ? (isCash ? systemBalanceCash(d.account, d.date) : systemBalanceParty(d.account, d.date)) : 0;
-    const diffTotal = round2((d.diffs || []).reduce((n, x) => n + (Number(x.amount) || 0), 0));
+    const system = f.account ? reconSystem(kind, f.account, f.date) : 0;
+    const total = reconTotal(f);
+    const unrec = round2((Number(f.original) || 0) - (system + total));
     return `<section class="panel">
       <div class="panel-head"><h2>${editing ? 'Edit reconciliation' : 'New reconciliation'}</h2><span class="badge">${isCash ? 'Cash / bank' : 'Party'}</span></div>
       <form data-recon-form="${kind}" class="panel-body form-grid">
-        <input type="hidden" name="editingCode" value="${e(editing ? editing.id : '')}">
-        <label>${isCash ? 'Cash / bank sub-account' : 'Party'}<select name="account" class="inline-input" required><option value="">Choose</option>${options.map(([v, l]) => `<option value="${e(v)}" ${v === d.account ? 'selected' : ''}>${e(l)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="${e(d.date)}" required></label>
-        <label>System closing balance<input value="${e(d.account ? system.toFixed(2) : 'Choose an account first')}" readonly></label>
-        <label>Original balance ${isCash ? '(statement)' : '(party statement)'}<input name="original" inputmode="decimal" value="${e(d.original || '')}" placeholder="0.00" required></label>
+        <input type="hidden" name="editingCode" value="${e(f.editingId || '')}">
+        <label>${isCash ? 'Cash / bank sub-account' : 'Party'}<select name="account" class="inline-input" required><option value="">Choose</option>${options.map(([v, l]) => `<option value="${e(v)}" ${v === f.account ? 'selected' : ''}>${e(l)}</option>`).join('')}</select></label>
+        <label>Date<input name="date" type="date" value="${e(f.date)}" required></label>
+        <label>System closing balance<input id="recon-system" value="${f.account ? system.toFixed(2) : 'Choose an account first'}" readonly></label>
+        <label>Original balance ${isCash ? '(statement)' : '(party statement)'}<input name="original" id="recon-original" inputmode="decimal" value="${e(f.original)}" placeholder="0.00" required></label>
         <div class="wide"><div class="section-title">Differences</div>
-          <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Reason</th><th>Reference</th><th class="numeric">Amount</th></tr></thead><tbody>
-            ${(d.diffs || []).map((x, i) => `<tr data-recon-diff="${i}"><td><input data-rd="reason" value="${e(x.reason || '')}" placeholder="Bank charges, timing, error"></td><td><input data-rd="reference" value="${e(x.reference || '')}" placeholder="Slip or document"></td><td><input class="numeric" data-rd="amount" value="${e(x.amount || '')}" inputmode="decimal"></td></tr>`).join('')}
+          <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Reason</th><th>Reference</th><th class="numeric">Amount</th><th></th></tr></thead><tbody id="recon-diffs">
+            ${f.diffs.map((d, i) => `<tr data-recon-diff="${i}"><td><input data-rd="reason" value="${e(d.reason)}" placeholder="Bank charges, timing, error"></td><td><input data-rd="reference" value="${e(d.reference)}" placeholder="Slip or document"></td><td><input class="numeric" data-rd="amount" value="${e(d.amount)}" inputmode="decimal"></td><td><button type="button" class="text-button" data-recon-remove="${i}">Remove</button></td></tr>`).join('')}
           </tbody></table></div>
-          <p class="form-note">Differences are adjustments that explain the gap; the unreconciled figure is original − (system + differences).</p>
+          <div class="related"><button type="button" class="text-button" data-recon-add>Add difference row</button></div>
+          <p class="form-note">Differences explain the gap; unreconciled = original − (system + differences).</p>
         </div>
-        <label class="wide">Supporting files<input type="file" multiple data-recon-files></label>
+        <div class="wide"><div class="record-summary recon-summary" id="recon-summary"><div><small>System</small>${money(system)}</div><div><small>Differences</small>${money(total)}</div><div><small>Original</small>${money(Number(f.original) || 0)}</div><div><small>Unreconciled</small><span class="badge ${Math.abs(unrec) < 0.01 ? 'good' : 'warn'}">${money(unrec)}</span></div></div></div>
+        <div class="wide"><span class="ms-label">Supporting files</span><div class="related"><label class="button">Choose files<input type="file" multiple data-recon-files class="sr-only"></label><span class="form-note">PDF, image or CSV</span></div></div>
+        ${f.files.length ? `<div class="wide"><ul class="contract-list file-list">${f.files.map((n, i) => `<li><span>${e(n)}</span>${button('Remove', 'recon-file', 'data-value="' + i + '"')}</li>`).join('')}</ul></div>` : ''}
         <div class="related"><button class="button primary">Save reconciliation</button><button type="button" class="button" data-recon-cancel>Cancel</button><button type="button" class="button" onclick="window.print()">Print</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">System balance ${money(system)} · differences ${money(diffTotal)} · the result is shown in the register after saving.</p></div>
     </section>`;
   }
+
+  function captureRecon(kind, form) {
+    const v = Object.fromEntries(new FormData(form));
+    RECON_FORM[kind] = {
+      ...RECON_FORM[kind],
+      account: v.account,
+      date: v.date,
+      original: v.original,
+      diffs: [...form.querySelectorAll('[data-recon-diff]')].map((tr) => ({reason: tr.querySelector('[data-rd="reason"]').value, reference: tr.querySelector('[data-rd="reference"]').value, amount: tr.querySelector('[data-rd="amount"]').value})),
+    };
+    return v;
+  }
   function bindRecon(rerender, notify, navigate) {
+    document.querySelectorAll('[data-cash-tab]').forEach((b) => b.addEventListener('click', () => { CASH_TAB = b.dataset.cashTab; rerender(); }));
+    document.querySelectorAll('[data-party-tab]').forEach((b) => b.addEventListener('click', () => { PARTY_TAB = b.dataset.partyTab; rerender(); }));
     document.querySelectorAll('[data-recon-new]').forEach((b) => b.addEventListener('click', () => {
       const kind = b.dataset.reconNew;
-      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash-reconciliation' : 'party-reconciliation', mode: 'editor'});
+      RECON_FORM[kind] = {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []};
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash' : 'parties', mode: 'editor', form: 'recon'});
+    }));
+    document.querySelectorAll('[data-recon-open]').forEach((b) => b.addEventListener('click', () => {
+      const [kind, id] = b.dataset.reconOpen.split(':');
+      RECON_FORM[kind] = {editingId: id, account: '', date: '2026-11-30', original: '', diffs: [], files: []};
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash' : 'parties', mode: 'editor', form: 'recon', code: id});
     }));
     document.querySelector('[data-recon-cancel]')?.addEventListener('click', () => {
       const kind = document.querySelector('[data-recon-form]')?.dataset.reconForm || 'cash';
-      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash-reconciliation' : 'party-reconciliation'});
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash' : 'parties'});
     });
     document.querySelectorAll('[data-recon-print]').forEach((b) => b.addEventListener('click', () => window.print()));
     document.querySelector('[data-recon-print-all]')?.addEventListener('click', () => window.print());
-    document.querySelectorAll('[data-recon-form]').forEach((form) => form.addEventListener('submit', (ev) => {
+    const form = document.querySelector('[data-recon-form]');
+    if (!form) return;
+    const kind = form.dataset.reconForm;
+    form.querySelector('[name="account"]')?.addEventListener('change', () => { captureRecon(kind, form); rerender(); });
+    form.querySelector('[name="date"]')?.addEventListener('change', () => { captureRecon(kind, form); rerender(); });
+    form.querySelector('[data-recon-add]')?.addEventListener('click', () => { captureRecon(kind, form); RECON_FORM[kind].diffs.push({reason: '', reference: '', amount: ''}); rerender(); });
+    form.querySelectorAll('[data-recon-remove]').forEach((b) => b.addEventListener('click', () => { captureRecon(kind, form); RECON_FORM[kind].diffs.splice(Number(b.dataset.reconRemove), 1); rerender(); }));
+    form.querySelector('[data-recon-files]')?.addEventListener('change', (ev) => { captureRecon(kind, form); RECON_FORM[kind].files.push(...[...ev.target.files].map((f) => f.name)); ev.target.value = ''; rerender(); });
+    document.querySelectorAll('[data-recon-remove-file], [data-ac="recon-file"]').forEach((b) => b.addEventListener('click', () => { captureRecon(kind, form); RECON_FORM[kind].files.splice(Number(b.dataset.value), 1); rerender(); }));
+    form.addEventListener('input', (ev) => {
+      if (!ev.target.matches('[data-rd="amount"], #recon-original')) return;
+      captureRecon(kind, form);
+      const f = RECON_FORM[kind];
+      const system = f.account ? reconSystem(kind, f.account, f.date) : 0;
+      const unrec = round2((Number(f.original) || 0) - (system + reconTotal(f)));
+      const box = document.getElementById('recon-summary');
+      if (box) box.innerHTML = `<div><small>System</small>${money(system)}</div><div><small>Differences</small>${money(reconTotal(f))}</div><div><small>Original</small>${money(Number(f.original) || 0)}</div><div><small>Unreconciled</small><span class="badge ${Math.abs(unrec) < 0.01 ? 'good' : 'warn'}">${money(unrec)}</span></div>`;
+    });
+    form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       if (!form.reportValidity()) return;
-      const kind = form.dataset.reconForm;
-      const v = Object.fromEntries(new FormData(form));
-      const diffs = [...form.querySelectorAll('[data-recon-diff]')].map((tr) => ({reason: tr.querySelector('[data-rd="reason"]').value, reference: tr.querySelector('[data-rd="reference"]').value, amount: Number(tr.querySelector('[data-rd="amount"]').value) || 0})).filter((x) => x.amount || x.reason);
-      const system = kind === 'cash' ? systemBalanceCash(v.account, v.date) : systemBalanceParty(v.account, v.date);
-      const diffTotal = round2(diffs.reduce((n, x) => n + x.amount, 0));
+      const v = captureRecon(kind, form);
+      if (!v.account) { notify('Choose the account or party first.'); return; }
+      const system = reconSystem(kind, v.account, v.date);
+      const diffs = RECON_FORM[kind].diffs.filter((d) => Number(d.amount) || d.reason).map((d) => ({reason: d.reason, reference: d.reference, amount: Number(d.amount) || 0}));
+      const diffTotal = round2(diffs.reduce((n, d) => n + d.amount, 0));
       const original = round2(Number(v.original) || 0);
       const unreconciled = round2(original - (system + diffTotal));
-      const editing = v.editingCode;
-      const rec = {id: editing || (kind === 'cash' ? 'BCR-' : 'PRC-') + String(101 + RECONCILIATIONS[kind].length), kind, account: v.account, date: v.date, system, diffTotal, original, unreconciled, diffs, state: Math.abs(unreconciled) < 0.01 ? 'reconciled' : 'difference'};
+      const rec = {id: RECON_FORM[kind].editingId || (kind === 'cash' ? 'BCR-' : 'PRC-') + String(101 + RECONCILIATIONS[kind].length), kind, account: v.account, date: v.date, system, diffTotal, original, unreconciled, diffs, files: RECON_FORM[kind].files.slice(), state: Math.abs(unreconciled) < 0.01 ? 'reconciled' : 'difference'};
+      const editing = RECON_FORM[kind].editingId;
       if (editing) { const t = RECONCILIATIONS[kind].find((x) => x.id === editing); if (t) Object.assign(t, rec); }
       else RECONCILIATIONS[kind].push(rec);
+      RECON_FORM[kind] = {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []};
+      if (kind === 'cash') CASH_TAB = 'recon'; else PARTY_TAB = 'recon';
       notify(Math.abs(unreconciled) < 0.01 ? 'Reconciliation saved and agrees.' : `Reconciliation saved with a difference of ${unreconciled.toFixed(2)}.`);
-      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash-reconciliation' : 'party-reconciliation'});
-    }));
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash' : 'parties'});
+    });
   }
 
   function cashEditor(code) {
@@ -1501,6 +1559,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     return lines.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   }
   function partiesView() {
+    const tab = PARTY_TAB === 'recon' ? 'recon' : 'register';
+    const tabs = `<div class="tabs" role="tablist" aria-label="Party views"><button role="tab" aria-selected="${tab === 'register'}" data-party-tab="register">Register</button><button role="tab" aria-selected="${tab === 'recon'}" data-party-tab="recon">Reconciliation</button></div>`;
+    if (tab === 'recon') return tabs + reconView('party');
     const f = FILTERS.parties;
     const asOf = f.asof || '';
     const all = partyRows(asOf);
@@ -1509,7 +1570,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       && (!f.balance || (f.balance === 'debit' ? p.balance > 0 : f.balance === 'credit' ? p.balance < 0 : Math.abs(p.balance) < 0.01)));
     const receivable = round2(all.filter((p) => p.type === 'customer').reduce((n, p) => n + p.balance, 0));
     const payable = round2(all.filter((p) => p.type === 'supplier').reduce((n, p) => n + p.balance, 0));
-    return `<form class="filterbar" data-filter="parties">
+    return tabs + `<form class="filterbar" data-filter="parties">
         ${filterInput('parties', f.q, 'Code, name, group, contact, email')}
         <label>Type<select name="type"><option value="">All types</option><option value="customer" ${f.type === 'customer' ? 'selected' : ''}>Customers</option><option value="supplier" ${f.type === 'supplier' ? 'selected' : ''}>Suppliers</option></select></label>
         <label>Status<select name="status"><option value="">All states</option><option ${f.status === 'Active' ? 'selected' : ''}>Active</option><option ${f.status === 'Hold' ? 'selected' : ''}>Hold</option><option ${f.status === 'Blocked' ? 'selected' : ''}>Blocked</option></select></label>

@@ -11,8 +11,6 @@ export const PAGE_MAP = {
     ['ledger', 'General ledger', 'One account or all accounts, running balance, column view and full record, import.', 'built'],
     ['journals', 'Journal entries', 'Register of every journal with state, source, party and totals; new journal opens a full page form.', 'built'],
     ['parties', 'Parties', 'Customers and suppliers with terms, credit limits, balances and status; a row opens the party page with its statement and access.', 'built'],
-    ['cash-reconciliation', 'Cash reconciliation', 'Register of cash and bank reconciliations: account, date, system balance, differences with references, original balance and the unreconciled result.', 'built'],
-    ['party-reconciliation', 'Party reconciliation', 'Register of party reconciliations with the same fields against the party statement.', 'built'],
     ['cash', 'Cash & bank', 'Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on.', 'built'],
     ['payments', 'Payment / Receipts', 'Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance.', 'built'],
     ['items', 'Items', 'Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item.', 'built'],
