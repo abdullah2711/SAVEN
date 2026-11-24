@@ -1,0 +1,10 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="/ui/theme.css"></head><body><div id="host" class="workspace"></div>
+<script type="module">
+import {createAccountingUI} from '/ui/accounting-ui.js';
+const ui=createAccountingUI({render(){},navigate(){},notify(){},dirty(){},getCompany:()=>'Northstar Trading'});
+document.getElementById('host').innerHTML=ui.editor('cash','BANK-STD');
+ui.bind();
+const box=document.querySelector('#accounting-journal, .panel') ;
+const trigger=[...document.querySelectorAll('.ms-trigger')].find(b=>b.textContent.includes('All allowed projects'))||document.querySelectorAll('.ms-trigger')[0];
+trigger.click();
+</script></body></html>

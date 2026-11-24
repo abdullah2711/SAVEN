@@ -62,6 +62,10 @@ export const TAX_RULES = [
 // Custom fields added in Settings → Forms & fields. Stored on the document.
 export const CUSTOM_FIELDS = [];
 
+// Currencies offered by the business. Every document stores its own currency and
+// the rate used, while the ledger keeps the primary currency.
+export const CURRENCIES = {primary: 'PKR', allowed: ['PKR', 'USD', 'GBP', 'AED']};
+
 // Groups used by parties and items. They are data for reporting and defaults.
 export const PARTY_GROUPS = [
   {code: 'RET', name: 'Retail', kind: 'customer', description: 'Walk-in and small accounts'},

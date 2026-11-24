@@ -1692,3 +1692,50 @@ with withheld and net shown. Registers gained the columns where a field matters
 and every editor across Accounting, Settings, Inventory, Manufacturing and Assets with
 zero failures. Open items are listed there: per-line invoice tax, withholding
 allocation, negative-stock enforcement, ledger posting, template-driven print output.
+
+---
+
+# Round 23 — currencies, reconciliations, header filters
+
+## 122. Currency is a choice, not free text
+
+- `CURRENCIES` holds the primary currency and the allowed list.
+- Settings → Company now chooses the **primary currency** and the **allowed
+  currencies** from a list.
+- The cash/bank form and the party form use a currency dropdown; when the currency is
+  not the primary one an **exchange rate to the primary** is required.
+- Every record stores the currency and the rate it was entered at, while balances stay
+  in the primary currency. The rule extends to documents as they are connected.
+
+## 123. Reconciliations are records, not an auto-matcher
+
+Two new pages, one for cash and bank and one for parties.
+
+**Form**: choose the sub-account (or party), the date, and the system shows the
+closing balance at that date. Add difference rows (reason, reference, amount), enter
+the **original balance** from the statement, attach supporting files, and save.
+
+**Result**: `unreconciled = original − (system + differences)`. Zero means
+reconciled; anything else stays visible with its amount.
+
+**Registers** list date, account/party, system balance, differences, original,
+unreconciled and state; each row prints, and the whole register prints.
+
+## 124. Excel-style filters in the ledger header
+
+The general ledger has a second header row: date from/to, account, description and
+party text filters, and selects for project, location, cost centre, voucher type and
+party type. They sit under the column they filter, complement the sort arrows, and
+the existing top bar still holds the multi-select filters and reset. This is the trial
+layout before making it the standard for every table.
+
+## 125. Dropdowns that no longer fall off the page
+
+The multi-select panel now flips above its trigger when there is not enough room
+below, and caps its height to the available space with an inner scroll. This fixes the
+clipped dropdowns in the cash/bank and party forms.
+
+## 126. Cash & bank filters completed
+
+Added a **location** filter alongside search, kind, control head, status and balances
+as at.

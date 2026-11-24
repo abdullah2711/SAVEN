@@ -16,13 +16,15 @@ States: **built** working screen · **partial** working, covers part of the page
 | 2 | General ledger `ledger` | built | One account or all accounts, running balance, column view and full record, import. |
 | 3 | Journal entries `journals` | built | Register of every journal with state, source, party and totals; new journal opens a full page form. |
 | 4 | Parties `parties` | built | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page with its statement and access. |
-| 5 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
-| 6 | Payment / Receipts `payments` | built | Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance. |
-| 7 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
-| 8 | Sales invoices `sales-invoices` | built | Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns. |
-| 9 | Purchase invoices `purchase-invoices` | built | Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns. |
-| 10 | Chart of accounts `coa` | built | Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page. |
-| 11 | Reports `reports` | built | Ageing, trial balance, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
+| 5 | Cash reconciliation `cash-reconciliation` | built | Register of cash and bank reconciliations: account, date, system balance, differences with references, original balance and the unreconciled result. |
+| 6 | Party reconciliation `party-reconciliation` | built | Register of party reconciliations with the same fields against the party statement. |
+| 7 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
+| 8 | Payment / Receipts `payments` | built | Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance. |
+| 9 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
+| 10 | Sales invoices `sales-invoices` | built | Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns. |
+| 11 | Purchase invoices `purchase-invoices` | built | Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns. |
+| 12 | Chart of accounts `coa` | built | Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page. |
+| 13 | Reports `reports` | built | Ageing, trial balance, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
 
 ## Inventory (inventory)
 
@@ -256,4 +258,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 146 pages · 55 built · 0 partial · 91 planned.**
+**20 modules · 148 pages · 57 built · 0 partial · 91 planned.**

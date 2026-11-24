@@ -3,7 +3,7 @@
 // no shader, no animation. Every total that duplicates a ledger figure is
 // derived from accounting-model.js so the screens cannot contradict it.
 import {escape as e} from './model.js';
-import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES,CUSTOM_FIELDS,NUMBERING,PARTY_GROUPS,ITEM_GROUPS} from './accounting-model.js';
+import {fixture,trial,statements,PROJECTS,LOCATIONS,COST_CENTRES,PARTIES,CASH_BANK,ITEMS,TAX_RULES,BANK_NAMES,CASH_NAMES,CUSTOM_FIELDS,NUMBERING,PARTY_GROUPS,ITEM_GROUPS,CURRENCIES} from './accounting-model.js';
 import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
@@ -100,7 +100,7 @@ let PERIOD_LOCKED = false;
 const EDIT = {type: '', code: ''};
 // Per-register filters. They survive a re-render because they live here.
 const FILTERS = {
-  cash: {q: '', kind: '', control: '', status: '', asof: ''},
+  cash: {q: '', kind: '', control: '', status: '', asof: '', location: ''},
   parties: {q: '', type: '', status: '', asof: '', balance: ''},
   items: {q: '', group: '', stock: '', status: ''},
   tax: {q: ''},
@@ -458,6 +458,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
 
   /* ---------------------------------------------------------- general ledger */
   const GL = {
+    accountQ: '', descQ: '', partyQ: '', partyTypes: [],
     from: '2026-11-01', to: '2026-11-30',
     accounts: [], parties: [], projects: [], locations: [], centres: [], types: [],
     q: '', open: '', sort: {key: 'date', dir: 'asc'},
@@ -483,6 +484,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (!inSet(GL.locations, d.location || '')) continue;
       for (const l of d.lines) {
         if (!inSet(GL.parties, l.party || d.party)) continue;
+        if (GL.accountQ && !(`${l.account} ${acc ? acc.name : ''}`).toLowerCase().includes(String(GL.accountQ).toLowerCase())) continue;
+        if (GL.descQ && !String(d.narrative || '').toLowerCase().includes(String(GL.descQ).toLowerCase())) continue;
+        if (GL.partyQ && !String(l.party || d.party || '').toLowerCase().includes(String(GL.partyQ).toLowerCase())) continue;
+        if ((GL.partyTypes || []).length) { const ptype = (l.party ? (acc && acc.control === 'bank' ? 'Bank' : acc && acc.control === 'cash' ? 'Cash' : acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : '') : '') || d.partyType || (acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : ''); if (!GL.partyTypes.includes(ptype)) continue; }
         if (GL.accounts.length && !GL.accounts.includes(l.account)) continue;
         if (GL.centres.length && !GL.centres.includes(l.costCentre)) continue;
         const acc = accounts().find((a) => a.code === l.account);
@@ -605,9 +610,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         if (open) {
           const r = trigger.getBoundingClientRect();
           panel.classList.add('ms-panel--fixed');
-          panel.style.top = Math.round(r.bottom + 6) + 'px';
           panel.style.left = Math.round(r.left) + 'px';
           panel.style.minWidth = Math.round(Math.max(r.width, 240)) + 'px';
+          const below = window.innerHeight - r.bottom - 12;
+          const above = r.top - 12;
+          const height = Math.min(420, Math.max(180, panel.scrollHeight || 320));
+          if (below < Math.min(height, 260) && above > below) {
+            const h = Math.min(height, above);
+            panel.style.top = Math.round(r.top - h - 6) + 'px';
+            panel.style.maxHeight = h + 'px';
+          } else {
+            panel.style.top = Math.round(r.bottom + 6) + 'px';
+            panel.style.maxHeight = Math.min(height, Math.max(below, 200)) + 'px';
+          }
           const search = panel.querySelector('.ms-search');
           if (search) { search.value = ''; filterRows(box); search.focus(); }
           box.dispatchEvent(new CustomEvent('ms:open', {bubbles: true}));
@@ -748,7 +763,19 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           <table class="gl-table" data-hide="${[...OPTIONAL.filter((k) => !GL.extras.has(k))].join(' ')}">
             <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
               ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
-              : `<th class="col col-${key} ${cls || ''}">${label}</th>`).join('')}</tr></thead>
+              : `<th class="col col-${key} ${cls || ''}">${label}</th>`).join('')}</tr>
+              <tr class="gl-filterrow">${cols.map(([key]) => {
+                if (key === 'date') return `<th class="col col-date"><input type="date" data-glf="from" value="${e(GL.from)}" aria-label="From date"><input type="date" data-glf="to" value="${e(GL.to)}" aria-label="To date"></th>`;
+                if (key === 'account') return `<th class="col col-account"><input type="search" data-glf="accountQ" value="${e(GL.accountQ || '')}" placeholder="Filter" aria-label="Filter account"></th>`;
+                if (key === 'description') return `<th class="col col-description"><input type="search" data-glf="descQ" value="${e(GL.descQ || '')}" placeholder="Filter" aria-label="Filter description"></th>`;
+                if (key === 'party') return `<th class="col col-party"><input type="search" data-glf="partyQ" value="${e(GL.partyQ || '')}" placeholder="Filter" aria-label="Filter party"></th>`;
+                if (key === 'project') return `<th class="col col-project"><select data-glf="project" aria-label="Filter project"><option value="">All</option>${PROJECTS.map((p2) => `<option value="${p2.code}" ${GL.projects.includes(p2.code) ? 'selected' : ''}>${p2.code}</option>`).join('')}</select></th>`;
+                if (key === 'location') return `<th class="col col-location"><select data-glf="location" aria-label="Filter location"><option value="">All</option>${LOCATIONS.map((l) => `<option value="${l.code}" ${GL.locations.includes(l.code) ? 'selected' : ''}>${l.code}</option>`).join('')}</select></th>`;
+                if (key === 'centre') return `<th class="col col-centre"><select data-glf="centre" aria-label="Filter cost centre"><option value="">All</option>${COST_CENTRES.map((c) => `<option value="${c.name}" ${GL.centres.includes(c.name) ? 'selected' : ''}>${c.name}</option>`).join('')}</select></th>`;
+                if (key === 'type') return `<th class="col col-type"><select data-glf="type" aria-label="Filter voucher type"><option value="">All</option>${typeOpts.map(([t]) => `<option value="${e(t)}" ${GL.types.includes(t) ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></th>`;
+                if (key === 'partyType') return `<th class="col col-partyType"><select data-glf="partyType" aria-label="Filter party type"><option value="">All</option>${['Customer','Supplier','Bank','Cash'].map((t) => `<option value="${t}" ${(GL.partyTypes || []).includes(t) ? 'selected' : ''}>${t}</option>`).join('')}</select></th>`;
+                return '<th></th>';
+              }).join('')}</tr></thead>
             <tbody id="gl-rows">${body || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
             <tfoot><tr>
               <td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td>
@@ -815,6 +842,25 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       GL.sort = {key: k, dir: GL.sort.key === k && GL.sort.dir === 'asc' ? 'desc' : 'asc'};
       rerender();
     }));
+    document.querySelectorAll('[data-glf]').forEach((el) => {
+      const key = el.dataset.glf;
+      const apply = () => {
+        if (key === 'from' || key === 'to') { GL[key] = el.value; return; }
+        if (key === 'accountQ' || key === 'descQ' || key === 'partyQ') { GL[key] = el.value; return; }
+        if (key === 'project') GL.projects = el.value ? [el.value] : [];
+        if (key === 'location') GL.locations = el.value ? [el.value] : [];
+        if (key === 'centre') GL.centres = el.value ? [el.value] : [];
+        if (key === 'type') GL.types = el.value ? [el.value] : [];
+        if (key === 'partyType') GL.partyTypes = el.value ? [el.value] : [];
+      };
+      el.addEventListener(el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input', () => {
+        const pos = el.selectionStart;
+        apply();
+        rerender();
+        const again = document.querySelector(`[data-glf="${key}"]`);
+        if (again && el.type === 'search') { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
+      });
+    });
     document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {
       if (ev.target.closest('[data-ac]')) return;
       const tr = ev.target.closest('[data-gl-go]');
@@ -827,7 +873,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     });
     restoreMS();
     document.querySelector('[data-gl-reset]')?.addEventListener('click', () => {
-      Object.assign(GL, {from: '2026-11-01', to: '2026-11-30', accounts: [], parties: [], projects: [], locations: [], centres: [], types: [], q: '', open: ''});
+      Object.assign(GL, {from: '2026-11-01', to: '2026-11-30', accounts: [], parties: [], projects: [], locations: [], centres: [], types: [], q: '', open: '', accountQ: '', descQ: '', partyQ: '', partyTypes: []});
       rerender();
     });
     document.querySelector('[data-jr-reset]')?.addEventListener('click', () => {
@@ -1276,13 +1322,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const rows = list.filter((x) => {
       const head = accounts().find((a) => a.code === x.control);
       return hit(f.q, x.code, x.name, x.reference, x.kind, head ? head.name : '', x.projects.join(' '), x.locations.join(' '))
-        && (!f.kind || x.kind === f.kind) && (!f.control || x.control === f.control) && (!f.status || (x.status || 'Active') === f.status);
+        && (!f.kind || x.kind === f.kind) && (!f.control || x.control === f.control) && (!f.status || (x.status || 'Active') === f.status) && (!f.location || !x.locations.length || x.locations.includes(f.location));
     });
     return `<form class="filterbar" data-filter="cash">
         ${filterInput('cash', f.q, 'Code, name, reference, project, location')}
         <label>Kind<select name="kind"><option value="">All kinds</option><option value="bank" ${f.kind === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${f.kind === 'cash' ? 'selected' : ''}>Cash</option></select></label>
         <label>Control head<select name="control"><option value="">All control heads</option>${controls.map((a) => `<option value="${a.code}" ${f.control === a.code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
         <label>Status<select name="status"><option value="">All states</option><option ${f.status === 'Active' ? 'selected' : ''}>Active</option><option ${f.status === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
+        <label>Location<select name="location"><option value="">All locations</option>${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${f.location === l.code ? 'selected' : ''}>${e(l.name)}</option>`).join('')}</select></label>
         <label>Balances as at<input type="date" name="asof" value="${e(asOf)}" max="2026-12-31"></label>
         <button class="button" type="button" data-filter-reset="cash">Reset to current</button>
       </form>
@@ -1295,6 +1342,87 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         </table></div>
         <div class="table-footer">A sub-account is the party inside a control head. Any head flagged as a bank or cash control can hold sub-accounts. Click a row to open its form. Set a date to see the balance as it stood then; the small figure under it stays the current balance. Reset returns to current.</div>
       </section>`;
+  }
+
+  /* -------------------------------------------------- reconciliations */
+  const RECONCILIATIONS = {cash: [], party: []};
+  const RECON_DRAFT = {cash: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}], files: []}, party: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}, {reason: '', reference: '', amount: ''}], files: []}};
+
+  function systemBalanceCash(name, date) {
+    const row = cashAccountRows(date).find((r) => r.name === name);
+    return row ? round2(row.balance) : 0;
+  }
+  function systemBalanceParty(name, date) {
+    const row = partyRows(date).find((p) => p.name === name);
+    return row ? round2(row.balance) : 0;
+  }
+  function reconRows(kind) {
+    return RECONCILIATIONS[kind].slice().sort((a, b) => b.date.localeCompare(a.date));
+  }
+  function reconView(kind) {
+    const isCash = kind === 'cash';
+    const rows = reconRows(kind);
+    return `<section class="panel">
+      <div class="panel-head"><h2>${isCash ? 'Cash and bank reconciliations' : 'Party reconciliations'}</h2><div class="related"><span class="badge">${rows.length} records</span><button class="button" data-export-table>Export CSV</button><button class="button" data-recon-print-all>Print register</button><button class="button" data-recon-new="${kind}">New reconciliation</button></div></div>
+      <div class="table-scroll" data-hscroll><table><thead><tr><th>Date</th><th>${isCash ? 'Cash / bank account' : 'Party'}</th><th class="numeric">System balance</th><th class="numeric">Differences</th><th class="numeric">Original balance</th><th class="numeric">Unreconciled</th><th>State</th><th></th></tr></thead>
+      <tbody>${rows.map((r) => `<tr><td>${r.date}</td><td>${e(r.account)}</td><td class="numeric">${money(r.system)}</td><td class="numeric">${money(r.diffTotal)}</td><td class="numeric">${money(r.original)}</td><td class="numeric">${money(r.unreconciled)}</td><td>${badge(Math.abs(r.unreconciled) < 0.01 ? 'Reconciled' : 'Difference', Math.abs(r.unreconciled) < 0.01 ? 'good' : 'warn')}</td><td><button class="text-button" data-recon-print="${r.id}">Print</button></td></tr>`).join('') || `<tr><td colspan="8">No ${isCash ? 'cash' : 'party'} reconciliations recorded yet.</td></tr>`}</tbody></table></div>
+      <div class="table-footer">A reconciliation records what was checked, when, against which balance, with each difference and its reference. It is a record, not an automatic matching engine.</div></section>`;
+  }
+  function reconEditor(kind, code) {
+    const isCash = kind === 'cash';
+    const editing = code ? RECONCILIATIONS[kind].find((r) => r.id === code) : null;
+    const d = editing || RECON_DRAFT[kind];
+    const options = isCash ? CASH_BANK.map((c) => [c.name, `${c.name} · ${c.control}`]) : PARTIES.map((p) => [p.name, `${p.name} · ${p.code}`]);
+    const system = d.account ? (isCash ? systemBalanceCash(d.account, d.date) : systemBalanceParty(d.account, d.date)) : 0;
+    const diffTotal = round2((d.diffs || []).reduce((n, x) => n + (Number(x.amount) || 0), 0));
+    return `<section class="panel">
+      <div class="panel-head"><h2>${editing ? 'Edit reconciliation' : 'New reconciliation'}</h2><span class="badge">${isCash ? 'Cash / bank' : 'Party'}</span></div>
+      <form data-recon-form="${kind}" class="panel-body form-grid">
+        <input type="hidden" name="editingCode" value="${e(editing ? editing.id : '')}">
+        <label>${isCash ? 'Cash / bank sub-account' : 'Party'}<select name="account" class="inline-input" required><option value="">Choose</option>${options.map(([v, l]) => `<option value="${e(v)}" ${v === d.account ? 'selected' : ''}>${e(l)}</option>`).join('')}</select></label>
+        <label>Date<input name="date" type="date" value="${e(d.date)}" required></label>
+        <label>System closing balance<input value="${e(d.account ? system.toFixed(2) : 'Choose an account first')}" readonly></label>
+        <label>Original balance ${isCash ? '(statement)' : '(party statement)'}<input name="original" inputmode="decimal" value="${e(d.original || '')}" placeholder="0.00" required></label>
+        <div class="wide"><div class="section-title">Differences</div>
+          <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Reason</th><th>Reference</th><th class="numeric">Amount</th></tr></thead><tbody>
+            ${(d.diffs || []).map((x, i) => `<tr data-recon-diff="${i}"><td><input data-rd="reason" value="${e(x.reason || '')}" placeholder="Bank charges, timing, error"></td><td><input data-rd="reference" value="${e(x.reference || '')}" placeholder="Slip or document"></td><td><input class="numeric" data-rd="amount" value="${e(x.amount || '')}" inputmode="decimal"></td></tr>`).join('')}
+          </tbody></table></div>
+          <p class="form-note">Differences are adjustments that explain the gap; the unreconciled figure is original − (system + differences).</p>
+        </div>
+        <label class="wide">Supporting files<input type="file" multiple data-recon-files></label>
+        <div class="related"><button class="button primary">Save reconciliation</button><button type="button" class="button" data-recon-cancel>Cancel</button><button type="button" class="button" onclick="window.print()">Print</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">System balance ${money(system)} · differences ${money(diffTotal)} · the result is shown in the register after saving.</p></div>
+    </section>`;
+  }
+  function bindRecon(rerender, notify, navigate) {
+    document.querySelectorAll('[data-recon-new]').forEach((b) => b.addEventListener('click', () => {
+      const kind = b.dataset.reconNew;
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash-reconciliation' : 'party-reconciliation', mode: 'editor'});
+    }));
+    document.querySelector('[data-recon-cancel]')?.addEventListener('click', () => {
+      const kind = document.querySelector('[data-recon-form]')?.dataset.reconForm || 'cash';
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash-reconciliation' : 'party-reconciliation'});
+    });
+    document.querySelectorAll('[data-recon-print]').forEach((b) => b.addEventListener('click', () => window.print()));
+    document.querySelector('[data-recon-print-all]')?.addEventListener('click', () => window.print());
+    document.querySelectorAll('[data-recon-form]').forEach((form) => form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!form.reportValidity()) return;
+      const kind = form.dataset.reconForm;
+      const v = Object.fromEntries(new FormData(form));
+      const diffs = [...form.querySelectorAll('[data-recon-diff]')].map((tr) => ({reason: tr.querySelector('[data-rd="reason"]').value, reference: tr.querySelector('[data-rd="reference"]').value, amount: Number(tr.querySelector('[data-rd="amount"]').value) || 0})).filter((x) => x.amount || x.reason);
+      const system = kind === 'cash' ? systemBalanceCash(v.account, v.date) : systemBalanceParty(v.account, v.date);
+      const diffTotal = round2(diffs.reduce((n, x) => n + x.amount, 0));
+      const original = round2(Number(v.original) || 0);
+      const unreconciled = round2(original - (system + diffTotal));
+      const editing = v.editingCode;
+      const rec = {id: editing || (kind === 'cash' ? 'BCR-' : 'PRC-') + String(101 + RECONCILIATIONS[kind].length), kind, account: v.account, date: v.date, system, diffTotal, original, unreconciled, diffs, state: Math.abs(unreconciled) < 0.01 ? 'reconciled' : 'difference'};
+      if (editing) { const t = RECONCILIATIONS[kind].find((x) => x.id === editing); if (t) Object.assign(t, rec); }
+      else RECONCILIATIONS[kind].push(rec);
+      notify(Math.abs(unreconciled) < 0.01 ? 'Reconciliation saved and agrees.' : `Reconciliation saved with a difference of ${unreconciled.toFixed(2)}.`);
+      navigate({module: 'accounting', tab: kind === 'cash' ? 'cash-reconciliation' : 'party-reconciliation'});
+    }));
   }
 
   function cashEditor(code) {
@@ -1312,7 +1440,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Bank name<input name="bank" maxlength="60" value="${e(v('bank'))}" placeholder="Habib Bank"></label>
         <label>Branch<input name="branch" maxlength="60" value="${e(v('branch'))}" placeholder="Clifton"></label>
         <label>Account / IBAN / till<input name="reference" maxlength="40" value="${e(v('reference'))}" placeholder="PK00XXXX0000000000000000"></label>
-        <label>Currency<input name="currency" maxlength="3" value="${e(v('currency', 'PKR'))}"></label>
+        <label>Currency<select name="currency" class="inline-input">${CURRENCIES.allowed.map((c) => `<option value="${c}" ${c === v('currency', CURRENCIES.primary) ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+        <label>Exchange rate to ${e(CURRENCIES.primary)}<input name="rate" value="${e(v('rate', '1'))}" inputmode="decimal"><small class="secondary">Required when the currency is not the primary one.</small></label>
         <label>Opening balance<input name="opening" inputmode="decimal" value="${e(v('opening', '0.00'))}"></label>
         <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
         <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Authorised signatories, cut-off, card machine"></label>
@@ -1345,8 +1474,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const v2 = Object.fromEntries(new FormData(form));
       const editingCode = v2.editingCode || '';
       if (!editingCode && CASH_BANK.some((s) => s.code === v2.code || s.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
+      if (v2.currency !== CURRENCIES.primary && !(Number(v2.rate) > 0)) { notify('Enter the exchange rate for a currency other than ' + CURRENCIES.primary + '.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      const record = {code: v2.code, name: v2.name.trim(), kind: v2.kind, control: v2.control, reference: v2.reference || '', bank: v2.bank || '', branch: v2.branch || '', currency: v2.currency || 'PKR', opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
+      const record = {code: v2.code, name: v2.name.trim(), kind: v2.kind, control: v2.control, reference: v2.reference || '', bank: v2.bank || '', branch: v2.branch || '', currency: v2.currency || CURRENCIES.primary, rate: Number(v2.rate) || 1, opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
       if (editingCode) {
         const target = CASH_BANK.find((s) => s.code === editingCode);
         if (target) Object.assign(target, record);
@@ -1434,7 +1564,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Contact person<input name="contact" maxlength="50" value="${e(v('contact'))}" placeholder="Finance manager"></label>
         <label>Phone<input name="phone" maxlength="30" value="${e(v('phone'))}" placeholder="+92 300 0000000"></label>
         <label>Email<input name="email" type="email" maxlength="70" value="${e(v('email'))}" placeholder="accounts@customer.pk"></label>
-        <label>Currency<input name="currency" maxlength="3" value="${e(v('currency', 'PKR'))}"></label>
+        <label>Currency<select name="currency" class="inline-input">${CURRENCIES.allowed.map((c) => `<option value="${c}" ${c === v('currency', CURRENCIES.primary) ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+        <label>Exchange rate to ${e(CURRENCIES.primary)}<input name="rate" value="${e(v('rate', '1'))}" inputmode="decimal"><small class="secondary">Required when the currency is not the primary one.</small></label>
         <label>Payment terms (days)<input name="terms" type="number" min="0" max="365" value="${e(v('terms', '30'))}"></label>
         <label>Credit limit<input name="limit" inputmode="decimal" value="${e(v('limit', '0.00'))}"></label>
         <label>Opening balance<input name="opening" inputmode="decimal" value="${e(v('opening', '0.00'))}"></label>
@@ -1473,8 +1604,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const v2 = Object.fromEntries(new FormData(form));
       const editingCode = v2.editingCode || '';
       if (!editingCode && PARTIES.some((p) => p.code === v2.code || p.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
+      if (v2.currency !== CURRENCIES.primary && !(Number(v2.rate) > 0)) { notify('Enter the exchange rate for a currency other than ' + CURRENCIES.primary + '.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      const record = {code: v2.code, name: v2.name.trim(), type: v2.type, group: v2.group || 'General', terms: Number(v2.terms) || 0, limit: round2(Number(v2.limit) || 0), opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', taxId: v2.taxId || '', contact: v2.contact || '', phone: v2.phone || '', email: v2.email || '', address: v2.address || '', bankName: v2.bankName || '', bankAccount: v2.bankAccount || '', currency: v2.currency || 'PKR', notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
+      const record = {code: v2.code, name: v2.name.trim(), type: v2.type, group: v2.group || 'General', terms: Number(v2.terms) || 0, limit: round2(Number(v2.limit) || 0), opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', taxId: v2.taxId || '', contact: v2.contact || '', phone: v2.phone || '', email: v2.email || '', address: v2.address || '', bankName: v2.bankName || '', bankAccount: v2.bankAccount || '', currency: v2.currency || CURRENCIES.primary, rate: Number(v2.rate) || 1, notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
       if (editingCode) {
         const target = PARTIES.find((p) => p.code === editingCode);
         if (target) Object.assign(target, record);
@@ -2595,10 +2727,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
               ${field('Trading name', 'Northstar Trading', '', 'tradingName')}
               ${field('Tax identity', 'NTN-4100000', '', 'taxId')}
               ${field('Registration', 'SECP-0188221', '', 'registration')}
-              ${field('Base currency', 'PKR', '', 'currency')}
+              <label>Primary currency<select name="currency" class="inline-input">${['PKR','USD','GBP','AED','EUR','SAR','CNY'].map((c) => `<option value="${c}" ${c === CURRENCIES.primary ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
               ${field('Fiscal year', 'Jul 2026 – Jun 2027', '', 'fiscalYear')}
               ${field('Current period', 'Nov 2026', '', 'currentPeriod')}
               ${field('Week starts', 'Monday', '', 'weekStart')}
+              ${ms('currency-allowed', 'Allowed currencies', ['PKR','USD','GBP','AED','EUR','SAR','CNY'].map((c) => [c, c]), CURRENCIES.allowed)}
+              <p class="form-note wide">Every document can use an allowed currency; the exchange rate is entered on the document and the ledger keeps the primary currency.</p>
               ${field('Time zone', 'Asia/Karachi', '', 'timezone')}
               ${field('Date format', 'DD MMM YYYY', 'Prints on documents', 'dateFormat')}
             </div>
@@ -2664,6 +2798,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function bindSettingsView(rerender, notify) {
     document.querySelectorAll('[data-settings-save]').forEach((f) => f.addEventListener('submit', (ev) => {
       ev.preventDefault();
+      if (f.dataset.settingsSave === 'company') {
+        const v = Object.fromEntries(new FormData(f));
+        const box = f.querySelector('.ms');
+        const chosen = box ? [...box.querySelectorAll('input[type=checkbox]:checked')].map((b) => b.value) : CURRENCIES.allowed;
+        CURRENCIES.primary = v.currency || CURRENCIES.primary;
+        CURRENCIES.allowed = chosen.length ? [...new Set([CURRENCIES.primary, ...chosen])] : [CURRENCIES.primary];
+        notify('Company settings saved for this session.');
+        rerender();
+        return;
+      }
       if (f.dataset.settingsSave === 'withholding') {
         const v = Object.fromEntries(new FormData(f));
         WITHHOLD = {salesTax: Number(v.salesTaxWithheld) || 0, incomeTax: Number(v.incomeTaxWithheld) || 0, salesTaxPayable: Number(v.salesTaxPayable) || 0, incomeTaxPayable: Number(v.incomeTaxPayable) || 0};
@@ -2777,6 +2921,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }
