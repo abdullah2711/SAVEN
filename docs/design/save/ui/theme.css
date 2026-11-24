@@ -321,3 +321,9 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .col-filter-panel{text-align:left}
 .col-filter-panel .ms-row{justify-content:flex-start}
 .col-filter-panel .ms-row span{flex:1;text-align:left}
+
+/* Column menu rows: checkbox and label share one baseline. */
+.col-filter-panel .ms-row{align-items:center;gap:8px;padding:6px 8px;line-height:1.2}
+.col-filter-panel .ms-row input[type="checkbox"]{flex:0 0 auto;margin:0;align-self:center}
+.col-filter-panel .ms-row span{line-height:1.2;display:block}
+.col-filter-panel .ms-row{display:flex}

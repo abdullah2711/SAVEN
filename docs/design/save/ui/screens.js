@@ -508,6 +508,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const map = {date: r.date, account: `${r.account} ${r.accountName}`, description: r.narrative, debit: r.debit, credit: r.credit, balance: r.balance, type: r.source, subtype: r.subtype, voucher: r.id, against: r.against, partyType: r.partyType, party: r.party, project: r.project, location: r.location, centre: r.centre, againstVoucher: r.againstVoucher, supplierRef: r.supplierRef};
     return map[key] !== undefined ? map[key] : r[key];
   }
+  function colValueLabel(key, value) {
+    if (['debit', 'credit', 'balance'].includes(key)) return money(Number(value) || 0);
+    return value;
+  }
   function colValueList(key) {
     const saved = GL.cf;
     GL.cf = {};
@@ -770,7 +774,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
                   <div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-arrow ${GL.sort.key === key && GL.sort.dir === 'asc' ? 'active' : ''}" data-glpsort="${key}:asc" aria-label="Sort ascending" title="Sort ascending">↑</button><button type="button" class="sort-arrow ${GL.sort.key === key && GL.sort.dir === 'desc' ? 'active' : ''}" data-glpsort="${key}:desc" aria-label="Sort descending" title="Sort descending">↓</button></div>
                   <div class="ms-searchrow"><input class="ms-search col-filter-search" type="search" placeholder="Search values" aria-label="Search ${e(label)} values"></div>
                   <div class="ms-head"><button type="button" class="text-button" data-glpall="${key}">Select all</button><span class="ms-count">${colValueList(key).length}</span><button type="button" class="text-button" data-glpnone="${key}">Clear</button></div>
-                  <div class="ms-list">${colValueList(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(v)}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+                  <div class="ms-list">${colValueList(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(colValueLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
                   <div class="ms-empty" hidden>No match</div>
                   <div class="gl-applyrow"><button type="button" class="button primary" data-glpapply="${key}">Apply filter</button></div>
                 </div>`;

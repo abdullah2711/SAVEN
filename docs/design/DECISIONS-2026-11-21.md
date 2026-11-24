@@ -1837,3 +1837,11 @@ the date range, search, reset and column chooser.
 
 Verified: ticking Payment in the voucher-type menu left the register at 470 rows until
 Apply, then filtered it to 160 and closed the menu.
+
+## 134. Column menu polish
+
+- Checkbox and value are on **one line**, vertically centred (the row needed to be a
+  flex row inside the panel).
+- **Debit, credit and balance** values in the menu are shown like the table: thousands
+  separators and two decimals (0.00, 5,000.00, 20,756.63). The stored value stays the
+  exact number, so selection still matches.
