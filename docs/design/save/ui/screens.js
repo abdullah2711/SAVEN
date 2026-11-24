@@ -771,14 +771,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
             <thead><tr>${cols.map(([key, label, , cls]) => {
               const sel = (GL.cf && GL.cf[key]) || [];
               const panel = key === 'date' ? '' : `<div class="col-filter-panel" data-glpp="${key}" hidden>
-                  <div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-arrow ${GL.sort.key === key && GL.sort.dir === 'asc' ? 'active' : ''}" data-glpsort="${key}:asc" aria-label="Sort ascending" title="Sort ascending">↑</button><button type="button" class="sort-arrow ${GL.sort.key === key && GL.sort.dir === 'desc' ? 'active' : ''}" data-glpsort="${key}:desc" aria-label="Sort descending" title="Sort descending">↓</button></div>
+                  <div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${GL.sort.key === key ? 'active' : ''}" data-glptoggle="${key}" aria-label="Toggle sort" title="Toggle sort">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
                   <div class="ms-searchrow"><input class="ms-search col-filter-search" type="search" placeholder="Search values" aria-label="Search ${e(label)} values"></div>
                   <div class="ms-head"><button type="button" class="text-button" data-glpall="${key}">Select all</button><span class="ms-count">${colValueList(key).length}</span><button type="button" class="text-button" data-glpnone="${key}">Clear</button></div>
                   <div class="ms-list">${colValueList(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(colValueLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
                   <div class="ms-empty" hidden>No match</div>
                   <div class="gl-applyrow"><button type="button" class="button primary" data-glpapply="${key}">Apply filter</button></div>
                 </div>`;
-              return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button>${key === 'date' ? '' : `<button type="button" class="col-filter-btn" data-glpf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">▾${sel.length ? `<b>${sel.length}</b>` : ''}</button>`}</div>${panel}</th>`;
+              return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button>${key === 'date' ? '' : `<button type="button" class="col-filter-btn" data-glpf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button>`}</div>${panel}</th>`;
             }).join('')}</tr></thead>
             <tbody id="gl-rows">${body || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
             <tfoot><tr>
@@ -868,8 +868,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const width = 270;
       const left = r.left > window.innerWidth / 2 ? r.right - width : r.left;
       panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - width - 8)) + 'px';
-      panel.style.top = Math.round(r.bottom + 6) + 'px';
-      if (r.bottom + 380 > window.innerHeight) panel.style.top = Math.max(8, r.top - 370) + 'px';
+      const top = Math.round(r.bottom + 4);
+      const room = window.innerHeight - top - 12;
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, room)) + 'px';
       const search = panel.querySelector('.col-filter-search');
       if (search) { search.value = ''; search.focus(); }
       openFilter = key;
@@ -913,10 +915,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       GL.openFilter = '';
       rerender();
     }));
-    document.querySelectorAll('[data-glpsort]').forEach((b) => b.addEventListener('click', () => {
-      const [key, dir] = b.dataset.glpsort.split(':');
+    document.querySelectorAll('[data-glptoggle]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.glptoggle;
+      const dir = GL.sort.key === key && GL.sort.dir === 'asc' ? 'desc' : 'asc';
       GL.sort = {key, dir};
-      closePanels(); GL.openFilter = '';
+      closePanels();
+      GL.openFilter = '';
       rerender();
     }));
     document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {

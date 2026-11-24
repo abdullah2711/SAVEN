@@ -327,3 +327,16 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .col-filter-panel .ms-row input[type="checkbox"]{flex:0 0 auto;margin:0;align-self:center}
 .col-filter-panel .ms-row span{line-height:1.2;display:block}
 .col-filter-panel .ms-row{display:flex}
+
+/* Column filter affordance and anchored menu. */
+.col-filter-btn{display:inline-flex;align-items:center;gap:3px;border:1px solid var(--line);background:var(--surface);color:var(--muted);padding:2px 5px;border-radius:6px;min-height:22px}
+.col-filter-btn .ui-icon{width:11px;height:11px;stroke-width:2}
+.col-filter-btn:hover{border-color:var(--accent);color:var(--ink);background:var(--tint)}
+.col-filter-btn[aria-expanded="true"]{border-color:var(--accent);color:var(--accent);background:var(--tint)}
+.col-filter-btn b{font-size:9px;background:var(--accent);color:var(--primary-ink);border-radius:8px;padding:0 4px;margin-left:2px}
+.col-filter-panel{display:flex;flex-direction:column;border:1px solid var(--line);background:var(--surface);box-shadow:0 24px 60px #0003;z-index:2000}
+.col-filter-panel--fixed{z-index:2000}
+.col-filter-panel .ms-list{flex:1;min-height:0}
+.sort-toggle{width:30px;height:24px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink);font-size:12px;line-height:1}
+.sort-toggle:hover{background:var(--tint)}
+.sort-toggle.active{background:var(--accent);border-color:var(--accent);color:var(--primary-ink)}

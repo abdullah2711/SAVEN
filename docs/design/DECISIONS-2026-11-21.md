@@ -1845,3 +1845,21 @@ Apply, then filtered it to 160 and closed the menu.
 - **Debit, credit and balance** values in the menu are shown like the table: thousands
   separators and two decimals (0.00, 5,000.00, 20,756.63). The stored value stays the
   exact number, so selection still matches.
+
+## 135. Column menu: anchored, visible, one sort control
+
+- The menu is **anchored directly under its header button** and always opens downward;
+  its height is capped to the space available, with the value list scrolling inside.
+  It no longer jumps up near the top of the screen or appears like a floating message
+  window.
+- Raised above the table and surrounding panels, so it is never hidden underneath a
+  component.
+- The filter control is a **bordered button with a chevron icon** and a count badge
+  when values are selected, so it is obvious that the header is clickable.
+- Sorting is a **single toggle**: `↕` when inactive, `↑` or `↓` when active; clicking
+  it flips the direction instead of offering two separate buttons.
+
+## 136. Numeric menu values
+
+Debit, credit and closing values in the menu show thousands separators and two
+decimals, while the stored value stays exact for matching.
