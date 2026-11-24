@@ -347,3 +347,23 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent)}
 .recon-reason input,.recon-ref input{width:100%;min-width:260px}
 .recon-amt input{width:140px;max-width:140px}
 .recon-remove{width:1%}
+
+/* Form sections span both columns. */
+.form-grid>.wide,.form-grid .wide{grid-column:1/-1}
+/* Native selects: single quiet chevron, no platform arrow. The selector list
+   repeats the field selectors so it beats their background shorthand. */
+select,.form-grid select,.filterbar select,.inline-input,.setup-lines select,.pos-tender select,.top-context select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) calc(50% - 1px),calc(100% - 12px) calc(50% - 1px);background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:34px}
+.form-grid select:hover,.filterbar select:hover{box-shadow:inset 0 0 0 1px var(--accent)}
+.form-grid select:focus,.filterbar select:focus,.inline-input:focus{outline:none;box-shadow:inset 0 0 0 1px var(--accent),0 0 0 3px var(--tint)}
+/* Number fields: typed values only, no legacy spinner. */
+input[type=number]{-moz-appearance:textfield;appearance:textfield}
+input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+/* A multi-select inside a form grid must not inherit the stacked field label:
+   the option rows are labels too, and .form-grid label turns them into columns,
+   which made the list tall and look clipped. */
+.form-grid .ms{display:grid;gap:8px}
+.form-grid .ms-row{flex-direction:row;align-items:center;gap:9px;color:var(--ink);font-size:13px;padding:7px 2px;line-height:1.4}
+.form-grid .ms-row input{flex:0 0 auto;width:15px;height:15px;margin:0}
+.form-grid .ms-row span{line-height:1.4;text-align:left}
+.form-grid .ms-panel{text-align:left}

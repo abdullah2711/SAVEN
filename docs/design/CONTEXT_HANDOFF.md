@@ -90,7 +90,15 @@ the decision index in one place.
   People & access, Periods, Forms & fields, Saved views, Print & templates.
   Accounting holds numbering, default accounts, accounting heads, projects &
   locations and approvals. Projects and locations have no pages of their own.
-- **Parties**: register and party page (statement, terms, limit, access).
+- **Parties**: register and party page. Party numbers are system generated
+  (`Party-0001`), the group comes from Settings party groups, the control account is
+  restricted to receivable heads for customers and payable heads for suppliers,
+  terms and credit limit are optional and their changes are logged. An opening
+  balance posts an opening journal against 3100 Opening balance equity, keyed by
+  party code so an edit replaces rather than duplicates it.
+- **Reconciliations**: cash and party tabs each have a register (search, dates,
+  column menus, click a row to open) and a form whose difference rows use the full
+  width. Saved records can be cancelled (stay with a badge) or deleted.
 - **Payments**: receipts and payments with oldest-first allocation and advances.
 - **Sales/purchase invoices**: register and a line form; session documents only.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →
@@ -103,14 +111,18 @@ the decision index in one place.
   returns to that register, and “Back to register” respects the page. Journal, cash &
   bank, parties, items, tax rules, payments and invoices all work this way. The journal
   register also exports CSV; a GL row opens the document it belongs to.
-- Every register has instant search and its own filters (cash: kind, control head,
-  status; parties: type, status; payments: direction). The state lives outside the
-  page and survives navigation.
+- Every register has instant search and its own filters. The ledger, journal, party
+  and reconciliation registers share one pattern: a top bar with text search, the
+  relevant date (From/To, or balances as at) and reset, plus a per-column menu with a
+  single sort toggle, value search, select all/clear, checkbox values and **Apply
+  filter**. Type, status and balance live in the column menus, not the top bar. The
+  state lives outside the page and survives navigation.
 - Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
   their specification.
 
-**Known gaps**: bank statement reconciliation; posting from invoices and payments
-into the ledger; permissions enforcement; persistence (reload returns to fixtures).
+**Known gaps**: automatic bank statement matching (the reconciliation is a recording
+tool); posting from invoices and payments into the ledger; permissions enforcement;
+persistence (reload returns to fixtures).
 
 ## Decisions already made (do not re-litigate)
 

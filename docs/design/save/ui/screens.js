@@ -1513,7 +1513,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   let CASH_TAB = 'register';
   let PARTY_TAB = 'register';
   const RECONCILIATIONS = {cash: [], party: []};
-  const RECON_FILTER = {q: '', from: '', to: ''};
+  const PARTY_CHANGES = [];
+  const RECON_FILTER = {q: '', from: '', to: '', cf: {}, sort: {key: 'date', dir: 'desc'}, kind: ''};
   const RECON_FORM = {
     cash: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []},
     party: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []},
@@ -1528,23 +1529,47 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     return row ? round2(row.balance) : 0;
   }
   function reconRows(kind) { return RECONCILIATIONS[kind].slice().sort((a, b) => b.date.localeCompare(a.date)); }
+  function reconState(r) { return r.state === 'cancelled' ? 'Cancelled' : Math.abs(r.unreconciled) < 0.01 ? 'Reconciled' : 'Difference'; }
+  function reconColValue(r, key) {
+    if (key === 'state') return reconState(r);
+    if (key === 'account' || key === 'date') return r[key];
+    return round2(Number(r[key]) || 0);
+  }
+  function reconColValues(kind, key) {
+    return [...new Set(reconRows(kind).map((r) => String(reconColValue(r, key))))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+  function reconColLabel(key, v) { return ['system', 'diffTotal', 'original', 'unreconciled'].includes(key) ? money(Number(v) || 0) : v; }
   function reconSystem(kind, account, date) { return kind === 'cash' ? systemBalanceCash(account, date) : systemBalanceParty(account, date); }
   function reconTotal(form) { return round2((form.diffs || []).reduce((n, d) => n + (Number(d.amount) || 0), 0)); }
   function reconUnreconciled(kind, form) { const system = form.account ? reconSystem(kind, form.account, form.date) : 0; return round2((Number(form.original) || 0) - (system + reconTotal(form))); }
 
   function reconView(kind) {
     const isCash = kind === 'cash';
-    const rows = reconRows(kind).filter((r) => (!RECON_FILTER.q || (r.id + ' ' + r.account + ' ' + r.date).toLowerCase().includes(RECON_FILTER.q.toLowerCase())) && (!RECON_FILTER.from || r.date >= RECON_FILTER.from) && (!RECON_FILTER.to || r.date <= RECON_FILTER.to));
+    const rf = RECON_FILTER;
+    if (rf.kind !== kind) { rf.kind = kind; rf.cf = {}; rf.sort = {key: 'date', dir: 'desc'}; }
+    const cols = [['date', 'Date'], ['account', isCash ? 'Cash / bank account' : 'Party'], ['system', 'System balance', 'numeric'], ['diffTotal', 'Differences', 'numeric'], ['original', 'Original balance', 'numeric'], ['unreconciled', 'Unreconciled', 'numeric'], ['state', 'State']];
+    let rows = reconRows(kind).filter((r) => (!rf.q || (r.id + ' ' + r.account + ' ' + r.date).toLowerCase().includes(rf.q.toLowerCase()))
+      && (!rf.from || r.date >= rf.from) && (!rf.to || r.date <= rf.to)
+      && Object.entries(rf.cf || {}).every(([k, v]) => !v || !v.length || v.includes(String(reconColValue(r, k)))));
+    rows = rows.slice().sort((a, b) => { const x = reconColValue(a, rf.sort.key), y = reconColValue(b, rf.sort.key); const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? '')); return rf.sort.dir === 'desc' ? -d : d; });
     return `<form class="filterbar" data-recon-filter>
-        <label>Search<input type="search" name="q" value="${e(RECON_FILTER.q)}" placeholder="Record, account, date"></label>
-        <label>From<input type="date" name="from" value="${e(RECON_FILTER.from)}"></label>
-        <label>To<input type="date" name="to" value="${e(RECON_FILTER.to)}"></label>
+        <label>Search<input type="search" name="q" value="${e(rf.q)}" placeholder="Record, account, date"></label>
+        <label>From<input type="date" name="from" value="${e(rf.from)}"></label>
+        <label>To<input type="date" name="to" value="${e(rf.to)}"></label>
         <button class="button" type="button" data-recon-reset>Reset</button>
       </form>
       <section class="panel">
       <div class="panel-head"><h2>${isCash ? 'Cash and bank reconciliations' : 'Party reconciliations'}</h2><div class="related"><span class="badge">${rows.length} records</span><button class="button" data-export-table>Export CSV</button><button class="button" data-recon-print-all>Print register</button><button class="button" data-recon-new="${kind}">New reconciliation</button></div></div>
-      <div class="table-scroll" data-hscroll><table><thead><tr><th>Date</th><th>${isCash ? 'Cash / bank account' : 'Party'}</th><th class="numeric">System balance</th><th class="numeric">Differences</th><th class="numeric">Original balance</th><th class="numeric">Unreconciled</th><th>State</th></tr></thead>
-      <tbody>${rows.map((r) => `<tr class="row-link" data-recon-open="${kind}:${e(r.id)}"><td>${r.date}</td><td>${e(r.account)}</td><td class="numeric">${money(r.system)}</td><td class="numeric">${money(r.diffTotal)}</td><td class="numeric">${money(r.original)}</td><td class="numeric">${money(r.unreconciled)}</td><td>${badge(r.state === 'cancelled' ? 'Cancelled' : Math.abs(r.unreconciled) < 0.01 ? 'Reconciled' : 'Difference', r.state === 'cancelled' ? 'warn' : Math.abs(r.unreconciled) < 0.01 ? 'good' : 'warn')}</td></tr>`).join('') || `<tr><td colspan="7">No ${isCash ? 'cash' : 'party'} reconciliations recorded yet.</td></tr>`}</tbody></table></div>
+      <div class="table-scroll" data-hscroll><table><thead><tr>${cols.map(([key, label, cls]) => {
+        const sel = (rf.cf && rf.cf[key]) || [];
+        return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-recon-sort="${key}" aria-sort="${rf.sort.key === key ? (rf.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${rf.sort.key === key ? (rf.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-reconf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
+          <div class="col-filter-panel" data-reconp="${key}" hidden><div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${rf.sort.key === key ? 'active' : ''}" data-recontoggle="${key}">${rf.sort.key === key ? (rf.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+          <div class="ms-searchrow"><input class="ms-search recon-filter-search" type="search" placeholder="Search values"></div>
+          <div class="ms-head"><button type="button" class="text-button" data-reconall="${key}">Select all</button><span class="ms-count">${reconColValues(kind, key).length}</span><button type="button" class="text-button" data-reconnone="${key}">Clear</button></div>
+          <div class="ms-list">${reconColValues(kind, key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(reconColLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+          <div class="gl-applyrow"><button type="button" class="button primary" data-reconapply="${key}">Apply filter</button></div></div></th>`;
+      }).join('')}</tr></thead>
+      <tbody>${rows.map((r) => `<tr class="row-link" data-recon-open="${kind}:${e(r.id)}"><td>${r.date}</td><td>${e(r.account)}</td><td class="numeric">${money(r.system)}</td><td class="numeric">${money(r.diffTotal)}</td><td class="numeric">${money(r.original)}</td><td class="numeric">${money(r.unreconciled)}</td><td>${badge(reconState(r), r.state === 'cancelled' ? 'warn' : Math.abs(r.unreconciled) < 0.01 ? 'good' : 'warn')}</td></tr>`).join('') || `<tr><td colspan="7">No ${isCash ? 'cash' : 'party'} reconciliations recorded yet.</td></tr>`}</tbody></table></div>
       <div class="table-footer">A reconciliation records what was checked, when, against which balance, with each difference and its reference. Click a row to open it; it is a record, not an automatic matching engine.</div></section>`;
   }
 
@@ -1600,10 +1625,70 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       rf.querySelector('[name="q"]')?.addEventListener('input', (ev) => { RECON_FILTER.q = ev.target.value; rerender(); const a = document.querySelector('[data-recon-filter] [name="q"]'); if (a) a.focus(); });
       rf.querySelector('[name="from"]')?.addEventListener('change', (ev) => { RECON_FILTER.from = ev.target.value; rerender(); });
       rf.querySelector('[name="to"]')?.addEventListener('change', (ev) => { RECON_FILTER.to = ev.target.value; rerender(); });
-      rf.querySelector('[data-recon-reset]')?.addEventListener('click', () => { RECON_FILTER.q = ''; RECON_FILTER.from = ''; RECON_FILTER.to = ''; rerender(); });
+      rf.querySelector('[data-recon-reset]')?.addEventListener('click', () => { Object.assign(RECON_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
     }
     document.querySelectorAll('[data-cash-tab]').forEach((b) => b.addEventListener('click', () => { CASH_TAB = b.dataset.cashTab; rerender(); }));
     document.querySelectorAll('[data-party-tab]').forEach((b) => b.addEventListener('click', () => { PARTY_TAB = b.dataset.partyTab; rerender(); }));
+    document.querySelectorAll('[data-recon-sort]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.reconSort;
+      RECON_FILTER.sort = {key, dir: RECON_FILTER.sort.key === key && RECON_FILTER.sort.dir === 'asc' ? 'desc' : 'asc'};
+      rerender();
+    }));
+    let reconOpen = '';
+    const closeReconMenus = (except) => {
+      document.querySelectorAll('[data-reconp]').forEach((p) => { if (p !== except) p.hidden = true; });
+      document.querySelectorAll('[data-reconf]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    };
+    const openReconMenu = (key) => {
+      const btn = document.querySelector(`[data-reconf="${key}"]`);
+      const panel = document.querySelector(`[data-reconp="${key}"]`);
+      if (!btn || !panel) return;
+      closeReconMenus(panel);
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      const r = btn.getBoundingClientRect();
+      panel.classList.add('col-filter-panel--fixed');
+      const left = r.left > window.innerWidth / 2 ? r.right - 270 : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - 278)) + 'px';
+      const top = Math.round(r.bottom + 4);
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, window.innerHeight - top - 12)) + 'px';
+      const search = panel.querySelector('.recon-filter-search');
+      if (search) { search.value = ''; search.focus(); }
+      reconOpen = key;
+    };
+    document.querySelectorAll('[data-reconf]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (reconOpen === b.dataset.reconf) { closeReconMenus(); reconOpen = ''; return; }
+      openReconMenu(b.dataset.reconf);
+    }));
+    document.addEventListener('click', (ev) => {
+      if (ev.target.closest('.col-filter-panel') || ev.target.closest('[data-reconf]')) return;
+      closeReconMenus(); reconOpen = '';
+    });
+    document.querySelectorAll('[data-reconp]').forEach((panel) => {
+      panel.addEventListener('click', (ev) => ev.stopPropagation());
+      panel.querySelector('.recon-filter-search')?.addEventListener('input', (ev) => {
+        const q = ev.target.value.toLowerCase();
+        panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
+      });
+      panel.querySelector('[data-reconall]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { if (!b.closest('.ms-row').hidden) b.checked = true; }); });
+      panel.querySelector('[data-reconnone]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = false; }); });
+    });
+    document.querySelectorAll('[data-reconapply]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.reconapply;
+      const panel = document.querySelector(`[data-reconp="${key}"]`);
+      RECON_FILTER.cf = {...(RECON_FILTER.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      closeReconMenus(); reconOpen = '';
+      rerender();
+    }));
+    document.querySelectorAll('[data-recontoggle]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.recontoggle;
+      const dir = RECON_FILTER.sort.key === key && RECON_FILTER.sort.dir === 'asc' ? 'desc' : 'asc';
+      RECON_FILTER.sort = {key, dir};
+      closeReconMenus(); reconOpen = '';
+      rerender();
+    }));
     document.querySelectorAll('[data-recon-new]').forEach((b) => b.addEventListener('click', () => {
       const kind = b.dataset.reconNew;
       RECON_FORM[kind] = {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []};
@@ -1690,8 +1775,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Opening balance<input name="opening" inputmode="decimal" value="${e(v('opening', '0.00'))}"></label>
         <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Closed' ? 'selected' : ''}>Closed</option></select></label>
         <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Authorised signatories, cut-off, card machine"></label>
-        ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
-        ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
+          ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
+          ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add sub-account'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
       <div class="panel-body"><p class="form-note">The control head decides where the balance sits; the kind decides which journal lines may pick the sub-account. A bank control takes bank lines, a cash control takes cash lines, and the chosen projects and locations narrow it further.</p></div>
@@ -1744,7 +1829,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     return accounts().filter((a) => a.control === (type === 'customer' ? 'receivable' : 'payable'));
   }
   function postPartyOpening(party) {
-    EXTRA_JOURNALS.splice(0, EXTRA_JOURNALS.length, ...EXTRA_JOURNALS.filter((d) => d.party !== party.name || d.source !== 'Opening balance'));
+    EXTRA_JOURNALS.splice(0, EXTRA_JOURNALS.length, ...EXTRA_JOURNALS.filter((d) => d.id !== 'OB-' + party.code));
     const opening = round2(Number(party.opening) || 0);
     if (opening <= 0) return;
     const control = party.control || partyControl(party.type);
@@ -1853,8 +1938,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Phone<input name="phone" maxlength="30" value="${e(v('phone'))}" placeholder="+92 300 0000000"></label>
         <label>Email<input name="email" type="email" maxlength="70" value="${e(v('email'))}" placeholder="accounts@customer.pk"></label>
         <label>Control account<select name="control" class="inline-input">${partyControlOptions(v('type', 'customer')).map((a) => `<option value="${a.code}" ${a.code === v('control', partyControl(v('type', 'customer'))) ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-        <label>Payment terms (days)<input name="terms" type="number" min="0" max="365" value="${e(v('terms', '30'))}"></label>
-        <label>Credit limit<input name="limit" inputmode="decimal" value="${e(v('limit', '0.00'))}"></label>
+        <label>Payment terms (days)<input name="terms" type="number" min="0" max="365" value="${e(v('terms', ''))}" placeholder="Optional"><small class="secondary">Optional, especially for suppliers.</small></label>
+        <label>Credit limit<input name="limit" inputmode="decimal" value="${e(v('limit', ''))}" placeholder="Optional"><small class="secondary">Change it here when an invoice raises the exposure; the change is logged.</small></label>
         <label>Opening balance<input name="opening" inputmode="decimal" value="${e(v('opening', '0.00'))}"></label>
         <label>Tax identity<input name="taxId" maxlength="30" value="${e(v('taxId'))}" placeholder="NTN-"></label>
         <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Hold' ? 'selected' : ''}>Hold</option><option ${v('status') === 'Blocked' ? 'selected' : ''}>Blocked</option></select></label>
@@ -1866,7 +1951,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         ${ms('party-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add party'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">A customer or supplier is a sub-account of 1100 or 2100. The journal only offers a party where its account kind and its allowed projects and locations agree.</p></div>
+      <div class="panel-body"><p class="form-note">A customer or supplier is a sub-account of its control account. The journal only offers a party where its account kind and its allowed projects and locations agree.</p>
+        ${code && PARTY_CHANGES.some((c) => c.party === (PARTIES.find((p) => p.code === code) || {}).name) ? `<div class="section-title">Recent policy changes</div><ul class="contract-list">${PARTY_CHANGES.filter((c) => c.party === (PARTIES.find((p) => p.code === code) || {}).name).slice(-5).reverse().map((c) => `<li>${e(c.field)}: ${e(String(c.from))} → ${e(String(c.to))} <small class="secondary">${c.at} · ${e(c.by)}</small></li>`).join('')}</ul>` : ''}
+      </div>
     </section>`;
   }
 
@@ -1944,7 +2031,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       rerender();
     }));
 
-    document.querySelector('[data-party-form] [name="type"]')?.addEventListener('change', () => rerender());
+    document.querySelector('[data-party-form] [name="type"]')?.addEventListener('change', (ev) => {
+      const control = document.querySelector('[data-party-form] [name="control"]');
+      if (!control) return;
+      const type = ev.target.value;
+      const fallback = partyControl(type);
+      control.innerHTML = partyControlOptions(type).map((a) => `<option value="${a.code}" ${a.code === fallback ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+    });
     document.querySelector('[data-party-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
@@ -1952,13 +2045,17 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const v2 = Object.fromEntries(new FormData(form));
       const editingCode = v2.editingCode || '';
       if (!editingCode && PARTIES.some((p) => p.code === v2.code || p.name.trim().toLowerCase() === v2.name.trim().toLowerCase())) { notify('That code or name already exists.'); return; }
-      if (v2.currency !== CURRENCIES.primary && !(Number(v2.rate) > 0)) { notify('Enter the exchange rate for a currency other than ' + CURRENCIES.primary + '.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
       const record = {code: v2.code, name: v2.name.trim(), type: v2.type, group: v2.group || 'General', control: v2.control || partyControl(v2.type), terms: Number(v2.terms) || 0, limit: round2(Number(v2.limit) || 0), opening: round2(Number(v2.opening) || 0), status: v2.status || 'Active', taxId: v2.taxId || '', contact: v2.contact || '', phone: v2.phone || '', email: v2.email || '', address: v2.address || '', bankName: v2.bankName || '', bankAccount: v2.bankAccount || '', currency: CURRENCIES.primary, notes: v2.notes || '', projects: picked(proj), locations: picked(loc)};
       if (editingCode) {
         const target = PARTIES.find((p) => p.code === editingCode);
-        if (target) Object.assign(target, record);
-        notify('Party updated for this session.');
+        if (target) {
+          ['control', 'terms', 'limit'].forEach((field) => {
+            if (String(target[field]) !== String(record[field])) PARTY_CHANGES.push({party: target.name, field, from: target[field], to: record[field], at: '2026-11-25', by: 'A. Rehman'});
+          });
+          Object.assign(target, record);
+        }
+        notify('Party updated for this session. Policy changes are logged.');
       } else {
         PARTIES.push(record);
         notify('Party added for this session. It is available in the journal and in payments.');

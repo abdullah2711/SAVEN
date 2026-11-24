@@ -1942,3 +1942,91 @@ still agrees. Editing the opening replaces that journal instead of duplicating i
 Reconciliation register does not yet have the per-column value menus; it has the top
 filters, clickable rows and the same table style. Adding its header menus is the next
 small step. Party numbering confirmed as Party-0001 for the first generated code.
+**Resolved in §151.**
+
+
+---
+
+# Round 29 — optional policy fields, form dropdown fix, reconciliation menus
+
+Owner review: the allowed-projects and allowed-locations dropdowns still failed inside
+the party and cash forms, the reconciliation difference rows were squeezed by the
+second column, terms and credit limit were fixed rather than optional, and native
+dropdowns read as generic.
+
+## 147. The form multi-select bug was label styling, not the popover
+
+The dropdown was never the problem and it stays. `.form-grid label` sets every label
+in a form to a stacked column (`flex-direction: column`) so field captions sit above
+their inputs — but `.ms-row` option rows are labels too, and they live inside that
+grid. Each option therefore rendered as a centred checkbox with its text on a line
+below, the panel doubled in height, and it looked clipped or squeezed.
+
+The fix targets the rows, not the component: `.form-grid .ms-row` returns the row to
+`flex-direction: row` with a 15px checkbox, normal ink colour and 13px text. The panel
+keeps its fixed-position flip and height cap, so it opens above or below the trigger
+and stays inside the viewport. Verified on the party form (projects) and the cash form
+(locations) at the full page height.
+
+A first attempt replaced the control with an inline check grid. The owner rejected
+that: the dropdown is expected, and hiding the symptom was not the fix. The check-grid
+markup, helper and styles have been removed.
+
+## 148. Payment terms and credit limit are optional
+
+Both carry “Optional” as the placeholder and save as 0/blank when left empty; a
+supplier rarely has either. A credit limit is still the figure an invoice checks
+against, so raising it from the party form is the normal path when an invoice pushes
+exposure — and that edit is recorded.
+
+## 149. Policy changes are logged
+
+`PARTY_CHANGES` records the party, field, old value, new value, date and user for
+**control account, payment terms and credit limit** on every edit. The party form
+shows its last five changes under “Recent policy changes”. Nothing else on the party
+is logged; contact and address are ordinary master data.
+
+## 150. Changing the party type swaps the control account in place
+
+Choosing Customer lists receivable heads; Supplier lists payable heads. The swap
+happens in the existing select instead of rerendering the form, so unsaved name,
+contact, open balance and access are not lost. The old listener rerendered the whole
+form, which silently reset the type back to Customer — the reason a supplier could
+never reach 2100. Verified: customer → `1100 Trade receivables`, supplier → `2100
+Trade payables`.
+
+The leftover “enter an exchange rate” guard, from fields that no longer exist, also
+blocked every new party save. Removed with the fields.
+
+## 151. Reconciliation register matches the other registers
+
+- Top bar: **Search** and **From/To** dates, reset.
+- Every column — date, account, system, differences, original, unreconciled, state —
+  has the same menu as the ledger, journal and party registers: one sort toggle,
+  value search, select all/clear, checkbox values and **Apply filter**.
+- State values are the words on screen (Reconciled, Difference, Cancelled), not the
+  stored codes.
+- Filters and sort reset when switching between the cash and party tabs, because the
+  accounts and values differ.
+- Rows still open the form; cancel and delete live on the saved record.
+
+## 152. Field styling
+
+Native `<select>` loses the platform arrow for one quiet chevron, gains a hover
+border and a focus ring that matches the other fields, and the number spinner is
+removed so “Payment terms” no longer looks like a 2000s control. The chevron rule
+repeats the field selectors because `.form-grid select`'s background shorthand was
+overriding a plain `select` rule — the previous attempt drew nothing.
+
+The same `.form-grid label` rule was the cause of the stacked option rows in §147;
+both are fixed at the component level rather than by changing the markup.
+
+`.form-grid > .wide` now spans both columns, so the reconciliation difference table,
+summary, files and action row use the full width instead of being squeezed beneath
+the right-hand field column.
+
+## 153. Numbering and opening journals
+
+Party numbering confirmed at `Party-0001`. The opening journal is keyed by party
+code (`OB-Party-0001`), so editing the opening replaces that entry; verified one
+entry only, with 7,000 after changing 5,000 to 7,000, and the party balance matching.

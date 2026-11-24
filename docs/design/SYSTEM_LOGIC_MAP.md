@@ -299,6 +299,12 @@ permissions. See §100 of the decision log.
 | 13 | 77–82 | table scrollbars, row editing, control-party rule, balances at a date |
 | 14 | 83–85 | journal opens in form, GL party/sub-account, scrollbar on top |
 | 15 | 86–88 | journal export, back to register, GL rows open documents |
+| 16–17 | 89–100 | numbering, cash statistics, settings registers, taxes, period lock, statements |
+| 18–20 | 101–115 | controls, balances at a date, register/form split, one create button |
+| 21–24 | 116–132 | scroll tracks, row editing, control-party rule, dimensions as data |
+| 25–27 | 133–140 | journal register columns, reversal, party reset, custom columns |
+| 28 | 141–146 | journal dates, party form corrections, opening journal, reconciliation register |
+| 29 | 147–153 | form dropdown row fix, optional policy fields, policy log, recon header menus, field styling |
 
 ---
 
@@ -310,9 +316,10 @@ permissions. See §100 of the decision log.
 - Posting from operations to the ledger, persistence, permissions.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices and payments record session documents but do not write the ledger.
-- Bank statement reconciliation.
 - Party balances by project/location (deferred, needs the subledger).
 - Permission enforcement; settings are not enforced by the server yet.
 - Persistence: every record lives in the browser session and is lost on reload.
-- Custom fields are captured on the journal but not yet shown as register columns.
+- Per-line invoice tax override, withholding allocation and negative-stock
+  enforcement are not built.
+- Reconciliation is a recording tool; there is no automatic statement matching.
 
