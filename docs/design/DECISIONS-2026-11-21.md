@@ -1739,3 +1739,38 @@ clipped dropdowns in the cash/bank and party forms.
 
 Added a **location** filter alongside search, kind, control head, status and balances
 as at.
+
+---
+
+# Round 24 — ledger filters live in the headers
+
+## 127. What stays on top, what moves to the header
+
+- **Top bar** keeps the universal, data-level filters: the date range, the free-text
+  search, **Reset** and the column chooser.
+- **Header row** now carries the per-column filters and the sort. Every column gets
+  its own filter box, and every header is sortable.
+
+Why: the per-column filters are generated from the column list itself. When a form is
+amended and a new field is added to the register, its column appears with its filter
+and its sort automatically — no new top-bar component is required for each field.
+
+## 128. Implementation
+
+- `colValue(row, key)` maps a column key to the value that column shows; sorting and
+  filtering both use it.
+- Filters live in `GL.cf` keyed by column; the register filters its rows with a
+  substring match on the mapped value, so text, numbers, party, project, location,
+  voucher, subtype and new fields all behave the same.
+- Every header is a sort button; the sort arrow shows the current key and direction.
+- The old dimension multi-selects were removed from the top bar; the party shortcut
+  from the party register still sets the party filter directly.
+
+## 129. Header filter UI
+
+The filter row is compact: 26px inputs, one per column, aligned under the header, no
+date controls in the header (the date range stays on top). The table keeps its
+permanent scroll indicator above the rows.
+
+This is applied to the general ledger first. Once approved it becomes the shared
+pattern for every register.

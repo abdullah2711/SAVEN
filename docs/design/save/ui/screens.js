@@ -458,7 +458,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
 
   /* ---------------------------------------------------------- general ledger */
   const GL = {
-    accountQ: '', descQ: '', partyQ: '', partyTypes: [],
+    cf: {},
     from: '2026-11-01', to: '2026-11-30',
     accounts: [], parties: [], projects: [], locations: [], centres: [], types: [],
     q: '', open: '', sort: {key: 'date', dir: 'asc'},
@@ -484,10 +484,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (!inSet(GL.locations, d.location || '')) continue;
       for (const l of d.lines) {
         if (!inSet(GL.parties, l.party || d.party)) continue;
-        if (GL.accountQ && !(`${l.account} ${acc ? acc.name : ''}`).toLowerCase().includes(String(GL.accountQ).toLowerCase())) continue;
-        if (GL.descQ && !String(d.narrative || '').toLowerCase().includes(String(GL.descQ).toLowerCase())) continue;
-        if (GL.partyQ && !String(l.party || d.party || '').toLowerCase().includes(String(GL.partyQ).toLowerCase())) continue;
-        if ((GL.partyTypes || []).length) { const ptype = (l.party ? (acc && acc.control === 'bank' ? 'Bank' : acc && acc.control === 'cash' ? 'Cash' : acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : '') : '') || d.partyType || (acc && acc.control === 'receivable' ? 'Customer' : acc && acc.control === 'payable' ? 'Supplier' : ''); if (!GL.partyTypes.includes(ptype)) continue; }
         if (GL.accounts.length && !GL.accounts.includes(l.account)) continue;
         if (GL.centres.length && !GL.centres.includes(l.costCentre)) continue;
         const acc = accounts().find((a) => a.code === l.account);
@@ -504,13 +500,18 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         });
       }
     }
-    return out;
+    const cf = GL.cf || {};
+    return out.filter((r) => Object.entries(cf).every(([k, v]) => !v || String(colValue(r, k)).toLowerCase().includes(String(v).toLowerCase())));
   }
 
+  function colValue(r, key) {
+    const map = {date: r.date, account: `${r.account} ${r.accountName}`, description: r.narrative, debit: r.debit, credit: r.credit, balance: r.balance, type: r.source, subtype: r.subtype, voucher: r.id, against: r.against, partyType: r.partyType, party: r.party, project: r.project, location: r.location, centre: r.centre, againstVoucher: r.againstVoucher, supplierRef: r.supplierRef};
+    return map[key] !== undefined ? map[key] : r[key];
+  }
   function sortRows(rows, sort) {
     const dir = sort.dir === 'desc' ? -1 : 1;
     return rows.slice().sort((a, b) => {
-      const x = a[sort.key], y = b[sort.key];
+      const x = colValue(a, sort.key), y = colValue(b, sort.key);
       if (typeof x === 'number' && typeof y === 'number') return (x - y) * dir;
       return String(x ?? '').localeCompare(String(y ?? '')) * dir;
     });
@@ -706,7 +707,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const net = round2(debit - credit);
     const netLabel = net === 0 ? 'Net' : net > 0 ? 'Net debit' : 'Net credit';
     const cols = glColumns();
-    const sortable = new Set(['date', 'account', 'description', 'debit', 'credit', 'type', 'subtype', 'voucher', 'party', 'project', 'location', 'centre']);
+
     const wholePeriod = (() => {
       let lines = 0, dr = 0, cr = 0;
       for (const d of fixture(getCompany())) {
@@ -736,12 +737,6 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     return `<form id="gl-filter" class="filterbar gl-filter">
         <label>From<input name="from" type="date" value="${e(GL.from)}" required></label>
         <label>To<input name="to" type="date" value="${e(GL.to)}" required></label>
-        ${ms('account', 'Accounts', accountOpts, GL.accounts)}
-        ${ms('party', 'Party / sub-account', partyOpts, GL.parties)}
-        ${ms('project', 'Projects', projectOpts, GL.projects)}
-        ${ms('location', 'Locations', locOpts, GL.locations)}
-        ${ms('centre', 'Cost centres', centreOpts, GL.centres)}
-        ${ms('type', 'Voucher types', typeOpts, GL.types)}
         <label>Search<input name="q" type="search" value="${e(GL.q)}" placeholder="Voucher, party or description"></label>
         <button class="button" type="button" data-gl-reset>Reset</button><button class="button primary">Apply</button>
       </form>
@@ -761,21 +756,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         </div>
         <div class="table-scroll gl-scroll" data-hscroll>
           <table class="gl-table" data-hide="${[...OPTIONAL.filter((k) => !GL.extras.has(k))].join(' ')}">
-            <thead><tr>${cols.map(([key, label, , cls]) => sortable.has(key)
-              ? `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`
-              : `<th class="col col-${key} ${cls || ''}">${label}</th>`).join('')}</tr>
-              <tr class="gl-filterrow">${cols.map(([key]) => {
-                if (key === 'date') return `<th class="col col-date"><input type="date" data-glf="from" value="${e(GL.from)}" aria-label="From date"><input type="date" data-glf="to" value="${e(GL.to)}" aria-label="To date"></th>`;
-                if (key === 'account') return `<th class="col col-account"><input type="search" data-glf="accountQ" value="${e(GL.accountQ || '')}" placeholder="Filter" aria-label="Filter account"></th>`;
-                if (key === 'description') return `<th class="col col-description"><input type="search" data-glf="descQ" value="${e(GL.descQ || '')}" placeholder="Filter" aria-label="Filter description"></th>`;
-                if (key === 'party') return `<th class="col col-party"><input type="search" data-glf="partyQ" value="${e(GL.partyQ || '')}" placeholder="Filter" aria-label="Filter party"></th>`;
-                if (key === 'project') return `<th class="col col-project"><select data-glf="project" aria-label="Filter project"><option value="">All</option>${PROJECTS.map((p2) => `<option value="${p2.code}" ${GL.projects.includes(p2.code) ? 'selected' : ''}>${p2.code}</option>`).join('')}</select></th>`;
-                if (key === 'location') return `<th class="col col-location"><select data-glf="location" aria-label="Filter location"><option value="">All</option>${LOCATIONS.map((l) => `<option value="${l.code}" ${GL.locations.includes(l.code) ? 'selected' : ''}>${l.code}</option>`).join('')}</select></th>`;
-                if (key === 'centre') return `<th class="col col-centre"><select data-glf="centre" aria-label="Filter cost centre"><option value="">All</option>${COST_CENTRES.map((c) => `<option value="${c.name}" ${GL.centres.includes(c.name) ? 'selected' : ''}>${c.name}</option>`).join('')}</select></th>`;
-                if (key === 'type') return `<th class="col col-type"><select data-glf="type" aria-label="Filter voucher type"><option value="">All</option>${typeOpts.map(([t]) => `<option value="${e(t)}" ${GL.types.includes(t) ? 'selected' : ''}>${e(t)}</option>`).join('')}</select></th>`;
-                if (key === 'partyType') return `<th class="col col-partyType"><select data-glf="partyType" aria-label="Filter party type"><option value="">All</option>${['Customer','Supplier','Bank','Cash'].map((t) => `<option value="${t}" ${(GL.partyTypes || []).includes(t) ? 'selected' : ''}>${t}</option>`).join('')}</select></th>`;
-                return '<th></th>';
-              }).join('')}</tr></thead>
+            <thead><tr>${cols.map(([key, label, , cls]) => `<th class="col col-${key} ${cls || ''}"><button class="sortable" data-gl-sort="${key}" aria-sort="${GL.sort.key === key ? (GL.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${GL.sort.key === key ? (GL.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button></th>`).join('')}</tr>
+              <tr class="gl-filterrow">${cols.map(([key]) => key === 'date' ? '<th class="col col-date"></th>' : `<th class="col col-${key}"><input type="search" data-glf="${key}" value="${e((GL.cf && GL.cf[key]) || '')}" placeholder="Filter" aria-label="Filter ${key}"></th>`).join('')}</tr></thead>
             <tbody id="gl-rows">${body || `<tr><td colspan="${cols.length}"><div class="empty"><div class="empty-mark">?</div><h2>No ledger lines</h2><p>No posted line matches these filters.</p></div></td></tr>`}</tbody>
             <tfoot><tr>
               <td colspan="${cols.findIndex(([k]) => k === 'debit')}">Total</td>
@@ -819,8 +801,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
 
   function readMulti(form) {
     const pick = (n) => [...form.querySelectorAll(`input[name="${n}"]:checked`)].map((x) => x.value);
-    GL.accounts = pick('account'); GL.parties = pick('party'); GL.projects = pick('project');
-    GL.locations = pick('location'); GL.centres = pick('centre'); GL.types = pick('type');
+    const has = (n) => Boolean(form.querySelector(`.ms[data-ms="${n}"]`));
+    if (has('account')) GL.accounts = pick('account');
+    if (has('party')) GL.parties = pick('party');
+    if (has('project')) GL.projects = pick('project');
+    if (has('location')) GL.locations = pick('location');
+    if (has('centre')) GL.centres = pick('centre');
+    if (has('type')) GL.types = pick('type');
   }
 
   function syncGL(form) {
@@ -844,21 +831,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     }));
     document.querySelectorAll('[data-glf]').forEach((el) => {
       const key = el.dataset.glf;
-      const apply = () => {
-        if (key === 'from' || key === 'to') { GL[key] = el.value; return; }
-        if (key === 'accountQ' || key === 'descQ' || key === 'partyQ') { GL[key] = el.value; return; }
-        if (key === 'project') GL.projects = el.value ? [el.value] : [];
-        if (key === 'location') GL.locations = el.value ? [el.value] : [];
-        if (key === 'centre') GL.centres = el.value ? [el.value] : [];
-        if (key === 'type') GL.types = el.value ? [el.value] : [];
-        if (key === 'partyType') GL.partyTypes = el.value ? [el.value] : [];
-      };
-      el.addEventListener(el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input', () => {
+      el.addEventListener('input', () => {
         const pos = el.selectionStart;
-        apply();
+        GL.cf = {...(GL.cf || {}), [key]: el.value};
         rerender();
         const again = document.querySelector(`[data-glf="${key}"]`);
-        if (again && el.type === 'search') { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
+        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
       });
     });
     document.querySelector('#gl-rows')?.addEventListener('click', (ev) => {
@@ -873,7 +851,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     });
     restoreMS();
     document.querySelector('[data-gl-reset]')?.addEventListener('click', () => {
-      Object.assign(GL, {from: '2026-11-01', to: '2026-11-30', accounts: [], parties: [], projects: [], locations: [], centres: [], types: [], q: '', open: '', accountQ: '', descQ: '', partyQ: '', partyTypes: []});
+      Object.assign(GL, {from: '2026-11-01', to: '2026-11-30', accounts: [], parties: [], projects: [], locations: [], centres: [], types: [], q: '', open: '', cf: {}});
       rerender();
     });
     document.querySelector('[data-jr-reset]')?.addEventListener('click', () => {
