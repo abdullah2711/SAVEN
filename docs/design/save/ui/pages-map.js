@@ -21,6 +21,7 @@ export const PAGE_MAP = {
   inventory: [
     ['dashboard', 'Dashboard', 'Stock value, value by warehouse, below reorder, movements today, movers.', 'built'],
     ['items', 'Items', 'The shared item master with stock fields: tracked, costing, reorder point.', 'built'],
+    ['defaults', 'Default accounts', 'Default inventory, cost-of-sales, income and expense accounts by event and item group.', 'built'],
     ['groups', 'Item groups', 'Tree for reporting, default accounts and tax defaults.', 'built'],
     ['warehouses', 'Warehouses & locations', 'Stores and bins with their balances, branch mapping and accounts.', 'built'],
     ['balances', 'Stock balances', 'Quantity and value per item and warehouse, last movement, average cost.', 'built'],

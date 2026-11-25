@@ -2798,3 +2798,45 @@ advances paid** (asset), both subtype `advance`.
 - Item-wise revenue starts with item-based session documents; fixture invoices have
   no item codes.
 - The report library/builder and scheduled exports remain planned.
+
+
+---
+
+# Round 40 — inventory cost effect and default item accounts
+
+## 210. Default item accounts by rule
+
+Items → **Default accounts** is a rule register instead of item-by-item settings:
+
+| Default account for | Item group | Account |
+|---|---|---|
+| Inventory asset / Cost of sales / Sales income / Purchase expense | All items or one group | any account |
+
+A group-specific rule wins over the all-items rule. The rules fill item lines and the
+inventory/cost-of-sales entries. The item form can still name its own income or expense
+head. Four rules exist by default: 1200 Inventory, 5100 Cost of sales, 4000 Service
+revenue and 5000 Operating expenses. The chart gained **5100 Cost of sales**.
+
+## 211. Inventory now has a cost effect
+
+- A sales invoice with tracked lines and “Update stock = Yes” shows a separate
+  **Illustrative inventory issue**: debit Cost of sales and credit Inventory at cost.
+  This is the cost side of the sale; the invoice line still carries the revenue.
+- A purchase bill with tracked lines posts the line to the **Inventory** account from
+  the default rules (the bill itself is the goods receipt). Non-tracked lines keep the
+  expense rule. The stock receipt voucher is still recorded on save.
+- Unit cost comes from the item's purchase cost when present; otherwise the line price
+  is used as a stand-in. That fallback is a demo convenience, not a valuation policy.
+
+The document still stores the stock movement (`STOCK_MOVES`) and the accounts used.
+
+## 212. Still open
+
+- The inventory ledger and valuation are not updated; the entry is illustrative and
+  the stock voucher is session data.
+- Unit cost must come from the valuation method (FIFO/weighted average) in the
+  backend; using the line price is not acceptable for production.
+- Purchase receipt clearing (goods received not invoiced) is not modelled; tracked
+  bill lines go straight to inventory.
+- Item group rules match the item's group name; a group screen that lists all rules is
+  still to be added.
