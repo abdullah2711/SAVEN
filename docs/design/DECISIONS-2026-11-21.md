@@ -3080,3 +3080,24 @@ and binds without an error. Verified by a scripted sweep.
 - The return form has no refund/payment menu action yet.
 - The stock editor was added but not exercised with a tracked session document in the
   sweep; its save path is the same STOCK_MOVES record used by the old inline section.
+
+
+---
+
+# Round 47 — item row widths and payment action check
+
+## 232. Balanced item row
+
+The invoice/bill item row had one very wide account and very narrow quantity/tax
+boxes. The ten columns are now 13 / 19 / 12 / 7 / 8 / 13 / 7 / 6 / 9 / 6 percent
+(item, account, project, qty, price, discount, total, tax %, after tax, remove). At the
+normal workspace width the item, account, project and discount labels read in full and
+the numeric boxes are comfortable. If the window is narrower the table still scrolls.
+
+## 233. Create payment / receipt verified
+
+The action was checked through the real binding: on a posted invoice it prepares the
+payment form with the invoice document, party, date and the remaining balance
+(DEMO-SI-291 → Falcon Chemicals, 32,135.33), then navigates to Payment / Receipts. A
+toast now confirms “Payment form prepared from …”. The action is hidden on unsaved
+documents and bound for both editable and read-only documents.

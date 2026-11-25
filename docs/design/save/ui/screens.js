@@ -3290,7 +3290,8 @@ const ITEM_ACCOUNT_RULES = [
       root.querySelector('[data-inv-menu-delete]')?.addEventListener('click', () => { const i = INVOICES.findIndex((x) => x.id === editingCode); if (i >= 0) { INVOICES.splice(i, 1); notify('Document deleted from the register.'); } goBack(); });
       root.querySelector('[data-inv-menu-payment]')?.addEventListener('click', () => {
         if (!sourceNow) return;
-        PAY_FORM = {direction: isSales ? 'receive' : 'pay', party: sourceNow.party, date: '2026-11-30', notes: `Settlement of ${sourceNow.id}`, lines: [{doc: sourceNow.id, method: 'bank', account: '', amount: (sourceNow.balance ?? sourceNow.netDue ?? sourceNow.gross).toFixed(2)}]};
+        PAY_FORM = {direction: kind === 'sales' ? 'receive' : 'pay', party: sourceNow.party, date: sourceNow.date || '2026-11-30', notes: `Settlement of ${sourceNow.id}`, lines: [{doc: sourceNow.id, method: 'bank', account: '', amount: (sourceNow.balance ?? sourceNow.netDue ?? sourceNow.gross).toFixed(2)}]};
+        notify('Payment form prepared from ' + sourceNow.id + '. Choose the account and save.');
         navigate({module: 'accounting', tab: 'payments', mode: 'editor'});
       });
       root.querySelector('[data-inv-menu-stock]')?.addEventListener('click', () => {
@@ -3524,7 +3525,8 @@ const ITEM_ACCOUNT_RULES = [
       sec?.querySelector('[data-inv-menu-return]')?.addEventListener('click', () => { if (src) navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: src.id}); });
       sec?.querySelector('[data-inv-menu-payment]')?.addEventListener('click', () => {
         if (!src) return;
-        PAY_FORM = {direction: kind === 'sales' ? 'receive' : 'pay', party: src.party, date: '2026-11-30', notes: `Settlement of ${src.id}`, lines: [{doc: src.id, method: 'bank', account: '', amount: (src.balance ?? src.netDue ?? src.gross).toFixed(2)}]};
+        PAY_FORM = {direction: kind === 'sales' ? 'receive' : 'pay', party: src.party, date: src.date || '2026-11-30', notes: `Settlement of ${src.id}`, lines: [{doc: src.id, method: 'bank', account: '', amount: (src.balance ?? src.netDue ?? src.gross).toFixed(2)}]};
+        notify('Payment form prepared from ' + src.id + '. Choose the account and save.');
         navigate({module: 'accounting', tab: 'payments', mode: 'editor'});
       });
       sec?.querySelector('[data-inv-menu-stock]')?.addEventListener('click', () => { if (src) navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'stock', code: src.id}); });

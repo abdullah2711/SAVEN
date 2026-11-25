@@ -418,16 +418,16 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .inv-register td.col-party,.inv-register td.col-project,.inv-register td.col-id{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .inv-register td.col-date,.inv-register td.col-due{white-space:nowrap}
 /* Item table: item, account, project, qty, price, discount, total, tax %, after tax, remove. */
-.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:14%}
-.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:20%}
+.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:13%}
+.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:19%}
 .inv-items th:nth-child(3),.inv-items td:nth-child(3){width:12%}
-.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:4%}
-.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:7%}
+.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:7%}
+.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:8%}
 .inv-items th:nth-child(6),.inv-items td:nth-child(6){width:13%}
 .inv-items th:nth-child(7),.inv-items td:nth-child(7){width:7%}
-.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:5%}
-.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:11%}
-.inv-items th:nth-child(10),.inv-items td:nth-child(10){width:7%}
+.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:6%}
+.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:9%}
+.inv-items th:nth-child(10),.inv-items td:nth-child(10){width:6%}
 /* A register whose only filter is search should not stretch the field across the page. */
 .filterbar label:only-of-type{max-width:520px}
 .inv-wht th:nth-child(1),.inv-wht td:nth-child(1){width:24%}
