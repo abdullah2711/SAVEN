@@ -92,9 +92,11 @@ const TAX_TABS = [
   ['withholding', 'Withholding'],
   ['advance', 'Advance tax'],
   ['adjustments', 'Reconciliation'],
+  ['parties', 'Party withholding'],
   ['defaults', 'Default accounts'],
 ];
-let TAX_DEFAULTS = {output: '2200', input: '1300', withholding: '2150', advance: '1400'};
+let TAX_DEFAULTS = {output: '2200', input: '1300', withholding: '2150', salesWht: '2210', advance: '1400'};
+const WHT_FILED = new Map();
 let TAX_ACTIVE = 'rules';
 let PARTY_OPEN = '';
 let PERIOD_LOCKED = false;
@@ -2364,12 +2366,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         ${p.notes ? `<p class="form-note">${e(p.notes)}</p>` : ''}
       </div>
       <div class="table-scroll"><table><thead><tr><th>Document</th><th>Method</th><th>Cash / bank</th><th class="numeric">Amount set off</th></tr></thead><tbody>
-        ${(p.allocations || []).map((a) => `<tr><td class="mono">${e(a.id)}</td><td>${e(methodName(a.method))}</td><td>${e(a.account || '—')}</td><td class="numeric">${money(a.amount)}</td></tr>`).join('') || '<tr><td colspan="4">This fixture document does not carry allocation rows.</td></tr>'}
+        ${(p.allocations || []).map((a) => `<tr><td><button type="button" class="text-button mono" data-pay-doc="${e(a.id)}">${e(a.id)}</button></td><td>${e(methodName(a.method))}</td><td>${e(a.account || '—')}</td><td class="numeric">${money(a.amount)}</td></tr>`).join('') || '<tr><td colspan="4">This fixture document does not carry allocation rows.</td></tr>'}
       </tbody></table></div>
       <div class="panel-body"><div class="related">
         ${p.session && !cancelled ? '<button type="button" class="button" data-pay-cancel-rec>Cancel record</button><button type="button" class="button" data-pay-delete-rec>Delete record</button>' : ''}
+        <button type="button" class="button" data-pay-print>Print voucher</button>
         <button type="button" class="button" data-pay-close>Close</button>
-      </div><p class="form-note">A cancelled record stays in the register and loses its effect; a deleted session record is removed. Fixture documents are read-only.</p></div>
+      </div><p class="form-note">This is the separate ${p.direction === 'receive' ? 'receipt' : 'payment'} voucher; the invoice or bill stays its own document. A cancelled record stays in the register and loses its effect; a deleted session record is removed. Fixture documents are read-only.</p></div>
     </section>`;
   }
   function paymentEditor(code) {
@@ -2498,6 +2501,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       rerender();
     }));
     document.querySelector('[data-pay-close]')?.addEventListener('click', goBack);
+    document.querySelector('[data-pay-print]')?.addEventListener('click', () => window.print());
+    document.querySelectorAll('[data-pay-doc]').forEach((b) => b.addEventListener('click', () => {
+      const id = b.dataset.payDoc;
+      const sales = /SI/i.test(id);
+      navigate({module: 'accounting', tab: sales ? 'sales-invoices' : 'purchase-invoices', mode: 'editor', form: 'invoice', code: id});
+    }));
     document.querySelectorAll('[data-pay-open]').forEach((b) => b.addEventListener('click', () => {
       navigate({module: 'accounting', tab: 'payments', mode: 'editor', code: b.dataset.payOpen});
     }));
@@ -2608,9 +2617,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
   const INV_DRAFT = {
     sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Service invoiced',
-      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}]},
+      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}], taxAccount: ''},
     purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Supplier bill',
-      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}]},
+      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}], taxAccount: ''},
   };
   const INV_FILES = {sales: [], purchase: []};
   const PAY_FILES = [];
@@ -2631,6 +2640,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
   function invoiceWhtTotal(withholding, totals) { return round2((withholding || []).reduce((n, w) => n + whtAmount(w, totals), 0)); }
   function invoiceNetDue(totals, withholding) { return round2(Math.max(totals.gross - invoiceWhtTotal(withholding, totals), 0)); }
+  function defaultWhtRule(itemCode, kind) {
+    const item = ITEMS.find((i) => i.code === itemCode);
+    if (!item) return null;
+    const desired = kind === 'sales' ? 'advance' : 'withholding';
+    return TAX_RULES.find((r) => r.kind === desired && (r.status || 'Active') === 'Active'
+      && (r.scope === 'all' || (r.scope === 'group' && r.scopeValue && (r.scopeValue === item.group || r.scopeValue === (ITEM_GROUPS.find((g) => g.name === item.group) || {}).code)) || (r.scope === 'item' && r.scopeValue === item.code))
+      && (!r.from || r.from <= (INV_DRAFT[invKey(kind)].date || '2026-11-30'))) || null;
+  }
   function invTaxRateFor(itemCode, kind) {
     const item = ITEMS.find((i) => i.code === itemCode);
     const rule = item ? TAX_RULES.find((r) => r.code === item.tax && r.kind === kind) : null;
@@ -2683,12 +2700,26 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const byAccount = {};
     (draft.lines || []).forEach((l) => { if (!l.account) return; byAccount[l.account] = round2((byAccount[l.account] || 0) + invLineNet(l)); });
     Object.entries(byAccount).forEach(([account, amount]) => lines.push({account, party: '', debit: isSales ? 0 : amount, credit: isSales ? amount : 0}));
-    if (totals.tax) lines.push({account: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, party: '', debit: isSales ? 0 : totals.tax, credit: isSales ? totals.tax : 0});
+    if (totals.tax) lines.push({account: draft.taxAccount || (isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input), party: '', debit: isSales ? 0 : totals.tax, credit: isSales ? totals.tax : 0});
     const wht = invoiceWhtTotal(withholding, totals);
     const due = invoiceNetDue(totals, withholding);
     lines.push({account: isSales ? '1100' : '2100', party: draft.party, debit: isSales ? due : 0, credit: isSales ? 0 : due});
-    if (wht) lines.push({account: isSales ? TAX_DEFAULTS.advance : TAX_DEFAULTS.withholding, party: draft.party, debit: isSales ? wht : 0, credit: isSales ? 0 : wht});
-    return lines;
+    const byWht = {};
+    (withholding || []).forEach((w) => {
+      if (!w.rate) return;
+      const account = w.type === 'advance' ? TAX_DEFAULTS.advance : w.type === 'sales' ? TAX_DEFAULTS.salesWht : TAX_DEFAULTS.withholding;
+      byWht[account] = round2((byWht[account] || 0) + whtAmount(w, totals));
+    });
+    Object.entries(byWht).forEach(([account, amount]) => lines.push({account, party: draft.party, debit: isSales ? amount : 0, credit: isSales ? 0 : amount}));
+    const grouped = [];
+    const byKey = {};
+    lines.forEach((l) => {
+      const key = l.account + '|' + (l.party || '');
+      if (!byKey[key]) { byKey[key] = {account: l.account, party: l.party || '', debit: 0, credit: 0}; grouped.push(byKey[key]); }
+      byKey[key].debit = round2(byKey[key].debit + Number(l.debit || 0));
+      byKey[key].credit = round2(byKey[key].credit + Number(l.credit || 0));
+    });
+    return grouped.filter((l) => l.debit || l.credit);
   }
 
   function returnedFor(kind, id) {
@@ -2712,7 +2743,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
         return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines: []};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
     return session.concat(fromFixture)
       .map((r) => ({...r, balance: round2(Math.max((r.netDue ?? r.gross) - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -2722,7 +2753,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const source = code ? invoiceRows(kind).find((r) => r.id === code) : null;
     const locked = Boolean(source && !source.session);
     const draft = source && source.session
-      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || []}
+      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || [], taxAccount: source.taxAccount || ''}
       : source ? null : INV_DRAFT[invKey(kind)];
     const lines = draft ? draft.lines : [];
     const withholding = draft ? (draft.withholding || []) : [];
@@ -2731,6 +2762,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const netDue = invoiceNetDue(totals, withholding);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
     const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense'));
+    const taxAccounts = accounts().filter((a) => a.subtype === 'tax');
+    const taxAccount = (draft && draft.taxAccount) || (isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input);
     const whtRates = [...new Set(['0.5', '1', '2', '4.5', '7.5', '10', '15', ...TAX_RULES.filter((r) => r.kind === 'withholding' || r.kind === 'advance').map((r) => String(r.rate))])];
     const typeOptions = isSales
       ? [['advance', 'Advance tax withheld by customer'], ['sales', 'Sales tax withheld by customer']]
@@ -2748,7 +2781,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     </tr>`).join('');
     const whtRows = withholding.map((w, i) => `<tr data-inv-wht="${i}">
       <td><select data-wht-field="type" class="inline-input">${typeOptions.map(([k, label]) => `<option value="${k}" ${w.type === k ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
-      <td><select data-wht-field="rate" class="inline-input"><option value="">Choose rate</option>${whtRates.map((r) => `<option value="${r}" ${w.rate === r ? 'selected' : ''}>${r}%</option>`).join('')}<option value="custom" ${w.rate === 'custom' ? 'selected' : ''}>Custom amount</option></select>${w.rate === 'custom' ? `<input data-wht-field="custom" value="${e(w.custom || '')}" inputmode="decimal" placeholder="Amount" aria-label="Custom withholding amount">` : ''}</td>
+      <td class="wht-rate-cell"><select data-wht-field="rate" class="inline-input"><option value="custom" ${w.rate === 'custom' ? 'selected' : ''}>Custom amount</option><option value="" ${!w.rate ? 'selected' : ''}>Choose rate</option>${whtRates.map((r) => `<option value="${r}" ${w.rate === r ? 'selected' : ''}>${r}%</option>`).join('')}</select>${w.rate === 'custom' ? `<input class="wht-custom" data-wht-field="custom" value="${e(w.custom || '')}" inputmode="decimal" placeholder="Amount" aria-label="Custom withholding amount">` : ''}</td>
       <td><select data-wht-field="basis" class="inline-input"><option value="net" ${w.basis === 'net' ? 'selected' : ''}>Before sales tax</option><option value="gross" ${w.basis === 'gross' ? 'selected' : ''}>After sales tax</option><option value="tax" ${w.basis === 'tax' ? 'selected' : ''}>Sales tax only</option></select></td>
       <td class="numeric" data-wht-amount>${money(whtAmount(w, totals))}</td>
       <td><button type="button" class="text-button" data-wht-remove="${i}">Remove</button></td>
@@ -2786,7 +2819,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
             <tbody>${lineRows}</tbody>
             <tfoot>
               <tr><td colspan="5">Net total</td><td class="numeric" data-inv-net>${money(totals.net)}</td><td></td><td class="numeric" data-inv-net2>${money(totals.net)}</td><td></td></tr>
-              <tr><td colspan="5">Sales tax total</td><td></td><td></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
+              <tr><td colspan="4">Sales tax total</td><td colspan="3"><select name="taxAccount" class="inline-input" data-inv-tax-account aria-label="Sales tax account">${taxAccounts.map((a) => `<option value="${a.code}" ${a.code === taxAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
               <tr><td colspan="5">Invoice total</td><td colspan="2"></td><td class="numeric" data-inv-gross><strong>${money(totals.gross)}</strong></td><td></td></tr>
             </tfoot>
           </table></div>
@@ -2811,6 +2844,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
             <tr><td colspan="2">Difference from net ${isSales ? 'receivable' : 'payable'}</td><td class="numeric" data-inv-diff>${money(round2(netDue - tenderTotal))}</td><td></td></tr></tfoot>
           </table></div>
           <div class="related"><button type="button" class="button" data-inv-add-tender>Add payment row</button></div>
+          <p class="form-note">Saving records a separate ${isSales ? 'receipt' : 'payment'} voucher ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')}. It appears in Payment / Receipts with its own number, can be opened on its own and printed from there.</p>
         </div>` : ''}
         <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative entry on save' : 'Illustrative entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}</div>
         <div class="panel-body"><div class="related"><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
@@ -2968,7 +3002,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       amount: val(tr, '[data-inv-tender-field="amount"]'),
     }));
     if (tenderRows.length) INV_TENDERS[kind] = tenderRows;
-    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding});
+    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding, taxAccount: v.taxAccount || draft.taxAccount || ''});
     return draft;
   }
   function bindInvoices(kind, rerender, notify, navigate) {
@@ -3123,6 +3157,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
             before.lines[i].account = kind === 'sales' ? item.income : item.expense;
             const rate = invTaxRateFor(item.code, kind);
             if (rate !== '') before.lines[i].tax = rate;
+            const rule = defaultWhtRule(item.code, kind);
+            if (rule) {
+              if (!before.withholding.length) before.withholding.push({type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''});
+              before.withholding.forEach((w) => {
+                if (w.rate) return;
+                w.rate = String(rule.rate);
+                w.basis = rule.basis === 'inclusive' ? 'gross' : 'net';
+                w.type = rule.kind === 'advance' ? 'advance' : 'income';
+              });
+            }
           }
         }
         if (isSelect && ev.target.matches('[data-inv-tender-field="method"]')) {
@@ -3203,11 +3247,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         let invId = editing;
         if (editing) {
           const target = INVOICES.find((x) => x.id === editing);
-          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
+          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
           notify('Document updated for this session.');
         } else {
           invId = (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++);
-          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
+          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
           notify(`Saved for this session: ${draft.party} · ${kind === 'sales' ? 'net receivable' : 'net payable'} ${netDue.toFixed(2)}.`);
         }
         if (INV_PAY[kind]) {
@@ -3232,7 +3276,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         INV_FILES[kind] = [];
         INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', description: kind === 'sales' ? 'Service invoiced' : 'Supplier bill',
           lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'}],
-          withholding: [{type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''}]};
+          withholding: [{type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''}], taxAccount: ''};
         goBack();
       });
     }
@@ -3401,6 +3445,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Basis<select name="basis" class="inline-input"><option value="exclusive" ${v('basis', 'exclusive') === 'exclusive' ? 'selected' : ''}>Tax exclusive</option><option value="inclusive" ${v('basis') === 'inclusive' ? 'selected' : ''}>Tax inclusive</option></select></label>
         <label>Account<select name="account" class="inline-input">${accounts().filter((a) => a.type === 'liability' || a.type === 'asset').sort(ordering).map((a) => `<option value="${a.code}" ${a.code === v('account', '2200') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
         <label>Scope<select name="scope" class="inline-input"><option value="all" ${v('scope', 'all') === 'all' ? 'selected' : ''}>Everything</option><option value="group" ${v('scope') === 'group' ? 'selected' : ''}>An item group</option><option value="item" ${v('scope') === 'item' ? 'selected' : ''}>One item or service</option></select></label>
+        <label>Scope target<select name="scopeValue" class="inline-input"><option value="">—</option>${ITEM_GROUPS.map((g) => `<option value="${e(g.name)}" ${v('scopeValue') === g.name ? 'selected' : ''}>Group · ${e(g.name)}</option>`).join('')}${ITEMS.map((it) => `<option value="${e(it.code)}" ${v('scopeValue') === it.code ? 'selected' : ''}>Item · ${e(it.code)}</option>`).join('')}</select></label>
         <label>Effective from<input name="from" type="date" value="${e(v('from', '2026-11-01'))}" required></label>
         <label>Effective to<input name="to" type="date" value="${e(v('to'))}"></label>
         <label>Status<select name="status" class="inline-input"><option ${v('status', 'Active') === 'Active' ? 'selected' : ''}>Active</option><option ${v('status') === 'Archived' ? 'selected' : ''}>Archived</option></select></label>
@@ -3470,7 +3515,43 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     if (id === 'advance') return advancePanel();
     if (id === 'adjustments') return taxReconPanel();
     if (id === 'defaults') return taxDefaultsPanel();
+    if (id === 'parties') return partyWithholdingPanel();
     return taxRulesPanel();
+  }
+  function whtPartyRows() {
+    const map = new Map();
+    const add = (party, type, amount) => {
+      if (!party || !amount) return;
+      const key = party + '|' + type;
+      const row = map.get(key) || {key, party, type, amount: 0};
+      row.amount = round2(row.amount + amount);
+      map.set(key, row);
+    };
+    fixture(getCompany()).forEach((d) => {
+      (d.lines || []).forEach((l) => {
+        if (l.account === TAX_DEFAULTS.advance) add(d.party, 'advance', num(l.debit) - num(l.credit));
+        if (l.account === TAX_DEFAULTS.withholding) add(d.party, 'withholding', num(l.credit) - num(l.debit));
+        if (l.account === TAX_DEFAULTS.salesWht) add(d.party, 'sales', num(l.credit) - num(l.debit));
+      });
+    });
+    INVOICES.forEach((inv) => {
+      const totals = invoiceTotals(inv.kind, inv.lines || []);
+      (inv.withholding || []).forEach((w) => { if (w.rate) add(inv.party, w.type, whtAmount(w, totals)); });
+    });
+    return [...map.values()].filter((r) => Math.abs(r.amount) > 0.004).sort((a, b) => a.party.localeCompare(b.party) || a.type.localeCompare(b.type));
+  }
+  function partyWithholdingPanel() {
+    const rows = whtPartyRows();
+    const label = (t) => t === 'advance' ? 'Advance tax withheld by customer' : t === 'sales' ? 'Sales tax withheld' : 'Withholding deducted';
+    return `<section class="panel">
+      <div class="panel-head"><h2>Withholding by party</h2><span class="badge">${rows.length} parties</span></div>
+      <div class="table-scroll"><table><thead><tr><th>Party</th><th>Type</th><th class="numeric">Withheld</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows.map((r) => {
+          const filed = Boolean(WHT_FILED.get(r.key));
+          return `<tr><td>${e(r.party)}</td><td>${e(label(r.type))}</td><td class="numeric">${money(r.amount)}</td><td>${filed ? badge('Filed / confirmed', 'good') : badge('Not filed yet', 'warn')}</td><td><button type="button" class="text-button" data-wht-filed="${e(r.key)}">${filed ? 'Mark pending' : 'Mark filed'}</button></td></tr>`;
+        }).join('') || '<tr><td colspan="5">No withholding recorded yet.</td></tr>'}</tbody></table></div>
+      <div class="table-footer">This is the amount each party has withheld or that we have withheld from them, taken from invoices, bills and the fixture ledger. Marking a row filed is a reconciliation note for this session; it does not submit anything to an authority. Use it to check a party's tax certificate against the amount we claim.</div>
+    </section>`;
   }
   function taxDefaultsPanel() {
     const option = (code) => accounts().map((a) => `<option value="${a.code}" ${a.code === code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
@@ -3479,8 +3560,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <form class="panel-body form-grid" data-tax-defaults>
         <label>Output sales tax<select name="output" class="inline-input">${option(TAX_DEFAULTS.output)}</select></label>
         <label>Input tax<select name="input" class="inline-input">${option(TAX_DEFAULTS.input)}</select></label>
-        <label>Withholding payable<select name="withholding" class="inline-input">${option(TAX_DEFAULTS.withholding)}</select></label>
-        <label>Advance tax deducted<select name="advance" class="inline-input">${option(TAX_DEFAULTS.advance)}</select></label>
+        <label>Income tax withholding payable<select name="withholding" class="inline-input">${option(TAX_DEFAULTS.withholding)}</select></label>
+        <label>Sales tax withheld<select name="salesWht" class="inline-input">${option(TAX_DEFAULTS.salesWht)}</select></label>
+        <label>Advance tax deducted by customer<select name="advance" class="inline-input">${option(TAX_DEFAULTS.advance)}</select></label>
         <div class="related"><button class="button primary">Save default accounts</button></div>
       </form>
       <div class="panel-body"><p class="form-note">These accounts carry tax on invoices, bills and withholdings. A tax rule points at one of them; the illustrative entry in each document uses the same defaults. Stored for this session.</p></div>
@@ -3504,9 +3586,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     }));
     document.querySelector('[data-tax-form] [data-form-cancel]')?.addEventListener('click', goBack);
     document.querySelector('[data-tax-defaults]')?.addEventListener('submit', (ev) => {
+    document.querySelectorAll('[data-wht-filed]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.whtFiled;
+      WHT_FILED.set(key, !WHT_FILED.get(key));
+      rerender();
+    }));
       ev.preventDefault();
       const v = Object.fromEntries(new FormData(ev.target));
-      TAX_DEFAULTS = {output: v.output, input: v.input, withholding: v.withholding, advance: v.advance};
+      TAX_DEFAULTS = {output: v.output, input: v.input, withholding: v.withholding, salesWht: v.salesWht, advance: v.advance};
       notify('Default tax accounts saved for this session.');
       rerender();
     });
@@ -3518,7 +3605,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const editingCode = v.editingCode || '';
       if (!editingCode && TAX_RULES.some((r) => r.code === v.code)) { notify('That tax rule code already exists.'); return; }
       const [proj, loc] = form.querySelectorAll('.ms');
-      const record = {code: v.code, name: v.name, kind: v.kind, rate: Number(v.rate), basis: v.basis, account: v.account, scope: v.scope, from: v.from, to: v.to || '', status: v.status || 'Active', override: v.override || 'yes', description: v.description || '', projects: picked(proj), locations: picked(loc)};
+      const record = {code: v.code, name: v.name, kind: v.kind, rate: Number(v.rate), basis: v.basis, account: v.account, scope: v.scope, scopeValue: v.scopeValue || '', from: v.from, to: v.to || '', status: v.status || 'Active', override: v.override || 'yes', description: v.description || '', projects: picked(proj), locations: picked(loc)};
       if (editingCode) {
         const target = TAX_RULES.find((r) => r.code === editingCode);
         if (target) Object.assign(target, record);
@@ -3797,6 +3884,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label>Accounting group<select name="group" class="inline-input">${['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'].map((g) => `<option value="${g}" ${(v('group') || '').toLowerCase().startsWith(g.slice(0, 5).toLowerCase()) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
         <label>Control<select name="control" class="inline-input">${[['', 'Ordinary posting account'], ['receivable', 'Receivable control — customer on every line'], ['payable', 'Payable control — supplier on every line'], ['bank', 'Bank control — needs a bank sub-account'], ['cash', 'Cash control — needs a cash sub-account']].map(([k, l]) => `<option value="${k}" ${v('control') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>Subtype<select name="subtype" class="inline-input"><option value="" ${v('subtype') === '' ? 'selected' : ''}>Ordinary</option><option value="tax" ${v('subtype') === 'tax' ? 'selected' : ''}>Tax account</option><option value="control" ${v('subtype') === 'control' ? 'selected' : ''}>Control account</option><option value="bank" ${v('subtype') === 'bank' ? 'selected' : ''}>Bank account</option><option value="cash" ${v('subtype') === 'cash' ? 'selected' : ''}>Cash account</option></select></label>
         <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What this account is used for"></label>
         <label>State<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
         <div class="related"><button class="button primary">${a.code ? 'Save changes' : 'Add account'}</button><button type="button" class="button" data-chart-cancel>Cancel</button></div>
@@ -3816,7 +3904,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const editing = v.editingCode || '';
       if (!editing && accounts().some((a) => a.code === v.code)) { notify('That account code already exists.'); return; }
       const group = {asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses'}[v.type];
-      const record = {code: v.code, name: v.name, type: v.type, group, control: v.control || '', description: v.description || '', currency: 'PKR', active: v.status === 'Active'};
+      const record = {code: v.code, name: v.name, type: v.type, group, control: v.control || '', subtype: v.subtype || '', description: v.description || '', currency: 'PKR', active: v.status === 'Active'};
       if (editing) { const target = accounts().find((a) => a.code === editing); if (target) Object.assign(target, record); notify('Account updated for this session.'); }
       else { accounts().push(record); notify('Account added for this session.'); }
       back();

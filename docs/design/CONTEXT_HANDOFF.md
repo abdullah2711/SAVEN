@@ -137,8 +137,11 @@ the decision index in one place.
   filter**. Type, status and balance live in the column menus, not the top bar. The
   state lives outside the page and survives navigation.
 - **Taxes** (Accounting → Taxes, now in the rail): Rules register and form, Registers,
-  Withholding, Advance tax, Reconciliation and **Default accounts**. It was built
-  earlier but missing from the Accounting page map, so it was only reachable by hash.
+  Withholding, Advance tax, Reconciliation, **Party withholding** and **Default
+  accounts**. Default accounts are output tax, input tax, income tax withholding
+  payable, sales tax withheld and advance tax. Party withholding lists each party's
+  withheld amount and a Filed / Not filed reconciliation note. It was built earlier
+  but missing from the Accounting page map, so it was only reachable by hash.
   20 modules and 154 pages mapped; planned pages render their specification.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording

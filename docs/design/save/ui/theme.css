@@ -405,7 +405,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .inv-items{table-layout:fixed}
 .inv-items th:nth-child(1),.inv-items td:nth-child(1){width:16%}
 .inv-items th:nth-child(2),.inv-items td:nth-child(2){width:18%}
-.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:15%}
+.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:14%}
 .inv-items th:nth-child(4),.inv-items td:nth-child(4){width:7%}
 .inv-items th:nth-child(5),.inv-items td:nth-child(5){width:10%}
 .inv-items th:nth-child(6),.inv-items td:nth-child(6){width:9%}
@@ -458,7 +458,19 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .inv-items th:nth-child(9),.inv-items td:nth-child(9){width:7%}
 /* A register whose only filter is search should not stretch the field across the page. */
 .filterbar label:only-of-type{max-width:520px}
-.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:17%}
-.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:20%}
-.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:15%}
+.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:16%}
+.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:19%}
+.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:14%}
 .inv-items th:nth-child(8),.inv-items td:nth-child(8){width:13%}
+.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:8%}
+.inv-wht th:nth-child(1),.inv-wht td:nth-child(1){width:24%}
+.inv-wht th:nth-child(2),.inv-wht td:nth-child(2){width:30%}
+.inv-wht th:nth-child(3),.inv-wht td:nth-child(3){width:20%}
+.inv-wht th:nth-child(4),.inv-wht td:nth-child(4){width:14%}
+.inv-wht th:nth-child(5),.inv-wht td:nth-child(5){width:12%}
+.wht-rate-cell select,.wht-rate-cell input{width:100%}
+.wht-rate-cell .wht-custom{margin-top:4px}
+.inv-pay th:nth-child(1),.inv-pay td:nth-child(1){width:22%}
+.inv-pay th:nth-child(2),.inv-pay td:nth-child(2){width:48%}
+.inv-pay th:nth-child(3),.inv-pay td:nth-child(3){width:18%}
+.inv-pay th:nth-child(4),.inv-pay td:nth-child(4){width:12%}

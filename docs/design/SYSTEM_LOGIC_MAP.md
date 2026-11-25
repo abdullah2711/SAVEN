@@ -311,6 +311,7 @@ permissions. See §100 of the decision log.
 | 33 | 170–173 | every list searchable, inner scroll keeps it open, placement stays beside the field |
 | 34 | 174–182 | debounced search, invoice registers/form, withholding, uploads, previews, tax defaults |
 | 35 | 183–185 | Taxes linked into Accounting, invoice register fits, item row widths |
+| 36 | 187–193 | tax account subtype/override, withholding defaults and party register, row layout, payment voucher |
 
 ---
 

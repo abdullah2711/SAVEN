@@ -2465,3 +2465,90 @@ illustration 0.00 / 0.00” block on the cash and party forms.
   market-MVP page and is not the rules register.
 - The rules page has no per-item-group scope yet; it is per rule with a scope field.
 - The reconciliation tab is a workpaper, not automatic matching.
+
+
+---
+
+# Round 36 — tax accounts, withholding by party, row layout, payment vouchers
+
+Owner review of the sales invoice form. The form's logic was accepted; this round
+fixes the accounts, the row layout and the documents it creates.
+
+## 187. Sales tax and withholding have separate default accounts
+
+The Default accounts tab now holds five accounts: **output sales tax**, **input tax**,
+**income tax withholding payable**, **sales tax withheld** and **advance tax deducted
+by customer**. The illustrative entry picks by withholding type:
+
+- sales invoice, advance tax withheld → advance tax receivable (our asset);
+- sales invoice, sales tax withheld → sales tax withheld;
+- purchase bill, income tax withholding → withholding tax payable;
+- purchase bill, sales tax withheld → sales tax withheld.
+
+A new liability account **2210 Sales tax withheld** exists in the chart for this.
+A withholding row no longer collapses into one amount: each type posts to its own
+account in the preview, so two withholding rows with different types show two lines.
+Lines that land on the same account and party are aggregated, so a sales-tax override
+that equals the sales-tax-withheld account does not print twice.
+
+## 188. Tax account on the document
+
+The **Sales tax total** row now carries an account selector. It defaults to output tax
+(sales) or input tax (purchase) but can be overridden on the document. Only accounts
+whose **subtype is `tax`** are offered. Accounts gained a subtype field in the chart
+form (ordinary, tax, control, bank, cash), and the chart marks 1300, 2200, 2210, 1400
+and 2150 as tax accounts. The chosen account is stored on the invoice and used by the
+illustrative entry.
+
+## 189. Withholding defaults from tax rules
+
+Tax rules already had a scope of everything / item group / item; the scope now has a
+**Scope target** (group or item). When an item is chosen on an invoice:
+
+- its income or expense account and sales/purchase tax rate are filled from the item;
+- a matching **advance tax** rule (sales) or **withholding** rule (purchase) fills the
+  withholding rate and basis when the row has no rate yet.
+
+The user can always override the rate, basis or amount; a row that already has a rate
+is never replaced. Item-group matching uses the item's group name or group code.
+
+## 190. Withholding row layout and custom amount
+
+The rate list starts with **Custom amount**, then **Choose rate**, then the common
+rates. The placeholder is explicitly selected while the row has no rate, so an
+untouched row does not silently become “Custom”; the default rule can fill 0.5% or
+4.5% as intended. Choosing Custom shows an
+amount box directly under the rate in the same cell. Withholding, payment and item
+tables were rebalanced to fixed percentage widths so nothing overflows: item 16/19/14/
+6/9/9/6/13/8, withholding 24/30/20/14/12, payment 22/48/18/12.
+
+## 191. Withholding by party register
+
+Taxes has a new **Party withholding** tab. It lists each party, the type (advance tax
+withheld by customer, sales tax withheld, or withholding deducted), the amount and a
+Filed / Not filed state with a toggle. The amount comes from the fixture ledger lines
+on the advance, withholding and sales-tax-withheld accounts plus session invoices with
+withholding rows. Marking **Filed** is a reconciliation note for this session; it does
+not submit anything to an authority. It is how the owner checks a party's certificate
+against the withheld amount we claim.
+
+## 192. The invoice payment is a separate voucher
+
+Recording payment with an invoice now says so explicitly: the form shows the receipt
+or payment number that will be created (`RCPT-MM-YYYY-nnnn` / `PAY-MM-YYYY-nnnn`) and
+states that it is a separate document. The Payment / Receipts register already stores
+it as such (its own number, allocations, method and account); the record view now has
+a **Print voucher** button and each allocation links back to its invoice or bill. The
+invoice remains its own document with its own number and can be printed separately.
+This is a session build: printing uses the browser, and no PDF/template engine is
+connected.
+
+## 193. Still open in this area
+
+- The tax-rule scope target is stored and matched, but there is no item-group screen
+  that lists all rules for a group yet.
+- Withholding rows use the default accounts; per-row account override is not built.
+- “Filed” is a manual note with no attachment or authority reference.
+- Sales tax withholding on a purchase uses the same sales-tax-withheld account; a
+  separate purchase-side account may be added when the tax module is completed.
+- Payment voucher printing has no branded template; it prints the record page.
