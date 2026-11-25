@@ -318,6 +318,8 @@ permissions. See §100 of the decision log.
 | 40 | 210–212 | default item account rules, inventory cost entry, cost-of-sales account |
 | 41 | 213–217 | advance balance after application, advance entry previews, ADVA application documents |
 | 42 | 220–222 | bill inventory receipt/clearing, advance account filtering, document overflow menu |
+| 43 | 223 | duplicate preview removed |
+| 44 | 224–225 | return entries, inventory reversal, exact invoice price |
 
 ---
 

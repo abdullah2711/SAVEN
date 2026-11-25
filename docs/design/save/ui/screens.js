@@ -3066,7 +3066,7 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   function defaultReturnLines(inv) {
-    return (inv.lines || []).map((l) => ({item: l.item || '', account: l.account || '', qty: l.qty || '1', returnQty: l.qty || '1', price: String(round2(invLineNet(l) / (Number(l.qty) || 1))), tax: l.tax || '0', discountType: '', discountValue: ''}));
+    return (inv.lines || []).map((l) => ({item: l.item || '', account: l.account || '', qty: l.qty || '1', returnQty: l.qty || '1', price: String(round2(invLineNet(l) / (Number(l.qty) || 1))), tax: l.tax || '0', discountType: '', discountValue: '', added: false}));
   }
   function retLineCalc(l) {
     const net = round2((Number(l.returnQty) || 0) * (Number(l.price) || 0));
@@ -3090,7 +3090,7 @@ const ITEM_ACCOUNT_RULES = [
       <td><select data-ret-field="account" class="inline-input">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td>
       <td class="numeric">${e(l.qty)}</td>
       <td><input class="numeric" data-ret-field="returnQty" value="${e(l.returnQty)}" inputmode="decimal" aria-label="Return quantity ${i + 1}"></td>
-      <td><input class="numeric" data-ret-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Return unit price ${i + 1}"></td>
+      <td class="numeric" data-price="${e(l.price)}">${l.added ? `<input class="numeric" data-ret-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Return unit price ${i + 1}">` : money(l.price)}</td>
       <td class="numeric" data-ret-net>${money(retLineCalc(l).net)}</td>
       <td><input class="numeric" data-ret-field="tax" value="${e(l.tax)}" inputmode="decimal" aria-label="Return tax rate ${i + 1}"></td>
       <td class="numeric" data-ret-tax>${money(retLineCalc(l).tax)}</td>
@@ -3113,7 +3113,27 @@ const ITEM_ACCOUNT_RULES = [
             <tbody>${rows || '<tr><td colspan="10">This document has no lines.</td></tr>'}</tbody>
             <tfoot><tr><td colspan="5">Return total</td><td class="numeric" data-ret-total-net>${money(totals.net)}</td><td></td><td class="numeric" data-ret-total-tax>${money(totals.tax)}</td><td class="numeric" data-ret-total-gross><strong>${money(totals.gross)}</strong></td><td></td></tr></tfoot></table></div>
             <div class="related"><button type="button" class="button" data-ret-add>Add return row</button></div>
-          </div>` : '<div class="panel-body"><p class="form-note">Choose the original document first; its complete line detail then appears here.</p></div>'}
+          </div>
+          <div class="panel-body form-grid">${(() => {
+            const entry = isSales
+              ? [{account: '4100', party: '', debit: totals.net, credit: 0}, {account: selected.taxAccount || TAX_DEFAULTS.output, party: '', debit: totals.tax, credit: 0}, {account: '1100', party: selected.party, debit: 0, credit: totals.gross}]
+              : (() => {
+                const trackedNet = round2(lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked).reduce((n, l) => n + retLineCalc(l).net, 0));
+                const otherNet = round2(totals.net - trackedNet);
+                const rows = [{account: '2100', party: selected.party, debit: totals.gross, credit: 0}, {account: selected.taxAccount || TAX_DEFAULTS.input, party: '', debit: 0, credit: totals.tax}];
+                if (otherNet) rows.push({account: '5200', party: '', debit: 0, credit: otherNet});
+                if (trackedNet) rows.push({account: itemAccountFor('inventory'), party: '', debit: 0, credit: trackedNet});
+                return rows;
+              })();
+            const tracked = lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
+            const invValue = round2(tracked.reduce((n, l) => n + retLineCalc(l).net, 0));
+            return ledgerIllustration(isSales ? 'Illustrative sales return' : 'Illustrative purchase return', entry, isSales ? 'Sales returns and output tax reverse against the customer receivable. Inventory and cost of sales reverse separately below.' : 'The payable is debited; input tax is credited. Non-tracked lines credit purchase returns, tracked lines credit inventory at their net amount.');
+          })()}${(() => {
+            if (!isSales) return '';
+            const tracked = lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
+            const invValue = round2(tracked.reduce((n, l) => n + retLineCalc(l).net, 0));
+            return invValue ? ledgerIllustration('Illustrative inventory reversal', [{account: '1200', party: '', debit: invValue, credit: 0}, {account: '5100', party: '', debit: 0, credit: invValue}], 'Returned goods come back into inventory at their cost, reversing cost of sales.') : '';
+          })()}</div>` : '<div class="panel-body"><p class="form-note">Choose the original document first; its complete line detail then appears here.</p></div>'}
         <div class="panel-body"><div class="related"><button class="button primary" ${selected ? '' : 'disabled'}>Save return</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">A return keeps the original document and reduces its balance. It is numbered in the return series. Inventory cost and refund posting are recorded as session data in this build; nothing posts to the ledger.</p></div>
       </form>
@@ -3487,7 +3507,7 @@ const ITEM_ACCOUNT_RULES = [
         account: (tr.querySelector('[data-ret-field="account"]') || {}).value || '',
         qty: (tr.querySelector('[data-ret-field="qty"]') || {}).value || '1',
         returnQty: (tr.querySelector('[data-ret-field="returnQty"]') || {}).value || '',
-        price: (tr.querySelector('[data-ret-field="price"]') || {}).value || '0',
+        price: (tr.querySelector('[data-ret-field="price"]') || {}).value || tr.dataset.price || '0',
         tax: (tr.querySelector('[data-ret-field="tax"]') || {}).value || '0',
       }));
       RET_DRAFT[kind] = {...RET_DRAFT[kind], invoice: v.invoice || '', date: v.date, reason: v.reason, notes: v.notes || '', lines};
@@ -3500,7 +3520,7 @@ const ITEM_ACCOUNT_RULES = [
     });
     retForm?.querySelector('[data-ret-add]')?.addEventListener('click', () => {
       captureRet();
-      RET_DRAFT[kind].lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', qty: '1', returnQty: '1', price: '0.00', tax: '0'});
+      RET_DRAFT[kind].lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', qty: '1', returnQty: '1', price: '0.00', tax: '0', added: true});
       rerender();
     });
     retForm?.querySelectorAll('[data-ret-remove]').forEach((b) => b.addEventListener('click', () => {

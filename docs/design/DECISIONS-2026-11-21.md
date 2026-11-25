@@ -2970,3 +2970,33 @@ its own notes; the invoice/bill form now renders exactly one invoice entry, one
 payment voucher (when recording payment), one inventory issue/receipt (when stock is
 updated) and one advance application (when advances are applied). Verified by counting
 the rendered previews and loading both the payment and invoice forms.
+
+
+---
+
+# Round 44 — sales return entries and exact invoice values
+
+## 224. Returns show their ledger effect
+
+The return form now ends with a balanced illustrative entry:
+
+- **Sales return**: debit Sales returns (4100) and output tax, credit the customer
+  receivable for the gross return. For tracked items a second entry reverses cost of
+  sales: debit Inventory, credit Cost of sales.
+- **Purchase return**: debit the supplier payable; credit input tax; credit Purchase
+  returns (5200) for non-tracked lines and Inventory for tracked lines at their net
+  amount.
+
+Two accounts were added: **4100 Sales returns** and **5200 Purchase returns**. The tax
+account follows the original document's tax account when present, otherwise the tax
+defaults.
+
+## 225. The price is taken from the invoice
+
+The unit price on a return line is no longer an editable box. It is the invoice's unit
+net after discount, shown as text, and the net/tax/total are calculated from the
+returned quantity. Only a manually added line (for something not on the original)
+shows a price input.
+
+This keeps the return tied to the original document, while still allowing a partial
+quantity or a free line.
