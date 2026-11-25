@@ -94,8 +94,10 @@ const TAX_TABS = [
   ['adjustments', 'Reconciliation'],
   ['parties', 'Party withholding'],
   ['defaults', 'Default accounts'],
+  ['calc', 'Calculation'],
 ];
 let TAX_DEFAULTS = {output: '2200', input: '1300', withholding: '2150', salesWht: '2210', advance: '1400'};
+let TAX_AFTER_DISCOUNT = true;
 const WHT_FILED = new Map();
 let TAX_ACTIVE = 'rules';
 let PARTY_OPEN = '';
@@ -2617,21 +2619,32 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
   const INV_DRAFT = {
     sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Service invoiced',
-      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}], taxAccount: ''},
+      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}], taxAccount: ''},
     purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Supplier bill',
-      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}], taxAccount: ''},
+      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}], taxAccount: ''},
   };
   const INV_FILES = {sales: [], purchase: []};
   const PAY_FILES = [];
   if (!PAY_FORM.pay) PAY_FORM.pay = {enabled: false, lines: [{method: 'bank', account: '', amount: ''}]};
 
-  function invLineNet(l) { return round2((Number(l.qty) || 0) * (Number(l.price) || 0)); }
-  function invLineTax(l) { return round2(invLineNet(l) * (Number(l.tax) || 0) / 100); }
+  function invLineBase(l) { return round2((Number(l.qty) || 0) * (Number(l.price) || 0)); }
+  function invLineDiscount(l) {
+    const base = invLineBase(l);
+    if (l.discountType === 'customPct') return round2(base * (Number(l.discountValue) || 0) / 100);
+    if (l.discountType === 'customAmt') return round2(Math.min(Number(l.discountValue) || 0, base));
+    if (l.discountType) return round2(base * (Number(l.discountType) || 0) / 100);
+    return 0;
+  }
+  function invLineNet(l) { return round2(invLineBase(l) - invLineDiscount(l)); }
+  function invTaxBase(l) { return TAX_AFTER_DISCOUNT ? invLineNet(l) : invLineBase(l); }
+  function invLineTax(l) { return round2(invTaxBase(l) * (Number(l.tax) || 0) / 100); }
   function invLineGross(l) { return round2(invLineNet(l) + invLineTax(l)); }
   function invoiceTotals(kind, lines) {
-    const net = round2(lines.reduce((n, l) => n + invLineNet(l), 0));
+    const base = round2(lines.reduce((n, l) => n + invLineBase(l), 0));
+    const discount = round2(lines.reduce((n, l) => n + invLineDiscount(l), 0));
+    const net = round2(base - discount);
     const tax = round2(lines.reduce((n, l) => n + invLineTax(l), 0));
-    return {net, tax, gross: round2(net + tax), rate: 0};
+    return {base, discount, net, tax, gross: round2(net + tax), rate: 0};
   }
   function whtBaseValue(basis, totals) { return basis === 'gross' ? totals.gross : basis === 'tax' ? totals.tax : totals.net; }
   function whtAmount(w, totals) {
@@ -2774,6 +2787,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       <td><select data-inv-field="project" class="inline-input">${['', ...PROJECTS.map((p) => p.code)].map((p) => `<option value="${p}" ${p === (l.project || '') ? 'selected' : ''}>${p || 'No project'}</option>`).join('')}</select></td>
       <td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td>
       <td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td>
+      <td class="discount-cell"><select data-inv-field="discountType" class="inline-input" aria-label="Line ${i + 1} discount">
+        <option value="">No discount</option>
+        ${['5', '10', '15', '20'].map((d) => `<option value="${d}" ${l.discountType === d ? 'selected' : ''}>${d}%</option>`).join('')}
+        <option value="customPct" ${l.discountType === 'customPct' ? 'selected' : ''}>Custom %</option>
+        <option value="customAmt" ${l.discountType === 'customAmt' ? 'selected' : ''}>Custom amount</option>
+      </select>${l.discountType === 'customPct' || l.discountType === 'customAmt' ? `<input class="discount-input" data-inv-field="discountValue" value="${e(l.discountValue)}" inputmode="decimal" placeholder="${l.discountType === 'customPct' ? 'Percent' : 'Amount'}" aria-label="Line ${i + 1} discount value">` : ''}</td>
       <td class="numeric" data-line-net>${money(invLineNet(l))}</td>
       <td><input class="numeric" data-inv-field="tax" value="${e(l.tax)}" inputmode="decimal" aria-label="Line ${i + 1} tax rate"></td>
       <td class="numeric" data-line-gross>${money(invLineGross(l))}</td>
@@ -2815,12 +2834,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <div class="panel-body">
           <div class="section-title">Items</div>
           <div class="table-scroll"><table class="invoice-lines inv-items">
-            <thead><tr><th>Item</th><th>Account</th><th>Project</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Total</th><th class="numeric">Tax %</th><th class="numeric">Total after tax</th><th></th></tr></thead>
+            <thead><tr><th>Item</th><th>Account</th><th>Project</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th>Discount</th><th class="numeric">Total</th><th class="numeric">Tax %</th><th class="numeric">Total after tax</th><th></th></tr></thead>
             <tbody>${lineRows}</tbody>
             <tfoot>
-              <tr><td colspan="5">Net total</td><td class="numeric" data-inv-net>${money(totals.net)}</td><td></td><td class="numeric" data-inv-net2>${money(totals.net)}</td><td></td></tr>
-              <tr><td colspan="4">Sales tax total</td><td colspan="3"><select name="taxAccount" class="inline-input" data-inv-tax-account aria-label="Sales tax account">${taxAccounts.map((a) => `<option value="${a.code}" ${a.code === taxAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
-              <tr><td colspan="5">Invoice total</td><td colspan="2"></td><td class="numeric" data-inv-gross><strong>${money(totals.gross)}</strong></td><td></td></tr>
+              <tr><td colspan="6">Original total</td><td class="numeric" data-inv-base>${money(totals.base)}</td><td></td><td class="numeric" data-inv-base2>${money(totals.base)}</td><td></td></tr>
+              <tr><td colspan="6">Discount total</td><td class="numeric" data-inv-discount>${totals.discount ? '−' : ''}${money(totals.discount)}</td><td></td><td class="numeric" data-inv-discount2>${totals.discount ? '−' : ''}${money(totals.discount)}</td><td></td></tr>
+              <tr><td colspan="6">Net total</td><td class="numeric" data-inv-net>${money(totals.net)}</td><td></td><td class="numeric" data-inv-net2>${money(totals.net)}</td><td></td></tr>
+              <tr><td colspan="4">Sales tax total</td><td colspan="4"><select name="taxAccount" class="inline-input" data-inv-tax-account aria-label="Sales tax account">${taxAccounts.map((a) => `<option value="${a.code}" ${a.code === taxAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
+              <tr><td colspan="6">Invoice total</td><td colspan="2"></td><td class="numeric" data-inv-gross><strong>${money(totals.gross)}</strong></td><td></td></tr>
             </tfoot>
           </table></div>
           <div class="related"><button type="button" class="button" data-inv-add-line>Add item row</button></div>
@@ -2987,6 +3008,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       project: val(tr, '[data-inv-field="project"]'),
       qty: val(tr, '[data-inv-field="qty"]'),
       price: val(tr, '[data-inv-field="price"]'),
+      discountType: val(tr, '[data-inv-field="discountType"]'),
+      discountValue: val(tr, '[data-inv-field="discountValue"]'),
       tax: val(tr, '[data-inv-field="tax"]'),
     }));
     const withholding = [...root.querySelectorAll('[data-inv-wht]')].map((tr) => ({
@@ -3125,6 +3148,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           const gross = tr.querySelector('[data-line-gross]'); if (gross) gross.textContent = money(invLineGross(d.lines[i]));
         });
         const put = (sel, value) => root.querySelectorAll(sel).forEach((el) => { el.textContent = value; });
+        put('[data-inv-base]', money(t.base));
+        put('[data-inv-base2]', money(t.base));
+        put('[data-inv-discount]', (t.discount ? '−' : '') + money(t.discount));
+        put('[data-inv-discount2]', (t.discount ? '−' : '') + money(t.discount));
         put('[data-inv-net]', money(t.net));
         put('[data-inv-net2]', money(t.net));
         put('[data-inv-tax]', money(t.tax));
@@ -3140,13 +3167,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         put('[data-inv-diff]', money(round2(due - paid)));
       };
       form?.addEventListener('input', (ev) => {
-        if (!ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]')) return;
+        if (!ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]')) return;
         captureInvoice(kind, root);
         recalc();
       });
       form?.addEventListener('change', (ev) => {
         const isSelect = ev.target.matches('select');
-        const numeric = ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]');
+        const numeric = ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]');
         if (!isSelect && !numeric) return;
         const before = captureInvoice(kind, root);
         if (isSelect && ev.target.matches('[data-inv-field="item"]')) {
@@ -3178,13 +3205,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       });
       root.querySelector('[data-inv-add-line]')?.addEventListener('click', () => {
         const d = captureInvoice(kind, root);
-        d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'});
+        d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'});
         rerender();
       });
       root.querySelectorAll('[data-inv-line-remove]').forEach((b) => b.addEventListener('click', () => {
         const d = captureInvoice(kind, root);
         d.lines.splice(Number(b.dataset.invLineRemove), 1);
-        if (!d.lines.length) d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'});
+        if (!d.lines.length) d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'});
         rerender();
       }));
       root.querySelector('[data-inv-add-wht]')?.addEventListener('click', () => {
@@ -3247,11 +3274,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         let invId = editing;
         if (editing) {
           const target = INVOICES.find((x) => x.id === editing);
-          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
+          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
           notify('Document updated for this session.');
         } else {
           invId = (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++);
-          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
+          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
           notify(`Saved for this session: ${draft.party} · ${kind === 'sales' ? 'net receivable' : 'net payable'} ${netDue.toFixed(2)}.`);
         }
         if (INV_PAY[kind]) {
@@ -3275,7 +3302,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         }
         INV_FILES[kind] = [];
         INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', description: kind === 'sales' ? 'Service invoiced' : 'Supplier bill',
-          lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'}],
+          lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}],
           withholding: [{type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''}], taxAccount: ''};
         goBack();
       });
@@ -3516,6 +3543,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     if (id === 'adjustments') return taxReconPanel();
     if (id === 'defaults') return taxDefaultsPanel();
     if (id === 'parties') return partyWithholdingPanel();
+    if (id === 'calc') return taxCalcPanel();
     return taxRulesPanel();
   }
   function whtPartyRows() {
@@ -3539,6 +3567,20 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       (inv.withholding || []).forEach((w) => { if (w.rate) add(inv.party, w.type, whtAmount(w, totals)); });
     });
     return [...map.values()].filter((r) => Math.abs(r.amount) > 0.004).sort((a, b) => a.party.localeCompare(b.party) || a.type.localeCompare(b.type));
+  }
+  function taxCalcPanel() {
+    return `<section class="panel">
+      <div class="panel-head"><h2>Tax calculation</h2><span class="badge">Document-wide</span></div>
+      <form class="panel-body form-grid" data-tax-calc>
+        <label>Sales tax and discounts<select name="afterDiscount" class="inline-input">
+          <option value="yes" ${TAX_AFTER_DISCOUNT ? 'selected' : ''}>Tax the discounted amount</option>
+          <option value="no" ${TAX_AFTER_DISCOUNT ? '' : 'selected'}>Tax the original amount</option>
+        </select></label>
+        <div class="wide"><p class="form-note">Some authorities tax the original price before a discount, others tax what the customer actually pays. This setting decides the tax base for every invoice and bill; it is not changeable on the document. The line discount itself still reduces what the customer owes either way.</p></div>
+        <div class="related"><button class="button primary">Save tax calculation</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">Discounts are entered per item line as a percentage or a custom amount. With “Tax the discounted amount”, tax is calculated on qty × price − discount. With “Tax the original amount”, tax is calculated on qty × price but the customer is still charged the discounted net plus that tax.</p></div>
+    </section>`;
   }
   function partyWithholdingPanel() {
     const rows = whtPartyRows();
@@ -3586,6 +3628,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     }));
     document.querySelector('[data-tax-form] [data-form-cancel]')?.addEventListener('click', goBack);
     document.querySelector('[data-tax-defaults]')?.addEventListener('submit', (ev) => {
+    document.querySelector('[data-tax-calc]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const v = Object.fromEntries(new FormData(ev.target));
+      TAX_AFTER_DISCOUNT = v.afterDiscount !== 'no';
+      notify(TAX_AFTER_DISCOUNT ? 'Tax will be calculated after discounts.' : 'Tax will be calculated on the original amount.');
+      rerender();
+    });
     document.querySelectorAll('[data-wht-filed]').forEach((b) => b.addEventListener('click', () => {
       const key = b.dataset.whtFiled;
       WHT_FILED.set(key, !WHT_FILED.get(key));

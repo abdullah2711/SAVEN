@@ -403,27 +403,10 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 
 /* Invoice item, withholding and payment tables: fixed columns so rows line up. */
 .inv-items{table-layout:fixed}
-.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:16%}
-.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:18%}
-.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:14%}
-.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:7%}
-.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:10%}
-.inv-items th:nth-child(6),.inv-items td:nth-child(6){width:9%}
-.inv-items th:nth-child(7),.inv-items td:nth-child(7){width:7%}
-.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:11%}
-.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:7%}
 .inv-items input,.inv-items select,.inv-wht input,.inv-wht select,.inv-pay input,.inv-pay select{min-width:0;width:100%}
+.inv-items input{padding-left:8px;padding-right:8px}
 .inv-wht{table-layout:fixed}
-.inv-wht th:nth-child(1),.inv-wht td:nth-child(1){width:32%}
-.inv-wht th:nth-child(2),.inv-wht td:nth-child(2){width:30%}
-.inv-wht th:nth-child(3),.inv-wht td:nth-child(3){width:22%}
-.inv-wht th:nth-child(4),.inv-wht td:nth-child(4){width:10%}
-.inv-wht th:nth-child(5),.inv-wht td:nth-child(5){width:6%}
 .inv-pay{table-layout:fixed}
-.inv-pay th:nth-child(1),.inv-pay td:nth-child(1){width:26%}
-.inv-pay th:nth-child(2),.inv-pay td:nth-child(2){width:52%}
-.inv-pay th:nth-child(3),.inv-pay td:nth-child(3){width:16%}
-.inv-pay th:nth-child(4),.inv-pay td:nth-child(4){width:6%}
 .invoice-due + .section-title{margin-top:24px}
 .evidence-drop p{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap}
 .evidence-drop .button{display:inline-flex;width:auto;min-height:0;padding:7px 13px;background:var(--tint)}
@@ -446,23 +429,19 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .inv-register th:nth-child(12),.inv-register td:nth-child(12){width:7%}
 .inv-register th:nth-child(13),.inv-register td:nth-child(13){width:4%}
 .inv-register td.col-party,.inv-register td.col-project,.inv-register td.col-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* Item table: give item and account readable width. */
-.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:19%}
-.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:19%}
-.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:13%}
-.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:6%}
-.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:9%}
-.inv-items th:nth-child(6),.inv-items td:nth-child(6){width:9%}
-.inv-items th:nth-child(7),.inv-items td:nth-child(7){width:6%}
-.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:12%}
-.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:7%}
+/* Item table: item, account, project, qty, price, discount, total, tax %, after tax, remove. */
+.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:14%}
+.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:20%}
+.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:12%}
+.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:4%}
+.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:7%}
+.inv-items th:nth-child(6),.inv-items td:nth-child(6){width:13%}
+.inv-items th:nth-child(7),.inv-items td:nth-child(7){width:7%}
+.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:5%}
+.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:11%}
+.inv-items th:nth-child(10),.inv-items td:nth-child(10){width:7%}
 /* A register whose only filter is search should not stretch the field across the page. */
 .filterbar label:only-of-type{max-width:520px}
-.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:16%}
-.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:19%}
-.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:14%}
-.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:13%}
-.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:8%}
 .inv-wht th:nth-child(1),.inv-wht td:nth-child(1){width:24%}
 .inv-wht th:nth-child(2),.inv-wht td:nth-child(2){width:30%}
 .inv-wht th:nth-child(3),.inv-wht td:nth-child(3){width:20%}
@@ -474,3 +453,6 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .inv-pay th:nth-child(2),.inv-pay td:nth-child(2){width:48%}
 .inv-pay th:nth-child(3),.inv-pay td:nth-child(3){width:18%}
 .inv-pay th:nth-child(4),.inv-pay td:nth-child(4){width:12%}
+
+.discount-cell select,.discount-cell input{width:100%;min-width:0}
+.discount-cell .discount-input{margin-top:4px}

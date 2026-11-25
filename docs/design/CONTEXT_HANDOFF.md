@@ -109,8 +109,9 @@ the decision index in one place.
   `RCPT-MM-YYYY-0001` and payments `PAY-MM-YYYY-0001` in separate series.
 - **Sales/purchase invoices**: main and returns registers with search, dates and the
   common column menus; rows open the document. The form uses one description and a
-  location, item-based rows (item, account, project, qty, price, total, tax % and total
-  after tax), totals under the columns, gross receivable/payable, withholding rows
+  location, item-based rows (item, account, project, qty, price, discount, total, tax %
+  and total after tax), totals under the columns (original, discount, net, tax and
+  invoice total), gross receivable/payable, withholding rows
   (type, rate or custom, basis, amount), net due after withholding, optional record
   payment rows with total and difference, evidence, and a balanced illustrative entry.
   Session documents only; fixture documents are read-only.

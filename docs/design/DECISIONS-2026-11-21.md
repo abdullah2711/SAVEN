@@ -2552,3 +2552,57 @@ connected.
 - Sales tax withholding on a purchase uses the same sales-tax-withheld account; a
   separate purchase-side account may be added when the tax module is completed.
 - Payment voucher printing has no branded template; it prints the record page.
+
+
+---
+
+# Round 37 — line discounts and the tax base they use
+
+## 194. Discount on every item line
+
+The item table has a **Discount** column between unit price and total:
+
+- No discount, 5%, 10%, 15%, 20%, **Custom %** or **Custom amount**.
+- Custom % and Custom amount show a value box in the same cell.
+- A custom amount is capped at the line's original value.
+- Line calculation is: original = qty × price; discount; net = original − discount;
+  tax = rate applied to the tax base; total after tax = net + tax.
+- The totals under the columns now read **Original total · Discount total · Net total ·
+  Sales tax total · Invoice total**.
+
+The illustrative entry posts the line's revenue at its **net after discount**, so a
+discount reduces revenue (and the receivable) rather than being posted as a separate
+expense.
+
+## 195. Tax on the discounted amount, or on the original
+
+Taxes → **Calculation** holds the owner's setting:
+
+- **Tax the discounted amount** (default): tax = rate × (qty × price − discount).
+- **Tax the original amount**: tax = rate × (qty × price), even though the customer
+  pays the discounted net plus that tax. This is for authorities that require tax on
+  the list price.
+
+The setting is document-wide and cannot be changed on an invoice or bill; it applies
+to every sales invoice and purchase bill. It is held in the tax module because it is a
+tax policy, not a per-document choice.
+
+Example verified: qty 1 at 100.00 with a 10% line discount.
+
+- Tax after discount: original 100.00, discount −10.00, net 90.00, tax 9.00, invoice
+  total 99.00, advance tax 0.45, net receivable 98.55.
+- Tax on the original: net 90.00 but tax 10.00, invoice total 100.00.
+
+The illustrative entry always balances: control = net + tax − withholding; revenue =
+net; tax accounts receive the tax as calculated.
+
+## 196. Backend contract for this setting
+
+This is a policy version, not a display option. A posted document must store or
+reference the tax-base policy that was active when it was created, so a later change
+to the setting cannot silently alter or re-explain an old invoice. Recalculation,
+credit notes and returns must use the original document's policy version.
+
+Discount codes, document-level discounts and rounding rules are not built; the line
+discount is a percentage or an amount per line. The setting applies to purchase bills
+as well, because the same tax-base question arises for input tax.
