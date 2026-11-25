@@ -322,6 +322,7 @@ permissions. See §100 of the decision log.
 | 44 | 224–225 | return entries, inventory reversal, exact invoice price |
 | 45 | 226–228 | payment/stock menu actions, stock editor, return stock movement |
 | 46 | 229–231 | full logic sweep, menu/return fixes, verification results |
+| 47–49 | 232–237 | item row widths, split payments, full-width workspace and table scroll |
 
 ---
 

@@ -362,8 +362,9 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  }));document.querySelector('#tb-filter')?.addEventListener('submit',ev=>{ev.preventDefault();const v=Object.fromEntries(new FormData(ev.target));try{range={from:v.from,to:v.to};query=v.q;tbClass=v.type;tbGroup=v.group;render();}catch(error){notify(error.message);}});
 document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.preventDefault();const values=Object.fromEntries(new FormData(ev.target));try{ledger(data(),values);range={from:values.from,to:values.to};query=values.query;render();}catch(error){notify(error.message);}});document.querySelector('#ledger-account')?.addEventListener('change',ev=>{selected=ev.target.value;render();});document.querySelector('#chart-query')?.addEventListener('change',ev=>{query=ev.target.value;render();});const f=document.querySelector('#accounting-journal');f?.addEventListener('submit',ev=>ev.preventDefault());f?.addEventListener('input',()=>{capture();saved=false;dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});f?.addEventListener('change',()=>{capture();dirty(true);document.querySelector('#journal-live-preview').innerHTML=preview();});document.querySelector('#journal-evidence')?.addEventListener('change',ev=>{capture();draft.evidence.push(...[...ev.target.files].map(f=>({name:f.name,size:f.size})));dirty(true);render();});}
  function bindTableScrollbars(){
-   document.querySelectorAll('[data-hscroll]').forEach(scroller=>{
+   document.querySelectorAll('.table-scroll').forEach(scroller=>{
      if(scroller.dataset.hscrollReady)return;
+     if(!scroller.hasAttribute('data-hscroll')&&scroller.scrollWidth<=scroller.clientWidth+1)return;
      scroller.dataset.hscrollReady='1';
      const track=document.createElement('div');track.className='hscroll hscroll--table';
      const thumb=document.createElement('div');thumb.className='hscroll-thumb';

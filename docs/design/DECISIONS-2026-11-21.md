@@ -3123,3 +3123,26 @@ by another against the same invoice.
 
 The payment document now shows **Split across methods** when several rows settle one
 document, and the `against` column lists each document once rather than repeating it.
+
+
+---
+
+# Round 49 — full-width workspace and permanent table scroll
+
+## 236. The empty right side
+
+The workspace was capped at 1540px and centred, which left a large empty band on wide
+screens. It now uses the full width beside the rail; padding stays 40px, so content
+still has breathing room. The dashboard, registers and forms use the available width.
+
+## 237. Every wide data-entry table scrolls
+
+Form tables get a horizontal track above them whenever their content is wider than the
+panel, not only the registers. The existing scroll-track binder now runs over every
+`.table-scroll`; it creates the track only when the table actually overflows (registers
+keep their permanent track). Item, withholding, payment, return and payment-line tables
+have sensible minimum widths — 900, 700, 600, 900 and 720px — so at narrow windows they
+scroll with full columns instead of squeezing the boxes.
+
+Verified at 1024px: the invoice item table shows the scroll track and keeps its column
+widths; at 1600px the workspace reaches the right edge.
