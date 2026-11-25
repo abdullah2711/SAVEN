@@ -99,6 +99,9 @@ the decision index in one place.
 - **Reconciliations**: cash and party tabs each have a register (search, dates,
   column menus, click a row to open) and a form whose difference rows use the full
   width. Saved records can be cancelled (stay with a badge) or deleted.
+- **Advances**: register of customer advances received and supplier advances paid,
+  separate ADV vouchers, and an adjustment panel that applies an advance to one of
+  that party's open documents. Applications reduce both balances.
 - **Payments**: register with From/To, search and the common column menus. The form
   settles named invoices or bills: one row per document with the method
   (bank transfer, cheque, cash), the matching cash or bank sub-account, the system
@@ -107,7 +110,7 @@ the decision index in one place.
   cashed, not a third channel. A settlement reduces the invoice register's Paid and
   Balance. No tax fields and no header reference. Receipts are numbered
   `RCPT-MM-YYYY-0001` and payments `PAY-MM-YYYY-0001` in separate series.
-- **Sales/purchase invoices**: main and returns registers with search, dates and the
+- **Sales invoices and Bills**: main and returns registers with search, dates and the
   common column menus; rows open the document. The form uses one description and a
   location, item-based rows (item, account, project, qty, price, discount, total, tax %
   and total after tax), totals under the columns (original, discount, net, tax and
@@ -139,13 +142,19 @@ the decision index in one place.
   single sort toggle, value search, select all/clear, checkbox values and **Apply
   filter**. Type, status and balance live in the column menus, not the top bar. The
   state lives outside the page and survives navigation.
-- **Taxes** (Accounting → Taxes, now in the rail): Rules register and form, Registers,
+- **Taxes** (top-level module; Accounting no longer carries it): Rules register and form, Registers,
   Withholding, Advance tax, Reconciliation, **Party withholding** and **Default
   accounts**. Default accounts are output tax, input tax, income tax withholding
   payable, sales tax withheld and advance tax. Party withholding lists each party's
   withheld amount and a Filed / Not filed reconciliation note. It was built earlier
   but missing from the Accounting page map, so it was only reachable by hash.
   20 modules and 154 pages mapped; planned pages render their specification.
+- **Reports** (top-level module): Revenue (dashboard plus By customer / By item
+  registers), Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
+  Equity, each a page rather than a tab. Revenue aggregates saved invoice lines by item
+  and customer; fixture invoices have no item codes, so item statistics start empty.
+- **Items**: the Inventory module is titled Items and its Items page uses the shared
+  item master/form; the separate Accounting → Items entry is gone.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
 tool); posting from invoices and payments into the ledger; invoice numbering and

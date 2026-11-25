@@ -2656,3 +2656,105 @@ item codes. Session invoices keep their items and open with the full editable fo
   session payment is not built.
 - Item and tax-rule forms were already complete when opened; no change was needed
   there.
+
+
+---
+
+# Round 39 — item statistics, separate modules, advances, returns and stock
+
+## 200. Item-wise statistics are stored, not reconstructed
+
+Invoice and bill lines keep the item code with quantity, price, discount, tax rate and
+the calculated net/tax/gross. That is enough for both inventory and non-inventory
+items. The database contract is a document-line row with `item_id`, `quantity`,
+`unit_price`, `discount`, `tax_rule_version`, `net`, `tax`, `gross`; reports aggregate
+those rows, never re-price from today's item master. Item cost/valuation columns are
+added when inventory posting is connected.
+
+## 201. Reports is a separate module
+
+`Reports` is now a top-level module with pages, not tabs inside Accounting:
+Revenue, Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
+Equity. The Accounting rail no longer carries Reports. Each page renders one report
+panel; the report builder/library remains a later planned page.
+
+The new **Revenue** page has a dashboard (net revenue, sales tax, gross, customers,
+items sold, top customer, top item) and two register tabs:
+
+- **By customer** — invoices, net, tax, gross, paid, balance and share.
+- **By item** — item, name, quantity, net, tax, gross, distinct customers and invoices.
+
+Customer figures include fixture invoices; item figures start empty because fixture
+invoices store accounts, not item codes, and fill as item-based invoices are saved.
+Inventory and non-inventory items are treated the same in the statistics.
+
+## 202. Taxes is a separate module
+
+`Taxes` is a top-level module with standalone pages — Rules, Registers, Withholding,
+Advance tax, Reconciliation, Party withholding, Default accounts and Calculation. The
+tab bar is gone from the module; each page shows only its own panel. Tax-rule editing
+returns to Tax rules. Accounting no longer carries Taxes.
+
+## 203. Bills, not purchase invoices
+
+The Accounting page, register headings, form heading and descriptions call the
+purchase document **Bills**. The purchase module keeps its own catalogue name.
+
+## 204. Advances
+
+Accounting has an **Advances** page:
+
+- Register of customer advances received and supplier advances paid, with amount,
+  applied, unapplied, method and state.
+- **New advance** records a separate `ADV-YYYY-nnnn` voucher with party, direction,
+  date, amount, method, cash/bank sub-account and notes.
+- **Adjust against a document** picks an open advance, shows only that party's open
+  documents, and applies an amount no greater than either balance.
+- Applications are kept in `ADVANCE_APPLIED`; `paidFor` and `openItems` include them,
+  so invoice balances fall and the advance's unapplied amount falls together.
+
+This build does not post the advance or its application to the ledger; the records are
+session documents. The backend must create the cash/party entry and the application
+atomically, with the advance as a distinct voucher.
+
+## 205. Sales and purchase returns
+
+The return form now loads the selected document completely: party, invoice number,
+invoice total and already-returned amount, then one row per original line with item,
+account, quantity sold, returned quantity, unit price (net of the original discount),
+tax rate, net, tax and total. Rows can be added or removed. The return totals become
+the return voucher; the original document stays posted and its balance falls by the
+return total. The pending-balance figure is no longer the focus of the form.
+
+The refund/credit belongs to the party's own control account (receivable for a
+customer, payable for a supplier), not a separate refund account; a fully paid
+invoice therefore produces a credit balance for that party. This build records the
+return and reduces the invoice balance but does not post the party-ledger movement or
+an inventory return movement; those are backend work. The line accounts are carried
+on the return record for that purpose.
+
+## 206. Inventory section on invoices and bills
+
+When an invoice or bill contains tracked items, the form shows an **Inventory**
+section: update stock yes/no and the warehouse. Saving with “Yes” records a separate
+goods issue (sales) or goods receipt (purchase) movement voucher in `STOCK_MOVES`,
+linked to the document, for the tracked item lines. This is session data; the
+inventory register/valuation is not updated yet. Service and non-inventory lines never
+create a movement.
+
+## 207. One items page
+
+The Inventory module is renamed **Items** in the rail and heading. Its Items page uses
+the same item master and item form as sales invoices, covering inventory goods,
+non-inventory goods and services with unit, income/expense heads, tax defaults and the
+tracked flag. The separate Accounting → Items page is removed from navigation; the
+route remains for links but is no longer a second register.
+
+## 208. Still open
+
+- Inventory movement records are not written into the inventory ledger or valuation.
+- Returns do not yet post party-ledger credits or stock returns.
+- Advances are session vouchers and applications; no ledger posting.
+- Item-wise revenue starts with item-based session documents; fixture invoices have
+  no item codes.
+- The report library/builder and scheduled exports remain planned.
