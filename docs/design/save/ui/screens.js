@@ -2875,7 +2875,7 @@ const ITEM_ACCOUNT_RULES = [
         : [{account: itemAccountFor('inventory'), party: '', debit: stockValue, credit: 0}, {account: itemAccountFor('clearing') || '2400', party: '', debit: 0, credit: stockValue}])
       : [];
     return `<section class="panel">
-      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}
+      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}
         <details class="form-menu"><summary class="icon-button" aria-label="More document options">${icon('more')}</summary><div class="menu">
           ${source ? `<button type="button" data-inv-menu-return>Return</button><button type="button" data-inv-menu-duplicate>Duplicate</button>` : ''}
           ${source && source.session ? `<button type="button" data-inv-menu-cancel>Cancel document</button><button type="button" data-inv-menu-delete>Delete document</button>` : ''}
@@ -4882,6 +4882,9 @@ const ITEM_ACCOUNT_RULES = [
     if (!ssBound) {
       ssBound = true;
       document.addEventListener('click', (ev) => {
+        document.querySelectorAll('.form-menu[open]').forEach((d) => {
+          if (!d.contains(ev.target) || ev.target.closest('.menu button')) d.open = false;
+        });
         if (ev.target.closest('.ss') || ev.target.closest('.ss-panel')) return;
         document.querySelectorAll('.ss-panel').forEach((p) => { p.hidden = true; });
       });

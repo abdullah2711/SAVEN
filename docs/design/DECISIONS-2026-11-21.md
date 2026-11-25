@@ -3146,3 +3146,21 @@ scroll with full columns instead of squeezing the boxes.
 
 Verified at 1024px: the invoice item table shows the scroll track and keeps its column
 widths; at 1600px the workspace reaches the right edge.
+
+
+---
+
+# Round 50 — one Return action, menus close
+
+## 238. Return lives only in the three-dot menu
+
+The separate Return button in the invoice/bill header duplicated the menu action. It is
+removed; Return, Duplicate, Create payment/receipt, Record inventory and Print are all
+in the one menu.
+
+## 239. The menu closes
+
+A document-level click now closes any open `details.form-menu` when the click is
+outside it, and also after choosing an item inside it. Verified: opening the menu on
+DEMO-SI-291 and clicking the page closes it; the standalone Return button no longer
+exists.
