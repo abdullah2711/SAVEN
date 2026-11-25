@@ -2955,3 +2955,18 @@ Sales invoices and purchase bills now have the three-dot menu that the journal h
 
 Posted fixture documents show Return, Duplicate and Print; they cannot be cancelled or
 deleted. Session documents show the full set.
+
+
+---
+
+# Round 43 — duplicate inventory preview removed
+
+## 223. One preview per entry
+
+A patch had inserted the inventory and advance previews twice in the invoice and bill
+form, and had also placed them inside the payment form's settlement section where
+`stockEntry` does not exist. The payment section is restored to the document table and
+its own notes; the invoice/bill form now renders exactly one invoice entry, one
+payment voucher (when recording payment), one inventory issue/receipt (when stock is
+updated) and one advance application (when advances are applied). Verified by counting
+the rendered previews and loading both the payment and invoice forms.
