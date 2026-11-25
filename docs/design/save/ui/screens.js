@@ -102,10 +102,16 @@ let REV_TAB = 'customer';
 let ADV_PICK = '';
 let ADV_TAB = 'balances';
 let ADV_APPLY_PARTY = '';
-const ADVANCES = [];
-const ADVANCE_APPLIED = [];
-let ADV_SEQ = 1;
-let ADV_APP_SEQ = 1;
+const ADVANCES = [
+  {id: 'ADV-2026-0001', party: 'Atlas Studio', direction: 'receive', date: '2026-11-10', amount: 25000, applied: 5000, method: 'Bank transfer', account: 'Standard Bank — current 0123456789', notes: 'Advance against the November programme'},
+  {id: 'ADV-2026-0002', party: 'Willow Supplies', direction: 'pay', date: '2026-11-11', amount: 10000, applied: 0, method: 'Bank transfer', account: 'Meezan Bank — current 0987654321', notes: 'Advance for packaging materials'},
+  {id: 'ADV-2026-0003', party: 'Sapphire Retail', direction: 'receive', date: '2026-11-14', amount: 4000, applied: 0, method: 'Cash', account: 'Front desk — A. Khan', notes: 'Counter advance'},
+];
+const ADVANCE_APPLIED = [
+  {id: 'ADVA-2026-0001', advanceId: 'ADV-2026-0001', docId: 'DEMO-SI-291', party: 'Atlas Studio', amount: 5000, date: '2026-11-12'},
+];
+let ADV_SEQ = 4;
+let ADV_APP_SEQ = 2;
 function nextAdvanceAppId() { return 'ADVA-2026-' + String(ADV_APP_SEQ++).padStart(4, '0'); }
 const WHT_FILED = new Map();
 let TAX_ACTIVE = 'rules';
@@ -3844,7 +3850,7 @@ const ITEM_ACCOUNT_RULES = [
   }
   function advancesView() {
     const tab = ADV_TAB === 'transactions' ? 'transactions' : 'balances';
-    const tabs = `<div class="tabs" role="tablist" aria-label="Advance views"><button role="tab" aria-selected="${tab === 'balances'}" data-adv-tab="balances">Balances</button><button role="tab" aria-selected="${tab === 'transactions'}" data-adv-tab="transactions">Transactions</button></div>`;
+    const tabs = `<div class="tabs" role="tablist" aria-label="Advance views"><button type="button" role="tab" aria-selected="${tab === 'balances'}" data-adv-tab="balances">Balances</button><button type="button" role="tab" aria-selected="${tab === 'transactions'}" data-adv-tab="transactions">Transactions</button></div>`;
     const rows = ADVANCES.slice();
     if (tab === 'transactions') {
       const tx = [

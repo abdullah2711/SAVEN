@@ -2879,7 +2879,21 @@ advance, bills for a supplier advance). Changing the party rebuilds both lists. 
 save path re-checks that the document belongs to the advance's party and that the
 amount is within both balances.
 
-## 217. Still open
+## 217. Demo advances and tab switching
+
+The Advances page ships with three sample advances so both tabs have data:
+
+- `ADV-2026-0001` Atlas Studio, received 25,000, 5,000 applied to DEMO-SI-291 by
+  application `ADVA-2026-0001`;
+- `ADV-2026-0002` Willow Supplies, paid 10,000;
+- `ADV-2026-0003` Sapphire Retail, received 4,000 at the counter.
+
+Balances shows 20,000 / 4,000 / 10,000 remaining; Transactions shows the three
+vouchers and the application in date order. Tab buttons are explicit `type="button"`
+and carry `data-adv-tab`; clicking either tab re-renders the page with that tab active.
+Verified in the browser with a click, not only by URL.
+
+## 218. Still open
 
 - The application is a session document; it is not posted to the ledger separately.
   The backend must post Dr customer advances / Cr receivable (or Dr payable / Cr
