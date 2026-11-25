@@ -2428,7 +2428,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         </div>
         <div class="panel-body">
           <div class="section-title">Documents settled${party ? ` · ${money(outstanding)} outstanding for ${e(party.name)}` : ''}
-          ${stockEntry.length ? ledgerIllustration('Illustrative inventory issue', stockEntry, 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.') : ''}
+          ${stockEntry.length ? ledgerIllustration(isSales ? 'Illustrative inventory issue' : 'Illustrative inventory receipt', stockEntry, isSales ? 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.' : 'Goods received at the amount after discount and before sales tax: inventory against goods received clearing, using the item default accounts. The bill itself debits clearing, so the clearing account nets out.') : ''}
           ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div>
           <div class="table-scroll"><table class="invoice-lines pay-lines">
             <thead><tr><th>Invoice or bill</th><th>Method</th><th>Cash / bank sub-account</th><th class="numeric">Outstanding</th><th class="numeric">Amount set off</th><th></th></tr></thead>
@@ -2649,6 +2649,7 @@ const ITEM_ACCOUNT_RULES = [
   {event: 'cogs', group: '', account: '5100'},
   {event: 'income', group: '', account: '4000'},
   {event: 'expense', group: '', account: '5000'},
+  {event: 'clearing', group: '', account: '2400'},
 ];
   const PAY_FILES = [];
   if (!PAY_FORM.pay) PAY_FORM.pay = {enabled: false, lines: [{method: 'bank', account: '', amount: ''}]};
@@ -2797,7 +2798,7 @@ const ITEM_ACCOUNT_RULES = [
         });
         return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines, withholding, taxAccount: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, description: d.narrative || '', location: d.location || 'HQ', reference: d.supplierRef || ''};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], advances: x.advances || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), state: x.state || 'posted', session: true, lines: x.lines || [], withholding: x.withholding || [], advances: x.advances || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
     return session.concat(fromFixture)
       .map((r) => ({...r, balance: round2(Math.max((r.netDue ?? r.gross) - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -2815,7 +2816,7 @@ const ITEM_ACCOUNT_RULES = [
     const whtTotal = invoiceWhtTotal(withholding, totals);
     const netDue = invoiceNetDue(totals, withholding);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
-    const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense'));
+    const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : (a.type === 'expense' || a.code === '2400' || a.code === '1200' || a.subtype === 'clearing')));
     const taxAccounts = accounts().filter((a) => a.subtype === 'tax');
     const taxAccount = (draft && draft.taxAccount) || (isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input);
     const whtRates = [...new Set(['0.5', '1', '2', '4.5', '7.5', '10', '15', ...TAX_RULES.filter((r) => r.kind === 'withholding' || r.kind === 'advance').map((r) => String(r.rate))])];
@@ -2859,16 +2860,25 @@ const ITEM_ACCOUNT_RULES = [
       <td><button type="button" class="text-button" data-inv-tender-remove="${i}" ${tenders.length === 1 ? 'disabled' : ''}>Remove</button></td>
     </tr>`).join('');
     const entry = invoiceEntryLines(kind, draft || {lines, party: ''}, totals, withholding);
-    const issueCost = round2(lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked).reduce((n, l) => {
+    const trackedLines = lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
+    const stockValue = round2(trackedLines.reduce((n, l) => {
+      if (!isSales) return n + invLineNet(l);
       const item = ITEMS.find((i) => i.code === l.item) || {};
       const unitCost = Number(item.purchasePrice) || Number(l.price) || 0;
       return n + (Number(l.qty) || 0) * unitCost;
     }, 0));
-    const stockEntry = isSales && draft && draft.stockMove === 'yes' && issueCost ? [{account: itemAccountFor('cogs'), party: '', debit: issueCost, credit: 0}, {account: itemAccountFor('inventory'), party: '', debit: 0, credit: issueCost}] : [];
+    const stockEntry = draft && draft.stockMove === 'yes' && stockValue
+      ? (isSales
+        ? [{account: itemAccountFor('cogs'), party: '', debit: stockValue, credit: 0}, {account: itemAccountFor('inventory'), party: '', debit: 0, credit: stockValue}]
+        : [{account: itemAccountFor('inventory'), party: '', debit: stockValue, credit: 0}, {account: itemAccountFor('clearing') || '2400', party: '', debit: 0, credit: stockValue}])
+      : [];
     return `<section class="panel">
       <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}
-          ${stockEntry.length ? ledgerIllustration('Illustrative inventory issue', stockEntry, 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.') : ''}
-          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div></div>
+        <details class="form-menu"><summary class="icon-button" aria-label="More document options">${icon('more')}</summary><div class="menu">
+          ${source ? `<button type="button" data-inv-menu-return>Return</button><button type="button" data-inv-menu-duplicate>Duplicate</button>` : ''}
+          ${source && source.session ? `<button type="button" data-inv-menu-cancel>Cancel document</button><button type="button" data-inv-menu-delete>Delete document</button>` : ''}
+          <button type="button" data-inv-menu-print>Print</button>
+        </div></details></div></div>
       ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The complete document is shown read-only. Create a return to reduce its balance; partial returns are allowed.</div>
         <div class="record-summary"><div><small>${isSales ? 'Customer' : 'Supplier'}</small>${e(source.party)}</div><div><small>Date</small>${e(source.date)}</div><div><small>Due</small>${e(source.due)}</div><div><small>Location</small>${e(source.location || 'HQ')}</div></div>
         ${source.description ? `<p class="form-note">${e(source.description)}</p>` : ''}
@@ -2946,15 +2956,17 @@ const ITEM_ACCOUNT_RULES = [
         </div>` : ''}
         <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative invoice entry on save' : 'Illustrative bill entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}
           ${INV_PAY[kind] && tenderTotal > 0 ? ledgerIllustration(isSales ? 'Illustrative receipt voucher' : 'Illustrative payment voucher', paymentEntryLines(isSales ? 'receive' : 'pay', draft ? draft.party : '', tenders.map((t) => ({account: t.account, amount: t.amount}))), `Creates ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')} as a separate document.${tenderTotal > netDue ? ` Total received exceeds the net due by ${money(round2(tenderTotal - netDue))}; the excess is kept as an advance and is not part of this entry.` : ''}`) : ''}
-          ${stockEntry.length ? ledgerIllustration('Illustrative inventory issue', stockEntry, 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.') : ''}
-          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div>
+          ${stockEntry.length ? ledgerIllustration(isSales ? 'Illustrative inventory issue' : 'Illustrative inventory receipt', stockEntry, isSales ? 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.' : 'Goods received at the amount after discount and before sales tax: inventory against goods received clearing, using the item default accounts. The bill itself debits clearing, so the clearing account nets out.') : ''}
+          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}          ${stockEntry.length ? ledgerIllustration(isSales ? 'Illustrative inventory issue' : 'Illustrative inventory receipt', stockEntry, isSales ? 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.' : 'Goods received at the amount after discount and before sales tax: inventory against goods received clearing, using the item default accounts. The bill itself debits clearing, so the clearing account nets out.') : ''}
+          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}
+</div>
         <div class="panel-body"><div class="related"><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
       </form>`}
     </section>`;
   }
 
-  function invoiceStatus(r) { return r.returned >= r.gross && r.gross > 0 ? 'returned' : r.returned > 0 ? 'partly returned' : 'posted'; }
+  function invoiceStatus(r) { if (r.state === 'cancelled') return 'cancelled'; return r.returned >= r.gross && r.gross > 0 ? 'returned' : r.returned > 0 ? 'partly returned' : 'posted'; }
   function invoiceColValue(r, key) { return key === 'state' ? invoiceStatus(r) : (r[key] ?? ''); }
   function invoiceColValues(kind, key) {
     return [...new Set(invoiceRows(kind).map((r) => String(invoiceColValue(r, key))))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
@@ -3257,6 +3269,13 @@ const ITEM_ACCOUNT_RULES = [
       const form = root.querySelector(`[data-invoice-form="${kind}"]`);
       document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
       form?.addEventListener('submit', (ev) => ev.preventDefault());
+      const editingCode = form?.querySelector('[name="editingCode"]')?.value || '';
+      const sourceNow = editingCode ? invoiceRows(kind).find((r) => r.id === editingCode) : null;
+      root.querySelector('[data-inv-menu-return]')?.addEventListener('click', () => { if (sourceNow) navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: sourceNow.id}); });
+      root.querySelector('[data-inv-menu-duplicate]')?.addEventListener('click', () => { if (!sourceNow) return; const copy = {...sourceNow, id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), date: '2026-11-30', due: '2026-12-30', session: true, state: 'draft'}; INVOICES.push({...copy, kind, net: sourceNow.net, tax: sourceNow.tax, gross: sourceNow.gross, netDue: sourceNow.netDue ?? sourceNow.gross}); notify('Document duplicated into a new draft.'); navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'invoice', code: copy.id}); });
+      root.querySelector('[data-inv-menu-cancel]')?.addEventListener('click', () => { const target = INVOICES.find((x) => x.id === editingCode); if (target) { target.state = 'cancelled'; notify('Document cancelled; it stays in the register.'); } goBack(); });
+      root.querySelector('[data-inv-menu-delete]')?.addEventListener('click', () => { const i = INVOICES.findIndex((x) => x.id === editingCode); if (i >= 0) { INVOICES.splice(i, 1); notify('Document deleted from the register.'); } goBack(); });
+      root.querySelector('[data-inv-menu-print]')?.addEventListener('click', () => window.print());
       const recalc = () => {
         const d = captureInvoice(kind, root);
         const t = invoiceTotals(kind, d.lines);
@@ -3303,7 +3322,7 @@ const ITEM_ACCOUNT_RULES = [
           const i = Number(tr.dataset.invLine);
           const item = ITEMS.find((x) => x.code === before.lines[i].item);
           if (item) {
-            before.lines[i].account = kind === 'sales' ? (itemAccountFor('income', item) || item.income) : (item.tracked ? (itemAccountFor('inventory', item) || item.expense) : (itemAccountFor('expense', item) || item.expense));
+            before.lines[i].account = kind === 'sales' ? (itemAccountFor('income', item) || item.income) : (item.tracked ? (itemAccountFor('clearing', item) || '2400') : (itemAccountFor('expense', item) || item.expense));
             const rate = invTaxRateFor(item.code, kind);
             if (rate !== '') before.lines[i].tax = rate;
             const rule = defaultWhtRule(item.code, kind);
@@ -3530,7 +3549,7 @@ const ITEM_ACCOUNT_RULES = [
     return (specific || rules[0] || {}).account || '';
   }
   function itemDefaultsView() {
-    const events = [['inventory', 'Inventory asset'], ['cogs', 'Cost of sales'], ['income', 'Sales income'], ['expense', 'Purchase expense']];
+    const events = [['inventory', 'Inventory asset'], ['cogs', 'Cost of sales'], ['income', 'Sales income'], ['expense', 'Purchase expense'], ['clearing', 'Goods received clearing']];
     const groups = [...new Set([...ITEM_GROUPS.map((g) => g.name), ...ITEMS.map((i) => i.group).filter(Boolean)])];
     return `<section class="panel">
       <div class="panel-head"><h2>Default item accounts</h2><span class="badge">Rules by event and group</span></div>
@@ -3926,6 +3945,7 @@ const ITEM_ACCOUNT_RULES = [
   }
   function advanceEditor() {
     const parties = PARTIES;
+    const method0 = 'bank';
     return `<section class="panel">
       <div class="panel-head"><h2>New advance</h2><span class="badge">Separate voucher</span></div>
       <form data-adv-form class="panel-body form-grid">
@@ -3934,7 +3954,7 @@ const ITEM_ACCOUNT_RULES = [
         <label>Date<input name="date" type="date" value="2026-11-30" required></label>
         <label>Amount<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
         <label>Method<select name="method" class="inline-input"><option value="bank">Bank transfer</option><option value="cash">Cash</option></select></label>
-        <label>Cash / bank sub-account<select name="account" class="inline-input"><option value="">Choose sub-account</option>${CASH_BANK.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('')}</select></label>
+        <label>Cash / bank sub-account<select name="account" class="inline-input"><option value="">Choose sub-account</option>${CASH_BANK.filter((c) => (method0 === 'cash' ? c.kind === 'cash' : c.kind === 'bank')).map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('')}</select></label>
         <label class="wide">Notes<input name="notes" maxlength="100" placeholder="What this advance is for"></label>
         <div class="related"><button class="button primary">Record advance</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
@@ -3981,7 +4001,14 @@ const ITEM_ACCOUNT_RULES = [
       if (box) box.innerHTML = ledgerIllustration('Illustrative advance voucher', advanceEntryLines(v.direction, v.party, v.account, v.amount), 'Received money debits the cash or bank account and credits customer advances; paid money debits supplier advances and credits cash or bank.');
     };
     advForm?.addEventListener('input', recalcAdv);
-    advForm?.addEventListener('change', recalcAdv);
+    advForm?.addEventListener('change', (ev) => {
+      if (ev.target.name === 'method') {
+        const kind = ev.target.value === 'cash' ? 'cash' : 'bank';
+        const acc = advForm.querySelector('[name="account"]');
+        acc.innerHTML = '<option value="">Choose sub-account</option>' + CASH_BANK.filter((c) => c.kind === kind).map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
+      }
+      recalcAdv();
+    });
     document.querySelector('[data-adv-apply] [name="party"]')?.addEventListener('change', (ev) => { ADV_APPLY_PARTY = ev.target.value; rerender(); });
     const applyBox = () => {
       const f = document.querySelector('[data-adv-apply]');

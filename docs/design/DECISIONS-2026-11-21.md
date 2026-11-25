@@ -2916,3 +2916,42 @@ Verified by clicking a balance row (switches to Transactions) and a transaction 
   The backend must post Dr customer advances / Cr receivable (or Dr payable / Cr
   supplier advances) with the application as its source document.
 - Applying an advance does not create a cash movement by design.
+
+
+---
+
+# Round 42 — inventory receipt on bills, advance account filtering, document menu
+
+## 220. Purchase bills show the inventory receipt
+
+A tracked purchase bill now has a separate **Illustrative inventory receipt**:
+
+- Debit **Inventory** (rule account) with the line amount **after discount and before
+  sales tax**;
+- Credit **2400 Goods received clearing**.
+
+The bill line itself debits the clearing account (2400), so the clearing nets out when
+the goods are received. The clearing account was added to the chart and to the default
+item account rules as an event. The purchase account selector now offers the inventory
+and clearing accounts alongside expenses, so a tracked line can carry 2400.
+
+Sales keeps the cost entry (Cost of sales against Inventory at cost).
+
+## 221. Advances: account list follows the method
+
+The New advance form filtered nothing: choosing Cash still listed bank sub-accounts.
+The account list is now rebuilt on method change — Cash lists only cash sub-accounts,
+Bank transfer lists only bank sub-accounts — and the default list is bank-only.
+
+## 222. Invoice/bill document menu
+
+Sales invoices and purchase bills now have the three-dot menu that the journal had:
+
+- **Return** — opens the return form for that document;
+- **Duplicate** — copies the document into a new draft and opens it;
+- **Cancel document** and **Delete document** — for session documents; cancel keeps it
+  in the register with a cancelled state, delete removes it;
+- **Print** — browser print.
+
+Posted fixture documents show Return, Duplicate and Print; they cannot be cancelled or
+deleted. Session documents show the full set.
