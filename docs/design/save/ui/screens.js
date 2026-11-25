@@ -2359,18 +2359,20 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (!l.account || !Number(l.amount)) return;
       const sub = CASH_BANK.find((c) => c.name === l.account);
       const code = sub ? sub.control : l.account;
-      if (!byAccount[code]) byAccount[code] = {amount: 0, party: sub ? sub.name : ''};
-      byAccount[code].amount = round2(byAccount[code].amount + Number(l.amount));
+      const partyName = sub ? sub.name : '';
+      const key = code + '|' + partyName;
+      if (!byAccount[key]) byAccount[key] = {code, party: partyName, amount: 0};
+      byAccount[key].amount = round2(byAccount[key].amount + Number(l.amount));
     });
     const out = [];
     const total = round2(Object.values(byAccount).reduce((n, x) => n + x.amount, 0));
     if (total <= 0) return out;
     if (isReceipt) {
-      Object.entries(byAccount).forEach(([account, x]) => out.push({account, party: x.party, debit: x.amount, credit: 0}));
+      Object.values(byAccount).forEach((x) => out.push({account: x.code, party: x.party, debit: x.amount, credit: 0}));
       out.push({account: '1100', party, debit: 0, credit: total});
     } else {
       out.push({account: '2100', party, debit: total, credit: 0});
-      Object.entries(byAccount).forEach(([account, x]) => out.push({account, party: x.party, debit: 0, credit: x.amount}));
+      Object.values(byAccount).forEach((x) => out.push({account: x.code, party: x.party, debit: 0, credit: x.amount}));
     }
     return out;
   }
@@ -2405,10 +2407,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const methodOptions = [['bank', 'Bank transfer'], ['cash', 'Cash']];
     const lineHtml = (l, i) => {
       const item = items.find((x) => x.id === l.doc);
-      const used = new Set(PAY_FORM.lines.filter((_, j) => j !== i).map((x) => x.doc).filter(Boolean));
       const accounts = CASH_BANK.filter((c) => (l.method === 'cash' ? c.kind === 'cash' : c.kind === 'bank'));
       return `<tr data-pay-line="${i}">
-        <td><select data-line-field="doc" class="inline-input"><option value="">Choose document</option>${items.map((x) => `<option value="${e(x.id)}" ${x.id === l.doc ? 'selected' : ''} ${used.has(x.id) ? 'disabled' : ''}>${e(x.id)} · ${e(x.date)} · ${money(x.outstanding)} due</option>`).join('')}</select></td>
+        <td><select data-line-field="doc" class="inline-input"><option value="">Choose document</option>${items.map((x) => `<option value="${e(x.id)}" ${x.id === l.doc ? 'selected' : ''} >${e(x.id)} · ${e(x.date)} · ${money(x.outstanding)} due</option>`).join('')}</select></td>
         <td><select data-line-field="method" class="inline-input">${methodOptions.map(([k, label]) => `<option value="${k}" ${l.method === k ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
         <td><select data-line-field="account" class="inline-input"><option value="">Choose sub-account</option>${accounts.map((c) => `<option value="${e(c.name)}" ${c.name === l.account ? 'selected' : ''}>${e(c.name)} · ${e(c.control)}</option>`).join('')}</select></td>
         <td class="numeric" data-line-outstanding>${item ? money(item.outstanding) : '—'}</td>
@@ -2563,7 +2564,10 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (field === 'doc' && i >= 0) {
         const party = PARTIES.find((p) => p.name === PAY_FORM.party);
         const item = party ? openItems(party).find((x) => x.id === PAY_FORM.lines[i].doc) : null;
-        if (item) PAY_FORM.lines[i].amount = item.outstanding.toFixed(2);
+        if (item) {
+          const others = round2(PAY_FORM.lines.reduce((n, l, j) => (j !== i && l.doc === item.id ? n + (Number(l.amount) || 0) : n), 0));
+          PAY_FORM.lines[i].amount = Math.max(0, round2(item.outstanding - others)).toFixed(2);
+        }
       }
       if (field === 'method' && i >= 0) {
         const line = PAY_FORM.lines[i];
@@ -2617,9 +2621,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         id: number, date: v.date, party: v.party, direction: v.direction,
         account: lines.length > 1 ? `${lines.length} accounts` : lines[0].account,
         amount: total, withheld: 0, net: total,
-        method: lines.length > 1 ? `${lines.length} documents` : methodLabel(lines[0].method),
+        method: (() => { const ids = [...new Set(lines.map((l) => l.doc))]; return ids.length === 1 && lines.length > 1 ? 'Split across methods' : lines.length > 1 ? `${ids.length} documents` : methodLabel(lines[0].method); })(),
         reference: '', notes: v.notes || '',
-        against: lines.map((l) => l.doc).join(', '),
+        against: [...new Set(lines.map((l) => l.doc))].join(', '),
         allocations: lines.map((l) => ({id: l.doc, amount: round2(Number(l.amount)), method: l.method, account: l.account})),
         advance: 0,
         tenders: lines.map((l) => ({method: l.method, account: l.account, reference: '', amount: l.amount})),

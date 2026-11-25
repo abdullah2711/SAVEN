@@ -3101,3 +3101,25 @@ payment form with the invoice document, party, date and the remaining balance
 (DEMO-SI-291 → Falcon Chemicals, 32,135.33), then navigates to Payment / Receipts. A
 toast now confirms “Payment form prepared from …”. The action is hidden on unsaved
 documents and bound for both editable and read-only documents.
+
+
+---
+
+# Round 48 — split payments across accounts and methods
+
+## 234. Two banks are two lines in the preview
+
+`paymentEntryLines` grouped cash/bank by the control account only, so two different
+banks that share 1010 collapsed into one debit line. It now groups by control **and**
+sub-account, so each bank/cash sub-account is its own line with its own party name.
+
+## 235. One invoice can be paid in more than one way
+
+The document list no longer disables an invoice that is already used in another row.
+Selecting the same invoice again fills the **remaining** outstanding after the amounts
+already allocated in the other rows. Saving validates the sum per document against its
+outstanding, not each row separately. A receipt can therefore be 50 by one bank and 50
+by another against the same invoice.
+
+The payment document now shows **Split across methods** when several rows settle one
+document, and the `against` column lists each document once rather than repeating it.
