@@ -4393,6 +4393,8 @@ const ITEM_ACCOUNT_RULES = [
       const v = Object.fromEntries(new FormData(form));
       const editingCode = v.editingCode || '';
       if (!editingCode && TAX_RULES.some((r) => r.code === v.code)) { notify('That tax rule code already exists.'); return; }
+      const chosenAuth = TAX_AUTHORITIES.find((a) => a.id === v.authority);
+      if (chosenAuth && chosenAuth.kind !== v.kind) { notify('Choose an authority for the selected tax nature.'); return; }
       const box = (n) => form.querySelector(`.ms[data-ms="${n}"]`);
       const items = box('tax-items') ? picked(box('tax-items')) : [];
       const group = v.group || '';

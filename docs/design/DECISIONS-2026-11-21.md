@@ -3345,3 +3345,24 @@ Withholding, Advance and Reconciliation tabs are removed from the navigation.
 Verified: all six tax pages render and bind; a rule with nature output, SRB authority,
 5% and group Services saves; a tax-entry row opens DEMO-SI-291; party status toggles
 from Unverified to Verified.
+
+
+---
+
+# Round 54 — tax module verification
+
+## 256. Checks run
+
+- Rules, Authorities, Tax entries, Party reconciliation, Default accounts and
+  Calculation all render and bind.
+- A rule with nature output, SRB authority, 5% and group Services saves.
+- The authority must match the selected nature; save rejects a mismatch.
+- Applies-to toggles one item group or specific items; the unused control is disabled
+  and cleared on save.
+- Default accounts save and reopen with the chosen account (output changed to 2210 in
+  the check).
+- Tax entries filter and a row opens DEMO-SI-291.
+- Party reconciliation toggles Unverified → Verified.
+- Sales invoice withholding offers advance income and advance sales; the advance sales
+  entry reaches the 1024 control in the preview.
+- The “New tax rule” action appears only on the Rules page.
