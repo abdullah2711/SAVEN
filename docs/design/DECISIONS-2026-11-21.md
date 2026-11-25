@@ -2447,7 +2447,16 @@ hidden.
 
 A register whose only filter is search (taxes, heads, projects, locations, and similar
 settings registers) no longer stretches that field across the whole page; it is capped
-at 520px.
+at 520px. The invoice form was checked at 1280px as well; item/account/project widths
+were rebalanced so “4000 · Service revenue” and “No project” read in full, and the
+receivable badge now updates as amounts are typed instead of waiting for a re-render.
+
+## 186. No empty preview tables
+
+A form with no ledger effect (for example a party or cash form with a zero opening
+balance, or a payment with no allocation rows) now shows “No ledger effect from this
+form as filled.” instead of a table of zeros. This was visible as a stray “Balanced
+illustration 0.00 / 0.00” block on the cash and party forms.
 
 ## 185. Still open in this area
 

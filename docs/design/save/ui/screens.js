@@ -2343,6 +2343,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     });
     const out = [];
     const total = round2(Object.values(byAccount).reduce((n, x) => n + x.amount, 0));
+    if (total <= 0) return out;
     if (isReceipt) {
       Object.entries(byAccount).forEach(([account, x]) => out.push({account, party: x.party, debit: x.amount, credit: 0}));
       out.push({account: '1100', party, debit: 0, credit: total});
@@ -2665,6 +2666,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     }));
   }
   function ledgerIllustration(title, lines, note) {
+    if (!lines || !lines.length) {
+      return `<div class="wide"><div class="section-title">${e(title)}</div><p class="form-note">No ledger effect from this form as filled.</p></div>`;
+    }
     const debit = round2(lines.reduce((n, l) => n + Number(l.debit || 0), 0));
     const credit = round2(lines.reduce((n, l) => n + Number(l.credit || 0), 0));
     return `<div class="wide"><div class="section-title">${e(title)}</div>
@@ -2759,7 +2763,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     </tr>`).join('');
     const entry = invoiceEntryLines(kind, draft || {lines, party: ''}, totals, withholding);
     return `<section class="panel">
-      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge">${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
+      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
       ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The content is read-only. Create a return to reduce its balance; partial returns are allowed.</div>
         <div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div>
         <p class="form-note">Line detail is recorded on the posted document.</p></div>`
@@ -3094,6 +3098,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         put('[data-inv-gross2]', money(t.gross));
         put('[data-inv-wht-total]', money(wht));
         put('[data-inv-due]', money(due));
+        root.querySelectorAll('[data-inv-badge]').forEach((el) => { el.textContent = (kind === 'sales' ? 'Receivable' : 'Payable') + ' ' + money(due); });
         root.querySelectorAll('[data-inv-wht]').forEach((tr, i) => { const cell = tr.querySelector('[data-wht-amount]'); if (cell) cell.textContent = money(whtAmount(d.withholding[i], t)); });
         const tenders = [...root.querySelectorAll('[data-inv-tender]')].map((tr) => Number(tr.querySelector('[data-inv-tender-field="amount"]').value) || 0);
         const paid = round2(tenders.reduce((n, x) => n + x, 0));

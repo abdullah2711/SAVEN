@@ -458,3 +458,7 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .inv-items th:nth-child(9),.inv-items td:nth-child(9){width:7%}
 /* A register whose only filter is search should not stretch the field across the page. */
 .filterbar label:only-of-type{max-width:520px}
+.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:17%}
+.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:20%}
+.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:15%}
+.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:13%}
