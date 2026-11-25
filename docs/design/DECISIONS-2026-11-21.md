@@ -2769,7 +2769,28 @@ window is narrower the table scrolls inside its own panel using the existing top
 scroll track, rather than compressing the columns. Party, project and number ellipsis
 with a tooltip when long.
 
-## 209. Still open
+## 209. Applying an advance from the invoice or bill
+
+The invoice and bill forms have an **Apply advances** section after the payment rows
+when the chosen party has an open advance in the matching direction:
+
+- one row per advance: the advance voucher with its available balance, and the amount
+  to apply;
+- a total applied; rows can be added and removed;
+- the illustrative section gets a third entry: for a customer advance, debit 2300
+  Customer advances received and credit the receivable; for a supplier advance, debit
+  the payable and credit 1250 Supplier advances paid. It is a separate entry because
+  no new cash moves.
+
+On save the advance's applied amount and the invoice's paid balance move together.
+Payments plus advances cannot exceed the net due. Editing a saved session invoice
+reverses its previous applications before applying the new rows. If the party has no
+open advance the section says so and points to Accounting → Advances.
+
+The chart gained **2300 Customer advances received** (liability) and **1250 Supplier
+advances paid** (asset), both subtype `advance`.
+
+## 210. Still open
 
 - Inventory movement records are not written into the inventory ledger or valuation.
 - Returns do not yet post party-ledger credits or stock returns.

@@ -2418,7 +2418,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           <label class="wide">Notes<input name="notes" maxlength="100" value="${e(PAY_FORM.notes || '')}" placeholder="What this money is for"></label>
         </div>
         <div class="panel-body">
-          <div class="section-title">Documents settled${party ? ` · ${money(outstanding)} outstanding for ${e(party.name)}` : ''}</div>
+          <div class="section-title">Documents settled${party ? ` · ${money(outstanding)} outstanding for ${e(party.name)}` : ''}
+          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div>
           <div class="table-scroll"><table class="invoice-lines pay-lines">
             <thead><tr><th>Invoice or bill</th><th>Method</th><th>Cash / bank sub-account</th><th class="numeric">Outstanding</th><th class="numeric">Amount set off</th><th></th></tr></thead>
             <tbody>${PAY_FORM.lines.map(lineHtml).join('')}</tbody>
@@ -2627,9 +2628,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
   const INV_DRAFT = {
     sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Service invoiced',
-      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ'},
+      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ', advances: []},
     purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Supplier bill',
-      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ'},
+      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ', advances: []},
   };
   const INV_FILES = {sales: [], purchase: []};
 const STOCK_MOVES = [];
@@ -2780,7 +2781,7 @@ const STOCK_MOVES = [];
         });
         return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines, withholding, taxAccount: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, description: d.narrative || '', location: d.location || 'HQ', reference: d.supplierRef || ''};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], advances: x.advances || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
     return session.concat(fromFixture)
       .map((r) => ({...r, balance: round2(Math.max((r.netDue ?? r.gross) - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -2790,7 +2791,7 @@ const STOCK_MOVES = [];
     const source = code ? invoiceRows(kind).find((r) => r.id === code) : null;
     const locked = Boolean(source && !source.session);
     const draft = source && source.session
-      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || [], taxAccount: source.taxAccount || ''}
+      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || [], advances: source.advances || [], taxAccount: source.taxAccount || ''}
       : source ? null : INV_DRAFT[invKey(kind)];
     const lines = draft ? draft.lines : [];
     const withholding = draft ? (draft.withholding || []) : [];
@@ -2802,6 +2803,9 @@ const STOCK_MOVES = [];
     const taxAccounts = accounts().filter((a) => a.subtype === 'tax');
     const taxAccount = (draft && draft.taxAccount) || (isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input);
     const whtRates = [...new Set(['0.5', '1', '2', '4.5', '7.5', '10', '15', ...TAX_RULES.filter((r) => r.kind === 'withholding' || r.kind === 'advance').map((r) => String(r.rate))])];
+    const party = PARTIES.find((p) => p.name === (draft ? draft.party : ''));
+    const openAdvances = party ? ADVANCES.filter((a) => a.party === party.name && a.direction === (isSales ? 'receive' : 'pay') && advanceOpen(a) > 0) : [];
+    const advanceApplied = round2((draft ? (draft.advances || []) : []).reduce((n, a) => n + (Number(a.amount) || 0), 0));
     const typeOptions = isSales
       ? [['advance', 'Advance tax withheld by customer'], ['sales', 'Sales tax withheld by customer']]
       : [['income', 'Income tax withholding'], ['sales', 'Sales tax withholding']];
@@ -2839,7 +2843,8 @@ const STOCK_MOVES = [];
     </tr>`).join('');
     const entry = invoiceEntryLines(kind, draft || {lines, party: ''}, totals, withholding);
     return `<section class="panel">
-      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
+      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}
+          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div></div>
       ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The complete document is shown read-only. Create a return to reduce its balance; partial returns are allowed.</div>
         <div class="record-summary"><div><small>${isSales ? 'Customer' : 'Supplier'}</small>${e(source.party)}</div><div><small>Date</small>${e(source.date)}</div><div><small>Due</small>${e(source.due)}</div><div><small>Location</small>${e(source.location || 'HQ')}</div></div>
         ${source.description ? `<p class="form-note">${e(source.description)}</p>` : ''}
@@ -2906,8 +2911,18 @@ const STOCK_MOVES = [];
           <div class="related"><button type="button" class="button" data-inv-add-tender>Add payment row</button></div>
           <p class="form-note">Saving records a separate ${isSales ? 'receipt' : 'payment'} voucher ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')}. It appears in Payment / Receipts with its own number, can be opened on its own and printed from there.</p>
         </div>` : ''}
+        ${party ? `<div class="panel-body">
+          <div class="section-title">Apply advances</div>
+          ${openAdvances.length ? `<div class="table-scroll"><table class="invoice-lines inv-pay"><thead><tr><th>Advance</th><th class="numeric">Available</th><th class="numeric">Amount to apply</th><th></th></tr></thead>
+            <tbody>${(draft ? (draft.advances || []) : []).map((a, i) => { const rec = ADVANCES.find((x) => x.id === a.advance); return `<tr data-inv-adv-row="${i}"><td><select data-inv-adv class="inline-input"><option value="">Choose advance</option>${openAdvances.map((x) => `<option value="${x.id}" ${x.id === a.advance ? 'selected' : ''}>${e(x.id)} · ${money(advanceOpen(x))}</option>`).join('')}</select></td><td class="numeric">${rec ? money(advanceOpen(rec)) : '—'}</td><td><input class="numeric" data-inv-adv-amount value="${e(a.amount)}" inputmode="decimal" placeholder="0.00"></td><td><button type="button" class="text-button" data-inv-adv-remove="${i}">Remove</button></td></tr>`; }).join('')}</tbody>
+            <tfoot><tr><td colspan="2">Total applied</td><td class="numeric" data-inv-adv-total>${money(advanceApplied)}</td><td></td></tr></tfoot></table></div>
+            <div class="related"><button type="button" class="button" data-inv-adv-add>Add advance row</button></div>
+            <p class="form-note">Money already received from this customer (or paid to this supplier) is applied to this document. It reduces the advance balance and the amount still due; no new cash moves.</p>`
+          : '<p class="form-note">No open advance for this party. Record one on Accounting → Advances first.</p>'}
+        </div>` : ''}
         <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative invoice entry on save' : 'Illustrative bill entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}
-          ${INV_PAY[kind] && tenderTotal > 0 ? ledgerIllustration(isSales ? 'Illustrative receipt voucher' : 'Illustrative payment voucher', paymentEntryLines(isSales ? 'receive' : 'pay', draft ? draft.party : '', tenders.map((t) => ({account: t.account, amount: t.amount}))), `Creates ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')} as a separate document.${tenderTotal > netDue ? ` Total received exceeds the net due by ${money(round2(tenderTotal - netDue))}; the excess is kept as an advance and is not part of this entry.` : ''}`) : ''}</div>
+          ${INV_PAY[kind] && tenderTotal > 0 ? ledgerIllustration(isSales ? 'Illustrative receipt voucher' : 'Illustrative payment voucher', paymentEntryLines(isSales ? 'receive' : 'pay', draft ? draft.party : '', tenders.map((t) => ({account: t.account, amount: t.amount}))), `Creates ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')} as a separate document.${tenderTotal > netDue ? ` Total received exceeds the net due by ${money(round2(tenderTotal - netDue))}; the excess is kept as an advance and is not part of this entry.` : ''}`) : ''}
+          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div>
         <div class="panel-body"><div class="related"><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
       </form>`}
@@ -3100,7 +3115,11 @@ const STOCK_MOVES = [];
       amount: val(tr, '[data-inv-tender-field="amount"]'),
     }));
     if (tenderRows.length) INV_TENDERS[kind] = tenderRows;
-    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding, taxAccount: v.taxAccount || draft.taxAccount || '', stockMove: v.stockMove || 'no', warehouse: v.warehouse || 'HQ'});
+    const advances = [...root.querySelectorAll('[data-inv-adv-row]')].map((tr) => ({
+      advance: (tr.querySelector('[data-inv-adv]') || {}).value || '',
+      amount: (tr.querySelector('[data-inv-adv-amount]') || {}).value || '',
+    }));
+    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding, advances, taxAccount: v.taxAccount || draft.taxAccount || '', stockMove: v.stockMove || 'no', warehouse: v.warehouse || 'HQ'});
     return draft;
   }
   function bindInvoices(kind, rerender, notify, navigate) {
@@ -3242,13 +3261,13 @@ const STOCK_MOVES = [];
         put('[data-inv-diff]', money(round2(due - paid)));
       };
       form?.addEventListener('input', (ev) => {
-        if (!ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]')) return;
+        if (!ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"], [data-inv-adv], [data-inv-adv-amount]')) return;
         captureInvoice(kind, root);
         recalc();
       });
       form?.addEventListener('change', (ev) => {
         const isSelect = ev.target.matches('select');
-        const numeric = ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]');
+        const numeric = ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"], [data-inv-adv], [data-inv-adv-amount]');
         if (!isSelect && !numeric) return;
         const before = captureInvoice(kind, root);
         if (isSelect && ev.target.matches('[data-inv-field="item"]')) {
@@ -3310,6 +3329,17 @@ const STOCK_MOVES = [];
         if (!INV_TENDERS[kind].length) INV_TENDERS[kind].push({method: 'bank', account: '', amount: ''});
         rerender();
       }));
+      root.querySelector('[data-inv-adv-add]')?.addEventListener('click', () => {
+        const d = captureInvoice(kind, root);
+        d.advances = d.advances || [];
+        d.advances.push({advance: '', amount: ''});
+        rerender();
+      });
+      root.querySelectorAll('[data-inv-adv-remove]').forEach((b) => b.addEventListener('click', () => {
+        const d = captureInvoice(kind, root);
+        (d.advances || []).splice(Number(b.dataset.invAdvRemove), 1);
+        rerender();
+      }));
       const zone = root.querySelector('[data-evidence]');
       const fileInput = zone?.querySelector('[data-evidence-input]');
       zone?.addEventListener('click', (ev) => {
@@ -3349,11 +3379,11 @@ const STOCK_MOVES = [];
         let invId = editing;
         if (editing) {
           const target = INVOICES.find((x) => x.id === editing);
-          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
+          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, advances: draft.advances || [], taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
           notify('Document updated for this session.');
         } else {
           invId = (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++);
-          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
+          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, advances: draft.advances || [], taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
           notify(`Saved for this session: ${draft.party} · ${kind === 'sales' ? 'net receivable' : 'net payable'} ${netDue.toFixed(2)}.`);
         }
         if (INV_PAY[kind]) {
@@ -3375,6 +3405,23 @@ const STOCK_MOVES = [];
           INV_PAY[kind] = false;
           INV_TENDERS[kind] = [{method: 'bank', account: '', amount: ''}];
         }
+        const advLines = (draft.advances || []).filter((a) => a.advance && Number(a.amount) > 0);
+        if (advLines.length) {
+          if (editing) {
+            ADVANCE_APPLIED.filter((x) => x.docId === editing).forEach((x) => { const a = ADVANCES.find((y) => y.id === x.advanceId); if (a) a.applied = round2(a.applied - x.amount); });
+            for (let i = ADVANCE_APPLIED.length - 1; i >= 0; i--) if (ADVANCE_APPLIED[i].docId === editing) ADVANCE_APPLIED.splice(i, 1);
+          }
+          const paidByCash = Math.min(round2(INV_TENDERS[kind].reduce((n, t) => n + (Number(t.amount) || 0), 0)), netDue);
+          const advTotal = round2(advLines.reduce((n, a) => n + Number(a.amount), 0));
+          if (paidByCash + advTotal > netDue + 0.005) { notify('Payments and advances together are more than the net due.'); return; }
+          for (const row of advLines) {
+            const advance = ADVANCES.find((a) => a.id === row.advance);
+            if (!advance) { notify('Choose a valid advance.'); return; }
+            if (Number(row.amount) > advanceOpen(advance) + 0.005) { notify(`The amount is more than ${advance.id} has available.`); return; }
+            advance.applied = round2(advance.applied + Number(row.amount));
+            ADVANCE_APPLIED.push({advanceId: advance.id, docId: invId, amount: round2(Number(row.amount)), date: draft.date});
+          }
+        }
         if (draft.stockMove === 'yes') {
           const tracked = (draft.lines || []).filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
           if (tracked.length) STOCK_MOVES.push({id: 'STK-2026-' + String(100 + STOCK_MOVES.length), kind, date: draft.date, party: draft.party, warehouse: draft.warehouse || 'HQ', invoice: invId, lines: tracked.map((l) => ({item: l.item, qty: l.qty, cost: l.price}))});
@@ -3382,7 +3429,7 @@ const STOCK_MOVES = [];
         INV_FILES[kind] = [];
         INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', description: kind === 'sales' ? 'Service invoiced' : 'Supplier bill',
           lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}],
-          withholding: [{type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ'};
+          withholding: [{type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''}], advances: [], taxAccount: '', stockMove: 'no', warehouse: 'HQ'};
         goBack();
       });
     }
@@ -4225,7 +4272,7 @@ const STOCK_MOVES = [];
         <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label>Accounting group<select name="group" class="inline-input">${['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'].map((g) => `<option value="${g}" ${(v('group') || '').toLowerCase().startsWith(g.slice(0, 5).toLowerCase()) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
         <label>Control<select name="control" class="inline-input">${[['', 'Ordinary posting account'], ['receivable', 'Receivable control — customer on every line'], ['payable', 'Payable control — supplier on every line'], ['bank', 'Bank control — needs a bank sub-account'], ['cash', 'Cash control — needs a cash sub-account']].map(([k, l]) => `<option value="${k}" ${v('control') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label>Subtype<select name="subtype" class="inline-input"><option value="" ${v('subtype') === '' ? 'selected' : ''}>Ordinary</option><option value="tax" ${v('subtype') === 'tax' ? 'selected' : ''}>Tax account</option><option value="control" ${v('subtype') === 'control' ? 'selected' : ''}>Control account</option><option value="bank" ${v('subtype') === 'bank' ? 'selected' : ''}>Bank account</option><option value="cash" ${v('subtype') === 'cash' ? 'selected' : ''}>Cash account</option></select></label>
+        <label>Subtype<select name="subtype" class="inline-input"><option value="" ${v('subtype') === '' ? 'selected' : ''}>Ordinary</option><option value="tax" ${v('subtype') === 'tax' ? 'selected' : ''}>Tax account</option><option value="control" ${v('subtype') === 'control' ? 'selected' : ''}>Control account</option><option value="bank" ${v('subtype') === 'bank' ? 'selected' : ''}>Bank account</option><option value="cash" ${v('subtype') === 'cash' ? 'selected' : ''}>Cash account</option><option value="advance" ${v('subtype') === 'advance' ? 'selected' : ''}>Advance account</option></select></label>
         <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What this account is used for"></label>
         <label>State<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
         <div class="related"><button class="button primary">${a.code ? 'Save changes' : 'Add account'}</button><button type="button" class="button" data-chart-cancel>Cancel</button></div>
