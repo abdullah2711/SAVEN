@@ -427,3 +427,34 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .invoice-due + .section-title{margin-top:24px}
 .evidence-drop p{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap}
 .evidence-drop .button{display:inline-flex;width:auto;min-height:0;padding:7px 13px;background:var(--tint)}
+
+/* Invoice and bill register: keep every column, including balance and state, on screen. */
+.inv-register{table-layout:fixed;font-size:12px}
+.inv-register th,.inv-register td{padding:11px 7px}
+.inv-register th{white-space:normal}
+.inv-register th:nth-child(1),.inv-register td:nth-child(1){width:7%}
+.inv-register th:nth-child(2),.inv-register td:nth-child(2){width:10%}
+.inv-register th:nth-child(3),.inv-register td:nth-child(3){width:13%}
+.inv-register th:nth-child(4),.inv-register td:nth-child(4){width:8%}
+.inv-register th:nth-child(5),.inv-register td:nth-child(5){width:7%}
+.inv-register th:nth-child(6),.inv-register td:nth-child(6){width:8%}
+.inv-register th:nth-child(7),.inv-register td:nth-child(7){width:6%}
+.inv-register th:nth-child(8),.inv-register td:nth-child(8){width:8%}
+.inv-register th:nth-child(9),.inv-register td:nth-child(9){width:7%}
+.inv-register th:nth-child(10),.inv-register td:nth-child(10){width:7%}
+.inv-register th:nth-child(11),.inv-register td:nth-child(11){width:8%}
+.inv-register th:nth-child(12),.inv-register td:nth-child(12){width:7%}
+.inv-register th:nth-child(13),.inv-register td:nth-child(13){width:4%}
+.inv-register td.col-party,.inv-register td.col-project,.inv-register td.col-id{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Item table: give item and account readable width. */
+.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:19%}
+.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:19%}
+.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:13%}
+.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:6%}
+.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:9%}
+.inv-items th:nth-child(6),.inv-items td:nth-child(6){width:9%}
+.inv-items th:nth-child(7),.inv-items td:nth-child(7){width:6%}
+.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:12%}
+.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:7%}
+/* A register whose only filter is search should not stretch the field across the page. */
+.filterbar label:only-of-type{max-width:520px}

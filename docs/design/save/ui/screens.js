@@ -2314,7 +2314,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       </form>
       <section class="panel">
         <div class="panel-head"><h2>Payments and receipts</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
-        <div class="table-scroll" data-hscroll><table class="pay-register">
+        <div class="table-scroll" data-hscroll><table class="pay-register inv-register">
           <thead><tr>${cols.map(([key, label, cls]) => {
             const sel = (f.cf && f.cf[key]) || [];
             return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-pay-sort="${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-payf="${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
@@ -2882,8 +2882,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const cells = {
       date: (r) => `<td class="col col-date">${e(r.date)}</td>`,
       id: (r) => `<td class="col col-id mono">${e(r.id)}</td>`,
-      party: (r) => `<td class="col col-party">${e(r.party)}</td>`,
-      project: (r) => `<td class="col col-project">${e(r.project || '—')}</td>`,
+      party: (r) => `<td class="col col-party" title="${e(r.party)}">${e(r.party)}</td>`,
+      project: (r) => `<td class="col col-project" title="${e(r.project || '')}">${e(r.project || '—')}</td>`,
       due: (r) => `<td class="col col-due">${e(r.due || '—')}</td>`,
       net: (r) => `<td class="col col-net numeric">${money(r.net)}</td>`,
       tax: (r) => `<td class="col col-tax numeric">${money(r.tax)}</td>`,
@@ -2901,7 +2901,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       </form>
       <section class="panel">
         <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
-        <div class="table-scroll" data-hscroll><table class="pay-register">
+        <div class="table-scroll" data-hscroll><table class="pay-register inv-register">
           <thead><tr>${cols.map(([key, label, cls]) => {
             const sel = (f.cf && f.cf[key]) || [];
             return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-inv-sort="main:${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-invf="main:${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>

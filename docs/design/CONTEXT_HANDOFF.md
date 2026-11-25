@@ -136,8 +136,10 @@ the decision index in one place.
   single sort toggle, value search, select all/clear, checkbox values and **Apply
   filter**. Type, status and balance live in the column menus, not the top bar. The
   state lives outside the page and survives navigation.
-- Taxes page with five tabs. 20 modules and 154 pages mapped; planned pages render
-  their specification.
+- **Taxes** (Accounting → Taxes, now in the rail): Rules register and form, Registers,
+  Withholding, Advance tax, Reconciliation and **Default accounts**. It was built
+  earlier but missing from the Accounting page map, so it was only reachable by hash.
+  20 modules and 154 pages mapped; planned pages render their specification.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
 tool); posting from invoices and payments into the ledger; invoice numbering and

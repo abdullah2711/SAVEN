@@ -310,6 +310,7 @@ permissions. See §100 of the decision log.
 | 32 | 166–169 | floating lists escape table cells, cheque removed, invoice balances follow settlements |
 | 33 | 170–173 | every list searchable, inner scroll keeps it open, placement stays beside the field |
 | 34 | 174–182 | debounced search, invoice registers/form, withholding, uploads, previews, tax defaults |
+| 35 | 183–185 | Taxes linked into Accounting, invoice register fits, item row widths |
 
 ---
 

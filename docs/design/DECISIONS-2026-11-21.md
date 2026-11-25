@@ -2413,3 +2413,46 @@ Totals must balance; the note says it is illustrative and posts nothing in this 
 - The evidence area is on the journal, invoice/bill, payment/receipt, party and cash
   forms. Item, tax-rule, return and settings forms do not have it yet; adding it there
   is the same component with a different key.
+
+
+---
+
+# Round 35 — the tax pages were built but not linked
+
+Owner question: “where is the tax module?” The pages existed at
+`#module=accounting&tab=taxes` but the Accounting page map never listed **Taxes**, so
+the rail, the page headings and the generated documentation did not show it. The
+module was reachable only by typing the hash.
+
+## 183. Taxes is now an Accounting page
+
+`pages-map.js` gained the Taxes entry with the six tabs that already existed: Rules,
+Registers, Withholding, Advance tax, Reconciliation and Default accounts. The rules
+tab is the register and form; the Default accounts tab holds output tax, input tax,
+withholding payable and advance tax. The rail now shows Accounting → Taxes in order
+between Items and Sales invoices.
+
+This also means the earlier round 34 tax-defaults work is discoverable rather than
+hidden.
+
+## 184. Two visual fixes found in the review
+
+- **Invoice and bill registers** put balance and state off-screen. The table is now a
+  fixed 13-column layout with compact padding and a slightly smaller type size;
+  party, project and number ellipsis with a title. Every column, including Balance and
+  State, is visible at the normal workspace width.
+- **Item rows** on the invoice form gave item and account too little room while
+  project had too much. Item and account are now 19% each, project 13%, with the
+  numeric columns adjusted to match. “4000 · Service revenue” no longer truncates.
+
+A register whose only filter is search (taxes, heads, projects, locations, and similar
+settings registers) no longer stretches that field across the whole page; it is capped
+at 520px.
+
+## 185. Still open in this area
+
+- Taxes remains under **Accounting** (where the owner asked for the rules and default
+  accounts), not as a separate rail module. The Tax catalogue module remains a later
+  market-MVP page and is not the rules register.
+- The rules page has no per-item-group scope yet; it is per rule with a scope field.
+- The reconciliation tab is a workpaper, not automatic matching.

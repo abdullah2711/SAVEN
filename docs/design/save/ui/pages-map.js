@@ -14,6 +14,7 @@ export const PAGE_MAP = {
     ['cash', 'Cash & bank', 'Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on.', 'built'],
     ['payments', 'Payment / Receipts', 'Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance.', 'built'],
     ['items', 'Items', 'Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item.', 'built'],
+    ['taxes', 'Taxes', 'Tax rules register and form, output and input registers, withholding and advance tax, reconciliation, and the default tax accounts that documents use.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns.', 'built'],
     ['purchase-invoices', 'Purchase invoices', 'Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns.', 'built'],
     ['coa', 'Chart of accounts', 'Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page.', 'built'],
