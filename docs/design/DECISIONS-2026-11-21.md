@@ -3195,7 +3195,7 @@ second AR/AP control for parties that must reconcile separately — domestic/for
 group companies, a separate business line. Each party belongs to exactly one AR control;
 segments are dimensions unless separate reporting demands a control. Not needed yet.
 
-## 242. Tax authorities
+## 242. Tax authorities (refined by §247)
 
 Output tax, input tax and sales tax withheld can belong to different authorities
 (national, provincial, local). Each authority gets its own control account per tax type,
@@ -3236,3 +3236,67 @@ review before this cutover.
 The design document lists the five points to confirm: group catalogue names/seeds, one
 AR/AP control vs segments, demo tax authorities, fixed-asset classes, and the migration
 table. Build starts after those are accepted.
+
+
+---
+
+# Round 52 — tax controls and authorities concluded
+
+## 247. One tax control per type, authority as a sub-account
+
+The owner's proposal is accepted and is better than one control per authority.
+Authorities do not get their own GL account; they are sub-accounts under the tax-type
+control, exactly like bank accounts under the bank control.
+
+| Control | Code | Sub-accounts |
+|---|---|---|
+| Output sales tax | 202001 | output tax authorities/registrations |
+| Input tax | 104001 | input tax authorities/registrations |
+| Sales tax withheld | 202002 | withholding authorities/registrations |
+| Income tax withholding | 202005 | one authority per legal entity |
+| Advance tax receivable | 102002 | one authority per legal entity |
+
+The control balance is the sum of its authority sub-accounts. A tax rule points at the
+control and the authority. A separate control is used only when a separate legal entity
+or currency must reconcile independently. This keeps the chart stable as provinces,
+cities or new registrations are added.
+
+## 248. Party tax tracking
+
+Party is a dimension on tax entries, not a control. Each entry stores document, line,
+party, authority, rule, direction, base, rate, amount, period, certificate,
+filed/paid state and claim state.
+
+This produces:
+
+- **input tax by supplier** — claimed input per supplier/authority/period, compared
+  with authority data and the supplier certificate; flags “not reported”, “mismatch”,
+  “claim at risk”, “matched”;
+- **output tax by customer** — what the customer may claim and the certificate issued;
+- **sales tax withheld** — by customer/supplier, authority and certificate;
+- **withholding** — by supplier, authority, certificate and deposit/filed state;
+- **advance tax** — by customer, authority, certificate and claimed state.
+
+A supplier that charges input tax without filing output cannot be detected from our
+books alone. The system records the claim, evidence and reconciliation status, and
+compares against authority filing/payment data when that data is imported. It does not
+pretend to know without that data.
+
+## 249. Tax module shape
+
+- **Authorities** register: name, jurisdiction, registration, tax types, filing
+  frequency, control account, effective dates.
+- **Rules**: tax type, authority, control account, rate, basis, scope, effective dates.
+- **Tax entries** created by documents; never entered by hand.
+- **Registers**: output, input, withholding, advance — by period, authority, party,
+  document.
+- **Tax control reconciliation**: control → authority sub-account → tax ledger.
+- **Party tax reconciliation**: input claims by supplier, certificates, filed/paid
+  state, exceptions.
+- **Defaults and Calculation** as already built.
+
+## 250. Open confirmation
+
+The design document now asks for confirmation of the tax control set and the authorities
+to seed as demo sub-accounts (for example two sales-tax authorities and one income-tax
+authority). No code has changed for this revision yet.

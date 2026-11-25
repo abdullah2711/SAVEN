@@ -47,7 +47,7 @@ Groups are created in Settings; these are the standard starting groups.
 | 01 | Cash and bank | 001 Cash control, 002 Bank control, 003 Petty cash control |
 | 02 | Receivables and advances | 001 Trade receivables, 002 Advance tax receivable, 003 Supplier advances |
 | 03 | Inventory | 001 Inventory control |
-| 04 | Tax assets | 001 Input tax — authority A, 002 Input tax — authority B, … |
+| 04 | Tax assets | 001 Input tax control (authorities are sub-accounts) |
 | 05 | Fixed assets — cost | 001 Buildings, 002 Vehicles, 003 Equipment, … |
 | 06 | Accumulated depreciation | 001 Buildings, 002 Vehicles, 003 Equipment, … |
 | 07 | Other assets | generated as needed |
@@ -56,7 +56,7 @@ Groups are created in Settings; these are the standard starting groups.
 | Group | Name | Accounts |
 |---|---|---|
 | 01 | Payables | 001 Trade payables |
-| 02 | Tax liabilities | 001 Output tax — A, 002 Output tax — B, 003 Sales tax withheld — A, 004 Sales tax withheld — B, 005 Income tax withholding payable |
+| 02 | Tax liabilities | 001 Output tax control, 002 Sales tax withheld control, 003 Income tax withholding payable (authorities are sub-accounts) |
 | 03 | Advances | 001 Customer advances |
 | 04 | Clearing | 001 Goods received clearing |
 | 05 | Loans and other | generated as needed |
@@ -98,13 +98,14 @@ these get control flags.
 | Advance tax receivable | 102002 | customer advance-tax ledger | party |
 | Supplier advances | 102003 | supplier advance ledger | party |
 | Inventory | 103001 | item + warehouse quantity/value | item, warehouse |
-| Input tax — authority | 10400x | tax ledger by authority/period | tax rule/authority via document |
+| Input tax | 104001 | tax authority sub-accounts | tax rule/authority via document; party dimension |
 | Fixed assets cost — class | 10500x | asset register | asset |
 | Accumulated depreciation — class | 10600x | asset register | asset |
 | Trade payables | 201001 | supplier ledger | party |
-| Output tax — authority | 20200x | tax ledger by authority/period | tax rule/authority via document |
-| Sales tax withheld — authority | 20200x | tax ledger by authority/customer | party |
-| Income tax withholding payable | 202005 | withholding ledger by supplier | party |
+| Output tax | 202001 | tax authority sub-accounts | tax rule/authority via document; party dimension |
+| Sales tax withheld | 202002 | tax authority sub-accounts | party |
+| Income tax withholding payable | 202005 | supplier ledger + authority sub-account | party |
+| Advance tax receivable | 102002 | customer ledger + authority sub-account | party |
 | Customer advances | 203001 | customer advance ledger | party |
 | Goods received clearing | 204001 | open goods receipts / bills | document, party |
 
@@ -150,22 +151,61 @@ Decision: **one AR and one AP control for now** (102001 / 201001). Add segments 
 only if a legal/currency reporting need appears. Party type, country, currency and
 group remain dimensions for statistics.
 
-## 6. Tax authorities
+## 6. Tax controls and authorities
 
-- Output tax and input tax may be owed to different authorities (national, provincial,
-  local). Each authority gets its own control account per tax type, and a tax rule
-  points to that authority and account.
-- Sales tax withheld (by customers or from suppliers) follows the same authority split.
-- Income tax withholding is one payable control per legal entity: one entity pays one
-  income-tax authority even with foreign operations. The supplier is the party
-  subledger.
-- Tax returns reconcile each authority's control account to its tax ledger for the
-  period. Party, item and document are dimensions on tax entries for certificates and
-  statistics; they are not separate GL controls.
-- Output/input tax GL lines may not carry a party (the document does); sales-tax
-  withheld and advance tax lines **must** carry the party.
+An authority does **not** need its own GL control account. One control account per tax
+type, with each authority as a **sub-account**, is the better model. It matches bank/
+cash (one control, many bank accounts) and avoids a chart that grows every time a
+provincial or local authority is added.
 
-## 7. Fixed assets
+| Control account | Code | Sub-accounts |
+|---|---|---|
+| Output sales tax | 202001 | each output tax authority/registration |
+| Input tax | 104001 | each input tax authority/registration |
+| Sales tax withheld | 202002 | each withholding authority/registration |
+| Income tax withholding payable | 202005 | the entity's income-tax authority (one per entity) |
+| Advance tax receivable | 102002 | the entity's income tax authority |
+
+Rules:
+
+- A tax rule points at a tax type, control account and authority sub-account.
+- The control balance = sum of its authority sub-account balances.
+- Authority sub-accounts are the reconciliation point for each return. A separate
+  control is used only if a separate legal entity or currency must reconcile
+  independently; within one entity, sub-accounts are enough.
+- A taxable supply's output tax belongs to the authority of the supplier's
+  registration; input tax belongs to the authority of the purchase registration.
+- A tax authority registration is a first-class record: name, jurisdiction,
+  registration number, tax types, filing frequency, control account, effective dates.
+
+### 6.1 Party tracking for tax
+
+The party is a **dimension on tax entries**, not a control account. Every tax entry
+stores:
+
+```
+document, document line, party, authority, tax rule, direction,
+taxable base, rate, amount, period, certificate/reference,
+filed state, paid state, claim state
+```
+
+This gives the reports the owner asked for without a chart explosion:
+
+- **Input tax by supplier** — claimed input tax per supplier, authority and period.
+  Compare it with authority filing/payment data or the supplier's certificate; flag
+  “supplier has not reported/paid”, “mismatch”, “claim at risk”, “matched”.
+- **Output tax by customer** — what the customer may claim; supports customer queries
+  and certificates.
+- **Sales tax withheld** — by customer/supplier, authority, certificate and period.
+- **Withholding** — by supplier, authority, certificate, deposited/filed state.
+- **Advance tax** — by customer, authority, certificate, claimed state.
+
+A supplier charging input tax while not filing output tax is detected by reconciling
+**our tax entries** with **authority data** and **supplier certificates**. The system
+cannot know a supplier failed to file without that data; it records the claim, the
+evidence and the reconciliation status honestly.
+
+## 7. Fixed assets## 7. Fixed assets
 
 The asset register is the subledger; class-level accounts are the GL.
 
@@ -203,7 +243,9 @@ accumulated lines.
 ```
 accounts(id, code, name, class, group_id, control_type, subtype, active)
 account_groups(id, class, code, name)              -- Settings, next number
-tax_authorities(id, name, jurisdiction, registration)
+tax_authorities(id, name, jurisdiction, registration, tax_types,
+                filing_frequency, active)
+tax_authority_accounts(id, control_account_id, authority_id, active)
 tax_rules(id, authority_id, control_account_id, kind, rate, basis, ...)
 parties(id, type, name, segment, control_account_id)
 documents(id, type, date, party_id, state)
@@ -211,8 +253,9 @@ document_lines(document_id, item_id, account_id, qty, price, discount,
                tax_rule_id, net, tax, gross, cost, project, location)
 journal_lines(document_id, account_id, party_id, subaccount_id, item_id,
               tax_rule_id, asset_id, debit, credit, project, location, cost_centre)
-tax_entries(document_id, party_id, tax_rule_id, authority_id, base, rate,
-            amount, direction, period, certificate, filed_state)
+tax_entries(document_id, line_id, party_id, tax_rule_id, authority_id,
+            base, rate, amount, direction, period, certificate,
+            filed_state, paid_state, claim_state)
 stock_moves(item_id, warehouse_id, qty, value, document_id, direction, layer)
 asset_register(asset_id, class_id, cost, accumulated, ...)
 asset_events(asset_id, type, date, amount, project, document_id)
@@ -227,7 +270,9 @@ rule, authority, period.
 - AP control = sum of supplier balances.
 - Cash/bank control = sum of sub-account balances.
 - Inventory control = sum of item/warehouse values.
-- Each tax authority control = sum of its tax ledger for the period.
+- Output/input/sales-tax-withheld controls = sum of their authority sub-accounts.
+- Each authority sub-account = its tax entries for the period.
+- Income tax withholding and advance tax controls reconcile to their party ledgers.
 - Advances controls = sum of unapplied party advances.
 - GRNI = received not billed.
 - Fixed assets cost − accumulated depreciation = asset register net book value.
@@ -253,13 +298,13 @@ rule, authority, period.
 | 1020 | 101003 | Petty cash |
 | 1100 | 102001 | Trade receivables |
 | 1200 | 103001 | Inventory |
-| 1300 | 104001 | Input tax — A |
+| 1300 | 104001 | Input tax control |
 | 1400 | 102002 | Advance tax receivable |
 | 1500/… | 10500x | Fixed asset classes |
 | 2100 | 201001 | Trade payables |
 | 2150 | 202005 | Income tax withholding payable |
-| 2200 | 202001 | Output tax — A |
-| 2210 | 202003 | Sales tax withheld — A |
+| 2200 | 202001 | Output tax control |
+| 2210 | 202002 | Sales tax withheld control |
 | 2300 | 203001 | Customer advances |
 | 2400 | 204001 | Goods received clearing |
 | 3000 | 301001 | Owner capital |
@@ -278,7 +323,9 @@ the replacement is complete.
 
 1. Confirm the group catalogue names and seeds above.
 2. Confirm one AR/AP control (recommended) rather than segments.
-3. Confirm the demo tax authorities to seed (e.g. two sales-tax authorities plus one
-   income-tax authority).
+3. Confirm the demo tax authorities to seed as sub-accounts (e.g. two sales-tax
+   authorities plus one income-tax authority).
 4. Confirm fixed asset classes to seed (buildings, vehicles, equipment).
 5. Confirm the migration table.
+6. Confirm the tax control set: output, input, sales tax withheld, income tax
+   withholding, advance tax — authorities as sub-accounts.

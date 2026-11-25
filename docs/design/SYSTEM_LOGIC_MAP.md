@@ -325,6 +325,7 @@ permissions. See §100 of the decision log.
 | 47–49 | 232–237 | item row widths, split payments, full-width workspace and table scroll |
 | 50 | 238–239 | single Return action, closeable document menu |
 | 51 | 240–246 | chart architecture: six-digit codes, controls, tax authorities, fixed assets |
+| 52 | 247–250 | tax controls per type, authorities as sub-accounts, party tax reconciliation |
 
 ---
 
