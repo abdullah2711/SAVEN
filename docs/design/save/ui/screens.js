@@ -3850,7 +3850,7 @@ const ITEM_ACCOUNT_RULES = [
   }
   function advancesView() {
     const tab = ADV_TAB === 'transactions' ? 'transactions' : 'balances';
-    const tabs = `<div class="tabs" role="tablist" aria-label="Advance views"><button type="button" role="tab" aria-selected="${tab === 'balances'}" data-adv-tab="balances">Balances</button><button type="button" role="tab" aria-selected="${tab === 'transactions'}" data-adv-tab="transactions">Transactions</button></div>`;
+    const tabs = `<div class="tabs" role="tablist" aria-label="Advance views"><button type="button" role="tab" aria-selected="${tab === 'balances'}" data-adv-tab="balances">Balances <span class="badge">${ADVANCES.length}</span></button><button type="button" role="tab" aria-selected="${tab === 'transactions'}" data-adv-tab="transactions">Transactions <span class="badge">${ADVANCES.length + ADVANCE_APPLIED.length}</span></button></div>`;
     const rows = ADVANCES.slice();
     if (tab === 'transactions') {
       const tx = [
@@ -3919,7 +3919,11 @@ const ITEM_ACCOUNT_RULES = [
   }
   function bindAdvances(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'advances'});
-    document.querySelectorAll('[data-adv-tab]').forEach((b) => b.addEventListener('click', () => { ADV_TAB = b.dataset.advTab; rerender(); }));
+    document.querySelectorAll('[data-adv-tab]').forEach((b) => b.addEventListener('click', () => {
+      ADV_TAB = b.dataset.advTab;
+      rerender();
+      try { window.scrollTo({top: 0, behavior: 'auto'}); } catch {}
+    }));
     document.querySelectorAll('[data-adv-apply-new]').forEach((b) => b.addEventListener('click', () => navigate({module: 'accounting', tab: 'advances', mode: 'editor', form: 'apply'})));
     document.querySelector('[data-adv-form] [data-form-cancel]')?.addEventListener('click', goBack);
     document.querySelector('[data-adv-form]')?.addEventListener('submit', (ev) => {
