@@ -2695,10 +2695,11 @@ Advance tax, Reconciliation, Party withholding, Default accounts and Calculation
 tab bar is gone from the module; each page shows only its own panel. Tax-rule editing
 returns to Tax rules. Accounting no longer carries Taxes.
 
-## 203. Bills, not purchase invoices
+## 203. Purchase bills, not purchase invoices
 
-The Accounting page, register headings, form heading and descriptions call the
-purchase document **Bills**. The purchase module keeps its own catalogue name.
+The Accounting page, register heading and tab call the purchase document **Purchase
+bills**; the form heading stays **Purchase bill**. The purchase module keeps its own
+catalogue name.
 
 ## 204. Advances
 
@@ -2757,7 +2758,18 @@ non-inventory goods and services with unit, income/expense heads, tax defaults a
 tracked flag. The separate Accounting → Items page is removed from navigation; the
 route remains for links but is no longer a second register.
 
-## 208. Still open
+## 208. Register columns are not squeezed together
+
+The invoice and purchase-bill registers had been forced into a fixed 13-column layout
+to fit everything on screen. On a normal laptop width that made headings and values
+collide. The register now uses automatic column widths with a minimum table width of
+1280px: date, number, party, project, due, net, tax, gross, returned, paid, balance,
+state and the row menu each keep their natural width, with 14px cell padding. If the
+window is narrower the table scrolls inside its own panel using the existing top
+scroll track, rather than compressing the columns. Party, project and number ellipsis
+with a tooltip when long.
+
+## 209. Still open
 
 - Inventory movement records are not written into the inventory ledger or valuation.
 - Returns do not yet post party-ledger credits or stock returns.

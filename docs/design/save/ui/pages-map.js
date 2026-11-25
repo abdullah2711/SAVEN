@@ -15,7 +15,7 @@ export const PAGE_MAP = {
     ['payments', 'Payment / Receipts', 'Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance.', 'built'],
     ['advances', 'Advances', 'Customer advances received and supplier advances paid, with balances, vouchers and adjustment against open documents.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns.', 'built'],
-    ['purchase-invoices', 'Bills', 'Supplier bills with a Returns tab, row menu open/return, item rows, optional stock receipt and balances updated by returns.', 'built'],
+    ['purchase-invoices', 'Purchase bills', 'Supplier bills with a Returns tab, row menu open/return, item rows, optional stock receipt and balances updated by returns.', 'built'],
     ['coa', 'Chart of accounts', 'Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page.', 'built'],
   ],
   inventory: [

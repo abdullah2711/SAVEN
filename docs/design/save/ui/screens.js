@@ -2928,7 +2928,7 @@ const STOCK_MOVES = [];
   function invoicesView(kind) {
     const isSales = kind === 'sales';
     const tab = INV_TAB[kind] === 'returns' ? 'returns' : 'invoices';
-    const tabs = `<div class="tabs" role="tablist" aria-label="${isSales ? 'Sales invoice' : 'Purchase bill'} views"><button role="tab" aria-selected="${tab === 'invoices'}" data-inv-tab="${kind}:invoices">${isSales ? 'Invoices' : 'Bills'}</button><button role="tab" aria-selected="${tab === 'returns'}" data-inv-tab="${kind}:returns">Returns</button></div>`;
+    const tabs = `<div class="tabs" role="tablist" aria-label="${isSales ? 'Sales invoice' : 'Purchase bill'} views"><button role="tab" aria-selected="${tab === 'invoices'}" data-inv-tab="${kind}:invoices">${isSales ? 'Invoices' : 'Purchase bills'}</button><button role="tab" aria-selected="${tab === 'returns'}" data-inv-tab="${kind}:returns">Returns</button></div>`;
     if (tab === 'returns') {
       const f = FILTERS.invoiceReturns;
       let returns = RETURNS[kind].slice().filter((r) => hit(f.q, r.id, r.invoiceId, r.party, r.date, r.reason)
