@@ -2840,3 +2840,48 @@ The document still stores the stock movement (`STOCK_MOVES`) and the accounts us
   bill lines go straight to inventory.
 - Item group rules match the item's group name; a group screen that lists all rules is
   still to be added.
+
+
+---
+
+# Round 41 — advance outstanding, advance entries and application documents
+
+## 213. The invoice shows what is left after advances
+
+The document summary now reads Gross, Withholding, Net receivable/payable, **Advances
+applied** and **Balance after advances**. The payment section's difference line uses
+the same figure: net due − payments − advances, never below zero. Typing an advance
+amount updates the advance total, the balance and the difference immediately.
+
+## 214. Advance forms have illustrative entries
+
+- **New advance**: money received debits the cash/bank control with the sub-account as
+  party and credits 2300 Customer advances received; money paid debits 1250 Supplier
+  advances paid and credits cash/bank. The preview updates as the party, direction,
+  account and amount are filled.
+- **Apply to invoice**: a customer advance application debits 2300 and credits the
+  receivable (1100); a supplier one debits the payable (2100) and credits 1250. The
+  preview updates with the chosen advance and amount.
+
+## 215. Every application is a document
+
+Each application gets an `ADVA-2026-nnnn` reference, party, advance reference,
+document, date and amount. The Advances → Transactions tab lists both the advance
+vouchers (`ADV-…`) and the application documents (`ADVA-…`), with the applied amount
+and the document. Applications from the invoice form and from the Advances page use
+the same series.
+
+## 216. Only the party's documents are offered
+
+The Apply form resolves the party from the selected advance, lists only advances for
+that party, and lists only that party's open documents (invoices for a customer
+advance, bills for a supplier advance). Changing the party rebuilds both lists. The
+save path re-checks that the document belongs to the advance's party and that the
+amount is within both balances.
+
+## 217. Still open
+
+- The application is a session document; it is not posted to the ledger separately.
+  The backend must post Dr customer advances / Cr receivable (or Dr payable / Cr
+  supplier advances) with the application as its source document.
+- Applying an advance does not create a cash movement by design.

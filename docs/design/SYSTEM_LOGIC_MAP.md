@@ -316,6 +316,7 @@ permissions. See §100 of the decision log.
 | 38 | 197–199 | payment voucher preview, complete read-only opened documents |
 | 39 | 200–208 | item statistics, reports and taxes as modules, advances, returns, stock section, one items page |
 | 40 | 210–212 | default item account rules, inventory cost entry, cost-of-sales account |
+| 41 | 213–217 | advance balance after application, advance entry previews, ADVA application documents |
 
 ---
 

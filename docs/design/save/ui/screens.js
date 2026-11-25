@@ -105,6 +105,8 @@ let ADV_APPLY_PARTY = '';
 const ADVANCES = [];
 const ADVANCE_APPLIED = [];
 let ADV_SEQ = 1;
+let ADV_APP_SEQ = 1;
+function nextAdvanceAppId() { return 'ADVA-2026-' + String(ADV_APP_SEQ++).padStart(4, '0'); }
 const WHT_FILED = new Map();
 let TAX_ACTIVE = 'rules';
 let PARTY_OPEN = '';
@@ -2842,6 +2844,7 @@ const ITEM_ACCOUNT_RULES = [
     </tr>`).join('');
     const tenders = INV_TENDERS[kind];
     const tenderTotal = round2(tenders.reduce((n, t) => n + (Number(t.amount) || 0), 0));
+    const balanceAfter = round2(Math.max(netDue - Math.min(tenderTotal, netDue) - advanceApplied, 0));
     const tenderRows = tenders.map((t, i) => `<tr data-inv-tender="${i}">
       <td><select data-inv-tender-field="method" class="inline-input"><option value="bank" ${t.method === 'bank' ? 'selected' : ''}>Bank transfer</option><option value="cash" ${t.method === 'cash' ? 'selected' : ''}>Cash</option></select></td>
       <td><select data-inv-tender-field="account" class="inline-input"><option value="">Choose sub-account</option>${CASH_BANK.filter((c) => (t.method === 'cash' ? c.kind === 'cash' : c.kind === 'bank')).map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select></td>
@@ -2905,7 +2908,7 @@ const ITEM_ACCOUNT_RULES = [
           : '<p class="form-note">No tracked items on this document, so there is no stock movement. A service or non-inventory line never creates one.</p>'}
         </div>
         <div class="panel-body">
-          <div class="record-summary invoice-due"><div><small>Gross ${isSales ? 'receivable' : 'payable'}</small><span data-inv-gross2>${money(totals.gross)}</span></div><div><small>Withholding</small><span data-inv-wht-total>${money(whtTotal)}</span></div><div><small>Net ${isSales ? 'receivable' : 'payable'}</small><strong data-inv-due>${money(netDue)}</strong></div></div>
+          <div class="record-summary invoice-due"><div><small>Gross ${isSales ? 'receivable' : 'payable'}</small><span data-inv-gross2>${money(totals.gross)}</span></div><div><small>Withholding</small><span data-inv-wht-total>${money(whtTotal)}</span></div><div><small>Net ${isSales ? 'receivable' : 'payable'}</small><strong data-inv-due>${money(netDue)}</strong></div><div><small>Advances applied</small><span data-inv-adv-total>${money(advanceApplied)}</span></div><div><small>Balance after advances</small><strong data-inv-balance>${money(balanceAfter)}</strong></div></div>
           <div class="section-title">${isSales ? 'Withholding by customer' : 'Withholding from supplier'}</div>
           <div class="table-scroll"><table class="invoice-lines inv-wht">
             <thead><tr><th>Type</th><th>Rate / amount</th><th>Basis</th><th class="numeric">Amount</th><th></th></tr></thead>
@@ -2920,7 +2923,7 @@ const ITEM_ACCOUNT_RULES = [
             <thead><tr><th>Method</th><th>Cash / bank sub-account</th><th class="numeric">Amount</th><th></th></tr></thead>
             <tbody>${tenderRows}</tbody>
             <tfoot><tr><td colspan="2">Total received</td><td class="numeric" data-inv-paid>${money(tenderTotal)}</td><td></td></tr>
-            <tr><td colspan="2">Difference from net ${isSales ? 'receivable' : 'payable'}</td><td class="numeric" data-inv-diff>${money(round2(netDue - tenderTotal))}</td><td></td></tr></tfoot>
+            <tr><td colspan="2">Difference after payments and advances</td><td class="numeric" data-inv-diff>${money(balanceAfter)}</td><td></td></tr></tfoot>
           </table></div>
           <div class="related"><button type="button" class="button" data-inv-add-tender>Add payment row</button></div>
           <p class="form-note">Saving records a separate ${isSales ? 'receipt' : 'payment'} voucher ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')}. It appears in Payment / Receipts with its own number, can be opened on its own and printed from there.</p>
@@ -3267,13 +3270,16 @@ const ITEM_ACCOUNT_RULES = [
         put('[data-inv-gross]', money(t.gross));
         put('[data-inv-gross2]', money(t.gross));
         put('[data-inv-wht-total]', money(wht));
-        put('[data-inv-due]', money(due));
-        root.querySelectorAll('[data-inv-badge]').forEach((el) => { el.textContent = (kind === 'sales' ? 'Receivable' : 'Payable') + ' ' + money(due); });
-        root.querySelectorAll('[data-inv-wht]').forEach((tr, i) => { const cell = tr.querySelector('[data-wht-amount]'); if (cell) cell.textContent = money(whtAmount(d.withholding[i], t)); });
         const tenders = [...root.querySelectorAll('[data-inv-tender]')].map((tr) => Number(tr.querySelector('[data-inv-tender-field="amount"]').value) || 0);
         const paid = round2(tenders.reduce((n, x) => n + x, 0));
+        const advTotal = round2((d.advances || []).reduce((n, a) => n + (Number(a.amount) || 0), 0));
+        put('[data-inv-due]', money(due));
+        put('[data-inv-adv-total]', money(advTotal));
+        put('[data-inv-balance]', money(round2(Math.max(due - Math.min(paid, due) - advTotal, 0))));
+        put('[data-inv-diff]', money(round2(Math.max(due - Math.min(paid, due) - advTotal, 0))));
         put('[data-inv-paid]', money(paid));
-        put('[data-inv-diff]', money(round2(due - paid)));
+        root.querySelectorAll('[data-inv-badge]').forEach((el) => { el.textContent = (kind === 'sales' ? 'Receivable' : 'Payable') + ' ' + money(due); });
+        root.querySelectorAll('[data-inv-wht]').forEach((tr, i) => { const cell = tr.querySelector('[data-wht-amount]'); if (cell) cell.textContent = money(whtAmount(d.withholding[i], t)); });
       };
       form?.addEventListener('input', (ev) => {
         if (!ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="discountValue"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"], [data-inv-adv], [data-inv-adv-amount]')) return;
@@ -3434,7 +3440,7 @@ const ITEM_ACCOUNT_RULES = [
             if (!advance) { notify('Choose a valid advance.'); return; }
             if (Number(row.amount) > advanceOpen(advance) + 0.005) { notify(`The amount is more than ${advance.id} has available.`); return; }
             advance.applied = round2(advance.applied + Number(row.amount));
-            ADVANCE_APPLIED.push({advanceId: advance.id, docId: invId, amount: round2(Number(row.amount)), date: draft.date});
+            ADVANCE_APPLIED.push({id: nextAdvanceAppId(), advanceId: advance.id, docId: invId, party: draft.party, amount: round2(Number(row.amount)), date: draft.date});
           }
         }
         if (draft.stockMove === 'yes') {
@@ -3820,6 +3826,22 @@ const ITEM_ACCOUNT_RULES = [
     </section>`;
   }
   function advanceOpen(a) { return round2(Number(a.amount || 0) - Number(a.applied || 0)); }
+  function advanceEntryLines(direction, party, account, amount) {
+    const amt = round2(Number(amount) || 0);
+    const sub = CASH_BANK.find((c) => c.name === account);
+    const code = sub ? sub.control : account;
+    if (!amt || !code) return [];
+    return direction === 'receive'
+      ? [{account: code, party: sub ? sub.name : '', debit: amt, credit: 0}, {account: '2300', party, debit: 0, credit: amt}]
+      : [{account: '1250', party, debit: amt, credit: 0}, {account: code, party: sub ? sub.name : '', debit: 0, credit: amt}];
+  }
+  function advanceApplicationLines(advance, amount) {
+    const amt = round2(Number(amount) || 0);
+    if (!advance || !amt) return [];
+    return advance.direction === 'receive'
+      ? [{account: '2300', party: advance.party, debit: amt, credit: 0}, {account: '1100', party: advance.party, debit: 0, credit: amt}]
+      : [{account: '2100', party: advance.party, debit: amt, credit: 0}, {account: '1250', party: advance.party, debit: 0, credit: amt}];
+  }
   function advancesView() {
     const tab = ADV_TAB === 'transactions' ? 'transactions' : 'balances';
     const tabs = `<div class="tabs" role="tablist" aria-label="Advance views"><button role="tab" aria-selected="${tab === 'balances'}" data-adv-tab="balances">Balances</button><button role="tab" aria-selected="${tab === 'transactions'}" data-adv-tab="transactions">Transactions</button></div>`;
@@ -3827,7 +3849,7 @@ const ITEM_ACCOUNT_RULES = [
     if (tab === 'transactions') {
       const tx = [
         ...rows.map((a) => ({date: a.date, ref: a.id, party: a.party, type: a.direction === 'receive' ? 'Advance received' : 'Advance paid', amount: a.amount, doc: '—', state: advanceOpen(a) > 0 ? 'Open' : 'Applied'})),
-        ...ADVANCE_APPLIED.map((x) => { const a = ADVANCES.find((y) => y.id === x.advanceId) || {}; return {date: x.date, ref: x.advanceId, party: a.party || '', type: 'Applied to invoice', amount: x.amount, doc: x.docId, state: 'Applied'}; }),
+        ...ADVANCE_APPLIED.map((x) => { const a = ADVANCES.find((y) => y.id === x.advanceId) || {}; return {date: x.date, ref: x.id || x.advanceId, party: x.party || a.party || '', type: 'Applied ' + x.advanceId, amount: x.amount, doc: x.docId, state: 'Applied'}; }),
       ].sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref));
       return tabs + `<section class="panel">
         <div class="panel-head"><h2>Advance transactions</h2><div class="related"><span class="badge">${tx.length} entries</span><button type="button" class="button" data-adv-apply-new>Apply to invoice</button></div></div>
@@ -3855,9 +3877,9 @@ const ITEM_ACCOUNT_RULES = [
   function applyAdvanceEditor() {
     const open = ADVANCES.filter((a) => advanceOpen(a) > 0);
     const parties = [...new Set(open.map((a) => a.party))];
-    const party = ADV_APPLY_PARTY || parties[0] || '';
+    const party = ADV_APPLY_PARTY || (open[0] ? open[0].party : '');
     const advances = open.filter((a) => a.party === party);
-    const docs = party ? openItems(PARTIES.find((p) => p.name === party)) : [];
+    const docs = (party ? openItems(PARTIES.find((p) => p.name === party)) : []).filter((d) => party);
     return `<section class="panel">
       <div class="panel-head"><h2>Apply an advance</h2><span class="badge">Against an invoice or bill</span></div>
       ${advances.length ? `<form data-adv-apply class="panel-body form-grid">
@@ -3867,7 +3889,7 @@ const ITEM_ACCOUNT_RULES = [
         <label>Amount to apply<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
         <label>Date<input name="date" type="date" value="2026-11-30"></label>
         <div class="related"><button class="button primary">Apply advance</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
-      </form><div class="panel-body"><p class="form-note">The advance balance and the document outstanding both reduce. No new cash moves; this is an application of money already received or paid.</p></div>`
+      </form><div class="panel-body form-grid" data-adv-apply-preview>${ledgerIllustration('Illustrative advance application', [], 'Choose an advance and amount to preview the application.')}</div><div class="panel-body"><p class="form-note">The advance balance and the document outstanding both reduce. No new cash moves; this is an application of money already received or paid.</p></div>`
       : '<div class="panel-body"><p class="form-note">There is no open advance to apply.</p><div class="related"><button type="button" class="button" data-form-cancel>Cancel</button></div></div>'}
     </section>`;
   }
@@ -3885,6 +3907,7 @@ const ITEM_ACCOUNT_RULES = [
         <label class="wide">Notes<input name="notes" maxlength="100" placeholder="What this advance is for"></label>
         <div class="related"><button class="button primary">Record advance</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
+      <div class="panel-body form-grid" data-adv-preview>${ledgerIllustration('Illustrative advance voucher', [], 'Fill the party, amount and account to preview the voucher.')}</div>
       <div class="panel-body"><p class="form-note">The voucher is numbered ADV-YYYY-nnnn and appears in the advances register. It is not applied to any invoice until you use Adjust against a document.</p></div>
     </section>`;
   }
@@ -3905,7 +3928,26 @@ const ITEM_ACCOUNT_RULES = [
       notify('Advance recorded.');
       goBack();
     });
+    const advForm = document.querySelector('[data-adv-form]');
+    const recalcAdv = () => {
+      if (!advForm) return;
+      const v = Object.fromEntries(new FormData(advForm));
+      const box = document.querySelector('[data-adv-preview]');
+      if (box) box.innerHTML = ledgerIllustration('Illustrative advance voucher', advanceEntryLines(v.direction, v.party, v.account, v.amount), 'Received money debits the cash or bank account and credits customer advances; paid money debits supplier advances and credits cash or bank.');
+    };
+    advForm?.addEventListener('input', recalcAdv);
+    advForm?.addEventListener('change', recalcAdv);
     document.querySelector('[data-adv-apply] [name="party"]')?.addEventListener('change', (ev) => { ADV_APPLY_PARTY = ev.target.value; rerender(); });
+    const applyBox = () => {
+      const f = document.querySelector('[data-adv-apply]');
+      if (!f) return;
+      const v = Object.fromEntries(new FormData(f));
+      const advance = ADVANCES.find((a) => a.id === v.advance);
+      const box = document.querySelector('[data-adv-apply-preview]');
+      if (box) box.innerHTML = ledgerIllustration('Illustrative advance application', advanceApplicationLines(advance, v.amount), 'Applying an advance moves value already received or paid onto the document; no new cash moves.');
+    };
+    document.querySelector('[data-adv-apply]')?.addEventListener('input', applyBox);
+    document.querySelector('[data-adv-apply]')?.addEventListener('change', applyBox);
     document.querySelector('[data-adv-apply]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
@@ -3921,7 +3963,7 @@ const ITEM_ACCOUNT_RULES = [
       if (!doc) { notify('That document is not open for this party.'); return; }
       if (amount > doc.outstanding + 0.005) { notify('The amount is more than the document outstanding.'); return; }
       advance.applied = round2(advance.applied + amount);
-      ADVANCE_APPLIED.push({advanceId: advance.id, docId: v.doc, amount, date: v.date || advance.date});
+      ADVANCE_APPLIED.push({id: nextAdvanceAppId(), advanceId: advance.id, docId: v.doc, party: advance.party, amount, date: v.date || advance.date});
       notify(`Applied ${amount.toFixed(2)} from ${advance.id} to ${v.doc}.`);
       goBack();
     });
