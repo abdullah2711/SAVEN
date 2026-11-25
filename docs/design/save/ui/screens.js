@@ -92,7 +92,9 @@ const TAX_TABS = [
   ['withholding', 'Withholding'],
   ['advance', 'Advance tax'],
   ['adjustments', 'Reconciliation'],
+  ['defaults', 'Default accounts'],
 ];
+let TAX_DEFAULTS = {output: '2200', input: '1300', withholding: '2150', advance: '1400'};
 let TAX_ACTIVE = 'rules';
 let PARTY_OPEN = '';
 let PERIOD_LOCKED = false;
@@ -105,7 +107,8 @@ const FILTERS = {
   items: {q: '', group: '', stock: '', status: ''},
   tax: {q: ''},
   payments: {q: '', direction: '', party: '', from: '', to: '', cf: {}, sort: {key: 'date', dir: 'desc'}},
-  invoices: {q: '', party: ''},
+  invoices: {q: '', party: '', from: '', to: '', cf: {}, sort: {key: 'date', dir: 'desc'}},
+  invoiceReturns: {q: '', from: '', to: '', cf: {}, sort: {key: 'date', dir: 'desc'}},
   heads: {q: ''},
   projects: {q: ''},
   locations: {q: ''},
@@ -143,7 +146,7 @@ const INV_TAB = {sales: 'invoices', purchase: 'invoices'};
 const RETURNS = {sales: [], purchase: []};
 const RET_SEQ = {sales: 301, purchase: 301};
 const INV_PAY = {sales: false, purchase: false};
-const INV_TENDERS = {sales: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}], purchase: [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}]};
+const INV_TENDERS = {sales: [{method: 'bank', account: '', amount: ''}], purchase: [{method: 'bank', account: '', amount: ''}]};
 const RET_DRAFT = {
   sales: {invoice: '', date: '2026-11-30', amount: '', reason: 'Damaged goods', notes: ''},
   purchase: {invoice: '', date: '2026-11-30', amount: '', reason: 'Damaged goods', notes: ''},
@@ -841,6 +844,21 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     bindMS();
     const filter = document.querySelector('#gl-filter');
     filter?.addEventListener('submit', (ev) => { ev.preventDefault(); syncGL(ev.target); rerender(); });
+    let glTimer = 0;
+    filter?.querySelector('[name="q"]')?.addEventListener('input', (ev) => {
+      GL.q = ev.target.value;
+      const pos = ev.target.selectionStart;
+      clearTimeout(glTimer);
+      glTimer = setTimeout(() => {
+        rerender();
+        requestAnimationFrame(() => {
+          const again = document.querySelector('#gl-filter [name="q"]');
+          if (!again) return;
+          again.focus({preventScroll: true});
+          try { again.setSelectionRange(pos, pos); } catch {}
+        });
+      }, 150);
+    });
     document.querySelectorAll('[data-gl-col]').forEach((box) => box.addEventListener('change', () => {
       box.checked ? GL.extras.add(box.dataset.glCol) : GL.extras.delete(box.dataset.glCol);
       applyColumnVisibility('gl');
@@ -1176,12 +1194,20 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const jrForm = document.querySelector('#jr-filter');
     jrForm?.querySelector('[name="from"]')?.addEventListener('change', (ev) => { J.from = ev.target.value; rerender(); });
     jrForm?.querySelector('[name="to"]')?.addEventListener('change', (ev) => { J.to = ev.target.value; rerender(); });
+    let jrSearchTimer = 0;
     jrForm?.querySelector('[name="q"]')?.addEventListener('input', (ev) => {
       const pos = ev.target.selectionStart;
       J.q = ev.target.value;
-      rerender();
-      const again = document.querySelector('#jr-filter [name="q"]');
-      if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
+      clearTimeout(jrSearchTimer);
+      jrSearchTimer = setTimeout(() => {
+        rerender();
+        requestAnimationFrame(() => {
+          const again = document.querySelector('#jr-filter [name="q"]');
+          if (!again) return;
+          again.focus({preventScroll: true});
+          try { again.setSelectionRange(pos, pos); } catch {}
+        });
+      }, 150);
     });
     let jrOpen = '';
     const closeJrMenus = (except) => {
@@ -1551,6 +1577,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   let PARTY_TAB = 'register';
   const RECONCILIATIONS = {cash: [], party: []};
   const PARTY_CHANGES = [];
+  const PARTY_FILES = {};
+  const CASH_FILES = {};
   const RECON_FILTER = {q: '', from: '', to: '', cf: {}, sort: {key: 'date', dir: 'desc'}, kind: ''};
   const RECON_FORM = {
     cash: {account: '', date: '2026-11-30', original: '', diffs: [{reason: '', reference: '', amount: ''}], files: []},
@@ -1659,7 +1687,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function bindRecon(rerender, notify, navigate) {
     const rf = document.querySelector('[data-recon-filter]');
     if (rf) {
-      rf.querySelector('[name="q"]')?.addEventListener('input', (ev) => { RECON_FILTER.q = ev.target.value; rerender(); const a = document.querySelector('[data-recon-filter] [name="q"]'); if (a) a.focus(); });
+      let reconTimer = 0;
+      rf.querySelector('[name="q"]')?.addEventListener('input', (ev) => {
+        RECON_FILTER.q = ev.target.value;
+        const pos = ev.target.selectionStart;
+        clearTimeout(reconTimer);
+        reconTimer = setTimeout(() => {
+          rerender();
+          requestAnimationFrame(() => { const a = document.querySelector('[data-recon-filter] [name="q"]'); if (!a) return; a.focus({preventScroll: true}); try { a.setSelectionRange(pos, pos); } catch {} });
+        }, 150);
+      });
       rf.querySelector('[name="from"]')?.addEventListener('change', (ev) => { RECON_FILTER.from = ev.target.value; rerender(); });
       rf.querySelector('[name="to"]')?.addEventListener('change', (ev) => { RECON_FILTER.to = ev.target.value; rerender(); });
       rf.querySelector('[data-recon-reset]')?.addEventListener('click', () => { Object.assign(RECON_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
@@ -1814,6 +1851,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Authorised signatories, cut-off, card machine"></label>
           ${ms('cb-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
           ${ms('cb-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
+        ${evidenceSection('cash', CASH_FILES[code || 'new'] || [])}
+        ${ledgerIllustration('Illustrative opening entry', (() => {
+          const opening = round2(Number(v('opening', '0')) || 0);
+          if (!opening) return [];
+          return [{account: v('control', '1010'), party: v('name', 'Sub-account'), debit: opening, credit: 0}, {account: '3100', party: '', debit: 0, credit: opening}];
+        })(), 'Only recorded when an opening balance is entered; the control head and the sub-account move together.')}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add sub-account'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
       <div class="panel-body"><p class="form-note">The control head decides where the balance sits; the kind decides which journal lines may pick the sub-account. A bank control takes bank lines, a cash control takes cash lines, and the chosen projects and locations narrow it further.</p></div>
@@ -1896,6 +1939,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (type !== 'cash') return;
       navigate({module: 'accounting', tab: 'cash', mode: 'editor', code});
     }));
+    const cashFileKey = document.querySelector('[data-cash-form] [name="editingCode"]')?.value || 'new';
+    if (!CASH_FILES[cashFileKey]) CASH_FILES[cashFileKey] = [];
+    bindEvidenceZone('cash', CASH_FILES[cashFileKey], rerender);
     document.querySelector('[data-cash-form] [data-form-cancel]')?.addEventListener('click', goBack);
     document.querySelector('[data-cash-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -2048,6 +2094,15 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <label class="wide">Notes<input name="notes" maxlength="120" value="${e(v('notes'))}" placeholder="Delivery instructions, special terms"></label>
         ${ms('party-projects', 'Allowed projects', PROJECTS.map((p) => [p.code, `${p.code} · ${p.name}`]), v('projects', []))}
         ${ms('party-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
+        ${evidenceSection('party', PARTY_FILES[code || 'new'] || [])}
+        ${ledgerIllustration('Illustrative opening entry', (() => {
+          const opening = round2(Number(v('opening', '0')) || 0);
+          if (!opening) return [];
+          const control = v('control', partyControl(v('type', 'customer')));
+          return v('type', 'customer') === 'customer'
+            ? [{account: control, party: v('name', 'Party'), debit: opening, credit: 0}, {account: '3100', party: '', debit: 0, credit: opening}]
+            : [{account: '3100', party: '', debit: opening, credit: 0}, {account: control, party: v('name', 'Party'), debit: 0, credit: opening}];
+        })(), 'Only recorded when an opening balance is entered; it posts at the business start against 3100 Opening balance equity.')}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add party'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
       <div class="panel-body"><p class="form-note">A customer or supplier is a sub-account of its control account. The journal only offers a party where its account kind and its allowed projects and locations agree.</p>
@@ -2130,6 +2185,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       rerender();
     }));
 
+    const partyFileKey = document.querySelector('[data-party-form] [name="editingCode"]')?.value || 'new';
+    if (!PARTY_FILES[partyFileKey]) PARTY_FILES[partyFileKey] = [];
+    bindEvidenceZone('party', PARTY_FILES[partyFileKey], rerender);
     document.querySelector('[data-party-form] [name="type"]')?.addEventListener('change', (ev) => {
       const control = document.querySelector('[data-party-form] [name="control"]');
       if (!control) return;
@@ -2188,6 +2246,11 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         const paid = round2(Math.min(total, fromFixture + fromSession));
         return {id: d.id, date: d.date, total, paid, outstanding: round2(Math.max(total - paid, 0))};
       })
+      .concat(INVOICES.filter((i) => i.kind === (isCustomer ? 'sales' : 'purchase') && i.party === party.name).map((i) => {
+        const total = round2(i.netDue ?? i.gross);
+        const paid = paidFor(i.kind, i.id);
+        return {id: i.id, date: i.date, total, paid: round2(Math.min(paid, total)), outstanding: round2(Math.max(total - paid, 0))};
+      }))
       .filter((x) => x.outstanding > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
   }
@@ -2241,7 +2304,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       account: (r) => `<td class="col col-account" title="${e(payColValue(r, 'account'))}">${e(payColValue(r, 'account'))}</td>`,
       against: (r) => `<td class="col col-against" title="${e(payColValue(r, 'against'))}">${e(payColValue(r, 'against'))}</td>`,
       amount: (r) => `<td class="col col-amount numeric">${money(r.amount)}</td>`,
-      state: (r) => `<td class="col col-state">${r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td>`,
+      state: (r) => `<td class="col col-state">${r.state === 'cancelled' ? badge('Cancelled', 'warn') : r.session ? badge('Session', 'plum') : badge('Posted', 'good')}</td>`,
     };
     return `<form class="filterbar" data-filter="payments" data-pay-filter>
         ${filterInput('payments', f.q, 'Reference, party, account, document')}
@@ -2261,14 +2324,55 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
               <div class="ms-list">${payColValues(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(payColLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
               <div class="gl-applyrow"><button type="button" class="button primary" data-payapply="${key}">Apply filter</button></div></div></th>`;
           }).join('')}</tr></thead>
-          <tbody>${rows.map((r) => `<tr>${cols.map(([key]) => cells[key](r)).join('')}</tr>`).join('') || '<tr><td colspan="11">No payments match these filters.</td></tr>'}</tbody>
+          <tbody>${rows.map((r) => `<tr class="row-link" data-pay-open="${e(r.id)}">${cols.map(([key]) => cells[key](r)).join('')}</tr>`).join('') || '<tr><td colspan="11">No payments match these filters.</td></tr>'}</tbody>
           <tfoot><tr><td colspan="7">Total shown · ${rows.length} of ${all.length}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.amount, 0)))}</td><td></td></tr></tfoot>
         </table></div>
         <div class="table-footer">A receipt brings money in, a payment sends it out. The document may use more than one method — bank, cash or an existing advance — and the total is allocated across the party's open invoices, oldest first. Anything left is an advance.</div>
       </section>`;
   }
 
-  function paymentEditor() {
+  function paymentEntryLines(direction, party, lines) {
+    const isReceipt = direction === 'receive';
+    const byAccount = {};
+    (lines || []).forEach((l) => {
+      if (!l.account || !Number(l.amount)) return;
+      const sub = CASH_BANK.find((c) => c.name === l.account);
+      const code = sub ? sub.control : l.account;
+      if (!byAccount[code]) byAccount[code] = {amount: 0, party: sub ? sub.name : ''};
+      byAccount[code].amount = round2(byAccount[code].amount + Number(l.amount));
+    });
+    const out = [];
+    const total = round2(Object.values(byAccount).reduce((n, x) => n + x.amount, 0));
+    if (isReceipt) {
+      Object.entries(byAccount).forEach(([account, x]) => out.push({account, party: x.party, debit: x.amount, credit: 0}));
+      out.push({account: '1100', party, debit: 0, credit: total});
+    } else {
+      out.push({account: '2100', party, debit: total, credit: 0});
+      Object.entries(byAccount).forEach(([account, x]) => out.push({account, party: x.party, debit: 0, credit: x.amount}));
+    }
+    return out;
+  }
+  function paymentRecord(code) {
+    const p = paymentRows().find((r) => r.id === code);
+    if (!p) return `<section class="panel"><div class="panel-body"><p>That document is not in this register.</p><div class="related"><button type="button" class="button" data-pay-close>Back to register</button></div></div></section>`;
+    const cancelled = p.state === 'cancelled';
+    const methodName = (m) => ({bank: 'Bank transfer', cash: 'Cash'}[m] || m || '—');
+    return `<section class="panel">
+      <div class="panel-head"><h2>${e(p.id)}</h2><div class="related">${badge(p.direction === 'receive' ? 'receipt' : 'payment', p.direction === 'receive' ? 'good' : '')}${cancelled ? badge('Cancelled', 'warn') : p.session ? badge('Session', 'plum') : badge('Posted', 'good')}</div></div>
+      <div class="panel-body"><div class="record-summary"><div><small>Party</small>${e(p.party)}</div><div><small>Date</small>${e(p.date)}</div><div><small>Amount</small>${money(p.amount)}</div><div><small>Method</small>${e(p.method || '—')}</div></div>
+        ${p.notes ? `<p class="form-note">${e(p.notes)}</p>` : ''}
+      </div>
+      <div class="table-scroll"><table><thead><tr><th>Document</th><th>Method</th><th>Cash / bank</th><th class="numeric">Amount set off</th></tr></thead><tbody>
+        ${(p.allocations || []).map((a) => `<tr><td class="mono">${e(a.id)}</td><td>${e(methodName(a.method))}</td><td>${e(a.account || '—')}</td><td class="numeric">${money(a.amount)}</td></tr>`).join('') || '<tr><td colspan="4">This fixture document does not carry allocation rows.</td></tr>'}
+      </tbody></table></div>
+      <div class="panel-body"><div class="related">
+        ${p.session && !cancelled ? '<button type="button" class="button" data-pay-cancel-rec>Cancel record</button><button type="button" class="button" data-pay-delete-rec>Delete record</button>' : ''}
+        <button type="button" class="button" data-pay-close>Close</button>
+      </div><p class="form-note">A cancelled record stays in the register and loses its effect; a deleted session record is removed. Fixture documents are read-only.</p></div>
+    </section>`;
+  }
+  function paymentEditor(code) {
+    if (code) return paymentRecord(code);
     const isReceipt = PAY_FORM.direction === 'receive';
     const parties = PARTIES.filter((p) => (isReceipt ? p.type === 'customer' : p.type === 'supplier'));
     const party = PARTIES.find((p) => p.name === PAY_FORM.party);
@@ -2309,6 +2413,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           <div class="related"><button type="button" class="button" data-pay-add>Add document row</button></div>
           <p class="form-note">Each row settles the receivable or payable the invoice created, not its gross total — tax sits in its own control account. A row may be part-paid, and one payment can settle several documents.</p>
         </div>
+        <div class="panel-body form-grid">${evidenceSection('payment', PAY_FILES)}${ledgerIllustration(isReceipt ? 'Illustrative entry on save' : 'Illustrative entry on save', paymentEntryLines(PAY_FORM.direction, PAY_FORM.party, PAY_FORM.lines), isReceipt ? 'Money received debits the cash or bank sub-account and credits the party receivable.' : 'Money paid debits the party payable and credits the cash or bank sub-account.')}</div>
         <div class="panel-body"><div class="related"><button class="button primary">Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">Nothing here posts to the ledger in this build.</p></div>
       </form>
@@ -2391,6 +2496,22 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       closePayMenus(); payOpen = '';
       rerender();
     }));
+    document.querySelector('[data-pay-close]')?.addEventListener('click', goBack);
+    document.querySelectorAll('[data-pay-open]').forEach((b) => b.addEventListener('click', () => {
+      navigate({module: 'accounting', tab: 'payments', mode: 'editor', code: b.dataset.payOpen});
+    }));
+    document.querySelector('[data-pay-cancel-rec]')?.addEventListener('click', () => {
+      const code = document.querySelector('.panel-head h2')?.textContent.trim();
+      const rec = PAYMENTS.find((p) => p.id === code);
+      if (rec) { rec.state = 'cancelled'; notify('Payment cancelled; it stays in the register.'); }
+      goBack();
+    });
+    document.querySelector('[data-pay-delete-rec]')?.addEventListener('click', () => {
+      const code = document.querySelector('.panel-head h2')?.textContent.trim();
+      const i = PAYMENTS.findIndex((p) => p.id === code);
+      if (i >= 0) { PAYMENTS.splice(i, 1); notify('Payment deleted from the register.'); }
+      goBack();
+    });
     const form = document.querySelector('[data-pay-form]');
     if (!form) return;
     document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
@@ -2433,6 +2554,14 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (!PAY_FORM.lines.length) PAY_FORM.lines.push({doc: '', method: 'bank', account: '', amount: ''});
       rerender();
     }));
+    const zone = document.querySelector('[data-evidence="payment"]');
+    const fileInput = zone?.querySelector('[data-evidence-input]');
+    zone?.addEventListener('click', (ev) => { if (ev.target.closest('label, button, input')) return; fileInput?.click(); });
+    fileInput?.addEventListener('change', (ev) => { PAY_FILES.push(...[...ev.target.files].map((f) => ({name: f.name, size: f.size}))); ev.target.value = ''; rerender(); });
+    zone?.addEventListener('dragover', (ev) => ev.preventDefault());
+    zone?.addEventListener('drop', (ev) => { ev.preventDefault(); PAY_FILES.push(...[...ev.dataTransfer.files].map((f) => ({name: f.name, size: f.size}))); rerender(); });
+    form.addEventListener('paste', (ev) => { const files = ev.clipboardData ? [...ev.clipboardData.files] : []; if (!files.length) return; ev.preventDefault(); PAY_FILES.push(...files.map((f) => ({name: f.name, size: f.size}))); rerender(); });
+    document.querySelectorAll('[data-evidence-remove]').forEach((b) => b.addEventListener('click', () => { PAY_FILES.splice(Number(b.dataset.evidenceRemove), 1); rerender(); }));
     form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       if (!form.reportValidity()) return;
@@ -2465,6 +2594,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         allocations: lines.map((l) => ({id: l.doc, amount: round2(Number(l.amount)), method: l.method, account: l.account})),
         advance: 0,
         tenders: lines.map((l) => ({method: l.method, account: l.account, reference: '', amount: l.amount})),
+        files: PAY_FILES.slice(),
         session: true,
       });
       notify(`Saved ${number}: ${lines.length} document${lines.length > 1 ? 's' : ''}, ${money(total)}.`);
@@ -2476,24 +2606,87 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   /* -------------------------------------------------- invoices and bills */
   const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
   const INV_DRAFT = {
-    sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', narration: 'Service invoiced', notes: '', lines: [
-      {account: '4000', description: 'Service', qty: '1', price: '0.00'},
-      {account: '4000', description: '', qty: '1', price: '0.00'},
-      {account: '4000', description: '', qty: '1', price: '0.00'},
-    ]},
-    purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', narration: 'Supplier bill', notes: '', lines: [
-      {account: '5000', description: 'Service', qty: '1', price: '0.00'},
-      {account: '5000', description: '', qty: '1', price: '0.00'},
-      {account: '5000', description: '', qty: '1', price: '0.00'},
-    ]},
+    sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Service invoiced',
+      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'advance', rate: '', basis: 'net', custom: ''}]},
+    purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Supplier bill',
+      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', tax: '10'}], withholding: [{type: 'income', rate: '', basis: 'net', custom: ''}]},
   };
+  const INV_FILES = {sales: [], purchase: []};
+  const PAY_FILES = [];
+  if (!PAY_FORM.pay) PAY_FORM.pay = {enabled: false, lines: [{method: 'bank', account: '', amount: ''}]};
 
+  function invLineNet(l) { return round2((Number(l.qty) || 0) * (Number(l.price) || 0)); }
+  function invLineTax(l) { return round2(invLineNet(l) * (Number(l.tax) || 0) / 100); }
+  function invLineGross(l) { return round2(invLineNet(l) + invLineTax(l)); }
   function invoiceTotals(kind, lines) {
-    const rate = kind === 'sales' ? 10 : 10;
-    const net = round2(lines.reduce((n, l) => n + (Number(l.qty) || 0) * (Number(l.price) || 0), 0));
-    const tax = round2((net * rate) / 100);
-    return {net, tax, gross: round2(net + tax), rate};
+    const net = round2(lines.reduce((n, l) => n + invLineNet(l), 0));
+    const tax = round2(lines.reduce((n, l) => n + invLineTax(l), 0));
+    return {net, tax, gross: round2(net + tax), rate: 0};
   }
+  function whtBaseValue(basis, totals) { return basis === 'gross' ? totals.gross : basis === 'tax' ? totals.tax : totals.net; }
+  function whtAmount(w, totals) {
+    if (w.rate === 'custom') return round2(Number(w.custom) || 0);
+    return round2((whtBaseValue(w.basis, totals) * (Number(w.rate) || 0)) / 100);
+  }
+  function invoiceWhtTotal(withholding, totals) { return round2((withholding || []).reduce((n, w) => n + whtAmount(w, totals), 0)); }
+  function invoiceNetDue(totals, withholding) { return round2(Math.max(totals.gross - invoiceWhtTotal(withholding, totals), 0)); }
+  function invTaxRateFor(itemCode, kind) {
+    const item = ITEMS.find((i) => i.code === itemCode);
+    const rule = item ? TAX_RULES.find((r) => r.code === item.tax && r.kind === kind) : null;
+    return rule ? String(rule.rate) : '';
+  }
+  function evidenceSection(key, files, label = 'Supporting documents') {
+    return `<div class="wide"><div class="section-title">${e(label)}</div>
+      <div class="evidence-drop" data-evidence="${key}">
+        <p>Drop files here, or <label class="button">Choose files<input type="file" multiple class="sr-only" data-evidence-input></label></p>
+        <small>Any file type · PDF, image, spreadsheet, CSV, video · names and sizes are recorded in this build; bytes are not stored.</small>
+      </div>
+      <ul class="contract-list file-list" data-evidence-list>${(files || []).map((f, i) => `<li><span>${e(f.name)} <small class="secondary">${Math.max(1, Math.round(f.size / 1024))} KB</small></span><button type="button" class="text-button" data-evidence-remove="${i}">Remove</button></li>`).join('') || '<li class="muted">No file attached.</li>'}</ul></div>`;
+  }
+  function bindEvidenceZone(key, files, rerender) {
+    const zone = document.querySelector(`[data-evidence="${key}"]`);
+    if (!zone) return;
+    const input = zone.querySelector('[data-evidence-input]');
+    const form = zone.closest('form');
+    zone.addEventListener('click', (ev) => { if (ev.target.closest('label, button, input')) return; input?.click(); });
+    input?.addEventListener('change', (ev) => { files.push(...[...ev.target.files].map((f) => ({name: f.name, size: f.size}))); ev.target.value = ''; rerender(); });
+    zone.addEventListener('dragover', (ev) => ev.preventDefault());
+    zone.addEventListener('drop', (ev) => { ev.preventDefault(); files.push(...[...ev.dataTransfer.files].map((f) => ({name: f.name, size: f.size}))); rerender(); });
+    form?.addEventListener('paste', (ev) => {
+      const dropped = ev.clipboardData ? [...ev.clipboardData.files] : [];
+      if (!dropped.length) return;
+      ev.preventDefault();
+      files.push(...dropped.map((f) => ({name: f.name, size: f.size})));
+      rerender();
+    });
+    zone.parentElement.querySelectorAll('[data-evidence-remove]').forEach((b) => b.addEventListener('click', () => {
+      files.splice(Number(b.dataset.evidenceRemove), 1);
+      rerender();
+    }));
+  }
+  function ledgerIllustration(title, lines, note) {
+    const debit = round2(lines.reduce((n, l) => n + Number(l.debit || 0), 0));
+    const credit = round2(lines.reduce((n, l) => n + Number(l.credit || 0), 0));
+    return `<div class="wide"><div class="section-title">${e(title)}</div>
+      <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Account</th><th>Party / sub-account</th><th class="numeric">Debit</th><th class="numeric">Credit</th></tr></thead><tbody>
+        ${lines.map((l) => `<tr><td>${e(l.account)} · ${e((accounts().find((a) => a.code === l.account) || {}).name || 'Unknown account')}</td><td>${e(l.party || '—')}</td><td class="numeric">${l.debit ? money(l.debit) : '—'}</td><td class="numeric">${l.credit ? money(l.credit) : '—'}</td></tr>`).join('')}
+      </tbody><tfoot><tr><td colspan="2">Balanced illustration${Math.abs(debit - credit) > 0.005 ? ' · check' : ''}</td><td class="numeric">${money(debit)}</td><td class="numeric">${money(credit)}</td></tr></tfoot></table></div>
+      <p class="form-note">${e(note || 'Illustrative only; nothing posts to the ledger in this build.')}</p></div>`;
+  }
+  function invoiceEntryLines(kind, draft, totals, withholding) {
+    const isSales = kind === 'sales';
+    const lines = [];
+    const byAccount = {};
+    (draft.lines || []).forEach((l) => { if (!l.account) return; byAccount[l.account] = round2((byAccount[l.account] || 0) + invLineNet(l)); });
+    Object.entries(byAccount).forEach(([account, amount]) => lines.push({account, party: '', debit: isSales ? 0 : amount, credit: isSales ? amount : 0}));
+    if (totals.tax) lines.push({account: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, party: '', debit: isSales ? 0 : totals.tax, credit: isSales ? totals.tax : 0});
+    const wht = invoiceWhtTotal(withholding, totals);
+    const due = invoiceNetDue(totals, withholding);
+    lines.push({account: isSales ? '1100' : '2100', party: draft.party, debit: isSales ? due : 0, credit: isSales ? 0 : due});
+    if (wht) lines.push({account: isSales ? TAX_DEFAULTS.advance : TAX_DEFAULTS.withholding, party: draft.party, debit: isSales ? wht : 0, credit: isSales ? 0 : wht});
+    return lines;
+  }
+
   function returnedFor(kind, id) {
     return round2(RETURNS[kind].filter((r) => r.invoiceId === id).reduce((n, r) => n + r.gross, 0));
   }
@@ -2515,83 +2708,213 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
         return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines: []};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || []}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
     return session.concat(fromFixture)
-      .map((r) => ({...r, balance: round2(Math.max(r.gross - r.returned - (r.paid || 0), 0))}))
+      .map((r) => ({...r, balance: round2(Math.max((r.netDue ?? r.gross) - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
   function invoiceEditor(kind, code) {
     const isSales = kind === 'sales';
     const source = code ? invoiceRows(kind).find((r) => r.id === code) : null;
     const locked = Boolean(source && !source.session);
-    const draft = source ? {party: source.party, date: source.date, due: source.due, terms: '30', reference: '', location: 'HQ', narration: '', notes: '', lines: source.lines || []} : INV_DRAFT[invKey(kind)];
-    const totals = source ? {net: source.net, tax: source.tax, gross: source.gross, rate: 10} : invoiceTotals(kind, draft.lines);
+    const draft = source && source.session
+      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || []}
+      : source ? null : INV_DRAFT[invKey(kind)];
+    const lines = draft ? draft.lines : [];
+    const withholding = draft ? (draft.withholding || []) : [];
+    const totals = source ? {net: source.net, tax: source.tax, gross: source.gross, rate: 0} : invoiceTotals(kind, lines);
+    const whtTotal = invoiceWhtTotal(withholding, totals);
+    const netDue = invoiceNetDue(totals, withholding);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
+    const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense'));
+    const whtRates = [...new Set(['0.5', '1', '2', '4.5', '7.5', '10', '15', ...TAX_RULES.filter((r) => r.kind === 'withholding' || r.kind === 'advance').map((r) => String(r.rate))])];
+    const typeOptions = isSales
+      ? [['advance', 'Advance tax withheld by customer'], ['sales', 'Sales tax withheld by customer']]
+      : [['income', 'Income tax withholding'], ['sales', 'Sales tax withholding']];
+    const lineRows = lines.map((l, i) => `<tr data-inv-line="${i}">
+      <td><select data-inv-field="item" class="inline-input"><option value="">Choose item</option>${ITEMS.map((it) => `<option value="${e(it.code)}" ${it.code === l.item ? 'selected' : ''}>${e(it.code)} · ${e(it.name)}</option>`).join('')}</select></td>
+      <td><select data-inv-field="account" class="inline-input">${incomeAccounts.map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td>
+      <td><select data-inv-field="project" class="inline-input">${['', ...PROJECTS.map((p) => p.code)].map((p) => `<option value="${p}" ${p === (l.project || '') ? 'selected' : ''}>${p || 'No project'}</option>`).join('')}</select></td>
+      <td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td>
+      <td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td>
+      <td class="numeric" data-line-net>${money(invLineNet(l))}</td>
+      <td><input class="numeric" data-inv-field="tax" value="${e(l.tax)}" inputmode="decimal" aria-label="Line ${i + 1} tax rate"></td>
+      <td class="numeric" data-line-gross>${money(invLineGross(l))}</td>
+      <td><button type="button" class="text-button" data-inv-line-remove="${i}" ${lines.length === 1 ? 'disabled' : ''}>Remove</button></td>
+    </tr>`).join('');
+    const whtRows = withholding.map((w, i) => `<tr data-inv-wht="${i}">
+      <td><select data-wht-field="type" class="inline-input">${typeOptions.map(([k, label]) => `<option value="${k}" ${w.type === k ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
+      <td><select data-wht-field="rate" class="inline-input"><option value="">Choose rate</option>${whtRates.map((r) => `<option value="${r}" ${w.rate === r ? 'selected' : ''}>${r}%</option>`).join('')}<option value="custom" ${w.rate === 'custom' ? 'selected' : ''}>Custom amount</option></select>${w.rate === 'custom' ? `<input data-wht-field="custom" value="${e(w.custom || '')}" inputmode="decimal" placeholder="Amount" aria-label="Custom withholding amount">` : ''}</td>
+      <td><select data-wht-field="basis" class="inline-input"><option value="net" ${w.basis === 'net' ? 'selected' : ''}>Before sales tax</option><option value="gross" ${w.basis === 'gross' ? 'selected' : ''}>After sales tax</option><option value="tax" ${w.basis === 'tax' ? 'selected' : ''}>Sales tax only</option></select></td>
+      <td class="numeric" data-wht-amount>${money(whtAmount(w, totals))}</td>
+      <td><button type="button" class="text-button" data-wht-remove="${i}">Remove</button></td>
+    </tr>`).join('');
+    const tenders = INV_TENDERS[kind];
+    const tenderTotal = round2(tenders.reduce((n, t) => n + (Number(t.amount) || 0), 0));
+    const tenderRows = tenders.map((t, i) => `<tr data-inv-tender="${i}">
+      <td><select data-inv-tender-field="method" class="inline-input"><option value="bank" ${t.method === 'bank' ? 'selected' : ''}>Bank transfer</option><option value="cash" ${t.method === 'cash' ? 'selected' : ''}>Cash</option></select></td>
+      <td><select data-inv-tender-field="account" class="inline-input"><option value="">Choose sub-account</option>${CASH_BANK.filter((c) => (t.method === 'cash' ? c.kind === 'cash' : c.kind === 'bank')).map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select></td>
+      <td><input class="numeric" data-inv-tender-field="amount" value="${e(t.amount)}" inputmode="decimal" aria-label="Payment ${i + 1} amount"></td>
+      <td><button type="button" class="text-button" data-inv-tender-remove="${i}" ${tenders.length === 1 ? 'disabled' : ''}>Remove</button></td>
+    </tr>`).join('');
+    const entry = invoiceEntryLines(kind, draft || {lines, party: ''}, totals, withholding);
     return `<section class="panel">
-      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge">Tax ${totals.rate}%</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
-      ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The content is read-only. Create a return to reduce its balance; partial returns are allowed.</div></div>` : ''}
-      <form data-invoice-form="${kind}" class="panel-body form-grid">
+      <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge">${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
+      ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The content is read-only. Create a return to reduce its balance; partial returns are allowed.</div>
+        <div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div>
+        <p class="form-note">Line detail is recorded on the posted document.</p></div>`
+      : `<form data-invoice-form="${kind}">
         <input type="hidden" name="editingCode" value="${e(source ? source.id : '')}">
-        <label>${isSales ? 'Customer' : 'Supplier'}<select name="party" class="inline-input" required ${locked ? 'disabled' : ''}><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === draft.party ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="${e(draft.date)}" required ${locked ? 'disabled' : ''}></label>
-        <label>Due date<input name="due" type="date" value="${e(draft.due)}" required ${locked ? 'disabled' : ''}></label>
-        <label>Terms (days)<input name="terms" type="number" min="0" max="365" value="${e(draft.terms || '30')}" ${locked ? 'disabled' : ''}></label>
-        <label>${isSales ? 'Customer reference' : 'Supplier invoice no'}<input name="reference" maxlength="40" value="${e(draft.reference || '')}" ${locked ? 'disabled' : ''}></label>
-        <label>Location<select name="location" class="inline-input" ${locked ? 'disabled' : ''}>${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${e(l.code) === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
-        <label>Narration<input name="narration" maxlength="80" value="${e(draft.narration || '')}" ${locked ? 'disabled' : ''}></label>
-        <label class="wide">Notes<input name="notes" maxlength="100" value="${e(draft.notes || '')}" ${locked ? 'disabled' : ''}></label>
-        ${locked ? '' : `<label>Record payment with this document<select name="recordPayment" class="inline-input"><option value="no" ${INV_PAY[kind] ? '' : 'selected'}>No — post the document only</option><option value="yes" ${INV_PAY[kind] ? 'selected' : ''}>Yes — record the money now</option></select></label>`}
-      </form>
-      ${source && locked ? `<div class="panel-body"><div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div><p class="form-note">Line detail is recorded on the posted document. Use Return to reduce it.</p></div>`
-      : `<div class="table-scroll"><table class="invoice-lines">
-        <thead><tr><th>Line</th><th>Account</th><th>Description</th><th>Project</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Net</th></tr></thead>
-        <tbody>${draft.lines.map((l, i) => `<tr data-inv-line="${i}"><td>${i + 1}</td><td><select class="inline-input" data-inv-field="account">${accounts().filter((a) => (isSales ? a.type === 'income' : a.type === 'expense')).map((a) => `<option value="${a.code}" ${a.code === l.account ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td><input data-inv-field="description" value="${e(l.description)}" aria-label="Line ${i + 1} description"></td><td><select class="inline-input" data-inv-field="project">${['', ...PROJECTS.map((p) => p.code)].map((p) => `<option value="${p}" ${p === (l.project || '') ? 'selected' : ''}>${p || 'No project'}</option>`).join('')}</select></td><td><input class="numeric" data-inv-field="qty" value="${e(l.qty)}" inputmode="decimal" aria-label="Line ${i + 1} quantity"></td><td><input class="numeric" data-inv-field="price" value="${e(l.price)}" inputmode="decimal" aria-label="Line ${i + 1} unit price"></td><td class="numeric">${money((Number(l.qty) || 0) * (Number(l.price) || 0))}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="6">Net ${money(totals.net)} · tax ${money(totals.tax)} · gross <strong>${money(totals.gross)}</strong></td><td class="numeric">${money(totals.gross)}</td></tr></tfoot>
-      </table></div>
-      ${INV_PAY[kind] ? `<div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Payment method</th><th>Cash / bank account or advance</th><th>Reference</th><th class="numeric">Amount</th></tr></thead><tbody>${INV_TENDERS[kind].map((t, i) => `<tr data-inv-tender="${i}"><td><select class="inline-input" data-inv-tender-field="method">${[['bank', 'Bank'], ['cash', 'Cash'], ['advance', 'Advance already paid']].map(([k, l]) => `<option value="${k}" ${t.method === k ? 'selected' : ''}>${l}</option>`).join('')}</select></td><td>${t.method === 'advance' ? `<input data-inv-tender-field="reference" value="${e(t.reference || '')}" placeholder="Advance document">` : `<select class="inline-input" data-inv-tender-field="account">${CASH_BANK.map((c) => `<option value="${e(c.name)}" ${c.name === t.account ? 'selected' : ''}>${e(c.name)}</option>`).join('')}</select>`}</td><td><input data-inv-tender-field="reference" value="${e(t.reference || '')}" aria-label="Payment ${i + 1} reference"></td><td><input class="numeric" data-inv-tender-field="amount" value="${e(t.amount)}" inputmode="decimal" aria-label="Payment ${i + 1} amount"></td></tr>`).join('')}</tbody></table></div>` : ''}
-      <div class="panel-body"><div class="related"><button type="button" class="button" data-inv-calc>Calculate</button><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
-        <p class="form-note">Enter quantity and price, then Calculate to refresh the totals. A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>`}
+        <div class="panel-body form-grid">
+          <label>${isSales ? 'Customer' : 'Supplier'}<select name="party" class="inline-input" required><option value="">Choose a party</option>${parties.map((p) => `<option value="${e(p.name)}" ${p.name === (draft && draft.party) ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+          <label>Date<input name="date" type="date" value="${e(draft ? draft.date : '2026-11-30')}" required></label>
+          <label>Due date<input name="due" type="date" value="${e(draft ? draft.due : '2026-12-30')}"></label>
+          <label>Terms (days)<input name="terms" type="number" min="0" max="365" value="${e(draft ? draft.terms || '30' : '30')}"></label>
+          <label>${isSales ? 'Customer reference' : 'Supplier invoice no'}<input name="reference" maxlength="40" value="${e(draft ? draft.reference || '' : '')}"></label>
+          <label>Location<select name="location" class="inline-input">${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${draft && l.code === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
+          <label class="wide">Description<textarea name="description" maxlength="200" placeholder="What this document is for">${e(draft ? draft.description || '' : '')}</textarea></label>
+          <label>Record payment with this document<select name="recordPayment" class="inline-input"><option value="no" ${INV_PAY[kind] ? '' : 'selected'}>No — save the document only</option><option value="yes" ${INV_PAY[kind] ? 'selected' : ''}>Yes — record the money now</option></select></label>
+        </div>
+        <div class="panel-body">
+          <div class="section-title">Items</div>
+          <div class="table-scroll"><table class="invoice-lines inv-items">
+            <thead><tr><th>Item</th><th>Account</th><th>Project</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th class="numeric">Total</th><th class="numeric">Tax %</th><th class="numeric">Total after tax</th><th></th></tr></thead>
+            <tbody>${lineRows}</tbody>
+            <tfoot>
+              <tr><td colspan="5">Net total</td><td class="numeric" data-inv-net>${money(totals.net)}</td><td></td><td class="numeric" data-inv-net2>${money(totals.net)}</td><td></td></tr>
+              <tr><td colspan="5">Sales tax total</td><td></td><td></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
+              <tr><td colspan="5">Invoice total</td><td colspan="2"></td><td class="numeric" data-inv-gross><strong>${money(totals.gross)}</strong></td><td></td></tr>
+            </tfoot>
+          </table></div>
+          <div class="related"><button type="button" class="button" data-inv-add-line>Add item row</button></div>
+        </div>
+        <div class="panel-body">
+          <div class="record-summary invoice-due"><div><small>Gross ${isSales ? 'receivable' : 'payable'}</small><span data-inv-gross2>${money(totals.gross)}</span></div><div><small>Withholding</small><span data-inv-wht-total>${money(whtTotal)}</span></div><div><small>Net ${isSales ? 'receivable' : 'payable'}</small><strong data-inv-due>${money(netDue)}</strong></div></div>
+          <div class="section-title">${isSales ? 'Withholding by customer' : 'Withholding from supplier'}</div>
+          <div class="table-scroll"><table class="invoice-lines inv-wht">
+            <thead><tr><th>Type</th><th>Rate / amount</th><th>Basis</th><th class="numeric">Amount</th><th></th></tr></thead>
+            <tbody>${whtRows}</tbody>
+          </table></div>
+          <div class="related"><button type="button" class="button" data-inv-add-wht>Add withholding row</button></div>
+          <p class="form-note">${isSales ? 'Advance tax withheld by the customer reduces what we receive; it is our asset, not a cost.' : 'Withholding from a supplier is money we deduct and owe to the authority.'} Net ${isSales ? 'receivable' : 'payable'} after withholding is the amount the control account carries.</p>
+        </div>
+        ${INV_PAY[kind] ? `<div class="panel-body">
+          <div class="section-title">Record payment</div>
+          <div class="table-scroll"><table class="invoice-lines inv-pay">
+            <thead><tr><th>Method</th><th>Cash / bank sub-account</th><th class="numeric">Amount</th><th></th></tr></thead>
+            <tbody>${tenderRows}</tbody>
+            <tfoot><tr><td colspan="2">Total received</td><td class="numeric" data-inv-paid>${money(tenderTotal)}</td><td></td></tr>
+            <tr><td colspan="2">Difference from net ${isSales ? 'receivable' : 'payable'}</td><td class="numeric" data-inv-diff>${money(round2(netDue - tenderTotal))}</td><td></td></tr></tfoot>
+          </table></div>
+          <div class="related"><button type="button" class="button" data-inv-add-tender>Add payment row</button></div>
+        </div>` : ''}
+        <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative entry on save' : 'Illustrative entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}</div>
+        <div class="panel-body"><div class="related"><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+          <p class="form-note">A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
+      </form>`}
     </section>`;
   }
 
+  function invoiceStatus(r) { return r.returned >= r.gross && r.gross > 0 ? 'returned' : r.returned > 0 ? 'partly returned' : 'posted'; }
+  function invoiceColValue(r, key) { return key === 'state' ? invoiceStatus(r) : (r[key] ?? ''); }
+  function invoiceColValues(kind, key) {
+    return [...new Set(invoiceRows(kind).map((r) => String(invoiceColValue(r, key))))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+  function invoiceColLabel(key, v) { return ['net', 'tax', 'gross', 'returned', 'paid', 'balance'].includes(key) ? money(Number(v) || 0) : v; }
+  function returnColValue(r, key) { return r[key] ?? ''; }
+  function returnColValues(key) {
+    return [...new Set(RETURNS.sales.concat(RETURNS.purchase).map((r) => String(returnColValue(r, key))))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+  function returnColLabel(key, v) { return ['net', 'tax', 'gross'].includes(key) ? money(Number(v) || 0) : v; }
   function invoicesView(kind) {
     const isSales = kind === 'sales';
-    const f = FILTERS.invoices;
     const tab = INV_TAB[kind] === 'returns' ? 'returns' : 'invoices';
-    const all = invoiceRows(kind);
-    const rows = all.filter((r) => hit(f.q, r.id, r.party, r.date, r.due) && (!f.party || r.party === f.party));
-    const returns = RETURNS[kind].slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-    const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
-    const statusOf = (r) => (r.returned >= r.gross && r.gross > 0 ? 'returned' : r.returned > 0 ? 'partly returned' : 'posted');
     const tabs = `<div class="tabs" role="tablist" aria-label="${isSales ? 'Sales invoice' : 'Purchase bill'} views"><button role="tab" aria-selected="${tab === 'invoices'}" data-inv-tab="${kind}:invoices">${isSales ? 'Invoices' : 'Bills'}</button><button role="tab" aria-selected="${tab === 'returns'}" data-inv-tab="${kind}:returns">Returns</button></div>`;
     if (tab === 'returns') {
-      return tabs + `<form class="filterbar" data-filter="invoices">
-          ${filterInput('invoices', f.q, 'Return number, party, invoice')}
-          <label>Party<select name="party"><option value="">All parties</option>${parties.map((p) => `<option value="${e(p.name)}" ${f.party === p.name ? 'selected' : ''}>${e(p.name)}</option>`).join('')}</select></label>
-          <button class="button" type="button" data-filter-reset="invoices">Reset</button>
+      const f = FILTERS.invoiceReturns;
+      let returns = RETURNS[kind].slice().filter((r) => hit(f.q, r.id, r.invoiceId, r.party, r.date, r.reason)
+        && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to)
+        && Object.entries(f.cf || {}).every(([k, v]) => !v || !v.length || v.includes(String(returnColValue(r, k)))));
+      returns = returns.sort((a, b) => { const x = returnColValue(a, f.sort.key), y = returnColValue(b, f.sort.key); const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), undefined, {numeric: true}); return f.sort.dir === 'desc' ? -d : d; });
+      const cols = [['date', 'Date'], ['id', 'Return'], ['invoiceId', 'Original'], ['party', 'Party'], ['net', 'Net', 'numeric'], ['tax', 'Tax', 'numeric'], ['gross', 'Gross', 'numeric'], ['reason', 'Reason']];
+      const cells = {
+        date: (r) => `<td class="col col-date">${e(r.date)}</td>`,
+        id: (r) => `<td class="col col-id mono">${e(r.id)}</td>`,
+        invoiceId: (r) => `<td class="col col-invoiceId mono">${e(r.invoiceId)}</td>`,
+        party: (r) => `<td class="col col-party">${e(r.party)}</td>`,
+        net: (r) => `<td class="col col-net numeric">${money(r.net)}</td>`,
+        tax: (r) => `<td class="col col-tax numeric">${money(r.tax)}</td>`,
+        gross: (r) => `<td class="col col-gross numeric">${money(r.gross)}</td>`,
+        reason: (r) => `<td class="col col-reason">${e(r.reason)}</td>`,
+      };
+      return tabs + `<form class="filterbar" data-filter="invoiceReturns" data-inv-filter="returns">
+          ${filterInput('invoiceReturns', f.q, 'Return number, party, invoice')}
+          <label>From<input type="date" name="from" value="${e(f.from || '')}"></label>
+          <label>To<input type="date" name="to" value="${e(f.to || '')}"></label>
+          <button class="button" type="button" data-inv-reset="${kind}:returns">Reset</button>
           <button class="button primary" type="button" data-new-return="${kind}">New return</button>
         </form>
         <section class="panel">
-          <div class="panel-head"><h2>Returns</h2><div class="related"><span class="badge">${returns.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
-          <div class="table-scroll" data-hscroll><table><thead><tr><th>Date</th><th>Return</th><th>Original</th><th>Party</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th>Reason</th></tr></thead>
-            <tbody>${returns.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td class="mono">${e(r.invoiceId)}</td><td>${e(r.party)}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td>${e(r.reason)}</td></tr>`).join('') || '<tr><td colspan="8">No returns yet. Use New return to create one against any open document.</td></tr>'}</tbody>
+          <div class="panel-head"><h2>Returns</h2><div class="related"><span class="badge">${returns.length} of ${RETURNS[kind].length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
+          <div class="table-scroll" data-hscroll><table class="pay-register">
+            <thead><tr>${cols.map(([key, label, cls]) => {
+              const sel = (f.cf && f.cf[key]) || [];
+              return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-inv-sort="returns:${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-invf="returns:${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
+                <div class="col-filter-panel" data-invp="returns:${key}" hidden><div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${f.sort.key === key ? 'active' : ''}" data-invtoggle="returns:${key}">${f.sort.key === key ? (f.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+                <div class="ms-searchrow"><input class="ms-search inv-filter-search" type="search" placeholder="Search values"></div>
+                <div class="ms-head"><button type="button" class="text-button" data-invall="returns:${key}">Select all</button><span class="ms-count">${returnColValues(key).length}</span><button type="button" class="text-button" data-invnone="returns:${key}">Clear</button></div>
+                <div class="ms-list">${returnColValues(key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(returnColLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+                <div class="gl-applyrow"><button type="button" class="button primary" data-invapply="returns:${key}">Apply filter</button></div></div></th>`;
+            }).join('')}</tr></thead>
+            <tbody>${returns.map((r) => `<tr>${cols.map(([key]) => cells[key](r)).join('')}</tr>`).join('') || '<tr><td colspan="8">No returns match these filters.</td></tr>'}</tbody>
+            <tfoot><tr><td colspan="4">Total shown</td><td class="numeric">${money(round2(returns.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(returns.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(returns.reduce((n, r) => n + r.gross, 0)))}</td><td></td></tr></tfoot>
           </table></div>
           <div class="table-footer">A return reduces the original document's balance. Partial returns are allowed; the original stays posted and keeps its number.</div>
         </section>`;
     }
-    return tabs + `<form class="filterbar" data-filter="invoices">
+    const f = FILTERS.invoices;
+    const all = invoiceRows(kind);
+    const cols = [['date', 'Date'], ['id', 'Number'], ['party', isSales ? 'Customer' : 'Supplier'], ['project', 'Project'], ['due', 'Due'], ['net', 'Net', 'numeric'], ['tax', 'Tax', 'numeric'], ['gross', 'Gross', 'numeric'], ['returned', 'Returned', 'numeric'], ['paid', 'Paid', 'numeric'], ['balance', 'Balance', 'numeric'], ['state', 'State']];
+    let rows = all.filter((r) => hit(f.q, r.id, r.party, r.date, r.due)
+      && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to)
+      && Object.entries(f.cf || {}).every(([k, v]) => !v || !v.length || v.includes(String(invoiceColValue(r, k)))));
+    rows = rows.slice().sort((a, b) => { const x = invoiceColValue(a, f.sort.key), y = invoiceColValue(b, f.sort.key); const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), undefined, {numeric: true}); return f.sort.dir === 'desc' ? -d : d; });
+    const cells = {
+      date: (r) => `<td class="col col-date">${e(r.date)}</td>`,
+      id: (r) => `<td class="col col-id mono">${e(r.id)}</td>`,
+      party: (r) => `<td class="col col-party">${e(r.party)}</td>`,
+      project: (r) => `<td class="col col-project">${e(r.project || '—')}</td>`,
+      due: (r) => `<td class="col col-due">${e(r.due || '—')}</td>`,
+      net: (r) => `<td class="col col-net numeric">${money(r.net)}</td>`,
+      tax: (r) => `<td class="col col-tax numeric">${money(r.tax)}</td>`,
+      gross: (r) => `<td class="col col-gross numeric">${money(r.gross)}</td>`,
+      returned: (r) => `<td class="col col-returned numeric">${r.returned ? money(r.returned) : '—'}</td>`,
+      paid: (r) => `<td class="col col-paid numeric">${r.paid ? money(r.paid) : '—'}</td>`,
+      balance: (r) => `<td class="col col-balance numeric">${money(r.balance)}</td>`,
+      state: (r) => `<td class="col col-state">${badge(invoiceStatus(r), invoiceStatus(r) === 'posted' ? 'good' : 'warn')}</td>`,
+    };
+    return tabs + `<form class="filterbar" data-filter="invoices" data-inv-filter="main">
         ${filterInput('invoices', f.q, 'Number, party, date')}
-        <label>Party<select name="party"><option value="">All parties</option>${parties.map((p) => `<option value="${e(p.name)}" ${f.party === p.name ? 'selected' : ''}>${e(p.name)}</option>`).join('')}</select></label>
-        <button class="button" type="button" data-filter-reset="invoices">Reset</button>
+        <label>From<input type="date" name="from" value="${e(f.from || '')}"></label>
+        <label>To<input type="date" name="to" value="${e(f.to || '')}"></label>
+        <button class="button" type="button" data-inv-reset="${kind}:main">Reset</button>
       </form>
       <section class="panel">
         <div class="panel-head"><h2>${isSales ? 'Sales invoices' : 'Purchase bills'}</h2><div class="related"><span class="badge">${rows.length} of ${all.length} documents</span><button class="button" data-export-table>Export CSV</button></div></div>
-        <div class="table-scroll" data-hscroll><table>
-          <thead><tr><th>Date</th><th>Number</th><th>${isSales ? 'Customer' : 'Supplier'}</th><th>Project</th><th>Due</th><th class="numeric">Net</th><th class="numeric">Tax</th><th class="numeric">Gross</th><th class="numeric">Returned</th><th class="numeric">Paid</th><th class="numeric">Balance</th><th>State</th><th></th></tr></thead>
-          <tbody>${rows.map((r) => `<tr><td>${e(r.date)}</td><td class="mono">${e(r.id)}</td><td>${e(r.party)}</td><td>${e(r.project || '—')}</td><td>${e(r.due || '—')}</td><td class="numeric">${money(r.net)}</td><td class="numeric">${money(r.tax)}</td><td class="numeric">${money(r.gross)}</td><td class="numeric">${r.returned ? money(r.returned) : '—'}</td><td class="numeric">${r.paid ? money(r.paid) : '—'}</td><td class="numeric">${money(r.balance)}</td><td>${badge(statusOf(r), statusOf(r) === 'posted' ? 'good' : 'warn')}</td><td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="11">No documents match these filters.</td></tr>'}</tbody>
-          <tfoot><tr><td colspan="5">Total</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.paid || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
+        <div class="table-scroll" data-hscroll><table class="pay-register">
+          <thead><tr>${cols.map(([key, label, cls]) => {
+            const sel = (f.cf && f.cf[key]) || [];
+            return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-inv-sort="main:${key}" aria-sort="${f.sort.key === key ? (f.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button><button type="button" class="col-filter-btn" data-invf="main:${key}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${sel.length ? `<b>${sel.length}</b>` : ''}</button></div>
+              <div class="col-filter-panel" data-invp="main:${key}" hidden><div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${f.sort.key === key ? 'active' : ''}" data-invtoggle="main:${key}">${f.sort.key === key ? (f.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+              <div class="ms-searchrow"><input class="ms-search inv-filter-search" type="search" placeholder="Search values"></div>
+              <div class="ms-head"><button type="button" class="text-button" data-invall="main:${key}">Select all</button><span class="ms-count">${invoiceColValues(kind, key).length}</span><button type="button" class="text-button" data-invnone="main:${key}">Clear</button></div>
+              <div class="ms-list">${invoiceColValues(kind, key).map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${sel.includes(v) ? 'checked' : ''}><span>${e(invoiceColLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+              <div class="gl-applyrow"><button type="button" class="button primary" data-invapply="main:${key}">Apply filter</button></div></div></th>`;
+          }).join('')}<th></th></tr></thead>
+          <tbody>${rows.map((r) => `<tr class="row-link" data-inv-row="${kind}:${e(r.id)}">${cols.map(([key]) => cells[key](r)).join('')}<td><details class="form-menu"><summary class="icon-button" aria-label="Actions">${icon('more')}</summary><div class="menu"><button type="button" data-inv-open="${kind}:${e(r.id)}">Open</button><button type="button" data-inv-return="${kind}:${e(r.id)}">Return</button></div></details></td></tr>`).join('') || '<tr><td colspan="13">No documents match these filters.</td></tr>'}</tbody>
+          <tfoot><tr><td colspan="5">Total shown · ${rows.length} of ${all.length}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.net, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.gross, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.returned, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + (r.paid || 0), 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.balance, 0)))}</td><td colspan="2"></td></tr></tfoot>
         </table></div>
-        <div class="table-footer">Returned, Paid and Balance follow every return and receipt, partial or complete. Use the row menu to open a document or create its return.</div>
+        <div class="table-footer">Returned, Paid and Balance follow every return and receipt, partial or complete. Click a row to open the document; the menu also offers its return.</div>
       </section>`;
   }
 
@@ -2618,23 +2941,30 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const form = root.querySelector('[data-invoice-form]');
     const draft = INV_DRAFT[invKey(kind)];
     if (!form) return draft;
+    const val = (tr, sel) => { const el = tr.querySelector(sel); return el ? el.value : ''; };
     const v = Object.fromEntries(new FormData(form));
     const lines = [...root.querySelectorAll('[data-inv-line]')].map((tr) => ({
-      account: tr.querySelector('[data-inv-field="account"]').value,
-      description: tr.querySelector('[data-inv-field="description"]').value,
-      project: tr.querySelector('[data-inv-field="project"]') ? tr.querySelector('[data-inv-field="project"]').value : '',
-      qty: tr.querySelector('[data-inv-field="qty"]').value,
-      price: tr.querySelector('[data-inv-field="price"]').value,
+      item: val(tr, '[data-inv-field="item"]'),
+      account: val(tr, '[data-inv-field="account"]'),
+      project: val(tr, '[data-inv-field="project"]'),
+      qty: val(tr, '[data-inv-field="qty"]'),
+      price: val(tr, '[data-inv-field="price"]'),
+      tax: val(tr, '[data-inv-field="tax"]'),
+    }));
+    const withholding = [...root.querySelectorAll('[data-inv-wht]')].map((tr) => ({
+      type: val(tr, '[data-wht-field="type"]'),
+      rate: val(tr, '[data-wht-field="rate"]'),
+      custom: val(tr, '[data-wht-field="custom"]'),
+      basis: val(tr, '[data-wht-field="basis"]'),
     }));
     INV_PAY[kind] = v.recordPayment === 'yes';
-    const tenderRows = [...(root.querySelectorAll('[data-inv-tender]') || [])].map((tr) => ({
-      method: tr.querySelector('[data-inv-tender-field="method"]').value,
-      account: tr.querySelector('[data-inv-tender-field="account"]') ? tr.querySelector('[data-inv-tender-field="account"]').value : '',
-      reference: tr.querySelector('[data-inv-tender-field="reference"]') ? tr.querySelector('[data-inv-tender-field="reference"]').value : '',
-      amount: tr.querySelector('[data-inv-tender-field="amount"]').value,
+    const tenderRows = [...root.querySelectorAll('[data-inv-tender]')].map((tr) => ({
+      method: val(tr, '[data-inv-tender-field="method"]'),
+      account: val(tr, '[data-inv-tender-field="account"]'),
+      amount: val(tr, '[data-inv-tender-field="amount"]'),
     }));
     if (tenderRows.length) INV_TENDERS[kind] = tenderRows;
-    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, narration: v.narration, notes: v.notes, lines});
+    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding});
     return draft;
   }
   function bindInvoices(kind, rerender, notify, navigate) {
@@ -2645,6 +2975,82 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       if (k !== kind) return;
       INV_TAB[kind] = t;
       rerender();
+    }));
+    const invFilter = (scope) => scope === 'returns' ? FILTERS.invoiceReturns : FILTERS.invoices;
+    document.querySelector('[data-inv-reset]')?.addEventListener('click', () => {
+      const scope = document.querySelector('[data-inv-reset]').dataset.invReset.split(':')[1];
+      if (scope === 'returns') Object.assign(FILTERS.invoiceReturns, {q: '', from: '', to: '', cf: {}});
+      else Object.assign(FILTERS.invoices, {q: '', from: '', to: '', party: '', cf: {}});
+      rerender();
+    });
+    document.querySelectorAll('[data-inv-sort]').forEach((b) => b.addEventListener('click', () => {
+      const [scope, key] = b.dataset.invSort.split(':');
+      const f = invFilter(scope);
+      f.sort = {key, dir: f.sort.key === key && f.sort.dir === 'asc' ? 'desc' : 'asc'};
+      rerender();
+    }));
+    let invOpen = '';
+    const closeInvMenus = (except) => {
+      document.querySelectorAll('[data-invp]').forEach((p) => { if (p !== except) p.hidden = true; });
+      document.querySelectorAll('[data-invf]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    };
+    const openInvMenu = (scope, key) => {
+      const btn = document.querySelector(`[data-invf="${scope}:${key}"]`);
+      const panel = document.querySelector(`[data-invp="${scope}:${key}"]`);
+      if (!btn || !panel) return;
+      closeInvMenus(panel);
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      const r = btn.getBoundingClientRect();
+      panel.classList.add('col-filter-panel--fixed');
+      const left = r.left > window.innerWidth / 2 ? r.right - 270 : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - 278)) + 'px';
+      const top = Math.round(r.bottom + 4);
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, window.innerHeight - top - 12)) + 'px';
+      const search = panel.querySelector('.inv-filter-search');
+      if (search) { search.value = ''; search.focus(); }
+      invOpen = scope + ':' + key;
+    };
+    document.querySelectorAll('[data-invf]').forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const [scope, key] = b.dataset.invf.split(':');
+      if (invOpen === b.dataset.invf) { closeInvMenus(); invOpen = ''; return; }
+      openInvMenu(scope, key);
+    }));
+    document.addEventListener('click', (ev) => {
+      if (ev.target.closest('.col-filter-panel') || ev.target.closest('[data-invf]')) return;
+      closeInvMenus(); invOpen = '';
+    });
+    document.querySelectorAll('[data-invp]').forEach((panel) => {
+      panel.addEventListener('click', (ev) => ev.stopPropagation());
+      panel.querySelector('.inv-filter-search')?.addEventListener('input', (ev) => {
+        const q = ev.target.value.toLowerCase();
+        panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
+      });
+      panel.querySelector('[data-invall]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { if (!b.closest('.ms-row').hidden) b.checked = true; }); });
+      panel.querySelector('[data-invnone]')?.addEventListener('click', () => { panel.querySelectorAll('input[type=checkbox]').forEach((b) => { b.checked = false; }); });
+    });
+    document.querySelectorAll('[data-invapply]').forEach((b) => b.addEventListener('click', () => {
+      const [scope, key] = b.dataset.invapply.split(':');
+      const panel = document.querySelector(`[data-invp="${scope}:${key}"]`);
+      const f = invFilter(scope);
+      f.cf = {...(f.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      closeInvMenus(); invOpen = '';
+      rerender();
+    }));
+    document.querySelectorAll('[data-invtoggle]').forEach((b) => b.addEventListener('click', () => {
+      const [scope, key] = b.dataset.invtoggle.split(':');
+      const f = invFilter(scope);
+      f.sort = {key, dir: f.sort.key === key && f.sort.dir === 'asc' ? 'desc' : 'asc'};
+      closeInvMenus(); invOpen = '';
+      rerender();
+    }));
+    document.querySelectorAll('[data-inv-row]').forEach((tr) => tr.addEventListener('click', (ev) => {
+      if (ev.target.closest('details, button, select, input, a')) return;
+      const [k, id] = tr.dataset.invRow.split(':');
+      if (k !== kind) return;
+      navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'invoice', code: id});
     }));
     document.querySelectorAll('[data-inv-open]').forEach((b) => b.addEventListener('click', () => {
       const [k, id] = b.dataset.invOpen.split(':');
@@ -2668,29 +3074,142 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
 
     const root = document.querySelector(`[data-invoice-form="${kind}"]`)?.closest('section');
     if (root) {
+      const form = root.querySelector(`[data-invoice-form="${kind}"]`);
       document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
-      root.querySelector('[name="recordPayment"]')?.addEventListener('change', () => { captureInvoice(kind, root); rerender(); });
-      root.querySelector('[data-inv-calc]')?.addEventListener('click', () => { captureInvoice(kind, root); rerender(); });
+      form?.addEventListener('submit', (ev) => ev.preventDefault());
+      const recalc = () => {
+        const d = captureInvoice(kind, root);
+        const t = invoiceTotals(kind, d.lines);
+        const wht = invoiceWhtTotal(d.withholding, t);
+        const due = invoiceNetDue(t, d.withholding);
+        root.querySelectorAll('[data-inv-line]').forEach((tr, i) => {
+          const net = tr.querySelector('[data-line-net]'); if (net) net.textContent = money(invLineNet(d.lines[i]));
+          const gross = tr.querySelector('[data-line-gross]'); if (gross) gross.textContent = money(invLineGross(d.lines[i]));
+        });
+        const put = (sel, value) => root.querySelectorAll(sel).forEach((el) => { el.textContent = value; });
+        put('[data-inv-net]', money(t.net));
+        put('[data-inv-net2]', money(t.net));
+        put('[data-inv-tax]', money(t.tax));
+        put('[data-inv-gross]', money(t.gross));
+        put('[data-inv-gross2]', money(t.gross));
+        put('[data-inv-wht-total]', money(wht));
+        put('[data-inv-due]', money(due));
+        root.querySelectorAll('[data-inv-wht]').forEach((tr, i) => { const cell = tr.querySelector('[data-wht-amount]'); if (cell) cell.textContent = money(whtAmount(d.withholding[i], t)); });
+        const tenders = [...root.querySelectorAll('[data-inv-tender]')].map((tr) => Number(tr.querySelector('[data-inv-tender-field="amount"]').value) || 0);
+        const paid = round2(tenders.reduce((n, x) => n + x, 0));
+        put('[data-inv-paid]', money(paid));
+        put('[data-inv-diff]', money(round2(due - paid)));
+      };
+      form?.addEventListener('input', (ev) => {
+        if (!ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]')) return;
+        captureInvoice(kind, root);
+        recalc();
+      });
+      form?.addEventListener('change', (ev) => {
+        const isSelect = ev.target.matches('select');
+        const numeric = ev.target.matches('[data-inv-field="qty"], [data-inv-field="price"], [data-inv-field="tax"], [data-wht-field="custom"], [data-inv-tender-field="amount"]');
+        if (!isSelect && !numeric) return;
+        const before = captureInvoice(kind, root);
+        if (isSelect && ev.target.matches('[data-inv-field="item"]')) {
+          const tr = ev.target.closest('[data-inv-line]');
+          const i = Number(tr.dataset.invLine);
+          const item = ITEMS.find((x) => x.code === before.lines[i].item);
+          if (item) {
+            before.lines[i].account = kind === 'sales' ? item.income : item.expense;
+            const rate = invTaxRateFor(item.code, kind);
+            if (rate !== '') before.lines[i].tax = rate;
+          }
+        }
+        if (isSelect && ev.target.matches('[data-inv-tender-field="method"]')) {
+          const tr = ev.target.closest('[data-inv-tender]');
+          const i = Number(tr.dataset.invTender);
+          INV_TENDERS[kind][i].account = '';
+        }
+        rerender();
+      });
+      root.querySelector('[data-inv-add-line]')?.addEventListener('click', () => {
+        const d = captureInvoice(kind, root);
+        d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'});
+        rerender();
+      });
+      root.querySelectorAll('[data-inv-line-remove]').forEach((b) => b.addEventListener('click', () => {
+        const d = captureInvoice(kind, root);
+        d.lines.splice(Number(b.dataset.invLineRemove), 1);
+        if (!d.lines.length) d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'});
+        rerender();
+      }));
+      root.querySelector('[data-inv-add-wht]')?.addEventListener('click', () => {
+        const d = captureInvoice(kind, root);
+        d.withholding.push({type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''});
+        rerender();
+      });
+      root.querySelectorAll('[data-wht-remove]').forEach((b) => b.addEventListener('click', () => {
+        const d = captureInvoice(kind, root);
+        d.withholding.splice(Number(b.dataset.whtRemove), 1);
+        rerender();
+      }));
+      root.querySelector('[data-inv-add-tender]')?.addEventListener('click', () => {
+        captureInvoice(kind, root);
+        INV_TENDERS[kind].push({method: 'bank', account: '', amount: ''});
+        rerender();
+      });
+      root.querySelectorAll('[data-inv-tender-remove]').forEach((b) => b.addEventListener('click', () => {
+        captureInvoice(kind, root);
+        INV_TENDERS[kind].splice(Number(b.dataset.invTenderRemove), 1);
+        if (!INV_TENDERS[kind].length) INV_TENDERS[kind].push({method: 'bank', account: '', amount: ''});
+        rerender();
+      }));
+      const zone = root.querySelector('[data-evidence]');
+      const fileInput = zone?.querySelector('[data-evidence-input]');
+      zone?.addEventListener('click', (ev) => {
+        if (ev.target.closest('label, button, input')) return;
+        fileInput?.click();
+      });
+      fileInput?.addEventListener('change', (ev) => {
+        INV_FILES[kind].push(...[...ev.target.files].map((f) => ({name: f.name, size: f.size})));
+        ev.target.value = '';
+        rerender();
+      });
+      form?.addEventListener('paste', (ev) => {
+        const files = ev.clipboardData ? [...ev.clipboardData.files] : [];
+        if (!files.length) return;
+        ev.preventDefault();
+        INV_FILES[kind].push(...files.map((f) => ({name: f.name, size: f.size})));
+        rerender();
+      });
+      zone?.addEventListener('dragover', (ev) => ev.preventDefault());
+      zone?.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        INV_FILES[kind].push(...[...ev.dataTransfer.files].map((f) => ({name: f.name, size: f.size})));
+        rerender();
+      });
+      root.querySelectorAll('[data-evidence-remove]').forEach((b) => b.addEventListener('click', () => {
+        INV_FILES[kind].splice(Number(b.dataset.evidenceRemove), 1);
+        rerender();
+      }));
       root.querySelector('[data-inv-save]')?.addEventListener('click', () => {
         const draft = captureInvoice(kind, root);
         if (!draft.party) { notify('Choose a party first.'); return; }
         const totals = invoiceTotals(kind, draft.lines);
-        if (totals.net <= 0) { notify('Enter at least one line with a quantity and a price.'); return; }
-        const editing = document.querySelector(`[data-invoice-form="${kind}"] [name="editingCode"]`)?.value || '';
+        if (totals.net <= 0) { notify('Enter at least one item with a quantity and a price.'); return; }
+        const wht = invoiceWhtTotal(draft.withholding, totals);
+        const netDue = invoiceNetDue(totals, draft.withholding);
+        const editing = form.querySelector('[name="editingCode"]')?.value || '';
+        let invId = editing;
         if (editing) {
           const target = INVOICES.find((x) => x.id === editing);
-          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross});
-          notify('Invoice updated for this session.');
+          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
+          notify('Document updated for this session.');
         } else {
-          INVOICES.push({id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, narration: draft.narration, notes: draft.notes, lines: draft.lines, net: totals.net, tax: totals.tax, gross: totals.gross, session: true});
-          notify(`Saved for this session: ${draft.party} · gross ${totals.gross.toFixed(2)}.`);
+          invId = (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++);
+          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
+          notify(`Saved for this session: ${draft.party} · ${kind === 'sales' ? 'net receivable' : 'net payable'} ${netDue.toFixed(2)}.`);
         }
         if (INV_PAY[kind]) {
           const tenders = INV_TENDERS[kind].filter((t) => Number(t.amount) > 0);
           const total = round2(tenders.reduce((n, t) => n + Number(t.amount), 0));
           if (tenders.length && total > 0) {
-            const invId = editing || INVOICES[INVOICES.length - 1].id;
-            const applied = Math.min(total, totals.net);
+            const applied = Math.min(total, netDue);
             const key = kind === 'sales' ? 'receipt' : 'payment';
             const number = nextDocNumber(key, draft.date);
             NUMBERING[key].next = (NUMBERING[key].next || 1) + 1;
@@ -2700,12 +3219,15 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
               left = round2(left - amount);
               return {id: invId, amount, method: t.method, account: t.account || ''};
             }).filter((a) => a.amount > 0);
-            PAYMENTS.push({id: number, date: draft.date, party: draft.party, account: tenders.length > 1 ? `${tenders.length} accounts` : (tenders[0].account || ''), amount: total, direction: kind === 'sales' ? 'receive' : 'pay', method: tenders.length > 1 ? `${tenders.length} methods` : tenders[0].method, reference: '', notes: '', against: invId, allocations, advance: round2(total - applied), tenders, session: true});
+            PAYMENTS.push({id: number, date: draft.date, party: draft.party, account: tenders.length > 1 ? `${tenders.length} accounts` : (tenders[0].account || ''), amount: total, direction: kind === 'sales' ? 'receive' : 'pay', method: tenders.length > 1 ? `${tenders.length} rows` : tenders[0].method, reference: '', notes: '', against: invId, allocations, advance: round2(total - applied), tenders, session: true});
           }
           INV_PAY[kind] = false;
-          INV_TENDERS[kind] = [{method: 'bank', account: '', reference: '', amount: ''}, {method: '', account: '', reference: '', amount: ''}];
+          INV_TENDERS[kind] = [{method: 'bank', account: '', amount: ''}];
         }
-        INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', lines: INV_DRAFT[invKey(kind)].lines.map((l) => ({...l, price: '0.00', qty: '1'}))};
+        INV_FILES[kind] = [];
+        INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', description: kind === 'sales' ? 'Service invoiced' : 'Supplier bill',
+          lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', tax: '10'}],
+          withholding: [{type: kind === 'sales' ? 'advance' : 'income', rate: '', basis: 'net', custom: ''}]};
         goBack();
       });
     }
@@ -2942,7 +3464,22 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     if (id === 'withholding') return withholdingPanel();
     if (id === 'advance') return advancePanel();
     if (id === 'adjustments') return taxReconPanel();
+    if (id === 'defaults') return taxDefaultsPanel();
     return taxRulesPanel();
+  }
+  function taxDefaultsPanel() {
+    const option = (code) => accounts().map((a) => `<option value="${a.code}" ${a.code === code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+    return `<section class="panel">
+      <div class="panel-head"><h2>Default tax accounts</h2><span class="badge">Used by documents</span></div>
+      <form class="panel-body form-grid" data-tax-defaults>
+        <label>Output sales tax<select name="output" class="inline-input">${option(TAX_DEFAULTS.output)}</select></label>
+        <label>Input tax<select name="input" class="inline-input">${option(TAX_DEFAULTS.input)}</select></label>
+        <label>Withholding payable<select name="withholding" class="inline-input">${option(TAX_DEFAULTS.withholding)}</select></label>
+        <label>Advance tax deducted<select name="advance" class="inline-input">${option(TAX_DEFAULTS.advance)}</select></label>
+        <div class="related"><button class="button primary">Save default accounts</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">These accounts carry tax on invoices, bills and withholdings. A tax rule points at one of them; the illustrative entry in each document uses the same defaults. Stored for this session.</p></div>
+    </section>`;
   }
   function taxesView() {
     const current = TAX_TABS.some(([k]) => k === TAX_ACTIVE) ? TAX_ACTIVE : 'rules';
@@ -2961,6 +3498,13 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       navigate({module: 'accounting', tab: 'taxes', mode: 'editor', code});
     }));
     document.querySelector('[data-tax-form] [data-form-cancel]')?.addEventListener('click', goBack);
+    document.querySelector('[data-tax-defaults]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const v = Object.fromEntries(new FormData(ev.target));
+      TAX_DEFAULTS = {output: v.output, input: v.input, withholding: v.withholding, advance: v.advance};
+      notify('Default tax accounts saved for this session.');
+      rerender();
+    });
     document.querySelector('[data-tax-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
@@ -3664,13 +4208,23 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const key = form.dataset.filter;
       if (!FILTERS[key]) return;
       const apply = () => { FILTERS[key] = {...FILTERS[key], ...Object.fromEntries(new FormData(form))}; };
+      let searchTimer = 0;
       form.addEventListener('input', (ev) => {
         apply();
         const {name} = ev.target;
         const pos = ev.target.selectionStart;
+        const restore = () => {
+          const again = document.querySelector(`[data-filter="${key}"] [name="${name}"]`);
+          if (!again) return;
+          again.focus({preventScroll: true});
+          try { again.setSelectionRange(pos, pos); } catch {}
+        };
+        if (ev.target.matches('input[type="search"], input[type="text"]')) {
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(() => { rerender(); requestAnimationFrame(restore); }, 150);
+          return;
+        }
         rerender();
-        const again = document.querySelector(`[data-filter="${key}"] [name="${name}"]`);
-        if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch {} }
       });
       form.addEventListener('change', () => { apply(); rerender(); });
     });

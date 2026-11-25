@@ -400,3 +400,30 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .pay-register td.col-against,.pay-register th.col-against{white-space:normal;min-width:130px}
 .pay-register td.col-account{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ss-options{overscroll-behavior:contain}
+
+/* Invoice item, withholding and payment tables: fixed columns so rows line up. */
+.inv-items{table-layout:fixed}
+.inv-items th:nth-child(1),.inv-items td:nth-child(1){width:16%}
+.inv-items th:nth-child(2),.inv-items td:nth-child(2){width:18%}
+.inv-items th:nth-child(3),.inv-items td:nth-child(3){width:15%}
+.inv-items th:nth-child(4),.inv-items td:nth-child(4){width:7%}
+.inv-items th:nth-child(5),.inv-items td:nth-child(5){width:10%}
+.inv-items th:nth-child(6),.inv-items td:nth-child(6){width:9%}
+.inv-items th:nth-child(7),.inv-items td:nth-child(7){width:7%}
+.inv-items th:nth-child(8),.inv-items td:nth-child(8){width:11%}
+.inv-items th:nth-child(9),.inv-items td:nth-child(9){width:7%}
+.inv-items input,.inv-items select,.inv-wht input,.inv-wht select,.inv-pay input,.inv-pay select{min-width:0;width:100%}
+.inv-wht{table-layout:fixed}
+.inv-wht th:nth-child(1),.inv-wht td:nth-child(1){width:32%}
+.inv-wht th:nth-child(2),.inv-wht td:nth-child(2){width:30%}
+.inv-wht th:nth-child(3),.inv-wht td:nth-child(3){width:22%}
+.inv-wht th:nth-child(4),.inv-wht td:nth-child(4){width:10%}
+.inv-wht th:nth-child(5),.inv-wht td:nth-child(5){width:6%}
+.inv-pay{table-layout:fixed}
+.inv-pay th:nth-child(1),.inv-pay td:nth-child(1){width:26%}
+.inv-pay th:nth-child(2),.inv-pay td:nth-child(2){width:52%}
+.inv-pay th:nth-child(3),.inv-pay td:nth-child(3){width:16%}
+.inv-pay th:nth-child(4),.inv-pay td:nth-child(4){width:6%}
+.invoice-due + .section-title{margin-top:24px}
+.evidence-drop p{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap}
+.evidence-drop .button{display:inline-flex;width:auto;min-height:0;padding:7px 13px;background:var(--tint)}

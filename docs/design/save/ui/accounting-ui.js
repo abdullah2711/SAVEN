@@ -424,7 +424,7 @@ document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.
    if(tab==='parties')return form==='recon'?screens.partyReconEditor(code||''):screens.partyEditor(code||'');
    if(tab==='items')return screens.itemEditor(code||'');
    if(tab==='taxes')return screens.taxEditor(code||'');
-   if(tab==='payments')return screens.paymentEditor();
+   if(tab==='payments')return screens.paymentEditor(code);
    if(tab==='sales-invoices')return form==='return'?screens.returnEditor('sales',code||''):screens.invoiceEditor('sales',code||'');
    if(tab==='purchase-invoices')return form==='return'?screens.returnEditor('purchase',code||''):screens.invoiceEditor('purchase',code||'');
    if(code&&draft.editingId!==code)loadJournalDoc(code);

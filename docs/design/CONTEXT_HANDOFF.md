@@ -107,7 +107,13 @@ the decision index in one place.
   cashed, not a third channel. A settlement reduces the invoice register's Paid and
   Balance. No tax fields and no header reference. Receipts are numbered
   `RCPT-MM-YYYY-0001` and payments `PAY-MM-YYYY-0001` in separate series.
-- **Sales/purchase invoices**: register and a line form; session documents only.
+- **Sales/purchase invoices**: main and returns registers with search, dates and the
+  common column menus; rows open the document. The form uses one description and a
+  location, item-based rows (item, account, project, qty, price, total, tax % and total
+  after tax), totals under the columns, gross receivable/payable, withholding rows
+  (type, rate or custom, basis, amount), net due after withholding, optional record
+  payment rows with total and difference, evidence, and a balanced illustrative entry.
+  Session documents only; fixture documents are read-only.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →
   Periods.
 - Supplied print and vertical-menu glyphs wired into the journal header.
@@ -134,9 +140,10 @@ the decision index in one place.
   their specification.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
-tool); posting from invoices and payments into the ledger; advances inside the
-payments form; editing or cancelling a saved payment; permissions enforcement;
-persistence (reload returns to fixtures).
+tool); posting from invoices and payments into the ledger; invoice numbering and
+cancelling a saved invoice; per-item-group tax scope; evidence bytes, hashing and
+scanning; advances inside the payments form; permissions enforcement; persistence
+(reload returns to fixtures).
 
 ## Decisions already made (do not re-litigate)
 

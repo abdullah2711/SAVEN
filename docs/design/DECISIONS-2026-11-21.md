@@ -2284,3 +2284,132 @@ screen.
 The values, the search of the option list, the disabled handling, the selection and
 the page data are unchanged. These are presentation fixes only; the backend contract
 from §169 still stands.
+
+
+---
+
+# Round 34 — search, invoice registers, the invoice form, uploads and previews
+
+This round takes the owner's list for registers, invoices, evidence and illustrative
+entries. Some items are complete, some are deliberately partial; both are recorded.
+
+## 174. Page search stopped after one character
+
+Every register search used to re-render the whole page on each `input` event, then
+find the replacement field and restore focus and caret. The field the user was typing
+into was therefore destroyed on every keystroke, and typing depended on that manual
+restore winning a race. In practice typing stopped after the first character on the
+owner's machine.
+
+The fix removes the race instead of tuning it: the value is stored on every keystroke,
+but the re-render is **debounced by 150 ms**. While the user is typing the field is
+never replaced, so focus and caret never move; after the pause the page renders and the
+caret is restored in the next animation frame. Applied to the shared register binder
+(cash, parties, payments, invoices, items, taxes, settings registers), the journal
+register, both reconciliation registers and the general ledger. The GL search, which
+previously only filtered on submit, is now live with the same behaviour.
+
+## 175. Invoice registers use the common register UI
+
+Both Sales and Purchases, and their **Returns** tabs, now follow the ledger pattern:
+
+- Top bar: search, **From/To**, reset (plus New return on the Returns tab).
+- Every column has the shared menu: sort toggle, value search, select all/clear,
+  checkbox values and **Apply**.
+- The sales/bill columns are date, number, customer/supplier, project, due, net, tax,
+  gross, returned, paid, balance and state; the returns columns are date, return,
+  original, party, net, tax, gross and reason.
+- Clicking a document row opens it. The row menu still offers Open and Return.
+- Returns and main registers keep separate filter and sort state.
+
+## 176. The invoice and bill form
+
+- **One description box**, not narration and notes. The separate per-line description
+  is gone; the line is identified by its item.
+- **Location** is on the document; the owner's point that payments do not need a
+  location is respected, and no location was added there.
+- Rows are, in order: **Item → Account → Project → Qty → Unit price → Total → Tax % →
+  Total after tax**, with Remove. Choosing an item fills its income (sales) or expense
+  (purchase) account and its tax rate from the item's tax rule; both stay editable.
+- One row is present by default and **Add item row** appends more. Totals sit under
+  the columns: net total, sales tax total, invoice total.
+- **Gross receivable/payable**, then the withholding section, then the net
+  receivable/payable after withholding.
+- Withholding rows: type (for sales, advance tax withheld by the customer or sales tax
+  withheld; for purchases, income tax or sales tax), rate (common rates or **Custom
+  amount**), basis (before sales tax, after sales tax, sales tax only) and the
+  calculated amount. **Add withholding row** appends.
+- **Record payment** rows use bank transfer or cash, a matching sub-account, an amount,
+  and show **total received** and **difference from the net due**; rows can be added
+  and removed. One row exists by default.
+
+## 177. What withholding does to the control account
+
+- Sales: the customer's advance tax reduces what we receive. The control debit (1100)
+  becomes **gross − withholding**; the withheld part is debited to the advance tax
+  account (1400), which is our asset.
+- Purchases: withholding is deducted from the supplier. The control credit (2100)
+  becomes **gross − withholding**; the withheld part is credited to withholding payable
+  (2150), which we owe to the authority.
+- The **net due after withholding is the amount the receivable/payable control
+  carries**. Session invoices now store `netDue`; the register's balance and the open
+  documents offered in payments use it. A receipt therefore settles the control
+  amount, not the invoice gross.
+- Sales tax stays in output tax (2200) and input tax in (1300); the invoice preview
+  shows it separately.
+
+## 178. Default tax accounts and item tax defaults
+
+Taxes gained a **Default accounts** tab: output sales tax, input tax, withholding
+payable and advance tax deducted. The illustrative entries use these accounts, so
+changing a default changes the preview. The item form already carried the income head,
+expense head and sales/purchase tax defaults; the invoice row now reads them when an
+item is chosen. Item-group level tax scope is not built — rules are selected per item
+today.
+
+## 179. Supporting documents on forms
+
+A shared evidence area now sits on the invoice/bill, payment/receipt, party and cash
+sub-account forms (and remains on the journal):
+
+- drop files on the area, click it to choose, or press **Ctrl+V** while the form has
+  focus;
+- multiple files, any type; PDF, image, spreadsheet, CSV, video are named as examples;
+- each file shows its name and size with Remove.
+
+This build records **names and sizes only**; bytes are not persisted. A real
+implementation must store the bytes, hash them, scan them, and keep an immutable link
+to the document and user (§169's backend note applies).
+
+## 180. Opening payment and invoice records
+
+- Payment and receipt register rows open a record view: party, date, amount, method,
+  the allocation rows (document, method, account, amount), notes and state. Session
+  records can be **cancelled** (stay in the register with a badge) or **deleted**;
+  fixture documents are read-only.
+- Invoice and bill register rows open the form (session drafts editable, fixture
+  documents read-only with Return available). This matches the journal register.
+
+## 181. Illustrative entry is part of the form
+
+Where an action touches the ledger, the form ends with a balanced preview listing
+**account number and name, party/sub-account and debit/credit**: journal (already
+present), payment/receipt, sales invoice and purchase bill, party opening balance and
+cash sub-account opening balance. A receipt debits the cash/bank control with the
+sub-account as its party and credits the receivable; a payment does the reverse.
+Totals must balance; the note says it is illustrative and posts nothing in this build.
+
+## 182. Still open in this area
+
+- Invoice numbering remains the `SI-2026-…` / `PI-2026-…` series; only receipts and
+  payments use `RCPT-` / `PAY-` month-year numbers.
+- Posted fixture documents are read-only. Editing a saved session invoice keeps its
+  number; cancelling/deleting an invoice is not built (returns are the reduction path).
+- Tax rules cannot yet be scoped to an item group; the rule is chosen per item.
+- Evidence bytes, hashing, scanning and retention are backend work; only names and
+  sizes are kept here.
+- Withholding rows use the default tax accounts; per-row account override is not built.
+- Multi-currency invoices, per-line discounts and per-line tax overrides remain open.
+- The evidence area is on the journal, invoice/bill, payment/receipt, party and cash
+  forms. Item, tax-rule, return and settings forms do not have it yet; adding it there
+  is the same component with a different key.

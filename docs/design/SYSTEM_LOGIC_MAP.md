@@ -309,6 +309,7 @@ permissions. See §100 of the decision log.
 | 31 | 159–165 | payment module settles documents, PAY/RCPT numbering, no tax on payments |
 | 32 | 166–169 | floating lists escape table cells, cheque removed, invoice balances follow settlements |
 | 33 | 170–173 | every list searchable, inner scroll keeps it open, placement stays beside the field |
+| 34 | 174–182 | debounced search, invoice registers/form, withholding, uploads, previews, tax defaults |
 
 ---
 
@@ -325,9 +326,10 @@ permissions. See §100 of the decision log.
 - Persistence: every record lives in the browser session and is lost on reload.
 - Per-line invoice tax override, withholding allocation and negative-stock
   enforcement are not built.
-- The invoices form still needs its field-by-field review. The payments form now
-  settles documents; advances, editing a saved payment, posting and multi-currency
-  remain.
+- The invoice form now has item rows, withholding and a record-payment section; what
+  remains is invoice numbering, per-item-group tax scope, per-row tax override,
+  multi-currency and cancelling a saved invoice. Payments settle documents; advances,
+  editing a saved payment, posting and multi-currency remain.
 - Cheque tracking, if required, needs an instrument/reference field or clearing
   account; it is deliberately not a payment method (§167).
 - Reconciliation is a recording tool; there is no automatic statement matching.
