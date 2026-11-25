@@ -60,6 +60,14 @@ the decision index in one place.
 | `docs/design/save/ui/theme.css` | their stylesheet plus our component classes at the end |
 | `docs/design/*.md` | decision log, module map, workflows, backend contract, forms/views, page register |
 
+## Chart of accounts — agreed, not yet built
+
+Read `docs/design/CHART-OF-ACCOUNTS-DESIGN.md` before touching the chart. Six-digit
+codes `D GG AAA`; groups by class in Settings; one AR and one AP control; controls for
+cash, bank, inventory, fixed-asset cost/accumulated, tax authorities, advances and
+clearing; **no sales control**; statistics from line dimensions and subledgers. The
+demo four-digit chart is to be replaced and fixtures remapped.
+
 ## Current state
 
 **Built and working**

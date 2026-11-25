@@ -3164,3 +3164,75 @@ A document-level click now closes any open `details.form-menu` when the click is
 outside it, and also after choosing an item inside it. Verified: opening the menu on
 DEMO-SI-291 and clicking the page closes it; the standalone Return button no longer
 exists.
+
+
+---
+
+# Round 51 — chart of accounts architecture concluded
+
+Full contract: `docs/design/CHART-OF-ACCOUNTS-DESIGN.md`. No code changed in this round.
+
+## 240. Six-digit codes
+
+`D GG AAA`: class (1–5) + two-digit group (01–99) + three-digit account (001–999).
+99 groups per class, 999 accounts per group. Group and account numbers are allocated in
+sequence in Settings and never reused; codes are immutable after posting. The demo
+four-digit chart is replaced outright.
+
+## 241. Control accounts are only for reconciliation
+
+Controls cover: cash, bank, trade receivables, trade payables, advance tax receivable,
+supplier advances, customer advances, inventory, fixed-asset cost and accumulated
+depreciation per class, input tax per authority, output tax per authority, sales tax
+withheld per authority, income tax withholding payable, and goods received clearing.
+
+**No control for sales.** Sales is income; AR controls the party balance, and
+item/customer statistics come from invoice lines. A sales control per item or customer
+would duplicate AR and make reconciliation ambiguous.
+
+**One AR and one AP control for now** (102001/201001). “Segment” means an optional
+second AR/AP control for parties that must reconcile separately — domestic/foreign,
+group companies, a separate business line. Each party belongs to exactly one AR control;
+segments are dimensions unless separate reporting demands a control. Not needed yet.
+
+## 242. Tax authorities
+
+Output tax, input tax and sales tax withheld can belong to different authorities
+(national, provincial, local). Each authority gets its own control account per tax type,
+and a tax rule points to it. Income tax withholding is one payable control per legal
+entity, because one entity pays one income-tax authority. Output/input tax lines may be
+party-less (the document carries the party); sales-tax withheld and advance-tax lines
+require the party.
+
+## 243. Fixed assets
+
+The asset register is the subledger. Per asset: acquisition cost and document, capital
+additions, depreciation method/life/residual, depreciation expense and accumulated
+depreciation, revaluation/impairment events, project/location assignment with
+depreciation allocation percentages and effective dates, transfer history and disposal.
+Postings: acquisition/addition Dr cost; depreciation Dr expense split by project and Cr
+accumulated; revaluation to revaluation surplus; impairment to expense/accumulated;
+transfer changes future split; disposal clears cost/accumulated and recognises
+gain/loss. Class-level cost and accumulated accounts provide the GL while the register
+tracks each asset.
+
+## 244. Statistics are database facts
+
+Cash/bank by sub-account; parties by journal lines tagged party; sales by item/customer
+from invoice lines; purchases by supplier/item from bill lines; tax by tax entries with
+authority/rule/party/item/period; fixed assets from the register and depreciation lines.
+Controls reconcile totals; dimensions produce the statistics. Money is stored in integer
+minor units.
+
+## 245. Migration
+
+Demonstration fixtures are remapped from four-digit to six-digit codes using the table
+in the design document. No alias table is kept in the demo; selectors, seeds and tests
+move to the new codes. Real data, when it exists, will need an explicit mapping and
+review before this cutover.
+
+## 246. Open confirmations
+
+The design document lists the five points to confirm: group catalogue names/seeds, one
+AR/AP control vs segments, demo tax authorities, fixed-asset classes, and the migration
+table. Build starts after those are accepted.

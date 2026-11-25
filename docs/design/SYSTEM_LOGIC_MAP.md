@@ -323,6 +323,8 @@ permissions. See §100 of the decision log.
 | 45 | 226–228 | payment/stock menu actions, stock editor, return stock movement |
 | 46 | 229–231 | full logic sweep, menu/return fixes, verification results |
 | 47–49 | 232–237 | item row widths, split payments, full-width workspace and table scroll |
+| 50 | 238–239 | single Return action, closeable document menu |
+| 51 | 240–246 | chart architecture: six-digit codes, controls, tax authorities, fixed assets |
 
 ---
 
@@ -335,6 +337,8 @@ permissions. See §100 of the decision log.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices and payments record session documents but do not write the ledger.
 - Party balances by project/location (deferred, needs the subledger).
+- The chart rebuild follows `docs/design/CHART-OF-ACCOUNTS-DESIGN.md`; no code has
+  changed for it yet.
 - Permission enforcement; settings are not enforced by the server yet.
 - Persistence: every record lives in the browser session and is lost on reload.
 - Per-line invoice tax override, withholding allocation and negative-stock
