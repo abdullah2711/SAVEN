@@ -410,7 +410,8 @@ document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.
  function formMeta(tab,code,form){
    if(tab==='journals'&&code)return {title:'Journal entry',description:'Opened in the same form it was created in. Drafts and returned entries are editable; posted entries are read-only until cancelled or duplicated.'};
    if((tab==='sales-invoices'||tab==='purchase-invoices')&&form==='return')return {title:tab==='sales-invoices'?'New sales return':'New purchase return',description:'Returns reduce the original document. Partial returns are allowed and the balance updates immediately.'};
-   if(tab==='sales-invoices'||tab==='purchase-invoices')return {title:tab==='sales-invoices'?'Sales invoice':'Purchase bill',description:code?'Posted documents are read-only; use Return to reduce the balance.':'Fill this form and save. Nothing posts to the ledger in this build.'};
+   if(tab==='advances'&&form==='apply')return {title:'Apply an advance',description:'Apply money already received or paid to one of the party\'s open documents. No new cash moves.'};
+   if(tab==='sales-invoices'||tab==='purchase-invoices')return {title:tab==='sales-invoices'?'Sales invoice':tab==='purchase-invoices'?'Purchase bill':'Bill',description:code?'Posted documents are read-only; use Return to reduce the balance.':'Fill this form and save. Nothing posts to the ledger in this build.'};
    if(form==='recon')return {title:tab==='parties'?'Party reconciliation':'Cash reconciliation',description:'The system pulls the closing balance at the chosen date; differences and the original balance settle it.'};
    if(tab==='coa')return code?{title:'Edit account',description:'Saving returns to the chart register.'}:{title:'New account',description:'Adds a head to the chart. Class and control decide where it posts and whether it needs a party.'};
    const meta=FORM_META[tab]||FORM_META.journals;
@@ -425,7 +426,7 @@ document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.
    if(tab==='items')return screens.itemEditor(code||'');
    if(tab==='taxes')return screens.taxEditor(code||'');
    if(tab==='payments')return screens.paymentEditor(code);
-   if(tab==='advances')return screens.advanceEditor(code);
+   if(tab==='advances')return form==='apply'?screens.applyAdvanceEditor():screens.advanceEditor(code);
    if(tab==='sales-invoices')return form==='return'?screens.returnEditor('sales',code||''):screens.invoiceEditor('sales',code||'');
    if(tab==='purchase-invoices')return form==='return'?screens.returnEditor('purchase',code||''):screens.invoiceEditor('purchase',code||'');
    if(code&&draft.editingId!==code)loadJournalDoc(code);

@@ -100,6 +100,8 @@ let TAX_DEFAULTS = {output: '2200', input: '1300', withholding: '2150', salesWht
 let TAX_AFTER_DISCOUNT = true;
 let REV_TAB = 'customer';
 let ADV_PICK = '';
+let ADV_TAB = 'balances';
+let ADV_APPLY_PARTY = '';
 const ADVANCES = [];
 const ADVANCE_APPLIED = [];
 let ADV_SEQ = 1;
@@ -3729,28 +3731,54 @@ const STOCK_MOVES = [];
   }
   function advanceOpen(a) { return round2(Number(a.amount || 0) - Number(a.applied || 0)); }
   function advancesView() {
-    const rows = ADVANCES.slice().sort((a, b) => b.date.localeCompare(a.date));
-    const open = rows.filter((a) => advanceOpen(a) > 0);
-    const picked = open.find((a) => a.id === ADV_PICK) || open[0] || null;
-    const docs = picked ? openItems(PARTIES.find((p) => p.name === picked.party)) : [];
-    const applied = (a) => ADVANCE_APPLIED.filter((x) => x.advanceId === a.id);
+    const tab = ADV_TAB === 'transactions' ? 'transactions' : 'balances';
+    const tabs = `<div class="tabs" role="tablist" aria-label="Advance views"><button role="tab" aria-selected="${tab === 'balances'}" data-adv-tab="balances">Balances</button><button role="tab" aria-selected="${tab === 'transactions'}" data-adv-tab="transactions">Transactions</button></div>`;
+    const rows = ADVANCES.slice();
+    if (tab === 'transactions') {
+      const tx = [
+        ...rows.map((a) => ({date: a.date, ref: a.id, party: a.party, type: a.direction === 'receive' ? 'Advance received' : 'Advance paid', amount: a.amount, doc: '—', state: advanceOpen(a) > 0 ? 'Open' : 'Applied'})),
+        ...ADVANCE_APPLIED.map((x) => { const a = ADVANCES.find((y) => y.id === x.advanceId) || {}; return {date: x.date, ref: x.advanceId, party: a.party || '', type: 'Applied to invoice', amount: x.amount, doc: x.docId, state: 'Applied'}; }),
+      ].sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref));
+      return tabs + `<section class="panel">
+        <div class="panel-head"><h2>Advance transactions</h2><div class="related"><span class="badge">${tx.length} entries</span><button type="button" class="button" data-adv-apply-new>Apply to invoice</button></div></div>
+        <div class="table-scroll"><table><thead><tr><th>Date</th><th>Reference</th><th>Party</th><th>Type</th><th class="numeric">Amount</th><th>Document</th><th>State</th></tr></thead>
+          <tbody>${tx.map((t) => `<tr><td>${e(t.date)}</td><td class="mono">${e(t.ref)}</td><td>${e(t.party)}</td><td>${e(t.type)}</td><td class="numeric">${money(t.amount)}</td><td class="mono">${e(t.doc)}</td><td>${badge(t.state, t.state === 'Applied' ? 'good' : 'warn')}</td></tr>`).join('') || '<tr><td colspan="7">No advance activity yet. Record an advance or apply one to an invoice.</td></tr>'}</tbody></table></div>
+        <div class="table-footer">Every advance voucher and every application to an invoice appears here. Open means money is still unapplied.</div>
+      </section>`;
+    }
+    const byParty = new Map();
+    rows.forEach((a) => {
+      const key = a.party + '|' + a.direction;
+      const row = byParty.get(key) || {party: a.party, direction: a.direction, count: 0, total: 0, applied: 0, balance: 0};
+      row.count++; row.total = round2(row.total + a.amount); row.applied = round2(row.applied + a.applied); row.balance = round2(row.balance + advanceOpen(a));
+      byParty.set(key, row);
+    });
+    const list = [...byParty.values()].sort((a, b) => a.party.localeCompare(b.party));
+    return tabs + `<section class="panel">
+      <div class="panel-head"><h2>Advance balances by party</h2><div class="related"><span class="badge">${list.length} parties</span><button type="button" class="button" data-adv-apply-new>Apply to invoice</button></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Party</th><th>Type</th><th class="numeric">Advances</th><th class="numeric">Total</th><th class="numeric">Applied</th><th class="numeric">Balance</th></tr></thead>
+        <tbody>${list.map((r) => `<tr><td>${e(r.party)}</td><td>${r.direction === 'receive' ? 'Received from customer' : 'Paid to supplier'}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.total)}</td><td class="numeric">${money(r.applied)}</td><td class="numeric">${money(r.balance)}</td></tr>`).join('') || '<tr><td colspan="6">No advances recorded yet. Use New advance.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td class="numeric">${list.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(round2(list.reduce((n, r) => n + r.total, 0)))}</td><td class="numeric">${money(round2(list.reduce((n, r) => n + r.applied, 0)))}</td><td class="numeric">${money(round2(list.reduce((n, r) => n + r.balance, 0)))}</td></tr></tfoot></table></div>
+      <div class="table-footer">Balances are per party and direction. A customer advance is money we hold; a supplier advance is money they hold. Applying one reduces the balance and the invoice.</div>
+    </section>`;
+  }
+  function applyAdvanceEditor() {
+    const open = ADVANCES.filter((a) => advanceOpen(a) > 0);
+    const parties = [...new Set(open.map((a) => a.party))];
+    const party = ADV_APPLY_PARTY || parties[0] || '';
+    const advances = open.filter((a) => a.party === party);
+    const docs = party ? openItems(PARTIES.find((p) => p.name === party)) : [];
     return `<section class="panel">
-      <div class="panel-head"><h2>Advances</h2><div class="related"><span class="badge">${rows.length} advances</span><span class="badge">${open.length} open</span></div></div>
-      <div class="table-scroll"><table><thead><tr><th>Advance</th><th>Party</th><th>Type</th><th>Date</th><th class="numeric">Amount</th><th class="numeric">Applied</th><th class="numeric">Unapplied</th><th>Method</th><th>State</th></tr></thead>
-        <tbody>${rows.map((a) => { const left = advanceOpen(a); return `<tr><td class="mono">${e(a.id)}</td><td>${e(a.party)}</td><td>${a.direction === 'receive' ? 'Received from customer' : 'Paid to supplier'}</td><td>${e(a.date)}</td><td class="numeric">${money(a.amount)}</td><td class="numeric">${money(a.applied)}</td><td class="numeric">${money(left)}</td><td>${e(a.method || '—')}</td><td>${badge(left > 0 ? 'Open' : 'Applied', left > 0 ? 'warn' : 'good')}</td></tr>`; }).join('') || '<tr><td colspan="9">No advances recorded yet. Use New advance.</td></tr>'}</tbody>
-        <tfoot><tr><td colspan="4">Total</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.amount, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.applied, 0)))}</td><td class="numeric">${money(round2(open.reduce((n, a) => n + advanceOpen(a), 0)))}</td><td colspan="2"></td></tr></tfoot></table></div>
-      <div class="table-footer">An advance is money received from a customer or paid to a supplier before it is matched to a document. It is a separate voucher; applying it reduces the advance and the open document.</div>
-    </section>
-    <section class="panel">
-      <div class="panel-head"><h2>Adjust against a document</h2><span class="badge">${picked ? money(advanceOpen(picked)) + ' available' : 'No open advance'}</span></div>
-      ${open.length ? `<form class="panel-body form-grid" data-adv-adjust>
-        <label>Advance<select name="advance" class="inline-input">${open.map((a) => `<option value="${a.id}" ${picked && a.id === picked.id ? 'selected' : ''}>${e(a.id)} · ${e(a.party)} · ${money(advanceOpen(a))}</option>`).join('')}</select></label>
-        <label>Document<select name="doc" class="inline-input">${docs.map((d) => `<option value="${d.id}">${e(d.id)} · ${e(d.date)} · ${money(d.outstanding)} due</option>`).join('') || '<option value="">No open document for this party</option>'}</select></label>
+      <div class="panel-head"><h2>Apply an advance</h2><span class="badge">Against an invoice or bill</span></div>
+      ${advances.length ? `<form data-adv-apply class="panel-body form-grid">
+        <label>Party<select name="party" class="inline-input">${parties.map((p) => `<option ${p === party ? 'selected' : ''}>${e(p)}</option>`).join('')}</select></label>
+        <label>Advance<select name="advance" class="inline-input">${advances.map((a) => `<option value="${a.id}">${e(a.id)} · ${money(advanceOpen(a))} available</option>`).join('')}</select></label>
+        <label>Document<select name="doc" class="inline-input">${docs.map((d) => `<option value="${d.id}">${e(d.id)} · ${money(d.outstanding)} due</option>`).join('') || '<option value="">No open document</option>'}</select></label>
         <label>Amount to apply<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
         <label>Date<input name="date" type="date" value="2026-11-30"></label>
-        <div class="related"><button class="button primary">Apply advance</button></div>
-      </form>` : '<div class="panel-body"><p class="form-note">There is no open advance to apply. Record one first.</p></div>'}
-      <div class="panel-body"><p class="form-note">Applying an advance does not create a new cash movement; it moves value already received or paid onto the document. The remaining advance stays available.</p></div>
+        <div class="related"><button class="button primary">Apply advance</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+      </form><div class="panel-body"><p class="form-note">The advance balance and the document outstanding both reduce. No new cash moves; this is an application of money already received or paid.</p></div>`
+      : '<div class="panel-body"><p class="form-note">There is no open advance to apply.</p><div class="related"><button type="button" class="button" data-form-cancel>Cancel</button></div></div>'}
     </section>`;
   }
   function advanceEditor() {
@@ -3772,6 +3800,8 @@ const STOCK_MOVES = [];
   }
   function bindAdvances(rerender, notify, navigate) {
     const goBack = () => navigate({module: 'accounting', tab: 'advances'});
+    document.querySelectorAll('[data-adv-tab]').forEach((b) => b.addEventListener('click', () => { ADV_TAB = b.dataset.advTab; rerender(); }));
+    document.querySelectorAll('[data-adv-apply-new]').forEach((b) => b.addEventListener('click', () => navigate({module: 'accounting', tab: 'advances', mode: 'editor', form: 'apply'})));
     document.querySelector('[data-adv-form] [data-form-cancel]')?.addEventListener('click', goBack);
     document.querySelector('[data-adv-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -3785,9 +3815,8 @@ const STOCK_MOVES = [];
       notify('Advance recorded.');
       goBack();
     });
-    let adjPick = '';
-    document.querySelector('[data-adv-adjust] [name="advance"]')?.addEventListener('change', (ev) => { ADV_PICK = ev.target.value; rerender(); });
-    document.querySelector('[data-adv-adjust]')?.addEventListener('submit', (ev) => {
+    document.querySelector('[data-adv-apply] [name="party"]')?.addEventListener('change', (ev) => { ADV_APPLY_PARTY = ev.target.value; rerender(); });
+    document.querySelector('[data-adv-apply]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const form = ev.target;
       const v = Object.fromEntries(new FormData(form));
@@ -3804,7 +3833,7 @@ const STOCK_MOVES = [];
       advance.applied = round2(advance.applied + amount);
       ADVANCE_APPLIED.push({advanceId: advance.id, docId: v.doc, amount, date: v.date || advance.date});
       notify(`Applied ${amount.toFixed(2)} from ${advance.id} to ${v.doc}.`);
-      rerender();
+      goBack();
     });
   }
   function revenueRows() { return invoiceRows('sales'); }
@@ -4766,6 +4795,6 @@ const STOCK_MOVES = [];
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, bindAdvances, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, applyAdvanceEditor, bindAdvances, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

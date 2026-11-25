@@ -2702,16 +2702,23 @@ purchase document **Bills**. The purchase module keeps its own catalogue name.
 
 ## 204. Advances
 
-Accounting has an **Advances** page:
+Accounting has an **Advances** page with two tabs, exactly as the owner asked:
 
-- Register of customer advances received and supplier advances paid, with amount,
-  applied, unapplied, method and state.
+- **Balances** — one row per party and direction (received from a customer, paid to a
+  supplier) with the number of advances, total, applied and remaining balance.
+- **Transactions** — every advance voucher and every application to an invoice in one
+  date-ordered register: date, reference, party, type, amount, document and state.
+
+The page has two forms:
+
 - **New advance** records a separate `ADV-YYYY-nnnn` voucher with party, direction,
   date, amount, method, cash/bank sub-account and notes.
-- **Adjust against a document** picks an open advance, shows only that party's open
-  documents, and applies an amount no greater than either balance.
-- Applications are kept in `ADVANCE_APPLIED`; `paidFor` and `openItems` include them,
-  so invoice balances fall and the advance's unapplied amount falls together.
+- **Apply to invoice** is its own page: choose the party, the open advance (showing its
+  available balance), one of that party's open documents (showing its outstanding) and
+  the amount to apply. The advance balance and document balance both reduce.
+
+Applications are kept in `ADVANCE_APPLIED`; `paidFor` and `openItems` include them, so
+invoice balances fall and the advance's unapplied amount falls together.
 
 This build does not post the advance or its application to the ledger; the records are
 session documents. The backend must create the cash/party entry and the application
