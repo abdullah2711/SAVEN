@@ -102,6 +102,7 @@ let REV_TAB = 'customer';
 let ADV_PICK = '';
 let ADV_TAB = 'balances';
 let ADV_APPLY_PARTY = '';
+let ADV_FILTER_PARTY = '';
 const ADVANCES = [
   {id: 'ADV-2026-0001', party: 'Atlas Studio', direction: 'receive', date: '2026-11-10', amount: 25000, applied: 5000, method: 'Bank transfer', account: 'Standard Bank — current 0123456789', notes: 'Advance against the November programme'},
   {id: 'ADV-2026-0002', party: 'Willow Supplies', direction: 'pay', date: '2026-11-11', amount: 10000, applied: 0, method: 'Bank transfer', account: 'Meezan Bank — current 0987654321', notes: 'Advance for packaging materials'},
@@ -3856,11 +3857,11 @@ const ITEM_ACCOUNT_RULES = [
       const tx = [
         ...rows.map((a) => ({date: a.date, ref: a.id, party: a.party, type: a.direction === 'receive' ? 'Advance received' : 'Advance paid', amount: a.amount, doc: '—', state: advanceOpen(a) > 0 ? 'Open' : 'Applied'})),
         ...ADVANCE_APPLIED.map((x) => { const a = ADVANCES.find((y) => y.id === x.advanceId) || {}; return {date: x.date, ref: x.id || x.advanceId, party: x.party || a.party || '', type: 'Applied ' + x.advanceId, amount: x.amount, doc: x.docId, state: 'Applied'}; }),
-      ].sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref));
+      ].filter((t) => !ADV_FILTER_PARTY || t.party === ADV_FILTER_PARTY).sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref));
       return tabs + `<section class="panel">
-        <div class="panel-head"><h2>Advance transactions</h2><div class="related"><span class="badge">${tx.length} entries</span><button type="button" class="button" data-adv-apply-new>Apply to invoice</button></div></div>
+        <div class="panel-head"><h2>Advance transactions</h2><div class="related">${ADV_FILTER_PARTY ? `<button type="button" class="text-button" data-adv-clear-party>Party · ${e(ADV_FILTER_PARTY)} ×</button>` : ''}<span class="badge">${tx.length} entries</span><button type="button" class="button" data-adv-apply-new>Apply to invoice</button></div></div>
         <div class="table-scroll"><table><thead><tr><th>Date</th><th>Reference</th><th>Party</th><th>Type</th><th class="numeric">Amount</th><th>Document</th><th>State</th></tr></thead>
-          <tbody>${tx.map((t) => `<tr><td>${e(t.date)}</td><td class="mono">${e(t.ref)}</td><td>${e(t.party)}</td><td>${e(t.type)}</td><td class="numeric">${money(t.amount)}</td><td class="mono">${e(t.doc)}</td><td>${badge(t.state, t.state === 'Applied' ? 'good' : 'warn')}</td></tr>`).join('') || '<tr><td colspan="7">No advance activity yet. Record an advance or apply one to an invoice.</td></tr>'}</tbody></table></div>
+          <tbody>${tx.map((t) => `<tr class="row-link" data-adv-open="${e(t.ref)}"><td>${e(t.date)}</td><td class="mono">${e(t.ref)}</td><td>${e(t.party)}</td><td>${e(t.type)}</td><td class="numeric">${money(t.amount)}</td><td class="mono">${e(t.doc)}</td><td>${badge(t.state, t.state === 'Applied' ? 'good' : 'warn')}</td></tr>`).join('') || '<tr><td colspan="7">No advance activity yet. Record an advance or apply one to an invoice.</td></tr>'}</tbody></table></div>
         <div class="table-footer">Every advance voucher and every application to an invoice appears here. Open means money is still unapplied.</div>
       </section>`;
     }
@@ -3875,7 +3876,7 @@ const ITEM_ACCOUNT_RULES = [
     return tabs + `<section class="panel">
       <div class="panel-head"><h2>Advance balances by party</h2><div class="related"><span class="badge">${list.length} parties</span><button type="button" class="button" data-adv-apply-new>Apply to invoice</button></div></div>
       <div class="table-scroll"><table><thead><tr><th>Party</th><th>Type</th><th class="numeric">Advances</th><th class="numeric">Total</th><th class="numeric">Applied</th><th class="numeric">Balance</th></tr></thead>
-        <tbody>${list.map((r) => `<tr><td>${e(r.party)}</td><td>${r.direction === 'receive' ? 'Received from customer' : 'Paid to supplier'}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.total)}</td><td class="numeric">${money(r.applied)}</td><td class="numeric">${money(r.balance)}</td></tr>`).join('') || '<tr><td colspan="6">No advances recorded yet. Use New advance.</td></tr>'}</tbody>
+        <tbody>${list.map((r) => `<tr class="row-link" data-adv-party="${e(r.party)}"><td>${e(r.party)}</td><td>${r.direction === 'receive' ? 'Received from customer' : 'Paid to supplier'}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.total)}</td><td class="numeric">${money(r.applied)}</td><td class="numeric">${money(r.balance)}</td></tr>`).join('') || '<tr><td colspan="6">No advances recorded yet. Use New advance.</td></tr>'}</tbody>
         <tfoot><tr><td colspan="2">Total</td><td class="numeric">${list.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(round2(list.reduce((n, r) => n + r.total, 0)))}</td><td class="numeric">${money(round2(list.reduce((n, r) => n + r.applied, 0)))}</td><td class="numeric">${money(round2(list.reduce((n, r) => n + r.balance, 0)))}</td></tr></tfoot></table></div>
       <div class="table-footer">Balances are per party and direction. A customer advance is money we hold; a supplier advance is money they hold. Applying one reduces the balance and the invoice.</div>
     </section>`;
@@ -3897,6 +3898,30 @@ const ITEM_ACCOUNT_RULES = [
         <div class="related"><button class="button primary">Apply advance</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form><div class="panel-body form-grid" data-adv-apply-preview>${ledgerIllustration('Illustrative advance application', [], 'Choose an advance and amount to preview the application.')}</div><div class="panel-body"><p class="form-note">The advance balance and the document outstanding both reduce. No new cash moves; this is an application of money already received or paid.</p></div>`
       : '<div class="panel-body"><p class="form-note">There is no open advance to apply.</p><div class="related"><button type="button" class="button" data-form-cancel>Cancel</button></div></div>'}
+    </section>`;
+  }
+  function advanceRecord(code) {
+    const app = ADVANCE_APPLIED.find((x) => x.id === code);
+    const advance = app ? ADVANCES.find((a) => a.id === app.advanceId) : ADVANCES.find((a) => a.id === code);
+    if (!advance) return `<section class="panel"><div class="panel-body"><p>That advance is not in the register.</p><div class="related"><button type="button" class="button" data-adv-record-close>Back to advances</button></div></div></section>`;
+    const apps = ADVANCE_APPLIED.filter((x) => x.advanceId === advance.id);
+    return `<section class="panel">
+      <div class="panel-head"><h2>${e(app ? app.id : advance.id)}</h2><div class="related">${badge(app ? 'Advance application' : advance.direction === 'receive' ? 'Advance received' : 'Advance paid', app ? 'plum' : '')}</div></div>
+      <div class="panel-body"><div class="record-summary">
+        <div><small>${app ? 'Advance' : 'Party'}</small>${e(app ? app.advanceId : advance.party)}</div>
+        <div><small>Date</small>${e(app ? app.date : advance.date)}</div>
+        <div><small>Amount</small>${money(app ? app.amount : advance.amount)}</div>
+        <div><small>${app ? 'Document' : 'Applied'}</small>${app ? `<button type="button" class="text-button mono" data-adv-record-doc="${e(app.docId)}">${e(app.docId)}</button>` : money(advance.applied)}</div>
+      </div>
+      ${!app ? `<div class="record-summary invoice-subsummary"><div><small>Unapplied</small>${money(advanceOpen(advance))}</div><div><small>Method</small>${e(advance.method || '—')}</div><div><small>Account</small>${e(advance.account || '—')}</div></div>` : ''}
+      ${advance.notes ? `<p class="form-note">${e(advance.notes)}</p>` : ''}
+      </div>
+      ${!app ? `<div class="table-scroll"><table><thead><tr><th>Application</th><th>Date</th><th>Document</th><th class="numeric">Amount</th></tr></thead><tbody>${apps.map((x) => `<tr class="row-link" data-adv-open="${e(x.id)}"><td class="mono">${e(x.id)}</td><td>${e(x.date)}</td><td class="mono">${e(x.docId)}</td><td class="numeric">${money(x.amount)}</td></tr>`).join('') || '<tr><td colspan="4">Not applied to any document yet.</td></tr>'}</tbody></table></div>` : ''}
+      <div class="panel-body"><div class="related">
+        ${!app && advanceOpen(advance) > 0 ? `<button type="button" class="button" data-adv-record-apply="${e(advance.id)}">Apply to invoice</button>` : ''}
+        <button type="button" class="button" data-adv-record-print>Print</button>
+        <button type="button" class="button" data-adv-record-close>Close</button>
+      </div><p class="form-note">Read-only record. The voucher and its applications are separate documents; printing uses the browser.</p></div>
     </section>`;
   }
   function advanceEditor() {
@@ -3925,6 +3950,16 @@ const ITEM_ACCOUNT_RULES = [
       try { window.scrollTo({top: 0, behavior: 'auto'}); } catch {}
     }));
     document.querySelectorAll('[data-adv-apply-new]').forEach((b) => b.addEventListener('click', () => navigate({module: 'accounting', tab: 'advances', mode: 'editor', form: 'apply'})));
+    document.querySelectorAll('[data-adv-open]').forEach((tr) => tr.addEventListener('click', (ev) => {
+      if (ev.target.closest('button, a, select, input')) return;
+      navigate({module: 'accounting', tab: 'advances', mode: 'editor', code: tr.dataset.advOpen});
+    }));
+    document.querySelectorAll('[data-adv-party]').forEach((tr) => tr.addEventListener('click', () => { ADV_FILTER_PARTY = tr.dataset.advParty; ADV_TAB = 'transactions'; rerender(); window.scrollTo({top: 0}); }));
+    document.querySelector('[data-adv-clear-party]')?.addEventListener('click', () => { ADV_FILTER_PARTY = ''; rerender(); });
+    document.querySelector('[data-adv-record-close]')?.addEventListener('click', goBack);
+    document.querySelector('[data-adv-record-print]')?.addEventListener('click', () => window.print());
+    document.querySelector('[data-adv-record-apply]')?.addEventListener('click', (ev) => { ADV_APPLY_PARTY = (ADVANCES.find((a) => a.id === ev.target.dataset.advRecordApply) || {}).party || ''; navigate({module: 'accounting', tab: 'advances', mode: 'editor', form: 'apply'}); });
+    document.querySelectorAll('[data-adv-record-doc]').forEach((b) => b.addEventListener('click', () => { const id = b.dataset.advRecordDoc; const sales = /SI/i.test(id); navigate({module: 'accounting', tab: sales ? 'sales-invoices' : 'purchase-invoices', mode: 'editor', form: 'invoice', code: id}); }));
     document.querySelector('[data-adv-form] [data-form-cancel]')?.addEventListener('click', goBack);
     document.querySelector('[data-adv-form]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -4937,6 +4972,6 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, applyAdvanceEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

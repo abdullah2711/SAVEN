@@ -2893,7 +2893,24 @@ vouchers and the application in date order. Tab buttons are explicit `type="butt
 and carry `data-adv-tab`; clicking either tab re-renders the page with that tab active.
 Verified in the browser with a click, not only by URL.
 
-## 218. Still open
+## 218. Rows open the advance transaction record
+
+The registers were not clickable; that is what "cannot open a transaction" meant.
+
+- **Balances** rows are links: clicking a party switches to Transactions filtered to
+  that party, with a “Party · name ×” chip to clear the filter.
+- **Transactions** rows open a read-only record for the voucher:
+  - `ADV-…`: party, date, amount, applied, unapplied, method, account, notes and every
+    `ADVA-…` application against a document;
+  - `ADVA-…`: the application itself with the advance, date, amount and a link to the
+    invoice or bill it settled.
+- The record has **Apply to invoice** when the advance still has a balance, **Print**
+  and **Close**. The document link opens the invoice or bill.
+
+Verified by clicking a balance row (switches to Transactions) and a transaction row
+(navigates to `ADVA-2026-0001`).
+
+## 219. Still open
 
 - The application is a session document; it is not posted to the ledger separately.
   The backend must post Dr customer advances / Cr receivable (or Dr payable / Cr
