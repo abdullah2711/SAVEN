@@ -313,6 +313,7 @@ permissions. See §100 of the decision log.
 | 35 | 183–185 | Taxes linked into Accounting, invoice register fits, item row widths |
 | 36 | 187–193 | tax account subtype/override, withholding defaults and party register, row layout, payment voucher |
 | 37 | 194–196 | per-line discount, tax on discounted or original amount, policy version |
+| 38 | 197–199 | payment voucher preview, complete read-only opened documents |
 
 ---
 

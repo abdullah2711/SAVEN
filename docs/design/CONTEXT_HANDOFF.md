@@ -114,7 +114,9 @@ the decision index in one place.
   invoice total), gross receivable/payable, withholding rows
   (type, rate or custom, basis, amount), net due after withholding, optional record
   payment rows with total and difference, evidence, and a balanced illustrative entry.
-  Session documents only; fixture documents are read-only.
+  With a recorded payment, a second preview shows the separate receipt/payment voucher
+  entry. Session documents are editable; fixture documents open as complete read-only
+  documents with line and withholding detail derived from the posted ledger.
 - **Period close**: checklist, sign-off and a session lock shared with Settings →
   Periods.
 - Supplied print and vertical-menu glyphs wired into the journal header.

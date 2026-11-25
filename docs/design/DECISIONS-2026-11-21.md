@@ -2606,3 +2606,53 @@ credit notes and returns must use the original document's policy version.
 Discount codes, document-level discounts and rounding rules are not built; the line
 discount is a percentage or an amount per line. The setting applies to purchase bills
 as well, because the same tax-base question arises for input tax.
+
+
+---
+
+# Round 38 — the receipt voucher in the preview, complete opened documents
+
+## 197. Recording payment shows both entries
+
+When “Record payment with this document” is set and a payment amount exists, the
+invoice form now ends with **two** illustrative entries:
+
+1. the invoice or bill entry (revenue/expense, tax, receivable/payable and
+   withholding), and
+2. the **receipt or payment voucher** entry — bank or cash debit, receivable/payable
+   credit, with the voucher number it will create.
+
+If the money received is more than the net due, the preview says that the excess is
+kept as an advance and is not part of that entry. If it is less, the difference is
+shown in the payment section. The two documents remain separate: the invoice keeps
+its number, the voucher gets `RCPT-`/`PAY-`.
+
+## 198. Opened documents show the whole document
+
+The owner reported that some transactions opened to an incomplete form. The cause was
+that the fixture documents carried only register totals, so the editor deliberately
+showed a summary. That is now fixed at the source and in the view:
+
+- Fixture invoices and bills derive their line rows from the posted ledger: revenue or
+  expense lines become item rows (qty 1, that account's amount, the effective tax
+  rate), the tax control line becomes the tax account, and advance/withholding lines
+  become withholding rows.
+- A posted invoice now opens as a **complete read-only document**: party, date, due,
+  location, description, item table, totals, withholding table and the balanced
+  illustrative entry. It is still not editable; Return remains the reduction path.
+- Fixture payments derive their allocation from the voucher's `againstVoucher`, so the
+  record view shows the document, method, cash/bank account and amount instead of
+  “no allocation rows”.
+- Payment and receipt rows open the record view with allocation links and the Print
+  voucher button.
+
+The item column on a posted fixture shows “—” because the fixture stores accounts, not
+item codes. Session invoices keep their items and open with the full editable form.
+
+## 199. Still open
+
+- A posted fixture cannot be edited (by design); only returns reduce it.
+- The payment record is a read-only voucher, not an editable form; editing a saved
+  session payment is not built.
+- Item and tax-rule forms were already complete when opened; no change was needed
+  there.

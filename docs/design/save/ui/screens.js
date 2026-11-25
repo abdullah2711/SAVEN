@@ -2264,7 +2264,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       const bank = d.lines.find((l) => ['1010', '1000', '1020'].includes(l.account));
       const amount = round2(Math.abs(num(bank ? bank.debit : 0) - num(bank ? bank.credit : 0)));
       const account = bank ? bank.party || '' : '';
-      return {id: d.id, date: d.date, party: d.party, account, amount, withheld: 0, net: amount, direction: isReceipt(d) ? 'receive' : 'pay', method: 'Bank transfer', against: d.againstVoucher || '', advanced: 0, tenders: [{method: 'bank', account, reference: d.againstVoucher || '', amount}], session: false};
+      return {id: d.id, date: d.date, party: d.party, account, amount, withheld: 0, net: amount, direction: isReceipt(d) ? 'receive' : 'pay', method: 'Bank transfer', against: d.againstVoucher || '', advanced: 0, allocations: d.againstVoucher ? [{id: d.againstVoucher, amount, method: 'bank', account}] : [], notes: d.narrative || '', tenders: [{method: 'bank', account, reference: d.againstVoucher || '', amount}], session: false};
     });
     return PAYMENTS.concat(fromFixture).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
@@ -2754,7 +2754,21 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         const tax = round2(d.lines.filter((l) => l.account === (isSales ? '2200' : '1300')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
         const gross = round2(d.lines.filter((l) => l.account === control).reduce((n, l) => n + (isSales ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
-        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines: []};
+        const byAccount = {};
+        d.lines.filter((l) => (isSales ? String(l.account).startsWith('4') : String(l.account).startsWith('5'))).forEach((l) => {
+          const value = round2(isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit));
+          if (!byAccount[l.account]) byAccount[l.account] = {value: 0, project: l.project || ''};
+          byAccount[l.account].value = round2(byAccount[l.account].value + value);
+        });
+        const taxRate = net ? round2((tax / net) * 100) : 0;
+        const lines = Object.entries(byAccount).map(([account, x]) => ({item: '', account, project: x.project, qty: '1', price: String(x.value), discountType: '', discountValue: '', tax: String(taxRate)}));
+        const withholding = [];
+        d.lines.forEach((l) => {
+          if (l.account === TAX_DEFAULTS.advance) withholding.push({type: 'advance', rate: 'custom', custom: String(round2(num(l.debit) - num(l.credit))), basis: 'net'});
+          if (l.account === TAX_DEFAULTS.withholding) withholding.push({type: 'income', rate: 'custom', custom: String(round2(num(l.credit) - num(l.debit))), basis: 'net'});
+          if (l.account === TAX_DEFAULTS.salesWht) withholding.push({type: 'sales', rate: 'custom', custom: String(round2(num(l.credit) - num(l.debit))), basis: 'net'});
+        });
+        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines, withholding, taxAccount: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, description: d.narrative || '', location: d.location || 'HQ', reference: d.supplierRef || ''};
       });
     const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), session: true, lines: x.lines || [], withholding: x.withholding || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
     return session.concat(fromFixture)
@@ -2816,9 +2830,16 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const entry = invoiceEntryLines(kind, draft || {lines, party: ''}, totals, withholding);
     return `<section class="panel">
       <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}${source ? `<button type="button" class="button" data-inv-open-return="${kind}:${e(source.id)}">Return</button>` : ''}</div></div>
-      ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The content is read-only. Create a return to reduce its balance; partial returns are allowed.</div>
-        <div class="record-summary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div>
-        <p class="form-note">Line detail is recorded on the posted document.</p></div>`
+      ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The complete document is shown read-only. Create a return to reduce its balance; partial returns are allowed.</div>
+        <div class="record-summary"><div><small>${isSales ? 'Customer' : 'Supplier'}</small>${e(source.party)}</div><div><small>Date</small>${e(source.date)}</div><div><small>Due</small>${e(source.due)}</div><div><small>Location</small>${e(source.location || 'HQ')}</div></div>
+        ${source.description ? `<p class="form-note">${e(source.description)}</p>` : ''}
+        <div class="record-summary invoice-subsummary"><div><small>Net</small>${money(totals.net)}</div><div><small>Tax</small>${money(totals.tax)}</div><div><small>Gross</small>${money(totals.gross)}</div><div><small>Returned</small>${money(source.returned)}</div><div><small>Balance</small>${money(source.balance)}</div></div></div>
+        <div class="panel-body"><div class="section-title">Items</div>
+          <div class="table-scroll"><table class="invoice-lines inv-items"><thead><tr><th>Item</th><th>Account</th><th>Project</th><th class="numeric">Qty</th><th class="numeric">Unit price</th><th>Discount</th><th class="numeric">Total</th><th class="numeric">Tax %</th><th class="numeric">Total after tax</th><th></th></tr></thead>
+          <tbody>${(source.lines || []).map((l) => `<tr><td>${e(l.item || '—')}</td><td>${e(l.account)} · ${e((accounts().find((a) => a.code === l.account) || {}).name || '')}</td><td>${e(l.project || '—')}</td><td class="numeric">${e(l.qty)}</td><td class="numeric">${money(l.price)}</td><td>${l.discountType ? e(l.discountType === 'customAmt' ? money(l.discountValue) : l.discountValue + '%') : '—'}</td><td class="numeric">${money(invLineNet(l))}</td><td class="numeric">${e(l.tax)}%</td><td class="numeric">${money(invLineGross(l))}</td><td></td></tr>`).join('') || '<tr><td colspan="10">Line detail is not in the fixture.</td></tr>'}</tbody></table></div>
+        </div>
+        ${(source.withholding || []).length ? `<div class="panel-body"><div class="section-title">Withholding</div><div class="table-scroll"><table class="invoice-lines inv-wht"><thead><tr><th>Type</th><th>Rate / amount</th><th>Basis</th><th class="numeric">Amount</th><th></th></tr></thead><tbody>${source.withholding.map((w) => `<tr><td>${e(w.type === 'advance' ? 'Advance tax withheld by customer' : w.type === 'sales' ? 'Sales tax withheld' : 'Income tax withholding')}</td><td>${w.rate === 'custom' ? money(w.custom) : e(w.rate) + '%'}</td><td>${e(w.basis === 'net' ? 'Before sales tax' : w.basis === 'gross' ? 'After sales tax' : 'Sales tax only')}</td><td class="numeric">${money(whtAmount(w, totals))}</td><td></td></tr>`).join('')}</tbody></table></div></div>` : ''}
+        <div class="panel-body form-grid">${ledgerIllustration(isSales ? 'Illustrative invoice entry' : 'Illustrative bill entry', invoiceEntryLines(kind, {lines: source.lines || [], withholding: source.withholding || [], party: source.party, taxAccount: source.taxAccount}, totals, source.withholding || []), 'Derived from the posted document; this build does not re-post.')}</div>`
       : `<form data-invoice-form="${kind}">
         <input type="hidden" name="editingCode" value="${e(source ? source.id : '')}">
         <div class="panel-body form-grid">
@@ -2867,7 +2888,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           <div class="related"><button type="button" class="button" data-inv-add-tender>Add payment row</button></div>
           <p class="form-note">Saving records a separate ${isSales ? 'receipt' : 'payment'} voucher ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')}. It appears in Payment / Receipts with its own number, can be opened on its own and printed from there.</p>
         </div>` : ''}
-        <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative entry on save' : 'Illustrative entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}</div>
+        <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative invoice entry on save' : 'Illustrative bill entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}
+          ${INV_PAY[kind] && tenderTotal > 0 ? ledgerIllustration(isSales ? 'Illustrative receipt voucher' : 'Illustrative payment voucher', paymentEntryLines(isSales ? 'receive' : 'pay', draft ? draft.party : '', tenders.map((t) => ({account: t.account, amount: t.amount}))), `Creates ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')} as a separate document.${tenderTotal > netDue ? ` Total received exceeds the net due by ${money(round2(tenderTotal - netDue))}; the excess is kept as an advance and is not part of this entry.` : ''}`) : ''}</div>
         <div class="panel-body"><div class="related"><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
       </form>`}
