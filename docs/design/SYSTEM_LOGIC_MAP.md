@@ -326,6 +326,7 @@ permissions. See §100 of the decision log.
 | 50 | 238–239 | single Return action, closeable document menu |
 | 51 | 240–246 | chart architecture: six-digit codes, controls, tax authorities, fixed assets |
 | 52 | 247–250 | tax controls per type, authorities as sub-accounts, party tax reconciliation |
+| 53 | 251–255 | tax module: six natures, authorities tabs, entries, party reconciliation, rules form |
 
 ---
 

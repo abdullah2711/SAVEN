@@ -106,13 +106,11 @@ export const PAGE_MAP = {
     ['facilities', 'Debt & facilities', 'Drawdowns, repayments, interest and covenants.', 'planned'],
   ],
   tax: [
-    ['rules', 'Tax rules', 'Tax rules register and form: kind, rate, basis, account, scope, effective dates.', 'built'],
-    ['registers', 'Registers', 'Output and input tax registers with their documents.', 'built'],
-    ['withholding', 'Withholding', 'Withholding workpaper and expected versus recorded.', 'built'],
-    ['advance', 'Advance tax', 'Advance tax workpaper by party.', 'built'],
-    ['reconciliation', 'Reconciliation', 'Tax control accounts against their registers.', 'built'],
-    ['parties', 'Party withholding', 'Withheld amount by party with a filed reconciliation note.', 'built'],
-    ['defaults', 'Default accounts', 'Output, input, withholding, sales-tax-withheld and advance accounts.', 'built'],
+    ['rules', 'Tax rules', 'Rules register and form: nature, item group or specific items, rate, basis, authority and effective dates.', 'built'],
+    ['authorities', 'Authorities', 'Authority register by tax kind with registration, frequency, taxable base and tax balance.', 'built'],
+    ['entries', 'Tax entries', 'Every tax entry created by an invoice or bill, filterable by date, kind, authority and party; a row opens the document.', 'built'],
+    ['parties', 'Party reconciliation', 'Tax balances by party and kind, with a verified/at-risk reconciliation note.', 'built'],
+    ['defaults', 'Default accounts', 'Output, input, withholding and advance accounts for both income and sales tax.', 'built'],
     ['calc', 'Calculation', 'Whether tax is calculated on the discounted or original line amount.', 'built'],
   ],
   reports: [

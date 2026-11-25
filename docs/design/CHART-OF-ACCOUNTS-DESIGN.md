@@ -105,7 +105,8 @@ these get control flags.
 | Output tax | 202001 | tax authority sub-accounts | tax rule/authority via document; party dimension |
 | Sales tax withheld | 202002 | tax authority sub-accounts | party |
 | Income tax withholding payable | 202005 | supplier ledger + authority sub-account | party |
-| Advance tax receivable | 102002 | customer ledger + authority sub-account | party |
+| Advance income tax receivable | 102002 | customer ledger + authority sub-account | party |
+| Advance sales tax receivable | 1024 | customer/supplier ledger + authority sub-account | party |
 | Customer advances | 203001 | customer advance ledger | party |
 | Goods received clearing | 204001 | open goods receipts / bills | document, party |
 
@@ -153,8 +154,12 @@ group remain dimensions for statistics.
 
 ## 6. Tax controls and authorities
 
+There are **six tax natures**: input tax, output tax, advance income tax, advance sales
+tax, withholding income tax and withholding sales tax. Advance income and advance sales
+are separate controls because one is income tax and one is sales tax.
+
 An authority does **not** need its own GL control account. One control account per tax
-type, with each authority as a **sub-account**, is the better model. It matches bank/
+nature, with each authority as a **sub-account**, is the better model. It matches bank/
 cash (one control, many bank accounts) and avoids a chart that grows every time a
 provincial or local authority is added.
 
@@ -164,7 +169,8 @@ provincial or local authority is added.
 | Input tax | 104001 | each input tax authority/registration |
 | Sales tax withheld | 202002 | each withholding authority/registration |
 | Income tax withholding payable | 202005 | the entity's income-tax authority (one per entity) |
-| Advance tax receivable | 102002 | the entity's income tax authority |
+| Advance income tax receivable | 102002 | the entity's income-tax authority |
+| Advance sales tax receivable | 1024 | each sales-tax authority/registration |
 
 Rules:
 
@@ -299,7 +305,8 @@ rule, authority, period.
 | 1100 | 102001 | Trade receivables |
 | 1200 | 103001 | Inventory |
 | 1300 | 104001 | Input tax control |
-| 1400 | 102002 | Advance tax receivable |
+| 1400 | 102002 | Advance income tax receivable |
+| 1024 | 102004 | Advance sales tax receivable |
 | 1500/… | 10500x | Fixed asset classes |
 | 2100 | 201001 | Trade payables |
 | 2150 | 202005 | Income tax withholding payable |

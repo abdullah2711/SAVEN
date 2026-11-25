@@ -455,3 +455,4 @@ input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-
 .ret-items{min-width:900px}
 .journal-lines{min-width:980px}
 .pay-lines{min-width:720px}
+.scope-off{opacity:.4;pointer-events:none}

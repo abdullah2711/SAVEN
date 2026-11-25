@@ -65,9 +65,13 @@ the decision index in one place.
 Read `docs/design/CHART-OF-ACCOUNTS-DESIGN.md` before touching the chart. Six-digit
 codes `D GG AAA`; groups by class in Settings; one AR and one AP control; controls for
 cash, bank, inventory, fixed-asset cost/accumulated, advances and clearing; **no sales
-control**; statistics from line dimensions and subledgers. Tax has one control per type
-(output, input, sales tax withheld, income tax withholding, advance tax) with tax
-authorities as **sub-accounts**, not separate controls. Party tax claims are dimensions
+control**; statistics from line dimensions and subledgers. Tax has one control per nature
+(input, output, advance income, advance sales, withholding income, withholding sales)
+with tax authorities as **sub-accounts**, not separate controls. The Tax module pages
+are Rules, Authorities (six tabs), Tax entries, Party reconciliation, Default accounts
+and Calculation. Rules apply to one item group or specific items, never both; tax
+entries open their document; party tax balances are reconciled by party/kind without a
+tax sub-account. Party tax claims are dimensions
 on tax entries, reconciled against authority data and certificates. The demo four-digit
 chart is to be replaced and fixtures remapped.
 
