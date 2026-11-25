@@ -3038,3 +3038,45 @@ the stock voucher is the source, not the invoice.
   balances are not updated yet.
 - The menu actions appear on saved session documents; posted fixture documents show
   Return/Duplicate/Print only.
+
+
+---
+
+# Round 46 — logic recheck and fixes found
+
+## 229. Full render/bind sweep
+
+Every Accounting view (dashboard, ledger, journals, parties, cash, payments,
+advances, sales invoices, purchase bills, items, taxes, reports, approvals, opening,
+recurring, setup, close, receivables, payables, ageing), every editor (journal, cash,
+party, item, tax rule, payment, payment record, advance new/apply/record, sales new/
+posted/return/stock, purchase new/return/stock) and every tax and report page renders
+and binds without an error. Verified by a scripted sweep.
+
+## 230. Fixes from the functional checks
+
+- **Payment and inventory menu actions were shown on new documents** where there is
+  nothing to act on. They are now limited to a saved document. Print remains.
+- **The menu did nothing on posted fixture documents** because bindings sat behind the
+  editable form, which does not exist for a read-only document. Return, Duplicate,
+  Create payment/receipt, Record inventory and Print are now bound for the read-only
+  document too. Verified by clicking both actions on DEMO-SI-291 and receiving the
+  expected navigation objects.
+- **Return save rejected every line** after the price became read-only: the unit price
+  was stored on the cell but the capture looked on the row, so it sent 0. The capture
+  now reads the price cell. A full return of DEMO-SI-291 saves and appears as
+  `SR-2026-301`.
+- Tax on the original amount was verified: a 100.00 line with a 10% discount and “tax
+  the original amount” produces 10.00 tax, not 9.00.
+- Advance account filtering was verified: Cash lists only the two cash sub-accounts;
+  applying 1,000 from ADV-2026-0001 to DEMO-SI-124 works and shows only Atlas Studio's
+  eight open documents.
+- A full return of an invoice that already had 5,000 applied leaves the party/invoice
+  balance at −5,000, i.e. a credit for the customer. That is the intended receivable
+  behaviour, not an error; the register should present it as a credit.
+
+## 231. Still open
+
+- The return form has no refund/payment menu action yet.
+- The stock editor was added but not exercised with a tracked session document in the
+  sweep; its save path is the same STOCK_MOVES record used by the old inline section.

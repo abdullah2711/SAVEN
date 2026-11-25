@@ -2875,7 +2875,7 @@ const ITEM_ACCOUNT_RULES = [
         <details class="form-menu"><summary class="icon-button" aria-label="More document options">${icon('more')}</summary><div class="menu">
           ${source ? `<button type="button" data-inv-menu-return>Return</button><button type="button" data-inv-menu-duplicate>Duplicate</button>` : ''}
           ${source && source.session ? `<button type="button" data-inv-menu-cancel>Cancel document</button><button type="button" data-inv-menu-delete>Delete document</button>` : ''}
-          <button type="button" data-inv-menu-payment>Create payment / receipt</button><button type="button" data-inv-menu-stock>Record inventory</button><button type="button" data-inv-menu-print>Print</button>
+          ${source ? `<button type="button" data-inv-menu-payment>Create payment / receipt</button><button type="button" data-inv-menu-stock>Record inventory</button>` : ''}<button type="button" data-inv-menu-print>Print</button>
         </div></details></div></div>
       ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The complete document is shown read-only. Create a return to reduce its balance; partial returns are allowed.</div>
         <div class="record-summary"><div><small>${isSales ? 'Customer' : 'Supplier'}</small>${e(source.party)}</div><div><small>Date</small>${e(source.date)}</div><div><small>Due</small>${e(source.due)}</div><div><small>Location</small>${e(source.location || 'HQ')}</div></div>
@@ -3282,7 +3282,7 @@ const ITEM_ACCOUNT_RULES = [
       const form = root.querySelector(`[data-invoice-form="${kind}"]`);
       document.querySelector('[data-form-cancel]')?.addEventListener('click', goBack);
       form?.addEventListener('submit', (ev) => ev.preventDefault());
-      const editingCode = form?.querySelector('[name="editingCode"]')?.value || '';
+      const editingCode = form?.querySelector('[name="editingCode"]')?.value || root.querySelector('.panel-head h2')?.textContent.trim() || '';
       const sourceNow = editingCode ? invoiceRows(kind).find((r) => r.id === editingCode) : null;
       root.querySelector('[data-inv-menu-return]')?.addEventListener('click', () => { if (sourceNow) navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: sourceNow.id}); });
       root.querySelector('[data-inv-menu-duplicate]')?.addEventListener('click', () => { if (!sourceNow) return; const copy = {...sourceNow, id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), date: '2026-11-30', due: '2026-12-30', session: true, state: 'draft'}; INVOICES.push({...copy, kind, net: sourceNow.net, tax: sourceNow.tax, gross: sourceNow.gross, netDue: sourceNow.netDue ?? sourceNow.gross}); notify('Document duplicated into a new draft.'); navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'invoice', code: copy.id}); });
@@ -3517,6 +3517,25 @@ const ITEM_ACCOUNT_RULES = [
       notify(`${kind === 'sales' ? 'Goods issue' : 'Goods receipt'} recorded for ${inv.id}; the inventory ledger will apply the exact quantities.`);
       goBack();
     });
+    if (!document.querySelector(`[data-invoice-form="${kind}"]`)) {
+      const sec = document.querySelector('.form-menu')?.closest('section');
+      const codeNow = sec?.querySelector('.panel-head h2')?.textContent.trim() || '';
+      const src = codeNow ? invoiceRows(kind).find((r) => r.id === codeNow) : null;
+      sec?.querySelector('[data-inv-menu-return]')?.addEventListener('click', () => { if (src) navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'return', code: src.id}); });
+      sec?.querySelector('[data-inv-menu-payment]')?.addEventListener('click', () => {
+        if (!src) return;
+        PAY_FORM = {direction: kind === 'sales' ? 'receive' : 'pay', party: src.party, date: '2026-11-30', notes: `Settlement of ${src.id}`, lines: [{doc: src.id, method: 'bank', account: '', amount: (src.balance ?? src.netDue ?? src.gross).toFixed(2)}]};
+        navigate({module: 'accounting', tab: 'payments', mode: 'editor'});
+      });
+      sec?.querySelector('[data-inv-menu-stock]')?.addEventListener('click', () => { if (src) navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'stock', code: src.id}); });
+      sec?.querySelector('[data-inv-menu-duplicate]')?.addEventListener('click', () => {
+        if (!src) return;
+        const id = (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++);
+        INVOICES.push({...src, id, kind, date: '2026-11-30', due: '2026-12-30', state: 'draft', session: true, netDue: src.netDue ?? src.gross, lines: src.lines || [], withholding: src.withholding || []});
+        navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'invoice', code: id});
+      });
+      sec?.querySelector('[data-inv-menu-print]')?.addEventListener('click', () => window.print());
+    }
     const retForm = document.querySelector(`[data-return-form="${kind}"]`);
     document.querySelector(`[data-return-form="${kind}"] [data-form-cancel]`)?.addEventListener('click', goBack);
     const captureRet = () => {
@@ -3527,7 +3546,7 @@ const ITEM_ACCOUNT_RULES = [
         account: (tr.querySelector('[data-ret-field="account"]') || {}).value || '',
         qty: (tr.querySelector('[data-ret-field="qty"]') || {}).value || '1',
         returnQty: (tr.querySelector('[data-ret-field="returnQty"]') || {}).value || '',
-        price: (tr.querySelector('[data-ret-field="price"]') || {}).value || tr.dataset.price || '0',
+        price: (tr.querySelector('[data-ret-field="price"]') || {}).value || (tr.querySelector('[data-price]') || {}).dataset?.price || '0',
         tax: (tr.querySelector('[data-ret-field="tax"]') || {}).value || '0',
       }));
       RET_DRAFT[kind] = {...RET_DRAFT[kind], invoice: v.invoice || '', date: v.date, reason: v.reason, notes: v.notes || '', lines};
