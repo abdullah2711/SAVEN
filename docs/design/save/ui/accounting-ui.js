@@ -428,8 +428,8 @@ document.querySelector('#accounting-filter')?.addEventListener('submit',ev=>{ev.
    if(tab==='taxes')return screens.taxEditor(code||'');
    if(tab==='payments')return screens.paymentEditor(code);
    if(tab==='advances')return form==='apply'?screens.applyAdvanceEditor():(code?screens.advanceRecord(code):screens.advanceEditor());
-   if(tab==='sales-invoices')return form==='return'?screens.returnEditor('sales',code||''):screens.invoiceEditor('sales',code||'');
-   if(tab==='purchase-invoices')return form==='return'?screens.returnEditor('purchase',code||''):screens.invoiceEditor('purchase',code||'');
+   if(tab==='sales-invoices')return form==='stock'?screens.stockEditor('sales',code||''):form==='return'?screens.returnEditor('sales',code||''):screens.invoiceEditor('sales',code||'');
+   if(tab==='purchase-invoices')return form==='stock'?screens.stockEditor('purchase',code||''):form==='return'?screens.returnEditor('purchase',code||''):screens.invoiceEditor('purchase',code||'');
    if(code&&draft.editingId!==code)loadJournalDoc(code);
    if(!code&&draft.editingId)resetJournalDraft();
    return journalEditor();

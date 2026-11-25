@@ -2875,7 +2875,7 @@ const ITEM_ACCOUNT_RULES = [
         <details class="form-menu"><summary class="icon-button" aria-label="More document options">${icon('more')}</summary><div class="menu">
           ${source ? `<button type="button" data-inv-menu-return>Return</button><button type="button" data-inv-menu-duplicate>Duplicate</button>` : ''}
           ${source && source.session ? `<button type="button" data-inv-menu-cancel>Cancel document</button><button type="button" data-inv-menu-delete>Delete document</button>` : ''}
-          <button type="button" data-inv-menu-print>Print</button>
+          <button type="button" data-inv-menu-payment>Create payment / receipt</button><button type="button" data-inv-menu-stock>Record inventory</button><button type="button" data-inv-menu-print>Print</button>
         </div></details></div></div>
       ${locked ? `<div class="panel-body"><div class="callout"><strong>Posted document.</strong> The complete document is shown read-only. Create a return to reduce its balance; partial returns are allowed.</div>
         <div class="record-summary"><div><small>${isSales ? 'Customer' : 'Supplier'}</small>${e(source.party)}</div><div><small>Date</small>${e(source.date)}</div><div><small>Due</small>${e(source.due)}</div><div><small>Location</small>${e(source.location || 'HQ')}</div></div>
@@ -2897,7 +2897,7 @@ const ITEM_ACCOUNT_RULES = [
           <label>${isSales ? 'Customer reference' : 'Supplier invoice no'}<input name="reference" maxlength="40" value="${e(draft ? draft.reference || '' : '')}"></label>
           <label>Location<select name="location" class="inline-input">${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${draft && l.code === (draft.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
           <label class="wide">Description<textarea name="description" maxlength="200" placeholder="What this document is for">${e(draft ? draft.description || '' : '')}</textarea></label>
-          <label>Record payment with this document<select name="recordPayment" class="inline-input"><option value="no" ${INV_PAY[kind] ? '' : 'selected'}>No — save the document only</option><option value="yes" ${INV_PAY[kind] ? 'selected' : ''}>Yes — record the money now</option></select></label>
+          
         </div>
         <div class="panel-body">
           <div class="section-title">Items</div>
@@ -2915,14 +2915,6 @@ const ITEM_ACCOUNT_RULES = [
           <div class="related"><button type="button" class="button" data-inv-add-line>Add item row</button></div>
         </div>
         <div class="panel-body">
-          <div class="section-title">Inventory</div>
-          ${lines.some((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked) ? `<div class="form-grid">
-            <label>Update stock with this ${isSales ? 'invoice' : 'bill'}<select name="stockMove" class="inline-input"><option value="no" ${(draft ? draft.stockMove : 'no') !== 'yes' ? 'selected' : ''}>No — document only</option><option value="yes" ${draft && draft.stockMove === 'yes' ? 'selected' : ''}>Yes — record the ${isSales ? 'issue' : 'receipt'}</option></select></label>
-            <label>Warehouse<select name="warehouse" class="inline-input">${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${draft && draft.warehouse === l.code ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
-          </div><p class="form-note">Yes records a separate ${isSales ? 'goods issue' : 'goods receipt'} voucher in the inventory register for the tracked items on this document; the invoice or bill keeps its own number. Quantities come from the returned line quantities.</p>`
-          : '<p class="form-note">No tracked items on this document, so there is no stock movement. A service or non-inventory line never creates one.</p>'}
-        </div>
-        <div class="panel-body">
           <div class="record-summary invoice-due"><div><small>Gross ${isSales ? 'receivable' : 'payable'}</small><span data-inv-gross2>${money(totals.gross)}</span></div><div><small>Withholding</small><span data-inv-wht-total>${money(whtTotal)}</span></div><div><small>Net ${isSales ? 'receivable' : 'payable'}</small><strong data-inv-due>${money(netDue)}</strong></div><div><small>Advances applied</small><span data-inv-adv-total>${money(advanceApplied)}</span></div><div><small>Balance after advances</small><strong data-inv-balance>${money(balanceAfter)}</strong></div></div>
           <div class="section-title">${isSales ? 'Withholding by customer' : 'Withholding from supplier'}</div>
           <div class="table-scroll"><table class="invoice-lines inv-wht">
@@ -2932,26 +2924,6 @@ const ITEM_ACCOUNT_RULES = [
           <div class="related"><button type="button" class="button" data-inv-add-wht>Add withholding row</button></div>
           <p class="form-note">${isSales ? 'Advance tax withheld by the customer reduces what we receive; it is our asset, not a cost.' : 'Withholding from a supplier is money we deduct and owe to the authority.'} Net ${isSales ? 'receivable' : 'payable'} after withholding is the amount the control account carries.</p>
         </div>
-        ${INV_PAY[kind] ? `<div class="panel-body">
-          <div class="section-title">Record payment</div>
-          <div class="table-scroll"><table class="invoice-lines inv-pay">
-            <thead><tr><th>Method</th><th>Cash / bank sub-account</th><th class="numeric">Amount</th><th></th></tr></thead>
-            <tbody>${tenderRows}</tbody>
-            <tfoot><tr><td colspan="2">Total received</td><td class="numeric" data-inv-paid>${money(tenderTotal)}</td><td></td></tr>
-            <tr><td colspan="2">Difference after payments and advances</td><td class="numeric" data-inv-diff>${money(balanceAfter)}</td><td></td></tr></tfoot>
-          </table></div>
-          <div class="related"><button type="button" class="button" data-inv-add-tender>Add payment row</button></div>
-          <p class="form-note">Saving records a separate ${isSales ? 'receipt' : 'payment'} voucher ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')}. It appears in Payment / Receipts with its own number, can be opened on its own and printed from there.</p>
-        </div>` : ''}
-        ${party ? `<div class="panel-body">
-          <div class="section-title">Apply advances</div>
-          ${openAdvances.length ? `<div class="table-scroll"><table class="invoice-lines inv-pay"><thead><tr><th>Advance</th><th class="numeric">Available</th><th class="numeric">Amount to apply</th><th></th></tr></thead>
-            <tbody>${(draft ? (draft.advances || []) : []).map((a, i) => { const rec = ADVANCES.find((x) => x.id === a.advance); return `<tr data-inv-adv-row="${i}"><td><select data-inv-adv class="inline-input"><option value="">Choose advance</option>${openAdvances.map((x) => `<option value="${x.id}" ${x.id === a.advance ? 'selected' : ''}>${e(x.id)} · ${money(advanceOpen(x))}</option>`).join('')}</select></td><td class="numeric">${rec ? money(advanceOpen(rec)) : '—'}</td><td><input class="numeric" data-inv-adv-amount value="${e(a.amount)}" inputmode="decimal" placeholder="0.00"></td><td><button type="button" class="text-button" data-inv-adv-remove="${i}">Remove</button></td></tr>`; }).join('')}</tbody>
-            <tfoot><tr><td colspan="2">Total applied</td><td class="numeric" data-inv-adv-total>${money(advanceApplied)}</td><td></td></tr></tfoot></table></div>
-            <div class="related"><button type="button" class="button" data-inv-adv-add>Add advance row</button></div>
-            <p class="form-note">Money already received from this customer (or paid to this supplier) is applied to this document. It reduces the advance balance and the amount still due; no new cash moves.</p>`
-          : '<p class="form-note">No open advance for this party. Record one on Accounting → Advances first.</p>'}
-        </div>` : ''}
         <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative invoice entry on save' : 'Illustrative bill entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}
           ${INV_PAY[kind] && tenderTotal > 0 ? ledgerIllustration(isSales ? 'Illustrative receipt voucher' : 'Illustrative payment voucher', paymentEntryLines(isSales ? 'receive' : 'pay', draft ? draft.party : '', tenders.map((t) => ({account: t.account, amount: t.amount}))), `Creates ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')} as a separate document.${tenderTotal > netDue ? ` Total received exceeds the net due by ${money(round2(tenderTotal - netDue))}; the excess is kept as an advance and is not part of this entry.` : ''}`) : ''}
           ${stockEntry.length ? ledgerIllustration(isSales ? 'Illustrative inventory issue' : 'Illustrative inventory receipt', stockEntry, isSales ? 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.' : 'Goods received at the amount after discount and before sales tax: inventory against goods received clearing, using the item default accounts. The bill itself debits clearing, so the clearing account nets out.') : ''}
@@ -2973,6 +2945,31 @@ const ITEM_ACCOUNT_RULES = [
     return [...new Set(RETURNS.sales.concat(RETURNS.purchase).map((r) => String(returnColValue(r, key))))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
   }
   function returnColLabel(key, v) { return ['net', 'tax', 'gross'].includes(key) ? money(Number(v) || 0) : v; }
+  function stockEditor(kind, code) {
+    const isSales = kind === 'sales';
+    const inv = invoiceRows(kind).find((r) => r.id === code);
+    if (!inv) return `<section class="panel"><div class="panel-body"><p>That document is not in the register.</p><div class="related"><button type="button" class="button" data-stock-cancel>Back</button></div></div></section>`;
+    const tracked = (inv.lines || []).filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
+    const value = round2(tracked.reduce((n, l) => n + invLineNet(l), 0));
+    const entry = isSales
+      ? [{account: itemAccountFor('cogs'), party: '', debit: value, credit: 0}, {account: itemAccountFor('inventory'), party: '', debit: 0, credit: value}]
+      : [{account: itemAccountFor('inventory'), party: '', debit: value, credit: 0}, {account: itemAccountFor('clearing') || '2400', party: '', debit: 0, credit: value}];
+    return `<section class="panel">
+      <div class="panel-head"><h2>${isSales ? 'Goods issue' : 'Goods receipt'} · ${e(inv.id)}</h2><span class="badge">Separate stock voucher</span></div>
+      <form data-stock-form="${kind}"><input type="hidden" name="invoice" value="${e(inv.id)}">
+        <div class="panel-body form-grid">
+          <label>Party<input readonly value="${e(inv.party)}"></label>
+          <label>Date<input name="date" type="date" value="2026-11-30" required></label>
+          <label>Warehouse<select name="warehouse" class="inline-input">${LOCATIONS.map((l) => `<option value="${e(l.code)}" ${l.code === (inv.location || 'HQ') ? 'selected' : ''}>${e(l.code)} · ${e(l.name)}</option>`).join('')}</select></label>
+        </div>
+        <div class="panel-body"><div class="section-title">Tracked items</div>
+          <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Item</th><th>Name</th><th class="numeric">Quantity</th><th class="numeric">Value</th></tr></thead><tbody>${tracked.map((l) => { const item = ITEMS.find((i) => i.code === l.item) || {}; return `<tr><td class="mono">${e(l.item)}</td><td>${e(item.name || '')}</td><td class="numeric">${l.qty}</td><td class="numeric">${money(invLineNet(l))}</td></tr>`; }).join('') || '<tr><td colspan="4">No tracked items on this document.</td></tr>'}</tbody></table></div>
+        </div>
+        <div class="panel-body form-grid">${ledgerIllustration(isSales ? 'Illustrative goods issue' : 'Illustrative goods receipt', tracked.length ? entry : [], 'The stock voucher moves the exact quantities shown. Inventory quantities and valuation are updated when the inventory ledger is connected.')}</div>
+        <div class="panel-body"><div class="related"><button class="button primary">Record ${isSales ? 'issue' : 'receipt'}</button><button type="button" class="button" data-stock-cancel>Cancel</button></div></div>
+      </form>
+    </section>`;
+  }
   function invoicesView(kind) {
     const isSales = kind === 'sales';
     const tab = INV_TAB[kind] === 'returns' ? 'returns' : 'invoices';
@@ -3291,6 +3288,15 @@ const ITEM_ACCOUNT_RULES = [
       root.querySelector('[data-inv-menu-duplicate]')?.addEventListener('click', () => { if (!sourceNow) return; const copy = {...sourceNow, id: (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++), date: '2026-11-30', due: '2026-12-30', session: true, state: 'draft'}; INVOICES.push({...copy, kind, net: sourceNow.net, tax: sourceNow.tax, gross: sourceNow.gross, netDue: sourceNow.netDue ?? sourceNow.gross}); notify('Document duplicated into a new draft.'); navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'invoice', code: copy.id}); });
       root.querySelector('[data-inv-menu-cancel]')?.addEventListener('click', () => { const target = INVOICES.find((x) => x.id === editingCode); if (target) { target.state = 'cancelled'; notify('Document cancelled; it stays in the register.'); } goBack(); });
       root.querySelector('[data-inv-menu-delete]')?.addEventListener('click', () => { const i = INVOICES.findIndex((x) => x.id === editingCode); if (i >= 0) { INVOICES.splice(i, 1); notify('Document deleted from the register.'); } goBack(); });
+      root.querySelector('[data-inv-menu-payment]')?.addEventListener('click', () => {
+        if (!sourceNow) return;
+        PAY_FORM = {direction: isSales ? 'receive' : 'pay', party: sourceNow.party, date: '2026-11-30', notes: `Settlement of ${sourceNow.id}`, lines: [{doc: sourceNow.id, method: 'bank', account: '', amount: (sourceNow.balance ?? sourceNow.netDue ?? sourceNow.gross).toFixed(2)}]};
+        navigate({module: 'accounting', tab: 'payments', mode: 'editor'});
+      });
+      root.querySelector('[data-inv-menu-stock]')?.addEventListener('click', () => {
+        if (!sourceNow) return;
+        navigate({module: 'accounting', tab: tabOf, mode: 'editor', form: 'stock', code: sourceNow.id});
+      });
       root.querySelector('[data-inv-menu-print]')?.addEventListener('click', () => window.print());
       const recalc = () => {
         const d = captureInvoice(kind, root);
@@ -3497,6 +3503,20 @@ const ITEM_ACCOUNT_RULES = [
       });
     }
 
+    const stockForm = document.querySelector('[data-stock-form]');
+    stockForm?.querySelector('[data-stock-cancel]')?.addEventListener('click', goBack);
+    stockForm?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!stockForm.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(stockForm));
+      const inv = invoiceRows(kind).find((r) => r.id === v.invoice);
+      if (!inv) { notify('The document is not in the register.'); return; }
+      const tracked = (inv.lines || []).filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
+      if (!tracked.length) { notify('No tracked items on this document.'); return; }
+      STOCK_MOVES.push({id: 'STK-2026-' + String(100 + STOCK_MOVES.length), kind, date: v.date, party: inv.party, warehouse: v.warehouse, invoice: inv.id, direction: kind === 'sales' ? 'issue' : 'receipt', lines: tracked.map((l) => ({item: l.item, qty: l.qty, value: invLineNet(l)}))});
+      notify(`${kind === 'sales' ? 'Goods issue' : 'Goods receipt'} recorded for ${inv.id}; the inventory ledger will apply the exact quantities.`);
+      goBack();
+    });
     const retForm = document.querySelector(`[data-return-form="${kind}"]`);
     document.querySelector(`[data-return-form="${kind}"] [data-form-cancel]`)?.addEventListener('click', goBack);
     const captureRet = () => {
@@ -3552,6 +3572,8 @@ const ITEM_ACCOUNT_RULES = [
       if (totals.gross <= 0) { notify('Enter at least one returned quantity or amount.'); return; }
       if (totals.gross > inv.gross - inv.returned + 0.005) { notify('The return is more than the document still carries.'); return; }
       RETURNS[kind].push({id: (kind === 'sales' ? 'SR-2026-' : 'PR-2026-') + String(RET_SEQ[kind]++), invoiceId: inv.id, date: v.date, party: inv.party, net: totals.net, tax: totals.tax, gross: totals.gross, reason: v.reason, notes: v.notes || '', lines, session: true});
+      const trackedBack = (lines || []).filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked && Number(l.returnQty) > 0);
+      if (trackedBack.length) STOCK_MOVES.push({id: 'STK-2026-' + String(100 + STOCK_MOVES.length), kind, date: v.date, party: inv.party, warehouse: inv.location || 'HQ', invoice: inv.id, direction: kind === 'sales' ? 'receipt' : 'issue', lines: trackedBack.map((l) => ({item: l.item, qty: l.returnQty, value: retLineCalc(l).net}))});
       INV_TAB[kind] = 'returns';
       notify(`Return saved: ${inv.id} · ${totals.gross.toFixed(2)}. Its balance is now ${round2(inv.balance - totals.gross).toFixed(2)}.`);
       goBack();
@@ -5015,6 +5037,6 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

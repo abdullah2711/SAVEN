@@ -3000,3 +3000,41 @@ shows a price input.
 
 This keeps the return tied to the original document, while still allowing a partial
 quantity or a free line.
+
+
+---
+
+# Round 45 — less crowded documents, payment and stock as menu actions
+
+## 226. Payment and stock left the invoice/bill form
+
+The embedded Record payment and Inventory sections were making the document form too
+long. Both are now actions in the three-dot menu:
+
+- **Create payment / receipt** — opens the payment/receipt form with the party, date,
+  notes and the document's outstanding already filled, and one allocation row for this
+  invoice or bill. The user chooses the method, sub-account and amount.
+- **Record inventory** — opens a separate goods issue (sales) or goods receipt
+  (purchase) form pre-filled with the tracked items, exact quantities, warehouse and
+  value. Saving records a stock voucher linked to the document and shows the
+  illustrative inventory entry (cost of sales against inventory for a sale; inventory
+  against goods received clearing for a purchase).
+
+The document is saved first; the menu actions are available on the saved document.
+
+## 227. Return quantities reach the inventory movement
+
+Saving a return now records a stock movement for its tracked returned lines, for the
+exact returned quantity and net value: a receipt back into stock for a sales return, an
+issue back to the supplier for a purchase return. When the inventory ledger is
+connected it must apply these quantities to the item/warehouse balance and valuation;
+the stock voucher is the source, not the invoice.
+
+## 228. Still open
+
+- A saved return has no three-dot menu yet; its refund/payment action is not built.
+  The return itself records the stock movement automatically.
+- Stock vouchers are session records; the inventory ledger, valuation and quantity
+  balances are not updated yet.
+- The menu actions appear on saved session documents; posted fixture documents show
+  Return/Duplicate/Print only.

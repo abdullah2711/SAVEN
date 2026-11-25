@@ -320,6 +320,7 @@ permissions. See §100 of the decision log.
 | 42 | 220–222 | bill inventory receipt/clearing, advance account filtering, document overflow menu |
 | 43 | 223 | duplicate preview removed |
 | 44 | 224–225 | return entries, inventory reversal, exact invoice price |
+| 45 | 226–228 | payment/stock menu actions, stock editor, return stock movement |
 
 ---
 
