@@ -8,6 +8,38 @@ import {icon} from './icons.js';
 import {catalog} from './catalog.js';
 import {PAGE} from './pages-map.js';
 
+
+const ACCOUNT_CLASSES = [['asset', 'Assets'], ['liability', 'Liabilities'], ['equity', 'Equity'], ['income', 'Income'], ['expense', 'Expenses']];
+const ACCOUNT_GROUPS = [
+  {id: 'asset-01', class: 'asset', code: '01', name: 'Cash and bank', description: 'Cash tills and bank accounts', active: true},
+  {id: 'asset-02', class: 'asset', code: '02', name: 'Receivables and advances', description: 'Trade receivables, advance tax and supplier advances', active: true},
+  {id: 'asset-03', class: 'asset', code: '03', name: 'Inventory', description: 'Stock and work in progress', active: true},
+  {id: 'asset-04', class: 'asset', code: '04', name: 'Tax assets', description: 'Recoverable input tax and tax receivables', active: true},
+  {id: 'asset-05', class: 'asset', code: '05', name: 'Fixed assets', description: 'Property, vehicles and equipment at cost', active: true},
+  {id: 'asset-06', class: 'asset', code: '06', name: 'Accumulated depreciation', description: 'Accumulated depreciation by asset class', active: true},
+  {id: 'asset-07', class: 'asset', code: '07', name: 'Other assets', description: 'Prepayments and other assets', active: true},
+  {id: 'liability-01', class: 'liability', code: '01', name: 'Payables', description: 'Trade payables to suppliers', active: true},
+  {id: 'liability-02', class: 'liability', code: '02', name: 'Tax liabilities', description: 'Output tax, withholding and sales tax withheld', active: true},
+  {id: 'liability-03', class: 'liability', code: '03', name: 'Advances', description: 'Customer advances received', active: true},
+  {id: 'liability-04', class: 'liability', code: '04', name: 'Clearing', description: 'Goods received clearing', active: true},
+  {id: 'liability-05', class: 'liability', code: '05', name: 'Loans and other', description: 'Borrowings and other liabilities', active: true},
+  {id: 'equity-01', class: 'equity', code: '01', name: 'Capital and reserves', description: 'Capital, opening equity, retained earnings and revaluation', active: true},
+  {id: 'income-01', class: 'income', code: '01', name: 'Sales — goods', description: 'Sale of inventory goods', active: true},
+  {id: 'income-02', class: 'income', code: '02', name: 'Sales — services', description: 'Service income', active: true},
+  {id: 'income-03', class: 'income', code: '03', name: 'Other income', description: 'Non-operating income', active: true},
+  {id: 'income-04', class: 'income', code: '04', name: 'Sales returns', description: 'Contra income for returned goods', active: true},
+  {id: 'expense-01', class: 'expense', code: '01', name: 'Cost of sales', description: 'Cost of goods and services sold', active: true},
+  {id: 'expense-02', class: 'expense', code: '02', name: 'Operating expenses', description: 'Administration, selling and general', active: true},
+  {id: 'expense-03', class: 'expense', code: '03', name: 'Payroll', description: 'Salaries, wages and benefits', active: true},
+  {id: 'expense-04', class: 'expense', code: '04', name: 'Impairment and tax', description: 'Impairment, tax expense and other', active: true},
+  {id: 'expense-05', class: 'expense', code: '05', name: 'Purchase returns', description: 'Contra expense for returned purchases', active: true},
+];
+const ACCOUNT_GROUP_MAP = {1000: 'Cash and bank', 1010: 'Cash and bank', 1020: 'Cash and bank', 1100: 'Receivables and advances', 1024: 'Receivables and advances', 1400: 'Receivables and advances', 1200: 'Inventory', 1300: 'Tax assets', 2100: 'Payables', 2150: 'Tax liabilities', 2200: 'Tax liabilities', 2210: 'Tax liabilities', 2300: 'Advances', 2400: 'Clearing', 3000: 'Capital and reserves', 3100: 'Capital and reserves', 4000: 'Sales — services', 4100: 'Sales returns', 5000: 'Operating expenses', 5100: 'Cost of sales', 5200: 'Purchase returns'};
+function accountGroupFor(a) { return ACCOUNT_GROUP_MAP[a.code] || a.group || ''; }
+function nextGroupCode(cls) {
+  const nums = ACCOUNT_GROUPS.filter((g) => g.class === cls).map((g) => Number(g.code) || 0);
+  return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0');
+}
 const num = (v) => Number(String(v ?? '').replace(/[^0-9.-]/g, '')) || 0;
 const round2 = (n) => Math.round(n * 100) / 100;
 const money = (n) => {
@@ -1494,7 +1526,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         </form>
       </section>`
     };
-    const order = [['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['heads', 'Accounting heads'], ['projects', 'Projects'], ['locations', 'Locations'], ['centres', 'Cost centres'], ['partygroups', 'Party groups'], ['itemgroups', 'Item groups'], ['taxes', 'Taxes'], ['approval', 'Approvals']];
+    const order = [['numbering', 'Numbering'], ['accounts', 'Default accounts'], ['projects', 'Projects'], ['locations', 'Locations'], ['centres', 'Cost centres'], ['partygroups', 'Party groups'], ['itemgroups', 'Item groups'], ['taxes', 'Taxes'], ['approval', 'Approvals']];
     let current = order.some(([id]) => id === SETUP_TAB) ? SETUP_TAB : 'numbering';
     try { const saved = sessionStorage.getItem('sa7en:settings-tab'); if (saved && order.some(([id]) => id === saved)) current = saved; } catch {}
     SETUP_TAB = current;
@@ -4608,7 +4640,7 @@ const ITEM_ACCOUNT_RULES = [
         <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="5100"></label>
         <label>Name<input name="name" required maxlength="80" value="${e(v('name'))}" placeholder="Marketing expense"></label>
         <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-        <label>Accounting group<select name="group" class="inline-input">${['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'].map((g) => `<option value="${g}" ${(v('group') || '').toLowerCase().startsWith(g.slice(0, 5).toLowerCase()) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+        <label>Accounting group<select name="group" class="inline-input">${ACCOUNT_GROUPS.map((g) => `<option value="${e(g.name)}" ${g.name === v('group') ? 'selected' : ''}>${e((ACCOUNT_CLASSES.find(([k]) => k === g.class) || [g.class, g.class])[1])} · ${e(g.name)}</option>`).join('')}</select></label>
         <label>Control<select name="control" class="inline-input">${[['', 'Ordinary posting account'], ['receivable', 'Receivable control — customer on every line'], ['payable', 'Payable control — supplier on every line'], ['bank', 'Bank control — needs a bank sub-account'], ['cash', 'Cash control — needs a cash sub-account']].map(([k, l]) => `<option value="${k}" ${v('control') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What this head is used for"></label>
         <label>State<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
@@ -4674,6 +4706,57 @@ const ITEM_ACCOUNT_RULES = [
     </section>`;
   }
 
+  function accountGroupsView() {
+    const groups = ACCOUNT_GROUPS.slice().sort((a, b) => a.class.localeCompare(b.class) || a.code.localeCompare(b.code));
+    const classLabel = (c) => (ACCOUNT_CLASSES.find(([k]) => k === c) || [c, c])[1];
+    return `<section class="panel">
+      <div class="panel-head"><h2>Accounting groups</h2><div class="related"><span class="badge">${groups.length} groups</span><button class="button" data-ac="new-group-page">New group</button></div></div>
+      <div class="table-scroll"><table><thead><tr><th>Class</th><th>Group no</th><th>Name</th><th>Description</th><th class="numeric">Accounts</th><th>Status</th><th></th></tr></thead>
+      <tbody>${groups.map((g) => `<tr class="row-link" data-ac="open-group" data-value="${e(g.id)}"><td>${e(classLabel(g.class))}</td><td class="mono">${e(g.code)}</td><td>${e(g.name)}</td><td>${e(g.description || '')}</td><td class="numeric">${accounts().filter((a) => accountGroupFor(a) === g.name).length}</td><td>${badge(g.active ? 'Active' : 'Archived', g.active ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody></table></div>
+      <div class="table-footer">Accounting heads are only Assets, Liabilities, Equity, Income and Expenses. Every account belongs to one group inside its class; the group number becomes the middle segment of the six-digit account code.</div>
+    </section>`;
+  }
+  function accountGroupEditor(code) {
+    const g = code ? ACCOUNT_GROUPS.find((x) => x.id === code) : null;
+    const cls = g ? g.class : 'asset';
+    const v = (k, d = '') => (g && g[k] !== undefined ? g[k] : d);
+    return `<section class="panel">
+      <div class="panel-head"><h2>${g ? e(g.name) : 'New accounting group'}</h2><span class="badge">${g ? 'Editing ' + e(g.class) + ' ' + e(g.code) : 'Next number by class'}</span></div>
+      <form data-group-form class="panel-body form-grid">
+        <input type="hidden" name="editingId" value="${e(g ? g.id : '')}">
+        <label>Accounting head<select name="class" class="inline-input">${ACCOUNT_CLASSES.map(([k, l]) => `<option value="${k}" ${k === cls ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>Group no<input name="code" readonly value="${e(g ? g.code : nextGroupCode('asset'))}"></label>
+        <label>Name<input name="name" required maxlength="60" value="${e(v('name'))}" placeholder="Fixed assets"></label>
+        <label>Status<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
+        <label class="wide">Description<input name="description" maxlength="120" value="${e(v('description'))}"></label>
+        <div class="related"><button class="button primary">${g ? 'Save changes' : 'Add group'}</button><button type="button" class="button" data-group-cancel>Cancel</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">The group number is assigned in sequence inside the accounting head and is never reused. The six-digit account code will be head + group number + account number.</p></div>
+    </section>`;
+  }
+  function bindAccountGroups(rerender, notify, navigate) {
+    const form = document.querySelector('[data-group-form]');
+    form?.querySelector('[data-group-cancel]')?.addEventListener('click', () => navigate({module: 'accounting', tab: 'coa'}));
+    form?.querySelector('[name="class"]')?.addEventListener('change', (ev) => {
+      form.querySelector('[name="code"]').value = nextGroupCode(ev.target.value);
+    });
+    form?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!form.reportValidity()) return;
+      const v = Object.fromEntries(new FormData(form));
+      const editing = v.editingId || '';
+      if (editing) {
+        const target = ACCOUNT_GROUPS.find((g) => g.id === editing);
+        if (target) Object.assign(target, {name: v.name, description: v.description || '', active: v.status === 'Active'});
+        notify('Accounting group updated for this session.');
+      } else {
+        const code = nextGroupCode(v.class);
+        ACCOUNT_GROUPS.push({id: v.class + '-' + code, class: v.class, code, name: v.name, description: v.description || '', active: v.status === 'Active'});
+        notify('Accounting group added for this session.');
+      }
+      navigate({module: 'accounting', tab: 'coa'});
+    });
+  }
   function chartAccountEditor(code) {
     const a = code ? (accounts().find((x) => x.code === code) || {}) : {};
     const v = (k, d = '') => (a[k] !== undefined ? a[k] : d);
@@ -4684,7 +4767,7 @@ const ITEM_ACCOUNT_RULES = [
         <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="5100"></label>
         <label>Name<input name="name" required maxlength="80" value="${e(v('name'))}" placeholder="Marketing expense"></label>
         <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
-        <label>Accounting group<select name="group" class="inline-input">${['Assets', 'Liabilities', 'Equity', 'Income', 'Expenses'].map((g) => `<option value="${g}" ${(v('group') || '').toLowerCase().startsWith(g.slice(0, 5).toLowerCase()) ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+        <label>Accounting group<select name="group" class="inline-input">${ACCOUNT_GROUPS.map((g) => `<option value="${e(g.name)}" ${g.name === v('group') ? 'selected' : ''}>${e((ACCOUNT_CLASSES.find(([k]) => k === g.class) || [g.class, g.class])[1])} · ${e(g.name)}</option>`).join('')}</select></label>
         <label>Control<select name="control" class="inline-input">${[['', 'Ordinary posting account'], ['receivable', 'Receivable control — customer on every line'], ['payable', 'Payable control — supplier on every line'], ['bank', 'Bank control — needs a bank sub-account'], ['cash', 'Cash control — needs a cash sub-account']].map(([k, l]) => `<option value="${k}" ${v('control') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Subtype<select name="subtype" class="inline-input"><option value="" ${v('subtype') === '' ? 'selected' : ''}>Ordinary</option><option value="tax" ${v('subtype') === 'tax' ? 'selected' : ''}>Tax account</option><option value="control" ${v('subtype') === 'control' ? 'selected' : ''}>Control account</option><option value="bank" ${v('subtype') === 'bank' ? 'selected' : ''}>Bank account</option><option value="cash" ${v('subtype') === 'cash' ? 'selected' : ''}>Cash account</option><option value="advance" ${v('subtype') === 'advance' ? 'selected' : ''}>Advance account</option></select></label>
         <label class="wide">Description<input name="description" maxlength="100" value="${e(v('description'))}" placeholder="What this account is used for"></label>
@@ -4705,7 +4788,9 @@ const ITEM_ACCOUNT_RULES = [
       const v = Object.fromEntries(new FormData(form));
       const editing = v.editingCode || '';
       if (!editing && accounts().some((a) => a.code === v.code)) { notify('That account code already exists.'); return; }
-      const group = {asset: 'Assets', liability: 'Liabilities', equity: 'Equity', income: 'Income', expense: 'Expenses'}[v.type];
+      const chosenGroup = ACCOUNT_GROUPS.find((g) => g.name === v.group);
+      if (chosenGroup && chosenGroup.class !== v.type) { notify('Choose an accounting group inside the selected accounting head.'); return; }
+      const group = v.group || {asset: 'Other assets', liability: 'Loans and other', equity: 'Capital and reserves', income: 'Other income', expense: 'Operating expenses'}[v.type];
       const record = {code: v.code, name: v.name, type: v.type, group, control: v.control || '', subtype: v.subtype || '', description: v.description || '', currency: 'PKR', active: v.status === 'Active'};
       if (editing) { const target = accounts().find((a) => a.code === editing); if (target) Object.assign(target, record); notify('Account updated for this session.'); }
       else { accounts().push(record); notify('Account added for this session.'); }
@@ -5259,6 +5344,6 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

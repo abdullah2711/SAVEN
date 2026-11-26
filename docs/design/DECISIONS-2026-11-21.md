@@ -3366,3 +3366,40 @@ from Unverified to Verified.
 - Sales invoice withholding offers advance income and advance sales; the advance sales
   entry reaches the 1024 control in the preview.
 - The “New tax rule” action appears only on the Rules page.
+
+
+---
+
+# Round 55 — accounting groups live in the chart
+
+## 257. Accounting heads are only five
+
+Assets, liabilities, equity, income and expenses are the accounting heads. The
+Settings → Accounting → **Accounting heads** tab was a second account register and is
+removed. Accounts are created and edited only from Chart of accounts.
+
+## 258. Accounting groups tab
+
+Chart of accounts now has two tabs: **Accounts** and **Accounting groups**.
+
+Groups are seeded for the six-digit chart: Assets 01 Cash and bank, 02 Receivables and
+advances, 03 Inventory, 04 Tax assets, 05 Fixed assets, 06 Accumulated depreciation,
+07 Other assets; Liabilities 01 Payables, 02 Tax liabilities, 03 Advances, 04 Clearing,
+05 Loans; Equity 01 Capital and reserves; Income 01 Sales goods, 02 Services, 03 Other,
+04 Sales returns; Expenses 01 Cost of sales, 02 Operating, 03 Payroll, 04 Impairment and
+tax, 05 Purchase returns.
+
+The group register shows class, group number, name, description, account count and
+state. The group form assigns the next number inside the chosen class; numbers are not
+reused. The account form chooses a group from the list and refuses a group whose class
+does not match the account head. Existing demo accounts are mapped into these groups by
+code so the register is not empty.
+
+The group number becomes the middle segment of the six-digit account code
+(`head + group + account`). The full six-digit migration is still the chart rebuild.
+
+## 259. Verification
+
+Chart page renders both tabs; the groups register lists 22 groups; adding “Test group”
+from the group form succeeds; group navigation opens the form; the account form shows
+the groups dropdown; account save validates the group class.
