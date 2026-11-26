@@ -179,9 +179,11 @@ chart is to be replaced and fixtures remapped.
   specific group/item rules must not overlap another active specific rule of the same
   nature and overlapping effective dates. A conflict blocks saving and names the rule
   and the overlapping group/item.
-  Authorities have a multi-nature register/form and filters with balances as at a date.
+  Authorities have a multi-nature register/form (name, registration, frequency, status
+  and natures; no jurisdiction) and filters with balances as at a date.
   **Parties → Party balances** has one tab for each of the six natures; each tab shows
-  that nature's control account and its party balances, with Verified/Unverified only.
+  that nature's control account, parties, entries and net tax balance, with a **Balances
+  as at** date and Verified/Unverified only. There is no Base column.
   An adjustment uses a **separate form page**, not an inline form; it shows the fixed tax
   side (control account, party, authority), asks for an **offset account** from the
   active chart, renders its debit/credit entry, changes the party and authority balances
@@ -199,7 +201,8 @@ chart is to be replaced and fixtures remapped.
   item master/form; the separate Accounting → Items entry is gone.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
-tool); posting from invoices, payments and tax adjustments into the ledger; invoice numbering and
+tool); posting from invoices, payments and tax adjustments into the ledger; periodic and
+annual tax closing (proposal only: `docs/design/TAX-PERIOD-CLOSING.md`); invoice numbering and
 cancelling a saved invoice; per-item-group tax scope; evidence bytes, hashing and
 scanning; advances inside the payments form; permissions enforcement; persistence
 (reload returns to fixtures).

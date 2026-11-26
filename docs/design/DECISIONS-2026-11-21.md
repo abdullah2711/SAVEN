@@ -2,7 +2,8 @@
 
 > **Current state is the last round.** Earlier sections are the chronological record and
 > some are superseded: chart groups §258, accounting heads §257, tax six natures
-> §251–255, tax-exclusive prices and adjustment vouchers §269–278, six-digit target
+> §251–255, tax-exclusive prices, authority defaults, party balances, rule conflicts and
+> the closing proposal §269–284, six-digit target
 > §240/§253, payment/stock menu §226–228, document menu
 > §222, register widths §235/§236. Where a later section conflicts with an earlier one,
 > the later section governs.
@@ -3479,7 +3480,7 @@ It is not the discount setting; that policy lives under Default accounts.
 ## 264. Authority form and multi-nature authorities
 
 Authorities are no longer seeded-only. The register has **New authority** and each row
-opens an edit form: name, jurisdiction, registration, filing frequency, status and a
+opens an edit form: name, registration, filing frequency, status and a
 checkbox list of the **six tax natures**. One authority can serve all six or only some;
 it appears in every tab it is assigned to. A rule authority must handle the rule's
 nature.
@@ -3487,7 +3488,7 @@ nature.
 ## 265. Authority filtering and balances
 
 The six authority registers now have search, **balances as at** a date, sorting on
-name/registration/jurisdiction/entries/balance, and reset. Balance is the sum of tax
+name/registration/frequency/entries/balance, and reset. Balance is the sum of tax
 entries up to the date.
 
 ## 266. Tax entries
@@ -3736,3 +3737,40 @@ Verified: the offset picker has all active accounts and the preview follows the 
 account; the Parties page has six nature tabs and only Verified/Unverified; a first group
 rule saves as TAX-0005 and a second overlapping rule is blocked with the group and rule
 number named.
+
+
+---
+
+# Round 61 — authority form, parties date filter, tax closing proposal
+
+## 282. Jurisdiction removed from the authority form
+
+The authority form now asks only for name, registration, filing frequency, status and the
+six tax natures. Jurisdiction is not required and is not shown as a register column.
+Existing seeded jurisdiction values were removed.
+
+## 283. Parties balances get an as-at date and lose the base column
+
+Party balances now has a **Balances as at** date on the top filter bar, alongside search
+and Reset. The register derives the party rows from tax entries up to that date.
+
+The **Base** column was removed from party balances: the row is about the net tax balance,
+not the taxable base. The table is now Party · Entries · Tax balance · Verification.
+The six nature tabs, column filter menus, Verified/Unverified action and Export CSV remain.
+
+## 284. Tax period closing proposal
+
+`docs/design/TAX-PERIOD-CLOSING.md` records the proposed model for periodic and annual
+closing, including:
+
+- close = lock + snapshot + reconcile + file + settle + carry forward, not a zeroing
+  journal;
+- a separate lifecycle for each of the six natures;
+- a `TaxPeriod` per authority and nature with immutable snapshot and filed evidence;
+- an explicit **Unallocated** row when a difference has no identifiable party, so the
+  control still equals identified parties plus unallocated;
+- annual close per authority tax year, with carry-forward/write-off rules;
+- the decisions the owner must make before implementation.
+
+This is a discussion draft. No closing page, snapshot, return or unallocated adjustment
+is implemented yet.

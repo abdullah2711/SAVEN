@@ -147,16 +147,16 @@ const TAX_NATURE_META = {
   withholding_sales: {defaultKey: 'withholdingSales', side: 'liability', party: '2100', fallback: '2210'},
 };
 const TAX_AUTHORITIES = [
-  {id: 'AUTH-FBR', name: 'FBR', jurisdiction: 'Federal', registration: 'FBR-STRN-001', frequency: 'Monthly', kinds: ['input', 'output', 'advance_income', 'withholding_income'], active: true},
-  {id: 'AUTH-SRB', name: 'SRB — Sindh', jurisdiction: 'Sindh', registration: 'SRB-STRN-014', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
-  {id: 'AUTH-PRA', name: 'PRA — Punjab', jurisdiction: 'Punjab', registration: 'PRA-STRN-022', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
+  {id: 'AUTH-FBR', name: 'FBR', registration: 'FBR-STRN-001', frequency: 'Monthly', kinds: ['input', 'output', 'advance_income', 'withholding_income'], active: true},
+  {id: 'AUTH-SRB', name: 'SRB — Sindh', registration: 'SRB-STRN-014', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
+  {id: 'AUTH-PRA', name: 'PRA — Punjab', registration: 'PRA-STRN-022', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
 ];
 let TAX_AUTH_SEQ = 4;
 const TAX_RECONCILIATIONS = [];
 let TAX_RECON_SEQ = 1;
 const TAX_RECON_OPEN = new Set();
 let TAX_AUTH_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'name', dir: 'asc'}};
-let TAX_PARTY_FILTER = {q: '', cf: {}, sort: {key: 'party', dir: 'asc'}};
+let TAX_PARTY_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'party', dir: 'asc'}};
 const TAX_PARTY_STATUS = new Map();
 let TAX_AUTH_TAB = 'output';
 let TAX_PARTY_TAB = 'output';
@@ -4382,14 +4382,14 @@ const ITEM_ACCOUNT_RULES = [
       const mine = entries.filter((e) => e.kind === kind && e.authority === a.id && (!f.asof || e.date <= f.asof));
       return {...a, count: mine.length, base: round2(mine.reduce((n, e) => n + Number(e.base || 0), 0)), tax: round2(mine.reduce((n, e) => n + Number(e.amount || 0), 0))};
     });
-    const searched = all.filter((a) => !f.q || (a.name + ' ' + a.registration + ' ' + (a.jurisdiction || '') + ' ' + a.frequency).toLowerCase().includes(f.q.toLowerCase()));
+    const searched = all.filter((a) => !f.q || (a.name + ' ' + a.registration + ' ' + a.frequency).toLowerCase().includes(f.q.toLowerCase()));
     const rows = taxSortRows(taxFilterRows(searched, f), f);
-    const cols = [['name', 'Authority'], ['registration', 'Registration'], ['jurisdiction', 'Jurisdiction'], ['frequency', 'Frequency'], ['count', 'Entries', 'numeric', false], ['base', 'Taxable base', 'numeric', false], ['tax', 'Tax balance', 'numeric', false]];
+    const cols = [['name', 'Authority'], ['registration', 'Registration'], ['frequency', 'Frequency'], ['count', 'Entries', 'numeric', false], ['base', 'Taxable base', 'numeric', false], ['tax', 'Tax balance', 'numeric', false]];
     const control = taxControlAccount(kind);
     const controlName = (accounts().find((a) => a.code === control) || {}).name || 'Unknown account';
     return `<div class="tabs" role="tablist" aria-label="Authority tax kinds">${TAX_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-auth-kind="${k}">${label}</button>`).join('')}</div>
       <form class="filterbar" data-tax-auth-filter>
-        <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Authority, registration, jurisdiction"></label>
+        <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Authority, registration"></label>
         <label>Balances as at<input type="date" name="asof" value="${e(f.asof)}"></label>
         <button class="button" type="button" data-tax-auth-reset>Reset</button>
         <button class="button primary" type="button" data-tax-auth-new>New authority</button>
@@ -4397,8 +4397,8 @@ const ITEM_ACCOUNT_RULES = [
       <section class="panel"><div class="panel-head"><h2>${e(taxKindLabel(kind))} authorities</h2><div class="related"><span class="badge">Control ${e(control)} · ${e(controlName)}</span><span class="badge">${rows.length} of ${all.length} authorities</span><button class="button" data-export-table>Export CSV</button></div></div>
       <div class="table-scroll"><table class="tax-register">
         ${taxTableHead('taxauth', f, cols, all)}
-        <tbody>${rows.map((a) => `<tr class="row-link" data-tax-auth-open="${e(a.id)}"><td>${e(a.name)}${a.active === false ? ' · archived' : ''}</td><td class="mono">${e(a.registration)}</td><td>${e(a.jurisdiction || '—')}</td><td>${e(a.frequency)}</td><td class="numeric">${a.count}</td><td class="numeric">${money(a.base)}</td><td class="numeric">${money(a.tax)}</td></tr>`).join('') || '<tr><td colspan="7">No authority for this kind.</td></tr>'}</tbody>
-      <tfoot><tr><td colspan="4">Total</td><td class="numeric">${rows.reduce((n, a) => n + a.count, 0)}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.base, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.tax, 0)))}</td></tr></tfoot></table></div>
+        <tbody>${rows.map((a) => `<tr class="row-link" data-tax-auth-open="${e(a.id)}"><td>${e(a.name)}${a.active === false ? ' · archived' : ''}</td><td class="mono">${e(a.registration)}</td><td>${e(a.frequency)}</td><td class="numeric">${a.count}</td><td class="numeric">${money(a.base)}</td><td class="numeric">${money(a.tax)}</td></tr>`).join('') || '<tr><td colspan="6">No authority for this kind.</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="3">Total</td><td class="numeric">${rows.reduce((n, a) => n + a.count, 0)}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.base, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.tax, 0)))}</td></tr></tfoot></table></div>
       <div class="table-footer">An authority can serve several tax natures; it appears in every tab it is assigned to. Balance is the sum of tax entries up to the chosen date. These authority balances add up to the nature's control account; the Parties tab shows the same entries by party. Click a row to edit the authority.</div></section>`;
   }
   function taxAuthorityEditor(code) {
@@ -4409,7 +4409,6 @@ const ITEM_ACCOUNT_RULES = [
       <form data-tax-authority-form class="panel-body form-grid">
         <input type="hidden" name="editingId" value="${e(a ? a.id : '')}">
         <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="FBR"></label>
-        <label>Jurisdiction<input name="jurisdiction" maxlength="60" value="${e(v('jurisdiction'))}" placeholder="Federal, Sindh, Dubai"></label>
         <label>Registration<input name="registration" maxlength="40" value="${e(v('registration'))}" placeholder="STRN / VAT number"></label>
         <label>Filing frequency<select name="frequency" class="inline-input">${['Monthly', 'Quarterly', 'Yearly', 'On demand'].map((x) => `<option ${v('frequency', 'Monthly') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <label>Status<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
@@ -4450,31 +4449,32 @@ const ITEM_ACCOUNT_RULES = [
   function taxPartyBalancesPanel() {
     const f = TAX_PARTY_FILTER;
     const kind = TAX_PARTY_TAB;
-    const entries = taxEntries().filter((e) => e.kind === kind);
+    const entries = taxEntries().filter((e) => e.kind === kind && (!f.asof || e.date <= f.asof));
     const map = new Map();
     entries.forEach((e) => {
       const key = e.party + '|' + e.kind;
-      const row = map.get(key) || {key, party: e.party, kind: e.kind, base: 0, tax: 0, count: 0};
-      row.base = round2(row.base + e.base); row.tax = round2(row.tax + e.amount); row.count++;
+      const row = map.get(key) || {key, party: e.party, kind: e.kind, tax: 0, count: 0};
+      row.tax = round2(row.tax + e.amount); row.count++;
       map.set(key, row);
     });
     const all = [...map.values()].map((r) => ({...r, kindLabel: taxKindLabel(r.kind), status: TAX_PARTY_STATUS.get(r.key) === 'Verified' ? 'Verified' : 'Unverified'}));
     const searched = all.filter((r) => !f.q || r.party.toLowerCase().includes(f.q.toLowerCase()));
     const rows = taxSortRows(taxFilterRows(searched, f), f);
-    const cols = [['party', 'Party'], ['count', 'Entries', 'numeric', false], ['base', 'Base', 'numeric', false], ['tax', 'Tax', 'numeric', false], ['status', 'Verification']];
+    const cols = [['party', 'Party'], ['count', 'Entries', 'numeric', false], ['tax', 'Tax balance', 'numeric', false], ['status', 'Verification']];
     const totalTax = round2(rows.reduce((n, r) => n + r.tax, 0));
     const control = taxControlAccount(kind);
     const controlName = (accounts().find((a) => a.code === control) || {}).name || 'Unknown account';
     return `<div class="tabs" role="tablist" aria-label="Party balance tax natures">${TAX_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-party-kind="${k}">${label}</button>`).join('')}</div>
       <form class="filterbar" data-tax-party-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Party"></label>
+        <label>Balances as at<input type="date" name="asof" value="${e(f.asof)}"></label>
         <button class="button" type="button" data-tax-party-reset>Reset</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>${e(taxKindLabel(kind))} party balances</h2><div class="related"><span class="badge">${rows.length} of ${all.length} parties</span><span class="badge">${money(totalTax)}</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <section class="panel"><div class="panel-head"><h2>${e(taxKindLabel(kind))} party balances</h2><div class="related">${f.asof ? `<span class="badge">as at ${e(f.asof)}</span>` : ''}<span class="badge">${rows.length} of ${all.length} parties</span><span class="badge">${money(totalTax)}</span><button class="button" data-export-table>Export CSV</button></div></div>
       <div class="table-scroll"><table class="tax-register">
         ${taxTableHead('taxparty', f, cols, all)}
-        <tbody>${rows.map((r) => `<tr><td>${e(r.party)}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.base)}</td><td class="numeric">${money(r.tax)}</td><td><div class="status-actions">${badge(r.status, r.status === 'Verified' ? 'good' : '')}<button type="button" class="text-button" data-tax-party="${e(r.key)}">${r.status === 'Verified' ? 'Mark unverified' : 'Mark verified'}</button></div></td></tr>`).join('') || '<tr><td colspan="5">No party tax entries for this nature yet.</td></tr>'}</tbody>
-        <tfoot><tr><td>Total</td><td class="numeric">${rows.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.base, 0)))}</td><td class="numeric">${money(totalTax)}</td><td></td></tr></tfoot></table></div>
+        <tbody>${rows.map((r) => `<tr><td>${e(r.party)}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.tax)}</td><td><div class="status-actions">${badge(r.status, r.status === 'Verified' ? 'good' : '')}<button type="button" class="text-button" data-tax-party="${e(r.key)}">${r.status === 'Verified' ? 'Mark unverified' : 'Mark verified'}</button></div></td></tr>`).join('') || '<tr><td colspan="4">No party tax entries for this nature yet.</td></tr>'}</tbody>
+        <tfoot><tr><td>Total</td><td class="numeric">${rows.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(totalTax)}</td><td></td></tr></tfoot></table></div>
       <div class="table-footer">${e(taxKindLabel(kind))} control account: <strong>${e(control)} · ${e(controlName)}</strong>. A party balance is the net of that party's entries for this nature; the authority balance is the same entries grouped by authority; the control is the total of both. Mark a row verified or unverified. Use the Reconciliations tab to adjust a party and its authority when a claim is invalid or a filing changes.</div></section>`;
   }
   function taxReconciliationRegisterPanel() {
@@ -4604,10 +4604,10 @@ const ITEM_ACCOUNT_RULES = [
       const editing = v.editingId || '';
       if (editing) {
         const target = TAX_AUTHORITIES.find((a) => a.id === editing);
-        if (target) Object.assign(target, {name: v.name, jurisdiction: v.jurisdiction || '', registration: v.registration || '', frequency: v.frequency, kinds, active: v.status === 'Active'});
+        if (target) Object.assign(target, {name: v.name, registration: v.registration || '', frequency: v.frequency, kinds, active: v.status === 'Active'});
         notify('Tax authority updated for this session.');
       } else {
-        TAX_AUTHORITIES.push({id: 'AUTH-' + String(TAX_AUTH_SEQ++), name: v.name, jurisdiction: v.jurisdiction || '', registration: v.registration || '', frequency: v.frequency, kinds, active: v.status === 'Active'});
+        TAX_AUTHORITIES.push({id: 'AUTH-' + String(TAX_AUTH_SEQ++), name: v.name, registration: v.registration || '', frequency: v.frequency, kinds, active: v.status === 'Active'});
         notify('Tax authority added for this session.');
       }
       navigate({module: 'tax', tab: 'authorities'});
@@ -4656,13 +4656,20 @@ const ITEM_ACCOUNT_RULES = [
     }));
     const pf = document.querySelector('[data-tax-party-filter]');
     if (pf) {
+      const apply = () => {
+        const v = Object.fromEntries(new FormData(pf));
+        TAX_PARTY_FILTER.q = v.q || '';
+        TAX_PARTY_FILTER.asof = v.asof || '';
+      };
       let timer = 0;
       pf.addEventListener('input', (ev) => {
-        TAX_PARTY_FILTER.q = ev.target.value;
-        clearTimeout(timer); timer = setTimeout(() => rerender(), 150);
+        apply();
+        if (ev.target.matches('input[type="search"], input[type="text"]')) { clearTimeout(timer); timer = setTimeout(() => rerender(), 150); return; }
+        rerender();
       });
+      pf.addEventListener('change', () => { apply(); rerender(); });
     }
-    document.querySelector('[data-tax-party-reset]')?.addEventListener('click', () => { Object.assign(TAX_PARTY_FILTER, {q: '', cf: {}}); rerender(); });
+    document.querySelector('[data-tax-party-reset]')?.addEventListener('click', () => { Object.assign(TAX_PARTY_FILTER, {q: '', asof: '', cf: {}}); rerender(); });
     bindTaxColumnMenus('taxparty', TAX_PARTY_FILTER, rerender);
     const rf = document.querySelector('[data-tax-recon-filter]');
     if (rf) {

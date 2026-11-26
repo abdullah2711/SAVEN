@@ -204,9 +204,9 @@ Rules:
   registration; input tax belongs to the authority of the purchase registration.
   **Prices are always exclusive of tax.** The line price is net; tax is added. There is
   no inclusive-price mode.
-- A tax authority registration is a first-class record: name, jurisdiction,
-  registration number, tax natures, filing frequency and status. It is a sub-account of
-  the control for each nature it handles.
+- A tax authority registration is a first-class record: name, registration number, tax
+  natures, filing frequency and status. Jurisdiction is not asked on the form. It is a
+  sub-account of the control for each nature it handles.
 
 ### 6.1 Party tracking for tax
 
@@ -361,11 +361,11 @@ accumulated lines.
 
 ```
 accounts(id, code, name, class, group_id, control_type, subtype, active)
-account_groups(id, class, code, name)              -- Settings, next number
-tax_authorities(id, name, jurisdiction, registration, tax_types,
-                filing_frequency, active)
+account_groups(id, class, code, name)              -- Chart page, next number
+tax_authorities(id, name, registration, tax_natures, filing_frequency, active)
 tax_authority_accounts(id, control_account_id, authority_id, active)
-tax_rules(id, authority_id, control_account_id, kind, rate, basis, ...)
+tax_rules(id, code, name, kind, rate, groups, items, effective_from, effective_to, ...)
+tax_periods(...)                                  -- proposed closing snapshot
 parties(id, type, name, segment, control_account_id)
 documents(id, type, date, party_id, state)
 document_lines(document_id, item_id, account_id, qty, price, discount,

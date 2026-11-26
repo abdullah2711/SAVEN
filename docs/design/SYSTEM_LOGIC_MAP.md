@@ -64,9 +64,9 @@ Taxes is a top-level module. Accounting no longer carries a tax page.
 | Page | State | Owns |
 |---|---|---|
 | Rules | complete | system-numbered rule register/form: nature, several item groups or several items, tax-exclusive rate, effective dates; conflicting specific scopes are blocked; no account or authority field |
-| Authorities | complete | multi-nature authority register/form; six tabs; search, balances as at a date, sorting |
+| Authorities | complete | multi-nature authority register/form; name, registration, frequency, status and natures; six tabs; search, balances as at a date, sorting |
 | Tax entries | complete | entries from invoices, bills, returns and reconciliations; filters, sorting, source link |
-| Parties | complete | six party-balance tabs by nature with Verified/Unverified, plus the adjustment register; New opens a separate voucher form |
+| Parties | complete | six party-balance tabs by nature with as-at balances, no base column, Verified/Unverified; plus the adjustment register; New opens a separate voucher form |
 | Default accounts | complete | six control accounts, six default authorities and the sales-tax calculation basis |
 
 ### Operations
@@ -362,6 +362,7 @@ permissions. See §100 of the decision log.
 | 58 | 269–272 | tax-exclusive prices, adjustment voucher entry and offset, full reconciliation form |
 | 59 | 273–278 | authority defaults, system-numbered rules, merged reconciliation tabs, standard tax registers, authority routing |
 | 60 | 279–281 | explicit offset accounts, six party-balance tabs, rule conflict detection |
+| 61 | 282–284 | authority jurisdiction removed, party as-at date and base removal, tax closing proposal |
 
 ---
 
@@ -374,6 +375,8 @@ permissions. See §100 of the decision log.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices, payments and tax adjustments record session documents but do not
   write the ledger.
+- Periodic/annual tax closing, tax-period snapshots, returns and unallocated differences
+  are a proposal in `TAX-PERIOD-CLOSING.md`; not built.
 - Party balances by project/location (deferred, needs the subledger).
 - Six-digit account codes and chart migration are target; the demo still uses
   four-digit codes and the tax accounts 2200/1300/2150/2210/1400/1024.
