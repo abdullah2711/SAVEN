@@ -16,7 +16,7 @@ export const PAGE_MAP = {
     ['advances', 'Advances', 'Customer advances received and supplier advances paid, with balances, vouchers and adjustment against open documents.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns.', 'built'],
     ['purchase-invoices', 'Purchase bills', 'Supplier bills with a Returns tab, row menu open/return, item rows, optional stock receipt and balances updated by returns.', 'built'],
-    ['coa', 'Chart of accounts', 'Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page.', 'built'],
+    ['coa', 'Chart of accounts', 'Accounts and accounting groups: account register with head, group, control, currency, state and closing balance; group register and form; both open their own form.', 'built'],
   ],
   inventory: [
     ['dashboard', 'Dashboard', 'Stock value, value by warehouse, below reorder, movements today, movers.', 'built'],
@@ -149,7 +149,7 @@ export const PAGE_MAP = {
   ],
   settings: [
     ['company', 'Company', 'Legal identity, addresses, base currency, fiscal year and the active period.', 'built'],
-    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals.', 'built'],
+    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals. Accounting heads are only the five classes; accounts and groups live in the Chart page.', 'built'],
     ['inventory', 'Inventory', 'Costing method, negative stock, default warehouse and the inventory accounts.', 'built'],
     ['manufacturing', 'Manufacturing', 'Material issue policy, BOM requirement, default work centre and the manufacturing accounts.', 'built'],
     ['people', 'People & access', 'Users, roles, scope and invitations for this business.', 'built'],
