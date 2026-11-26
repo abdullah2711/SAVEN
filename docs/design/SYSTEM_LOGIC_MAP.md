@@ -330,6 +330,7 @@ permissions. See §100 of the decision log.
 | 53 | 251–255 | tax module: six natures, authorities tabs, entries, party reconciliation, rules form |
 | 54–55 | 256–259 | tax verification, accounting groups in the chart, accounting-heads tab removed |
 | 56 | 260–262 | documentation alignment, supersessions, implemented vs target |
+| 57 | 263–268 | tax authority form/filters, entry links, reconciliation adjustments, calculation under defaults |
 
 ---
 

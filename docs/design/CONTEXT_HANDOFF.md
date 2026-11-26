@@ -161,8 +161,10 @@ chart is to be replaced and fixtures remapped.
   group or specific items, authority, rate, account), **Authorities** (six tabs: input,
   output, advance income, advance sales, withholding income, withholding sales),
   **Tax entries** (filterable, row opens the document), **Party reconciliation**
-  (party/kind balances with verified/at-risk), **Default accounts** (six) and
-  **Calculation**. Authorities are sub-accounts of the tax-nature control in the
+  (party/kind balances with verified/at-risk), **Default accounts** (six, with the sales-tax calculation basis) and
+  **Reconciliation** (tax adjustment register/form). Authorities have a multi-nature
+  register/form and filters with balances as at a date; tax entries and party
+  reconciliation are filterable/sortable. Authorities are sub-accounts of the tax-nature control in the
   design; the demo derives their balances from tax entries. Party balances are
   reconciled by party/kind without a tax sub-account.
   20 modules and 154 pages mapped; planned pages render their specification.

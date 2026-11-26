@@ -3455,3 +3455,57 @@ the groups dropdown; account save validates the group class.
 `DECISIONS-2026-11-21.md` and the page map were checked for the above. Implemented
 versus target is stated explicitly; no document claims the six-digit chart or real
 authority sub-accounts are built.
+
+
+---
+
+# Round 57 — tax feedback: authorities, filters, reconciliation, calculation
+
+## 263. What tax basis means
+
+The rule's “Price basis” is inclusive vs exclusive:
+
+- **Tax exclusive** — the rate applies to the line net; tax is added.
+- **Tax inclusive** — the price already contains tax; the base is extracted and the tax is
+  part of the price.
+
+It is not the discount setting; that is the separate Calculation policy.
+
+## 264. Authority form and multi-nature authorities
+
+Authorities are no longer seeded-only. The register has **New authority** and each row
+opens an edit form: name, jurisdiction, registration, filing frequency, status and a
+checkbox list of the **six tax natures**. One authority can serve all six or only some;
+it appears in every tab it is assigned to. A rule authority must handle the rule's
+nature.
+
+## 265. Authority filtering and balances
+
+The six authority registers now have search, **balances as at** a date, sorting on
+name/registration/jurisdiction/entries/balance, and reset. Balance is the sum of tax
+entries up to the date.
+
+## 266. Tax entries
+
+Entries have search, From/To, nature and authority filters, sortable columns, and row
+links. A row opens the invoice or bill that created it; a return entry opens the
+returns register; a reconciliation adjustment row has no source document.
+
+## 267. Party reconciliation and tax adjustments
+
+The party page has search, nature, status, sorting and reset. A new **Reconciliation**
+page has the adjustment register and form. Example: party A has 100 input tax against
+FBR and 30 is later found invalid — record a **decrease** of 30 for nature input, party
+A, authority FBR. The adjustment creates a negative tax entry, reducing both the party
+balance and FBR's input-tax balance, without editing the original bill. Input decrease
+posts to tax adjustment expense against input tax control; output/withholding/advance
+adjust the corresponding control. The authority must handle the selected nature.
+
+## 268. Calculation moved under defaults
+
+The separate Calculation page is removed. The sales-tax basis select (discounted vs
+original amount) now sits at the bottom of **Default accounts**, with the six default
+accounts.
+
+Verified: all six pages render; a reconciliation of 30 records; a new authority with a
+selected nature saves.

@@ -109,9 +109,9 @@ export const PAGE_MAP = {
     ['rules', 'Tax rules', 'Rules register and form: nature, item group or specific items, rate, basis, authority and effective dates.', 'built'],
     ['authorities', 'Authorities', 'Authority register by tax kind with registration, frequency, taxable base and tax balance.', 'built'],
     ['entries', 'Tax entries', 'Every tax entry created by an invoice or bill, filterable by date, kind, authority and party; a row opens the document.', 'built'],
-    ['parties', 'Party reconciliation', 'Tax balances by party and kind, with a verified/at-risk reconciliation note.', 'built'],
-    ['defaults', 'Default accounts', 'Output, input, withholding and advance accounts for both income and sales tax.', 'built'],
-    ['calc', 'Calculation', 'Whether tax is calculated on the discounted or original line amount.', 'built'],
+    ['parties', 'Party reconciliation', 'Tax balances by party and kind, filtered and sortable, with a verified/at-risk note.', 'built'],
+    ['reconciliation', 'Reconciliation', 'Tax adjustment register and form; adjusts the party and authority without editing the source document.', 'built'],
+    ['defaults', 'Default accounts', 'Six tax accounts and the sales-tax calculation basis.', 'built'],
   ],
   reports: [
     ['revenue', 'Revenue', 'Revenue dashboard with sales by customer and sales by item, from the same documents.', 'built'],
