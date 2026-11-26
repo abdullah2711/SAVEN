@@ -264,14 +264,16 @@ line, the authority sub-account and the party tax entry in one transaction.
 | Withholding income tax | 2150 Withholding tax payable | liability | income tax we deducted and owe |
 | Withholding sales tax | 2210 Sales tax withheld | liability | sales tax we deducted and owe |
 
-### 6.2 Tax reconciliation adjustments
+### 6.2 Tax adjustments
 
 A tax balance is never corrected by editing the original invoice or bill. It is
-corrected by a **tax reconciliation voucher** that carries the nature, party and
+corrected by a **tax adjustment voucher** that carries the nature, party or Unallocated,
 authority, and posts to the control and an explicit **offset account** chosen from the
 active chart. The authority defaults from Taxes → Default accounts for the
 nature and can be changed on the voucher. The tax control line is fixed by the nature;
-the offset account receives the opposite debit or credit:
+the offset account receives the opposite debit or credit. Use **Unallocated** as the party
+when an authority-level difference cannot be tied to a real party; it is a system row in
+party balances, not a customer or supplier:
 
 - **Input tax decrease** (invalid claim / supplier default), loss borne by us:
   Dr Tax adjustment expense · Cr Input tax control. Both lines carry the party;

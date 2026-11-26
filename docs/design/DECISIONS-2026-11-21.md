@@ -3,7 +3,7 @@
 > **Current state is the last round.** Earlier sections are the chronological record and
 > some are superseded: chart groups §258, accounting heads §257, tax six natures
 > §251–255, tax-exclusive prices, authority defaults, party balances, rule conflicts and
-> the closing proposal §269–284, six-digit target
+> the closing proposal, adjustment page and Unallocated party §269–286, six-digit target
 > §240/§253, payment/stock menu §226–228, document menu
 > §222, register widths §235/§236. Where a later section conflicts with an earlier one,
 > the later section governs.
@@ -3774,3 +3774,57 @@ closing, including:
 
 This is a discussion draft. No closing page, snapshot, return or unallocated adjustment
 is implemented yet.
+
+
+---
+
+# Round 62 — adjustment page, Unallocated party, closing discussion
+
+## 285. Parties and Adjustments are separate pages
+
+The **Reconciliation** name is removed from the tax UI. The tax module now has:
+
+- **Parties** — six party-balance tabs only, with as-at balances and
+  Verified/Unverified.
+- **Adjustments** — the register of every tax adjustment entry, with New adjustment
+  opening a separate form page.
+
+The adjustment register uses the normal top bar, column filter menus, CSV export and
+expandable debit/credit entry. Reference numbers are `ADJ-YYYY-nnnn`. Tax-entry rows of
+kind adjustment open this page with the entry expanded.
+
+The form still fixes the tax side by nature (control, party, authority) and asks for an
+explicit offset account. Cross-control settlements — for example advance tax applied to
+another tax liability — are not one-sided adjustments; they need a settlement voucher
+that moves both tax controls and will be designed with the closing model.
+
+## 286. Unallocated party for authority-level differences
+
+The adjustment party field now offers **Unallocated — authority-level difference**. It is
+a system row, not a customer or supplier. It satisfies the control-line party requirement
+without blaming a real party, and it appears in party balances so the control still
+reconciles:
+
+```
+control = identified party balances + Unallocated
+```
+
+Example: system input tax is 100, but the authority allows 90 and no party can be
+identified. Record input, Unallocated, authority FBR, decrease 10, offset 5300:
+
+```
+Dr 5300 Tax adjustment expense       10   Unallocated
+Cr 1300 Input tax control            10   Unallocated · FBR
+```
+
+The input control and FBR sub-account fall to 90, the Unallocated input row shows −10,
+and the 10 goes to expense. No real party is accused. If the party is identified later,
+post a second adjustment to move the amount from Unallocated to that party.
+
+Tax control accounts are excluded from the offset-account picker: a tax control may only
+move through its own tax entries or a settlement voucher, so the authority/party
+subledgers cannot be broken by a one-sided adjustment.
+
+Verified: Parties has six tabs and no adjustment form; Adjustments has its own register
+and New page; an Unallocated input decrease of 10 saved as ADJ-2026-0001, appeared in the
+adjustment register and as an Unallocated party balance.

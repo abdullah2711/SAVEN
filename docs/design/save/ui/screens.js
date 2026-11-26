@@ -122,7 +122,8 @@ const TAX_TABS = [
   ['rules', 'Rules'],
   ['authorities', 'Authorities'],
   ['entries', 'Tax entries'],
-  ['reconciliation', 'Parties'],
+  ['parties', 'Parties'],
+  ['adjustments', 'Adjustments'],
   ['defaults', 'Default accounts'],
 ];
 let TAX_DEFAULTS = {output: '2200', input: '1300', withholdingIncome: '2150', withholdingSales: '2210', advanceIncome: '1400', advanceSales: '1024'};
@@ -152,18 +153,17 @@ const TAX_AUTHORITIES = [
   {id: 'AUTH-PRA', name: 'PRA — Punjab', registration: 'PRA-STRN-022', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
 ];
 let TAX_AUTH_SEQ = 4;
-const TAX_RECONCILIATIONS = [];
-let TAX_RECON_SEQ = 1;
-const TAX_RECON_OPEN = new Set();
+const TAX_ADJUSTMENTS = [];
+let TAX_ADJUSTMENT_SEQ = 1;
+const TAX_ADJUSTMENT_OPEN = new Set();
 let TAX_AUTH_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'name', dir: 'asc'}};
 let TAX_PARTY_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'party', dir: 'asc'}};
 const TAX_PARTY_STATUS = new Map();
 let TAX_AUTH_TAB = 'output';
 let TAX_PARTY_TAB = 'output';
-let TAX_RECON_TAB = 'balances';
 let TAX_RULE_FILTER = {q: '', cf: {}, sort: {key: 'code', dir: 'asc'}};
 const TAX_ENTRY_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
-const TAX_RECON_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
+const TAX_ADJUSTMENT_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
 let REV_TAB = 'customer';
 let ADV_PICK = '';
 let ADV_TAB = 'balances';
@@ -4012,8 +4012,9 @@ const ITEM_ACCOUNT_RULES = [
   function taxPanel(id) {
     if (id === 'authorities') return taxAuthoritiesPanel();
     if (id === 'entries') return taxEntriesPanel();
-    if (id === 'parties') { TAX_RECON_TAB = 'balances'; return taxReconciliationPage(); }
-    if (id === 'reconciliation') return taxReconciliationPage();
+    if (id === 'parties') return taxPartyBalancesPanel();
+    if (id === 'adjustments') return taxAdjustmentsPanel();
+    if (id === 'reconciliation') return taxPartyBalancesPanel();
     if (id === 'defaults') return taxDefaultsPanel();
     return taxRulesPanel();
   }
@@ -4282,7 +4283,7 @@ const ITEM_ACCOUNT_RULES = [
     return ageing();
   }
   function taxPage(id) {
-    if (id === 'parties') { TAX_ACTIVE = 'reconciliation'; TAX_RECON_TAB = 'balances'; }
+    if (id === 'reconciliation') TAX_ACTIVE = 'parties';
     else if (TAX_TABS.some(([k]) => k === id)) TAX_ACTIVE = id;
     return `<div id="tax-panel">${taxPanel(TAX_ACTIVE)}</div>`;
   }
@@ -4368,7 +4369,7 @@ const ITEM_ACCOUNT_RULES = [
       const rate = r.net ? round2((r.tax / r.net) * 100) : 0;
       entries.push({id: 'TE-' + r.id, date: r.date, document: r.id, docKind: sale ? 'sales-return' : 'purchase-return', party: r.party, kind, authority: authority.id, authorityName: authority.name, base: r.net, rate, amount: -round2(r.tax), period: r.date.slice(0, 7)});
     });
-    TAX_RECONCILIATIONS.forEach((r) => {
+    TAX_ADJUSTMENTS.forEach((r) => {
       const authority = TAX_AUTHORITIES.find((a) => a.id === r.authority) || {name: '—'};
       entries.push({id: 'TE-' + r.id, date: r.date, document: r.id, docKind: 'adjustment', party: r.party, kind: r.kind, authority: r.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: r.direction === 'decrease' ? -r.amount : r.amount, period: r.date.slice(0, 7)});
     });
@@ -4436,15 +4437,7 @@ const ITEM_ACCOUNT_RULES = [
         ${taxTableHead('taxentry', f, cols, all)}
         <tbody>${rows.map((e) => `<tr class="row-link" data-tax-doc="${e.docKind}:${e.document}"><td>${e.date}</td><td class="mono">${e.document}</td><td>${e.party}</td><td>${e.kindLabel}</td><td>${e.authorityLabel}</td><td class="numeric">${e.base ? money(e.base) : '—'}</td><td class="numeric">${e.rateLabel}</td><td class="numeric">${money(e.amount)}</td><td>${e.period}</td></tr>`).join('') || '<tr><td colspan="9">No tax entries match these filters.</td></tr>'}</tbody>
       <tfoot><tr><td colspan="5">Total shown</td><td class="numeric">${money(round2(rows.reduce((n, e) => n + e.base, 0)))}</td><td></td><td class="numeric">${money(round2(rows.reduce((n, e) => n + e.amount, 0)))}</td><td></td></tr></tfoot></table></div>
-      <div class="table-footer">Entries come from invoices, bills, returns and tax reconciliations; they are never typed here. Click a row to open the document that created it, or the reconciliation for an adjustment.</div></section>`;
-  }
-  function taxReconciliationPage() {
-    const tab = TAX_RECON_TAB === 'balances' ? 'balances' : 'register';
-    return `<div class="tabs" role="tablist" aria-label="Reconciliation views">
-        <button type="button" role="tab" aria-selected="${tab === 'balances'}" data-tax-recon-tab="balances">Party balances</button>
-        <button type="button" role="tab" aria-selected="${tab === 'register'}" data-tax-recon-tab="register">Reconciliations</button>
-      </div>
-      ${tab === 'balances' ? taxPartyBalancesPanel() : taxReconciliationRegisterPanel()}`;
+      <div class="table-footer">Entries come from invoices, bills, returns and tax adjustments; they are never typed here. Click a row to open the document that created it, or the adjustment.</div></section>`;
   }
   function taxPartyBalancesPanel() {
     const f = TAX_PARTY_FILTER;
@@ -4475,64 +4468,64 @@ const ITEM_ACCOUNT_RULES = [
         ${taxTableHead('taxparty', f, cols, all)}
         <tbody>${rows.map((r) => `<tr><td>${e(r.party)}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.tax)}</td><td><div class="status-actions">${badge(r.status, r.status === 'Verified' ? 'good' : '')}<button type="button" class="text-button" data-tax-party="${e(r.key)}">${r.status === 'Verified' ? 'Mark unverified' : 'Mark verified'}</button></div></td></tr>`).join('') || '<tr><td colspan="4">No party tax entries for this nature yet.</td></tr>'}</tbody>
         <tfoot><tr><td>Total</td><td class="numeric">${rows.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(totalTax)}</td><td></td></tr></tfoot></table></div>
-      <div class="table-footer">${e(taxKindLabel(kind))} control account: <strong>${e(control)} · ${e(controlName)}</strong>. A party balance is the net of that party's entries for this nature; the authority balance is the same entries grouped by authority; the control is the total of both. Mark a row verified or unverified. Use the Reconciliations tab to adjust a party and its authority when a claim is invalid or a filing changes.</div></section>`;
+      <div class="table-footer">${e(taxKindLabel(kind))} control account: <strong>${e(control)} · ${e(controlName)}</strong>. A party balance is the net of that party's entries for this nature; the authority balance is the same entries grouped by authority; the control is the total of both. Mark a row verified or unverified. Use the Adjustments page to adjust a party and its authority when a claim is invalid or a filing changes.</div></section>`;
   }
-  function taxReconciliationRegisterPanel() {
-    const f = TAX_RECON_FILTER;
+  function taxAdjustmentsPanel() {
+    const f = TAX_ADJUSTMENT_FILTER;
     const authorityName = (id) => (TAX_AUTHORITIES.find((a) => a.id === id) || {}).name || '—';
-    const all = TAX_RECONCILIATIONS.map((r) => ({...r, kindLabel: taxKindLabel(r.kind), authorityLabel: authorityName(r.authority), offsetLabel: taxOffsetAccountLabel(legacyOffsetAccount(r)), signed: (r.direction === 'decrease' ? -1 : 1) * r.amount}));
+    const all = TAX_ADJUSTMENTS.map((r) => ({...r, kindLabel: taxKindLabel(r.kind), authorityLabel: authorityName(r.authority), offsetLabel: taxOffsetAccountLabel(legacyOffsetAccount(r)), signed: (r.direction === 'decrease' ? -1 : 1) * r.amount}));
     const searched = all.filter((r) => (!f.q || (r.id + ' ' + r.party + ' ' + r.authorityLabel + ' ' + r.reason).toLowerCase().includes(f.q.toLowerCase()))
       && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to));
     const rows = taxSortRows(taxFilterRows(searched, f), f);
-    const cols = [['date', 'Date', '', false], ['id', 'Reference'], ['kindLabel', 'Nature'], ['party', 'Party'], ['authorityLabel', 'Authority'], ['signed', 'Amount', 'numeric', false], ['offsetLabel', 'Offset'], ['reason', 'Reason']];
-    return `<form class="filterbar" data-tax-recon-filter>
+    const cols = [['date', 'Date', '', false], ['id', 'Reference'], ['kindLabel', 'Nature'], ['party', 'Party'], ['authorityLabel', 'Authority'], ['signed', 'Amount', 'numeric', false], ['offsetLabel', 'Offset account'], ['reason', 'Reason']];
+    return `<form class="filterbar" data-tax-adj-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Reference, party, authority, reason"></label>
         <label>From<input type="date" name="from" value="${e(f.from)}"></label>
         <label>To<input type="date" name="to" value="${e(f.to)}"></label>
-        <button class="button" type="button" data-tax-recon-reset>Reset</button>
-        <button class="button primary" type="button" data-tax-recon-new>New reconciliation</button>
+        <button class="button" type="button" data-tax-adj-reset>Reset</button>
+        <button class="button primary" type="button" data-tax-adj-new>New adjustment</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>Tax reconciliations</h2><div class="related"><span class="badge">${rows.length} of ${all.length} adjustments</span><button class="button" data-export-table>Export CSV</button></div></div>
-      <div class="table-scroll"><table class="recon-register tax-register">
-        ${taxTableHead('taxrecon', f, cols, all)}
+      <section class="panel"><div class="panel-head"><h2>Tax adjustments</h2><div class="related"><span class="badge">${rows.length} of ${all.length} entries</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <div class="table-scroll"><table class="adj-register tax-register">
+        ${taxTableHead('taxadj', f, cols, all)}
         <tbody>${rows.map((r) => {
-          const open = TAX_RECON_OPEN.has(r.id);
+          const open = TAX_ADJUSTMENT_OPEN.has(r.id);
           const entry = r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, legacyOffsetAccount(r), r.authority);
           const detail = open ? `<tr class="entry-detail"><td colspan="8">${ledgerIllustration('Adjustment ' + r.id, entry, 'A separate voucher: the tax control line carries authority ' + authorityName(r.authority) + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}</td></tr>` : '';
-          return `<tr class="row-link" data-tax-recon-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${r.id}</td><td>${e(r.kindLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td class="numeric" title="${r.direction === 'decrease' ? 'Decrease' : 'Increase'}">${r.direction === 'decrease' ? '−' : '+'}${money(r.amount)}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
-        }).join('') || '<tr><td colspan="8">No tax reconciliations yet. Use New reconciliation to record one.</td></tr>'}</tbody></table></div>
-      <div class="table-footer">A reconciliation adjusts the party and the authority sub-account without editing the original invoice or bill. Click a row to show or hide its debit and credit entry. The form opens on its own page.</div></section>`;
+          return `<tr class="row-link" data-tax-adj-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${r.id}</td><td>${e(r.kindLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td class="numeric" title="${r.direction === 'decrease' ? 'Decrease' : 'Increase'}">${r.direction === 'decrease' ? '−' : '+'}${money(r.amount)}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
+        }).join('') || '<tr><td colspan="8">No tax adjustments yet. Use New adjustment to record one.</td></tr>'}</tbody></table></div>
+      <div class="table-footer">Every adjustment shows its nature, party (or Unallocated), authority, amount, offset account and reason. Click a row to show its debit and credit entry. The form opens on its own page. Cross-control settlements, such as advance tax applied to another tax liability, are separate settlement vouchers — not one-sided adjustments.</div></section>`;
   }
-  function taxReconciliationEditor(code) {
-    const r = code ? TAX_RECONCILIATIONS.find((x) => x.id === code) : null;
+  function taxAdjustmentEditor(code) {
+    const r = code ? TAX_ADJUSTMENTS.find((x) => x.id === code) : null;
     const v = (key, fallback = '') => (r && r[key] !== undefined ? r[key] : fallback);
     const defaultKind = v('kind', 'input');
     const defaultAuth = v('authority', TAX_DEFAULT_AUTHORITIES[defaultKind] || '');
     const offsetAccount = v('offsetAccount', r ? legacyOffsetAccount(r) : suggestedOffsetAccount(defaultKind));
-    const accountOptions = accounts().filter((a) => a.active !== false).map((a) => `<option value="${a.code}" ${a.code === offsetAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+    const accountOptions = accounts().filter((a) => a.active !== false && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === offsetAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
     return `<section class="panel">
-      <div class="panel-head"><h2>${r ? e(r.id) : 'New tax reconciliation'}</h2><span class="badge">Adjustment voucher</span></div>
-      <form class="panel-body form-grid" data-tax-recon-form data-editing="${r ? e(r.id) : ''}">
+      <div class="panel-head"><h2>${r ? e(r.id) : 'New tax adjustment'}</h2><span class="badge">Adjustment voucher</span></div>
+      <form class="panel-body form-grid" data-tax-adj-form data-editing="${r ? e(r.id) : ''}">
         <label>Tax nature<select name="kind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${defaultKind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
         <label>Authority<select name="authority" class="inline-input"><option value="">Choose authority</option>${TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${defaultAuth === a.id ? 'selected' : ''}>${e(a.name)} · ${(a.kinds || []).map(taxKindLabel).join(', ')}</option>`).join('')}</select></label>
-        <label>Party<select name="party" class="inline-input" required><option value="">Choose party</option>${PARTIES.map((p) => `<option value="${e(p.name)}" ${v('party') === p.name ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+        <label>Party<select name="party" class="inline-input" required><option value="">Choose party</option><option value="__unallocated__" ${v('party') === 'Unallocated' ? 'selected' : ''}>Unallocated — authority-level difference</option>${PARTIES.map((p) => `<option value="${e(p.name)}" ${v('party') === p.name ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
         <label>Date<input name="date" type="date" value="${e(v('date', '2026-11-30'))}" required></label>
         <label>Direction<select name="direction" class="inline-input"><option value="decrease" ${v('direction', 'decrease') === 'decrease' ? 'selected' : ''}>Decrease the tax balance</option><option value="increase" ${v('direction') === 'increase' ? 'selected' : ''}>Increase the tax balance</option></select></label>
         <label>Amount<input name="amount" inputmode="decimal" placeholder="0.00" value="${e(v('amount'))}" required></label>
-        <label class="wide">Reason<input name="reason" maxlength="100" value="${e(v('reason'))}" placeholder="Supplier default, rejected claim, filing correction" required></label>
-        <div class="wide recon-target">
+        <label class="wide">Reason<input name="reason" maxlength="120" required value="${e(v('reason'))}" placeholder="Unclaimable input, filing difference, withholding paid, advance adjusted"></label>
+        <div class="wide adj-target">
           <div class="section-title">Tax balance being adjusted</div>
           <div class="record-summary">
-            <div><small>Control account</small><strong data-recon-control>—</strong></div>
-            <div><small>Party</small><span data-recon-party>Choose party</span></div>
-            <div><small>Authority</small><span data-recon-authority>Choose authority</span></div>
+            <div><small>Control account</small><strong data-adj-control>—</strong></div>
+            <div><small>Party</small><span data-adj-party>Choose party</span></div>
+            <div><small>Authority</small><span data-adj-authority>Choose authority</span></div>
           </div>
         </div>
-        <label class="wide">Offset account<select name="offsetAccount" class="inline-input" required>${accountOptions}</select><small class="secondary">The other side of the voucher. Search by code or name; any active account is allowed, but not the tax control itself.</small></label>
-        <div class="wide" data-tax-recon-preview></div>
+        <label class="wide">Offset account<select name="offsetAccount" class="inline-input" required>${accountOptions}</select><small class="secondary">The other side of the adjustment. Search by code or name. Tax control accounts are excluded here; they can only move through their own tax entries or a settlement voucher.</small></label>
+        <div class="wide" data-tax-adj-preview></div>
         <div class="related"><button class="button primary">${r ? 'Save changes' : 'Record adjustment'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">The tax side is fixed by the nature: its control account, the selected party and the selected authority. The offset account is where the debit or credit lands. The voucher never edits the source document.</p></div>
+      <div class="panel-body"><p class="form-note">The tax side is fixed by the nature: its control account, the selected party and the selected authority. Use <strong>Unallocated</strong> when the authority-level difference cannot be tied to a party; it appears as a system row in party balances. The offset account is where the debit or credit lands. The adjustment never edits the source document.</p></div>
     </section>`;
   }
   function taxesView() {
@@ -4542,7 +4535,7 @@ const ITEM_ACCOUNT_RULES = [
   }
   function bindTaxes(rerender, notify, navigate) {
     const goRules = () => navigate({module: 'tax', tab: 'rules'});
-    const goRecon = () => navigate({module: 'tax', tab: 'reconciliation'});
+    const goAdjustments = () => navigate({module: 'tax', tab: 'adjustments'});
     document.querySelectorAll('[data-tax-tab]').forEach((btn) => btn.addEventListener('click', () => {
       TAX_ACTIVE = btn.dataset.taxTab;
       rerender();
@@ -4637,19 +4630,13 @@ const ITEM_ACCOUNT_RULES = [
         return;
       }
       if (kind === 'adjustment') {
-        TAX_RECON_OPEN.add(id);
-        TAX_RECON_TAB = 'register';
-        navigate({module: 'tax', tab: 'reconciliation'});
+        TAX_ADJUSTMENT_OPEN.add(id);
+        navigate({module: 'tax', tab: 'adjustments'});
         return;
       }
       navigate({module: 'accounting', tab: kind === 'sales' ? 'sales-invoices' : 'purchase-invoices', mode: 'editor', form: 'invoice', code: id});
     }));
     bindTaxColumnMenus('taxentry', TAX_ENTRY_FILTER, rerender);
-    document.querySelectorAll('[data-tax-recon-tab]').forEach((b) => b.addEventListener('click', () => {
-      TAX_RECON_TAB = b.dataset.taxReconTab;
-      rerender();
-      try { window.scrollTo({top: 0, behavior: 'auto'}); } catch {}
-    }));
     document.querySelectorAll('[data-tax-party-kind]').forEach((b) => b.addEventListener('click', () => {
       TAX_PARTY_TAB = b.dataset.taxPartyKind;
       rerender();
@@ -4671,13 +4658,13 @@ const ITEM_ACCOUNT_RULES = [
     }
     document.querySelector('[data-tax-party-reset]')?.addEventListener('click', () => { Object.assign(TAX_PARTY_FILTER, {q: '', asof: '', cf: {}}); rerender(); });
     bindTaxColumnMenus('taxparty', TAX_PARTY_FILTER, rerender);
-    const rf = document.querySelector('[data-tax-recon-filter]');
+    const rf = document.querySelector('[data-tax-adj-filter]');
     if (rf) {
       const apply = () => {
         const v = Object.fromEntries(new FormData(rf));
-        TAX_RECON_FILTER.q = v.q || '';
-        TAX_RECON_FILTER.from = v.from || '';
-        TAX_RECON_FILTER.to = v.to || '';
+        TAX_ADJUSTMENT_FILTER.q = v.q || '';
+        TAX_ADJUSTMENT_FILTER.from = v.from || '';
+        TAX_ADJUSTMENT_FILTER.to = v.to || '';
       };
       let timer = 0;
       rf.addEventListener('input', (ev) => {
@@ -4687,13 +4674,13 @@ const ITEM_ACCOUNT_RULES = [
       });
       rf.addEventListener('change', () => { apply(); rerender(); });
     }
-    document.querySelector('[data-tax-recon-reset]')?.addEventListener('click', () => { Object.assign(TAX_RECON_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
-    document.querySelector('[data-tax-recon-new]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'reconciliation', mode: 'editor', form: 'reconciliation', code: ''}));
-    bindTaxColumnMenus('taxrecon', TAX_RECON_FILTER, rerender);
-    document.querySelectorAll('[data-tax-recon-toggle]').forEach((tr) => tr.addEventListener('click', (ev) => {
+    document.querySelector('[data-tax-adj-reset]')?.addEventListener('click', () => { Object.assign(TAX_ADJUSTMENT_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
+    document.querySelector('[data-tax-adj-new]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'adjustments', mode: 'editor', form: 'adjustment', code: ''}));
+    bindTaxColumnMenus('taxadj', TAX_ADJUSTMENT_FILTER, rerender);
+    document.querySelectorAll('[data-tax-adj-toggle]').forEach((tr) => tr.addEventListener('click', (ev) => {
       if (ev.target.closest('button, a, input, select')) return;
-      const id = tr.dataset.taxReconToggle;
-      if (TAX_RECON_OPEN.has(id)) TAX_RECON_OPEN.delete(id); else TAX_RECON_OPEN.add(id);
+      const id = tr.dataset.taxAdjToggle;
+      if (TAX_ADJUSTMENT_OPEN.has(id)) TAX_ADJUSTMENT_OPEN.delete(id); else TAX_ADJUSTMENT_OPEN.add(id);
       rerender();
     }));
     document.querySelectorAll('[data-tax-party]').forEach((b) => b.addEventListener('click', () => {
@@ -4701,42 +4688,43 @@ const ITEM_ACCOUNT_RULES = [
       TAX_PARTY_STATUS.set(key, TAX_PARTY_STATUS.get(key) === 'Verified' ? 'Unverified' : 'Verified');
       rerender();
     }));
-    const reconForm = document.querySelector('[data-tax-recon-form]');
-    if (reconForm) {
+    const adjForm = document.querySelector('[data-tax-adj-form]');
+    if (adjForm) {
       const preview = () => {
-        const v = Object.fromEntries(new FormData(reconForm));
-        const box = reconForm.querySelector('[data-tax-recon-preview]');
+        const v = Object.fromEntries(new FormData(adjForm));
+        const box = adjForm.querySelector('[data-tax-adj-preview]');
         if (!box) return;
         const control = taxControlAccount(v.kind);
         const controlAccount = accounts().find((a) => a.code === control);
         const authority = TAX_AUTHORITIES.find((a) => a.id === v.authority);
+        const party = v.party === '__unallocated__' ? 'Unallocated' : v.party;
         const controlLabel = control + ' · ' + (controlAccount ? controlAccount.name : 'Unknown account');
-        const target = reconForm.querySelector('[data-recon-control]');
+        const target = adjForm.querySelector('[data-adj-control]');
         if (target) target.textContent = controlLabel;
-        const partyLabel = reconForm.querySelector('[data-recon-party]');
-        if (partyLabel) partyLabel.textContent = v.party || 'Choose party';
-        const authLabel = reconForm.querySelector('[data-recon-authority]');
+        const partyLabel = adjForm.querySelector('[data-adj-party]');
+        if (partyLabel) partyLabel.textContent = party || 'Choose party';
+        const authLabel = adjForm.querySelector('[data-adj-authority]');
         if (authLabel) authLabel.textContent = authority ? authority.name : 'Choose authority';
         const amount = round2(Number(v.amount) || 0);
         if (!amount) {
           box.innerHTML = ledgerIllustration('Illustrative adjustment entry', [], 'Choose the nature, party, amount and offset account to see the debit and credit.');
           return;
         }
-        const entry = taxAdjustmentEntry(v.kind, v.party, v.direction, amount, v.offsetAccount, v.authority);
+        const entry = taxAdjustmentEntry(v.kind, party, v.direction, amount, v.offsetAccount, v.authority);
         const taxLine = entry[0];
         const offsetLine = entry[1];
         const taxSide = taxLine.debit ? 'debited' : 'credited';
         const offsetSide = offsetLine.debit ? 'debit' : 'credit';
-        box.innerHTML = ledgerIllustration('Illustrative adjustment entry', entry, `The tax control (${controlLabel}) is ${taxSide} ${money(amount)} with authority ${authority ? authority.name : '—'}. The offset account takes the ${offsetSide} and carries the party.`);
+        box.innerHTML = ledgerIllustration('Illustrative adjustment entry', entry, `The tax control (${controlLabel}) is ${taxSide} ${money(amount)} with authority ${authority ? authority.name : '—'}. The offset account takes the ${offsetSide} and carries ${party || 'the party'}.`);
       };
-      reconForm.addEventListener('input', preview);
-      reconForm.addEventListener('change', (ev) => {
+      adjForm.addEventListener('input', preview);
+      adjForm.addEventListener('change', (ev) => {
         if (ev.target.name === 'kind') {
           const kind = ev.target.value;
-          const auth = reconForm.querySelector('[name="authority"]');
+          const auth = adjForm.querySelector('[name="authority"]');
           const current = TAX_AUTHORITIES.find((a) => a.id === auth.value);
           if (!current || !authorityHas(current, kind)) { auth.value = TAX_DEFAULT_AUTHORITIES[kind] || ''; auth.dispatchEvent(new Event('change', {bubbles: true})); }
-          const offset = reconForm.querySelector('[name="offsetAccount"]');
+          const offset = adjForm.querySelector('[name="offsetAccount"]');
           if (!offset.value || offset.value === '5300' || offset.value === '4200') {
             offset.value = suggestedOffsetAccount(kind);
             offset.dispatchEvent(new Event('change', {bubbles: true}));
@@ -4745,11 +4733,11 @@ const ITEM_ACCOUNT_RULES = [
         preview();
       });
       preview();
-      reconForm.querySelector('[data-form-cancel]')?.addEventListener('click', goRecon);
-      reconForm.addEventListener('submit', (ev) => {
+      adjForm.querySelector('[data-form-cancel]')?.addEventListener('click', goAdjustments);
+      adjForm.addEventListener('submit', (ev) => {
         ev.preventDefault();
-        if (!reconForm.reportValidity()) return;
-        const v = Object.fromEntries(new FormData(reconForm));
+        if (!adjForm.reportValidity()) return;
+        const v = Object.fromEntries(new FormData(adjForm));
         const amount = round2(Number(v.amount) || 0);
         if (amount <= 0) { notify('Enter an amount greater than zero.'); return; }
         if (!v.authority) { notify('Choose the tax authority.'); return; }
@@ -4757,17 +4745,18 @@ const ITEM_ACCOUNT_RULES = [
         if (auth && !authorityHas(auth, v.kind)) { notify('That authority does not handle this tax nature.'); return; }
         const offset = accounts().find((a) => a.code === v.offsetAccount && a.active !== false);
         if (!offset) { notify('Choose an active offset account.'); return; }
+        if (offset.subtype === 'tax') { notify('Tax control accounts are adjusted through their own tax entries; choose a non-tax offset account.'); return; }
         if (v.offsetAccount === taxControlAccount(v.kind)) { notify('The offset account must be different from the tax control account.'); return; }
-        const entry = taxAdjustmentEntry(v.kind, v.party, v.direction, amount, v.offsetAccount, v.authority);
-        const editing = reconForm.dataset.editing || '';
-        const record = TAX_RECONCILIATIONS.find((x) => x.id === editing);
-        const id = record ? record.id : 'TXR-2026-' + String(TAX_RECON_SEQ++).padStart(4, '0');
-        const values = {id, date: v.date, kind: v.kind, authority: v.authority, party: v.party, direction: v.direction, amount, offsetAccount: v.offsetAccount, reason: v.reason, entry};
-        if (record) Object.assign(record, values); else TAX_RECONCILIATIONS.push(values);
-        TAX_RECON_OPEN.add(id);
-        TAX_RECON_TAB = 'register';
-        notify('Tax reconciliation recorded. The entry moves the party and authority balances together; the source document is unchanged.');
-        goRecon();
+        const party = v.party === '__unallocated__' ? 'Unallocated' : v.party;
+        const entry = taxAdjustmentEntry(v.kind, party, v.direction, amount, v.offsetAccount, v.authority);
+        const editing = adjForm.dataset.editing || '';
+        const record = TAX_ADJUSTMENTS.find((x) => x.id === editing);
+        const id = record ? record.id : 'ADJ-2026-' + String(TAX_ADJUSTMENT_SEQ++).padStart(4, '0');
+        const values = {id, date: v.date, kind: v.kind, authority: v.authority, party, direction: v.direction, amount, offsetAccount: v.offsetAccount, reason: v.reason, entry};
+        if (record) Object.assign(record, values); else TAX_ADJUSTMENTS.push(values);
+        TAX_ADJUSTMENT_OPEN.add(id);
+        notify('Tax adjustment recorded. The entry moves the party and authority balances together; the source document is unchanged.');
+        goAdjustments();
       });
     }
     document.querySelector('[data-tax-defaults]')?.addEventListener('submit', (ev) => {
@@ -5716,6 +5705,6 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, taxAuthorityEditor, taxReconciliationEditor, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, taxAuthorityEditor, taxAdjustmentEditor, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

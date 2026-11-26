@@ -66,7 +66,8 @@ Taxes is a top-level module. Accounting no longer carries a tax page.
 | Rules | complete | system-numbered rule register/form: nature, several item groups or several items, tax-exclusive rate, effective dates; conflicting specific scopes are blocked; no account or authority field |
 | Authorities | complete | multi-nature authority register/form; name, registration, frequency, status and natures; six tabs; search, balances as at a date, sorting |
 | Tax entries | complete | entries from invoices, bills, returns and reconciliations; filters, sorting, source link |
-| Parties | complete | six party-balance tabs by nature with as-at balances, no base column, Verified/Unverified; plus the adjustment register; New opens a separate voucher form |
+| Parties | complete | six party-balance tabs by nature with as-at balances, no base column, Verified/Unverified |
+| Adjustments | complete | all tax adjustment entries with nature, party or Unallocated, authority, amount, offset account and reason; New opens a separate form |
 | Default accounts | complete | six control accounts, six default authorities and the sales-tax calculation basis |
 
 ### Operations
@@ -228,13 +229,14 @@ when the correction must stay visible. The audit log keeps everything.
   bill chooses the authority for its output/input tax and defaults to that setting.
   Registers are derived from the tax lines on invoices, bills and returns, plus tax
   adjustments. Withholding is a liability that is never ours; advance tax is our asset.
-  **Parties** has two tabs: six party-balance tabs (one per nature) and the adjustment
-  register. An adjustment uses a separate form page; it does not edit the source
-  document. It fixes the tax side by nature (control account, party, authority) and asks
-  for an explicit **offset account** from the active chart. Every line carries the party;
-  the tax control line carries the authority, so the party and authority balances move
-  together. Common offsets are **5300 Tax adjustment expense** and **4200 Tax adjustment
-  income**, but any active account is allowed.
+  **Parties** has six party-balance tabs (one per nature); **Adjustments** is a separate
+  register page with its own form. An adjustment does not edit the source document. It
+  fixes the tax side by nature (control account, party or **Unallocated**, authority) and
+  asks for an explicit **offset account** from the active non-tax chart. Every line
+  carries the party; the tax control line carries the authority, so the party and
+  authority balances move together. Common offsets are **5300 Tax adjustment expense**
+  and **4200 Tax adjustment income**, but any active non-tax account is allowed.
+  Cross-control settlements need a settlement voucher.
 
   Tax statistics are three views of the same entries: the **control account** is the
   total for one nature, the **authority sub-account** is the total for one authority,
@@ -363,6 +365,7 @@ permissions. See §100 of the decision log.
 | 59 | 273–278 | authority defaults, system-numbered rules, merged reconciliation tabs, standard tax registers, authority routing |
 | 60 | 279–281 | explicit offset accounts, six party-balance tabs, rule conflict detection |
 | 61 | 282–284 | authority jurisdiction removed, party as-at date and base removal, tax closing proposal |
+| 62 | 285–286 | separate Adjustments page, Unallocated party, tax-control offset guard |
 
 ---
 

@@ -181,6 +181,8 @@ Annual close does not merge the six natures and does not zero a balance that sti
 ## 8. UI needed later
 
 - **Parties** — as-at balances by nature, Unallocated row, verified/unverified.
+- **Adjustments** — all tax adjustments with party/Unallocated, authority, nature,
+  amount, offset account and reason.
 - **Tax periods** — register of authority/nature periods and states.
 - **Tax return/snapshot** — opening, entries, adjustments, settlements, closing,
   difference and evidence.
