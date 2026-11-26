@@ -99,12 +99,12 @@ chart is to be replaced and fixtures remapped.
 - Chart of accounts: group totals, per-head closing balance (Dr/Cr), control badges.
 - Trial balance: totals strip, formatted amounts, drill to the ledger.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
-- Taxes: rules register and form, output/input registers, withholding, advance tax,
-  reconciliation.
+- Taxes: Rules, Authorities (six natures), Tax entries, Party reconciliation, Default
+  accounts and Calculation.
 - **Settings** is a separate module with seven pages: Company, Accounting,
   People & access, Periods, Forms & fields, Saved views, Print & templates.
-  Accounting holds numbering, default accounts, accounting heads, projects &
-  locations and approvals. Projects and locations have no pages of their own.
+  Accounting holds numbering, default accounts, projects & locations and approvals.
+  Accounts and accounting groups live in the Chart page; heads are the five classes.
 - **Parties**: register and party page. Party numbers are system generated
   (`Party-0001`), the group comes from Settings party groups, the control account is
   restricted to receivable heads for customers and payable heads for suppliers,
@@ -157,12 +157,14 @@ chart is to be replaced and fixtures remapped.
   single sort toggle, value search, select all/clear, checkbox values and **Apply
   filter**. Type, status and balance live in the column menus, not the top bar. The
   state lives outside the page and survives navigation.
-- **Taxes** (top-level module; Accounting no longer carries it): Rules register and form, Registers,
-  Withholding, Advance tax, Reconciliation, **Party withholding** and **Default
-  accounts**. Default accounts are output tax, input tax, income tax withholding
-  payable, sales tax withheld and advance tax. Party withholding lists each party's
-  withheld amount and a Filed / Not filed reconciliation note. It was built earlier
-  but missing from the Accounting page map, so it was only reachable by hash.
+- **Taxes** (top-level module; Accounting no longer carries it): **Rules** (nature,
+  group or specific items, authority, rate, account), **Authorities** (six tabs: input,
+  output, advance income, advance sales, withholding income, withholding sales),
+  **Tax entries** (filterable, row opens the document), **Party reconciliation**
+  (party/kind balances with verified/at-risk), **Default accounts** (six) and
+  **Calculation**. Authorities are sub-accounts of the tax-nature control in the
+  design; the demo derives their balances from tax entries. Party balances are
+  reconciled by party/kind without a tax sub-account.
   20 modules and 154 pages mapped; planned pages render their specification.
 - **Reports** (top-level module): Revenue (dashboard plus By customer / By item
   registers), Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
@@ -207,8 +209,10 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
   optional, used only when the correction must stay visible.
 - **Identity fields.** Created by / created at / source (User or AI) and submitted
   by are separate; more than one person may be involved.
-- **Accounting heads are created in Setup** and appear immediately in the chart,
-  the journal picker and the reports. Control heads require a party on every line.
+- **Accounting heads are the five classes** (asset, liability, equity, income,
+  expense). **Accounting groups** are created in Chart of accounts → Accounting groups,
+  tagged to accounts and used for statements. Control accounts require a party or the
+  appropriate sub-account on every line.
 - **Business switching happens at sign-in.** The topbar shows the active business as
   text, never a dropdown.
 - Posting guards: no future time, nothing before business creation, nothing in a

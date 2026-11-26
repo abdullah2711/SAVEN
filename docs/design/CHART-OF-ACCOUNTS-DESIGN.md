@@ -4,6 +4,21 @@ Status: design decision, not implemented. Owner decision 26 November 2026.
 This document is the contract for the chart rebuild. Code changes start only after
 this record is accepted.
 
+## Implementation status (26 November 2026)
+
+- **Implemented:** accounting heads (five classes), **accounting groups** register and
+  form in the Chart page, group sequence per class, group selection and validation on
+  the account form, tax module with six natures, authorities as records, rules, entries
+  and party reconciliation.
+- **Still target, not implemented:** the six-digit account codes and full fixture
+  migration; account codes remain the four-digit demo codes for now. Groups already
+  carry the two-digit segment that will become the middle of the code.
+- **Authorities:** the UI treats authorities as sub-accounts conceptually; the current
+  demo derives authority balances from tax entries. Real chart sub-accounts are part of
+  the six-digit rebuild.
+- **Demo tax accounts:** 2200, 1300, 2150, 2210, 1400 and 1024 are used until the
+  migration; the six-digit codes in this document are the target.
+
 ## 1. Code structure — six digits
 
 ```
@@ -39,13 +54,13 @@ Examples:
 
 ## 2. Group catalogue (seed)
 
-Groups are created in Settings; these are the standard starting groups.
+Groups are created in **Chart of accounts → Accounting groups**, not in Settings. These are the standard starting groups.
 
 ### Assets — class 1
 | Group | Name | Accounts |
 |---|---|---|
 | 01 | Cash and bank | 001 Cash control, 002 Bank control, 003 Petty cash control |
-| 02 | Receivables and advances | 001 Trade receivables, 002 Advance tax receivable, 003 Supplier advances |
+| 02 | Receivables and advances | 001 Trade receivables, 002 Advance income tax receivable, 003 Advance sales tax receivable, 004 Supplier advances |
 | 03 | Inventory | 001 Inventory control |
 | 04 | Tax assets | 001 Input tax control (authorities are sub-accounts) |
 | 05 | Fixed assets — cost | 001 Buildings, 002 Vehicles, 003 Equipment, … |
@@ -95,7 +110,6 @@ these get control flags.
 | Cash | 101001 | cash tills | cash sub-account |
 | Bank | 101002 | bank accounts | bank sub-account |
 | Trade receivables | 102001 | customer ledger | party |
-| Advance tax receivable | 102002 | customer advance-tax ledger | party |
 | Supplier advances | 102003 | supplier advance ledger | party |
 | Inventory | 103001 | item + warehouse quantity/value | item, warehouse |
 | Input tax | 104001 | tax authority sub-accounts | tax rule/authority via document; party dimension |
@@ -106,7 +120,7 @@ these get control flags.
 | Sales tax withheld | 202002 | tax authority sub-accounts | party |
 | Income tax withholding payable | 202005 | supplier ledger + authority sub-account | party |
 | Advance income tax receivable | 102002 | customer ledger + authority sub-account | party |
-| Advance sales tax receivable | 1024 | customer/supplier ledger + authority sub-account | party |
+| Advance sales tax receivable | 102004 | customer/supplier ledger + authority sub-account | party |
 | Customer advances | 203001 | customer advance ledger | party |
 | Goods received clearing | 204001 | open goods receipts / bills | document, party |
 
@@ -335,4 +349,5 @@ the replacement is complete.
 4. Confirm fixed asset classes to seed (buildings, vehicles, equipment).
 5. Confirm the migration table.
 6. Confirm the tax control set: output, input, sales tax withheld, income tax
-   withholding, advance tax — authorities as sub-accounts.
+   withholding, advance income tax and advance sales tax — authorities as
+   sub-accounts.

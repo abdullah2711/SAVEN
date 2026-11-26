@@ -1,5 +1,11 @@
 # Decision log — 21 November 2026 review
 
+> **Current state is the last round.** Earlier sections are the chronological record and
+> some are superseded: chart groups §258, accounting heads §257, tax six natures
+> §251–255, six-digit target §240/§253, payment/stock menu §226–228, document menu
+> §222, register widths §235/§236. Where a later section conflicts with an earlier one,
+> the later section governs.
+
 Every instruction from the latest review, what was decided, what is implemented in
 the prototype, and where the detail lives for the backend. Status: **done** in the
 UI · **mapped** means specified here and in the map, not built · **deferred** with a
@@ -3403,3 +3409,49 @@ The group number becomes the middle segment of the six-digit account code
 Chart page renders both tabs; the groups register lists 22 groups; adding “Test group”
 from the group form succeeds; group navigation opens the form; the account form shows
 the groups dropdown; account save validates the group class.
+
+
+---
+
+# Round 56 — documentation alignment
+
+## 260. Authoritative current state
+
+- **Accounting heads** are only asset, liability, equity, income and expense. The
+  Settings → Accounting → Accounting heads register is removed.
+- **Accounting groups** are created in Chart of accounts → Accounting groups, numbered
+  per head and tagged to accounts. The group number is the middle segment of the
+  planned six-digit code.
+- **Chart codes**: six-digit `D GG AAA` is the target. The demo still uses four-digit
+  codes; account-code generation and full migration are not done. The chart design
+  document marks this.
+- **Tax** has six natures: input, output, advance income, advance sales, withholding
+  income, withholding sales. Authorities are sub-accounts of the nature control in the
+  design; in the demo they are records and authority balances are derived from tax
+  entries. Pages: Rules, Authorities, Tax entries, Party reconciliation, Default
+  accounts, Calculation.
+- **Party tax reconciliation** uses tax-entry dimensions, no tax sub-account.
+- **Reports, Taxes and Items** are top-level modules; Accounting no longer carries
+  them.
+- **Purchase documents** are Purchase bills; the register and page use that name.
+- **Invoices/bills** no longer embed payment or inventory sections: the three-dot menu
+  creates the payment/receipt or the goods issue/receipt from saved document data.
+  Returns record their own exact stock movement.
+- **Register widths** are readable; wide form tables scroll rather than squeeze.
+- **Payments** allow split rows against one document and show separate bank lines.
+
+## 261. Supersession notes
+
+- §43 (accounting heads created in Setup) is superseded by §257/§258.
+- The five default tax accounts in §178/§204 are superseded by the six natures in
+  §251; the module tabs in §183/§202 are superseded by §255.
+- The earlier “one control per tax authority” wording in §242 is refined by §247:
+  authorities are sub-accounts.
+- The embedded payment/inventory sections in §176 are superseded by §226.
+
+## 262. Documents audited
+
+`CHART-OF-ACCOUNTS-DESIGN.md`, `CONTEXT_HANDOFF.md`, `SYSTEM_LOGIC_MAP.md`,
+`DECISIONS-2026-11-21.md` and the page map were checked for the above. Implemented
+versus target is stated explicitly; no document claims the six-digit chart or real
+authority sub-accounts are built.

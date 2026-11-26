@@ -81,7 +81,7 @@ form where it edits one object):
 |---|---|
 | Numbering | configuration form |
 | Default accounts | configuration form |
-| Accounting heads | register + form page |
+| Chart accounts and groups | Accounts register and form; Accounting groups register and form |
 | Projects | register + form page |
 | Locations | register + form page |
 | Cost centres | register + form page |
@@ -137,7 +137,8 @@ State decides the actions:
 | Tax rule | code, name, kind, rate, basis, account, scope, effective from/to, status, line override, description | allowed projects, allowed locations | a default, never a posting |
 | Project | code, name, manager, state, start, end, budget, description | — | data field, no balance |
 | Location | code, name, kind, address, contact, phone, notes | — | a branch is a location kind |
-| Accounting head | code, name, class, control type, description | — | control type drives the party requirement |
+| Accounting head | five classes only: asset, liability, equity, income, expense | — | never a user-created register |
+| Accounting group | class, two-digit group number, name, description, state | — | tags accounts for statements; number becomes the code segment |
 
 Access lists are **not** permissions. They narrow what can be picked; they never
 restrict the ledger and never change a balance.
@@ -328,6 +329,7 @@ permissions. See §100 of the decision log.
 | 52 | 247–250 | tax controls per type, authorities as sub-accounts, party tax reconciliation |
 | 53 | 251–255 | tax module: six natures, authorities tabs, entries, party reconciliation, rules form |
 | 54–55 | 256–259 | tax verification, accounting groups in the chart, accounting-heads tab removed |
+| 56 | 260–262 | documentation alignment, supersessions, implemented vs target |
 
 ---
 
@@ -340,6 +342,8 @@ permissions. See §100 of the decision log.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices and payments record session documents but do not write the ledger.
 - Party balances by project/location (deferred, needs the subledger).
+- Six-digit account codes and chart migration are target; the demo still uses
+  four-digit codes and the tax accounts 2200/1300/2150/2210/1400/1024.
 - The chart rebuild follows `docs/design/CHART-OF-ACCOUNTS-DESIGN.md`; no code has
   changed for it yet.
 - Permission enforcement; settings are not enforced by the server yet.
