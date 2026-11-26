@@ -106,12 +106,11 @@ export const PAGE_MAP = {
     ['facilities', 'Debt & facilities', 'Drawdowns, repayments, interest and covenants.', 'planned'],
   ],
   tax: [
-    ['rules', 'Tax rules', 'Rules register and form: nature, item group or specific items, rate, authority and effective dates. Prices are always tax-exclusive.', 'built'],
+    ['rules', 'Tax rules', 'System-numbered rules register and form: nature, one item group or specific items, rate and effective dates. Prices are tax-exclusive; control accounts and authorities come from Default accounts.', 'built'],
     ['authorities', 'Authorities', 'Authority register by tax nature with a multi-nature form, search, balances as at a date and sorting.', 'built'],
     ['entries', 'Tax entries', 'Entries from invoices, bills, returns and tax reconciliations, filterable and sortable; a row opens its source document or the adjustment.', 'built'],
-    ['parties', 'Party reconciliation', 'Tax balances by party and kind, filtered and sortable, with a verified/at-risk note.', 'built'],
-    ['reconciliation', 'Reconciliation', 'Adjustment voucher register and form: tax control with authority, party on every line, P&L or party offset, full entry.', 'built'],
-    ['defaults', 'Default accounts', 'Six tax accounts and the sales-tax calculation basis.', 'built'],
+    ['reconciliation', 'Reconciliation', 'Party balances and tax adjustments in two tabs; adjustments use a separate voucher form, never an inline form.', 'built'],
+    ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities and the sales-tax calculation basis.', 'built'],
   ],
   reports: [
     ['revenue', 'Revenue', 'Revenue dashboard with sales by customer and sales by item, from the same documents.', 'built'],

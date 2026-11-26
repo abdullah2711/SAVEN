@@ -51,10 +51,10 @@ export const NUMBERING = {
 };
 
 export const TAX_RULES = [
-  {code: 'STD-SALE', name: 'Output sales tax 10%', kind: 'output', rate: 10, basis: 'exclusive', account: '2200', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
-  {code: 'STD-PURCHASE', name: 'Input tax 10%', kind: 'input', rate: 10, basis: 'exclusive', account: '1300', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
-  {code: 'WHT-SERV', name: 'Withholding on services 4.5%', kind: 'withholding_income', rate: 4.5, basis: 'exclusive', account: '2150', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
-  {code: 'ADV-SALE', name: 'Advance tax deducted by customer 0.5%', kind: 'advance_income', rate: 0.5, basis: 'exclusive', account: '1400', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'TAX-0001', name: 'Output sales tax 10%', kind: 'output', rate: 10, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'TAX-0002', name: 'Input tax 10%', kind: 'input', rate: 10, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'TAX-0003', name: 'Withholding on services 4.5%', kind: 'withholding_income', rate: 4.5, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'TAX-0004', name: 'Advance tax deducted by customer 0.5%', kind: 'advance_income', rate: 0.5, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
 ];
 
 // Light item master for accounting. Tracked items are the only ones Inventory
@@ -81,10 +81,10 @@ export const ITEM_GROUPS = [
 ];
 
 export const ITEMS = [
-  {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
-  {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'STD-SALE', tracked: false},
-  {code: 'ITM-PACK', name: 'Packaging carton', unit: 'piece', income: '4000', expense: '5000', tax: 'STD-PURCHASE', tracked: true},
-  {code: 'ITM-INK', name: 'Printing ink', unit: 'litre', income: '4000', expense: '5000', tax: 'STD-PURCHASE', tracked: true},
+  {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '4000', expense: '5000', tax: 'TAX-0001', tracked: false},
+  {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'TAX-0001', tracked: false},
+  {code: 'ITM-PACK', name: 'Packaging carton', unit: 'piece', income: '4000', expense: '5000', tax: 'TAX-0002', tracked: true},
+  {code: 'ITM-INK', name: 'Printing ink', unit: 'litre', income: '4000', expense: '5000', tax: 'TAX-0002', tracked: true},
 ];
 
 export const CUSTOMER_NAMES = ['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality','Zenith Electrical','Falcon Chemicals'];

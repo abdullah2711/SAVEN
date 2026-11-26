@@ -8,8 +8,10 @@ is the contract for the chart rebuild.
 
 - **Implemented:** accounting heads (five classes), **accounting groups** register and
   form in the Chart page, group sequence per class, group selection and validation on
-  the account form, tax module with six natures, authorities as records, rules, entries,
-  party reconciliation and tax adjustment vouchers. Prices are tax-exclusive.
+  the account form, tax module with six natures, authorities as records, system-numbered
+  rules, entries, merged party balances and adjustment registers, and tax adjustment
+  vouchers. Prices are tax-exclusive; the default authority per nature is set under
+  Default accounts.
 - **Still target, not implemented:** the six-digit account codes and full fixture
   migration; account codes remain the four-digit demo codes for now. Groups already
   carry the two-digit segment that will become the middle of the code.
@@ -114,11 +116,11 @@ these get control flags.
 | Trade receivables | 102001 | customer ledger | party |
 | Supplier advances | 102003 | supplier advance ledger | party |
 | Inventory | 103001 | item + warehouse quantity/value | item, warehouse |
-| Input tax | 104001 | tax authority sub-accounts | tax rule/authority via document; party dimension |
+| Input tax | 104001 | tax authority sub-accounts | document authority (default or override); party dimension |
 | Fixed assets cost — class | 10500x | asset register | asset |
 | Accumulated depreciation — class | 10600x | asset register | asset |
 | Trade payables | 201001 | supplier ledger | party |
-| Output tax | 202001 | tax authority sub-accounts | tax rule/authority via document; party dimension |
+| Output tax | 202001 | tax authority sub-accounts | document authority (default or override); party dimension |
 | Sales tax withheld | 202002 | tax authority sub-accounts | party |
 | Income tax withholding payable | 202005 | supplier ledger + authority sub-account | party |
 | Advance income tax receivable | 102002 | customer ledger + authority sub-account | party |
@@ -133,8 +135,8 @@ these get control flags.
 - Inventory is one control with item/warehouse subledger; valuation lives there.
 - Fixed assets use class-level cost and accumulated-depreciation accounts, with the
   asset register as subledger.
-- Tax controls are split by **authority** and tax type; a tax rule points at the
-  authority's control account.
+- Tax controls are split by **tax nature**, with the authority as a sub-account. The
+  default authority per nature is set in Default accounts and can be changed on a document.
 
 ## 4. Not control accounts
 
@@ -190,7 +192,9 @@ provincial or local authority is added.
 
 Rules:
 
-- A tax rule points at a tax type, control account and authority sub-account.
+- A tax rule points at a tax nature, rate and scope. The **control account** and
+  **default authority** for that nature are set once under Taxes → Default accounts; a
+  document can override the authority. Rules are system-numbered.
 - The control balance = sum of its authority sub-account balances.
 - Authority sub-accounts are the reconciliation point for each return. A separate
   control is used only if a separate legal entity or currency must reconcile
@@ -200,7 +204,8 @@ Rules:
   **Prices are always exclusive of tax.** The line price is net; tax is added. There is
   no inclusive-price mode.
 - A tax authority registration is a first-class record: name, jurisdiction,
-  registration number, tax types, filing frequency, control account, effective dates.
+  registration number, tax natures, filing frequency and status. It is a sub-account of
+  the control for each nature it handles.
 
 ### 6.1 Party tracking for tax
 
@@ -233,7 +238,8 @@ evidence and the reconciliation status honestly.
 
 A tax balance is never corrected by editing the original invoice or bill. It is
 corrected by a **tax reconciliation voucher** that carries the nature, party and
-authority, and posts to the control and an offset:
+authority, and posts to the control and an offset. The authority defaults from
+Taxes → Default accounts for the nature and can be changed on the voucher:
 
 - **Input tax decrease** (invalid claim / supplier default), loss borne by us:
   Dr Tax adjustment expense · Cr Input tax control. Both lines carry the party;

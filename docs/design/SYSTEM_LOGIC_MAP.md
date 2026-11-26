@@ -63,12 +63,11 @@ Taxes is a top-level module. Accounting no longer carries a tax page.
 
 | Page | State | Owns |
 |---|---|---|
-| Rules | complete | rule register/form: nature, one item group or specific items, tax-exclusive rate, authority, account, effective dates |
+| Rules | complete | system-numbered rule register/form: nature, one item group or specific items, tax-exclusive rate, effective dates; no account or authority field |
 | Authorities | complete | multi-nature authority register/form; six tabs; search, balances as at a date, sorting |
 | Tax entries | complete | entries from invoices, bills, returns and reconciliations; filters, sorting, source link |
-| Party reconciliation | complete | tax balances by party and nature, filters, status |
-| Reconciliation | complete | adjustment voucher register/form; entry shows tax control with authority and P&L or party offset |
-| Default accounts | complete | six tax controls and the sales-tax calculation basis |
+| Reconciliation | complete | two tabs: party balances by nature with status, and the adjustment register; New opens a separate voucher form with the full entry |
+| Default accounts | complete | six control accounts, six default authorities and the sales-tax calculation basis |
 
 ### Operations
 
@@ -149,7 +148,7 @@ State decides the actions:
 | Party (customer/supplier) | code, name, type, group, contact, phone, email, currency, terms, credit limit, opening, tax id, status, address, notes | allowed projects, allowed locations | the sub-account of 1100 or 2100 |
 | Cash / bank sub-account | code, name, control head, kind, bank, branch, IBAN/reference, currency, opening, status, notes | allowed projects, allowed locations | the sub-account of a bank or cash control |
 | Item | code, name, group, unit, description, income head, expense head, tax rule, tracked flag, sale/purchase price, status | — | shared with Inventory; quantity lives there |
-| Tax rule | code, name, nature, rate (tax-exclusive), authority, account, scope, effective from/to, status, line override, description | allowed projects, allowed locations | a default, never a posting; the line price is always net |
+| Tax rule | system number, name, nature, rate (tax-exclusive), scope, effective from/to, status, line override, description | allowed projects, allowed locations | a default, never a posting; the line price is always net; control account and authority are set per nature in Default accounts |
 | Project | code, name, manager, state, start, end, budget, description | — | data field, no balance |
 | Location | code, name, kind, address, contact, phone, notes | — | a branch is a location kind |
 | Accounting head | five classes only: asset, liability, equity, income, expense | — | never a user-created register |
@@ -223,16 +222,18 @@ when the correction must stay visible. The audit log keeps everything.
 - **Invoices and bills** carry party, dates, terms, reference, location, narration,
   lines with quantity and price, and tax at the rule’s rate. They are session records
   until ledger posting exists.
-- **Taxes**: rules are defaults (nature, tax-exclusive rate, authority, account, scope,
-  effective dates, access). Prices are always tax-exclusive; there is no inclusive mode.
+- **Taxes**: rules are defaults (nature, tax-exclusive rate, scope, effective dates,
+  access) with a system number. Prices are always tax-exclusive; there is no
+  inclusive mode. The authority is set per nature in **Default accounts**; an invoice or
+  bill chooses the authority for its output/input tax and defaults to that setting.
   Registers are derived from the tax lines on invoices, bills and returns, plus tax
   adjustments. Withholding is a liability that is never ours; advance tax is our asset.
-  **Reconciliation** records an adjustment voucher; it does not edit the source
-  document. The voucher carries nature, party, authority, direction and amount, and
-  posts either to **5300 Tax adjustment expense / 4200 Tax adjustment income** or to the
-  party receivable/payable. Every line carries the party; the tax control line carries
-  the authority, so the party and authority balances move together. **Party
-  reconciliation** shows the resulting party/nature balances and their verified state.
+  **Reconciliation** has two tabs: party balances and adjustments. An adjustment uses a
+  separate form page; it does not edit the source document. The voucher carries nature,
+  party, authority, direction and amount, and posts either to **5300 Tax adjustment
+  expense / 4200 Tax adjustment income** or to the party receivable/payable. Every line
+  carries the party; the tax control line carries the authority, so the party and
+  authority balances move together.
 - The fixture records none of the withholding or advance, so those pages show a
   visible gap rather than an invented number.
 
@@ -262,8 +263,8 @@ not claimed.
 
 ## 10. Settings ↔ documents
 
-- Default accounts, numbering and approval policy are set in Settings and are what the
-  document forms refer to.
+- Control accounts, numbering and approval policy are set in Settings. Tax default
+  accounts and authorities are set in Taxes. These are what the document forms refer to.
 - Custom fields added in Settings → Forms & fields appear on the journal’s **More info**
   tab and save with the draft.
 - The company identity prints on every document.
@@ -353,6 +354,7 @@ permissions. See §100 of the decision log.
 | 56 | 260–262 | documentation alignment, supersessions, implemented vs target |
 | 57 | 263–268 | tax authority form/filters, entry links, reconciliation adjustments, calculation under defaults |
 | 58 | 269–272 | tax-exclusive prices, adjustment voucher entry and offset, full reconciliation form |
+| 59 | 273–278 | authority defaults, system-numbered rules, merged reconciliation tabs, standard tax registers, authority routing |
 
 ---
 

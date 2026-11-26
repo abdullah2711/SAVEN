@@ -122,11 +122,13 @@ const TAX_TABS = [
   ['rules', 'Rules'],
   ['authorities', 'Authorities'],
   ['entries', 'Tax entries'],
-  ['parties', 'Party reconciliation'],
   ['reconciliation', 'Reconciliation'],
   ['defaults', 'Default accounts'],
 ];
 let TAX_DEFAULTS = {output: '2200', input: '1300', withholdingIncome: '2150', withholdingSales: '2210', advanceIncome: '1400', advanceSales: '1024'};
+let TAX_DEFAULT_AUTHORITIES = {output: 'AUTH-FBR', input: 'AUTH-FBR', advance_income: 'AUTH-FBR', advance_sales: 'AUTH-SRB', withholding_income: 'AUTH-FBR', withholding_sales: 'AUTH-SRB'};
+const TAX_FIXTURE_AUTHORITIES = {...TAX_DEFAULT_AUTHORITIES};
+let TAX_RULE_SEQ = 5;
 let TAX_AFTER_DISCOUNT = true;
 const TAX_KINDS = [
   ['input', 'Input tax'],
@@ -136,7 +138,6 @@ const TAX_KINDS = [
   ['withholding_income', 'Withholding — income tax'],
   ['withholding_sales', 'Withholding — sales tax'],
 ];
-const TAX_AUTH_KINDS = TAX_KINDS;
 const TAX_NATURE_META = {
   input: {defaultKey: 'input', side: 'asset', party: '2100', fallback: '1300'},
   output: {defaultKey: 'output', side: 'liability', party: '1100', fallback: '2200'},
@@ -154,11 +155,14 @@ let TAX_AUTH_SEQ = 4;
 const TAX_RECONCILIATIONS = [];
 let TAX_RECON_SEQ = 1;
 const TAX_RECON_OPEN = new Set();
-let TAX_AUTH_FILTER = {q: '', asof: '', sort: {key: 'name', dir: 'asc'}};
-let TAX_PARTY_FILTER = {q: '', kind: '', status: '', sort: {key: 'party', dir: 'asc'}};
+let TAX_AUTH_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'name', dir: 'asc'}};
+let TAX_PARTY_FILTER = {q: '', cf: {}, sort: {key: 'party', dir: 'asc'}};
 const TAX_PARTY_STATUS = new Map();
 let TAX_AUTH_TAB = 'output';
-const TAX_ENTRY_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', kind: '', authority: '', sort: {key: 'date', dir: 'desc'}};
+let TAX_RECON_TAB = 'register';
+let TAX_RULE_FILTER = {q: '', cf: {}, sort: {key: 'code', dir: 'asc'}};
+const TAX_ENTRY_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
+const TAX_RECON_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
 let REV_TAB = 'customer';
 let ADV_PICK = '';
 let ADV_TAB = 'balances';
@@ -2680,9 +2684,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
   const INV_DRAFT = {
     sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Service invoiced',
-      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance_income', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ', advances: []},
+      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance_income', rate: '', basis: 'net', custom: ''}], taxAuthority: '', stockMove: 'no', warehouse: 'HQ', advances: []},
     purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Supplier bill',
-      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'withholding_income', rate: '', basis: 'net', custom: ''}], taxAccount: '', stockMove: 'no', warehouse: 'HQ', advances: []},
+      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'withholding_income', rate: '', basis: 'net', custom: ''}], taxAuthority: '', stockMove: 'no', warehouse: 'HQ', advances: []},
   };
   const INV_FILES = {sales: [], purchase: []};
 const STOCK_MOVES = [];
@@ -2790,7 +2794,10 @@ const ITEM_ACCOUNT_RULES = [
     const byAccount = {};
     (draft.lines || []).forEach((l) => { if (!l.account) return; byAccount[l.account] = round2((byAccount[l.account] || 0) + invLineNet(l)); });
     Object.entries(byAccount).forEach(([account, amount]) => lines.push({account, party: '', debit: isSales ? 0 : amount, credit: isSales ? amount : 0}));
-    if (totals.tax) lines.push({account: draft.taxAccount || (isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input), party: '', debit: isSales ? 0 : totals.tax, credit: isSales ? totals.tax : 0});
+    if (totals.tax) {
+      const taxAuth = (draft.taxAuthority && TAX_AUTHORITIES.find((a) => a.id === draft.taxAuthority)) || defaultAuthorityFor(isSales ? 'output' : 'input');
+      lines.push({account: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, party: '', authority: taxAuth.name, debit: isSales ? 0 : totals.tax, credit: isSales ? totals.tax : 0});
+    }
     const wht = invoiceWhtTotal(withholding, totals);
     const due = invoiceNetDue(totals, withholding);
     lines.push({account: isSales ? '1100' : '2100', party: draft.party, debit: isSales ? due : 0, credit: isSales ? 0 : due});
@@ -2842,13 +2849,13 @@ const ITEM_ACCOUNT_RULES = [
         const lines = Object.entries(byAccount).map(([account, x]) => ({item: '', account, project: x.project, qty: '1', price: String(x.value), discountType: '', discountValue: '', tax: String(taxRate)}));
         const withholding = [];
         d.lines.forEach((l) => {
-          if (l.account === TAX_DEFAULTS.advance) withholding.push({type: 'advance', rate: 'custom', custom: String(round2(num(l.debit) - num(l.credit))), basis: 'net'});
-          if (l.account === TAX_DEFAULTS.withholding) withholding.push({type: 'income', rate: 'custom', custom: String(round2(num(l.credit) - num(l.debit))), basis: 'net'});
-          if (l.account === TAX_DEFAULTS.salesWht) withholding.push({type: 'sales', rate: 'custom', custom: String(round2(num(l.credit) - num(l.debit))), basis: 'net'});
+          if (l.account === TAX_DEFAULTS.advanceIncome) withholding.push({type: 'advance_income', rate: 'custom', custom: String(round2(num(l.debit) - num(l.credit))), basis: 'net'});
+          if (l.account === TAX_DEFAULTS.withholdingIncome) withholding.push({type: 'withholding_income', rate: 'custom', custom: String(round2(num(l.credit) - num(l.debit))), basis: 'net'});
+          if (l.account === TAX_DEFAULTS.withholdingSales) withholding.push({type: 'withholding_sales', rate: 'custom', custom: String(round2(num(l.credit) - num(l.debit))), basis: 'net'});
         });
-        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines, withholding, taxAccount: isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input, description: d.narrative || '', location: d.location || 'HQ', reference: d.supplierRef || ''};
+        return {id: d.id, date: d.date, party: d.party, due, net, tax, gross, project: d.project || '', returned: returnedFor(kind, d.id), paid: paidFor(kind, d.id), session: false, lines, withholding, taxAuthority: TAX_FIXTURE_AUTHORITIES[isSales ? 'output' : 'input'], description: d.narrative || '', location: d.location || 'HQ', reference: d.supplierRef || ''};
       });
-    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), state: x.state || 'posted', session: true, lines: x.lines || [], withholding: x.withholding || [], advances: x.advances || [], taxAccount: x.taxAccount || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
+    const session = INVOICES.filter((x) => x.kind === kind).map((x) => ({id: x.id, date: x.date, party: x.party, due: x.due, net: x.net, tax: x.tax, gross: x.gross, netDue: x.netDue ?? x.gross, project: (x.lines && x.lines[0] && x.lines[0].project) || '', returned: returnedFor(kind, x.id), paid: paidFor(kind, x.id), state: x.state || 'posted', session: true, lines: x.lines || [], withholding: x.withholding || [], advances: x.advances || [], taxAuthority: x.taxAuthority || '', description: x.description || '', location: x.location || 'HQ', reference: x.reference || '', terms: x.terms || '30'}));
     return session.concat(fromFixture)
       .map((r) => ({...r, balance: round2(Math.max((r.netDue ?? r.gross) - r.returned - (r.paid || 0), 0))}))
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
@@ -2858,7 +2865,7 @@ const ITEM_ACCOUNT_RULES = [
     const source = code ? invoiceRows(kind).find((r) => r.id === code) : null;
     const locked = Boolean(source && !source.session);
     const draft = source && source.session
-      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || [], advances: source.advances || [], taxAccount: source.taxAccount || ''}
+      ? {party: source.party, date: source.date, due: source.due, terms: source.terms || '30', reference: source.reference || '', location: source.location || 'HQ', description: source.description || '', lines: source.lines || [], withholding: source.withholding || [], advances: source.advances || [], taxAuthority: source.taxAuthority || ''}
       : source ? null : INV_DRAFT[invKey(kind)];
     const lines = draft ? draft.lines : [];
     const withholding = draft ? (draft.withholding || []) : [];
@@ -2867,8 +2874,9 @@ const ITEM_ACCOUNT_RULES = [
     const netDue = invoiceNetDue(totals, withholding);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
     const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : (a.type === 'expense' || a.code === '2400' || a.code === '1200' || a.subtype === 'clearing')));
-    const taxAccounts = accounts().filter((a) => a.subtype === 'tax');
-    const taxAccount = (draft && draft.taxAccount) || (isSales ? TAX_DEFAULTS.output : TAX_DEFAULTS.input);
+    const taxKind = isSales ? 'output' : 'input';
+    const taxAuthority = (draft && draft.taxAuthority) || TAX_DEFAULT_AUTHORITIES[taxKind] || '';
+    const taxAuthorityOptions = TAX_AUTHORITIES.filter((a) => authorityHas(a, taxKind) && a.active !== false);
     const whtRates = [...new Set(['0.5', '1', '2', '4.5', '7.5', '10', '15', ...TAX_RULES.filter((r) => ['withholding_income', 'withholding_sales', 'advance_income', 'advance_sales'].includes(r.kind)).map((r) => String(r.rate))])];
     const party = PARTIES.find((p) => p.name === (draft ? draft.party : ''));
     const openAdvances = party ? ADVANCES.filter((a) => a.party === party.name && a.direction === (isSales ? 'receive' : 'pay') && advanceOpen(a) > 0) : [];
@@ -2938,7 +2946,7 @@ const ITEM_ACCOUNT_RULES = [
           <tbody>${(source.lines || []).map((l) => `<tr><td>${e(l.item || '—')}</td><td>${e(l.account)} · ${e((accounts().find((a) => a.code === l.account) || {}).name || '')}</td><td>${e(l.project || '—')}</td><td class="numeric">${e(l.qty)}</td><td class="numeric">${money(l.price)}</td><td>${l.discountType ? e(l.discountType === 'customAmt' ? money(l.discountValue) : l.discountValue + '%') : '—'}</td><td class="numeric">${money(invLineNet(l))}</td><td class="numeric">${e(l.tax)}%</td><td class="numeric">${money(invLineGross(l))}</td><td></td></tr>`).join('') || '<tr><td colspan="10">Line detail is not in the fixture.</td></tr>'}</tbody></table></div>
         </div>
         ${(source.withholding || []).length ? `<div class="panel-body"><div class="section-title">Withholding</div><div class="table-scroll"><table class="invoice-lines inv-wht"><thead><tr><th>Type</th><th>Rate / amount</th><th>Withholding base</th><th class="numeric">Amount</th><th></th></tr></thead><tbody>${source.withholding.map((w) => `<tr><td>${e(w.type === 'advance' || w.type === 'advance_income' ? 'Advance income tax withheld' : w.type === 'advance_sales' ? 'Advance sales tax withheld' : w.type === 'sales' || w.type === 'withholding_sales' ? 'Sales tax withheld' : 'Income tax withholding')}</td><td>${w.rate === 'custom' ? money(w.custom) : e(w.rate) + '%'}</td><td>${e(w.basis === 'net' ? 'Before sales tax' : w.basis === 'gross' ? 'After sales tax' : 'Sales tax only')}</td><td class="numeric">${money(whtAmount(w, totals))}</td><td></td></tr>`).join('')}</tbody></table></div></div>` : ''}
-        <div class="panel-body form-grid">${ledgerIllustration(isSales ? 'Illustrative invoice entry' : 'Illustrative bill entry', invoiceEntryLines(kind, {lines: source.lines || [], withholding: source.withholding || [], party: source.party, taxAccount: source.taxAccount}, totals, source.withholding || []), 'Derived from the posted document; this build does not re-post.')}</div>`
+        <div class="panel-body form-grid">${ledgerIllustration(isSales ? 'Illustrative invoice entry' : 'Illustrative bill entry', invoiceEntryLines(kind, {lines: source.lines || [], withholding: source.withholding || [], party: source.party, taxAuthority: source.taxAuthority}, totals, source.withholding || []), 'Derived from the posted document; this build does not re-post.')}</div>`
       : `<form data-invoice-form="${kind}">
         <input type="hidden" name="editingCode" value="${e(source ? source.id : '')}">
         <div class="panel-body form-grid">
@@ -2960,7 +2968,7 @@ const ITEM_ACCOUNT_RULES = [
               <tr><td colspan="6">Original total</td><td class="numeric" data-inv-base>${money(totals.base)}</td><td></td><td class="numeric" data-inv-base2>${money(totals.base)}</td><td></td></tr>
               <tr><td colspan="6">Discount total</td><td class="numeric" data-inv-discount>${totals.discount ? '−' : ''}${money(totals.discount)}</td><td></td><td class="numeric" data-inv-discount2>${totals.discount ? '−' : ''}${money(totals.discount)}</td><td></td></tr>
               <tr><td colspan="6">Net total</td><td class="numeric" data-inv-net>${money(totals.net)}</td><td></td><td class="numeric" data-inv-net2>${money(totals.net)}</td><td></td></tr>
-              <tr><td colspan="4">Sales tax total</td><td colspan="4"><select name="taxAccount" class="inline-input" data-inv-tax-account aria-label="Sales tax account">${taxAccounts.map((a) => `<option value="${a.code}" ${a.code === taxAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
+              <tr><td colspan="4">${isSales ? 'Sales tax authority' : 'Purchase tax authority'}</td><td colspan="4"><select name="taxAuthority" class="inline-input" data-inv-tax-authority aria-label="Tax authority">${taxAuthorityOptions.map((a) => `<option value="${e(a.id)}" ${a.id === taxAuthority ? 'selected' : ''}>${e(a.name)}${a.registration ? ' · ' + e(a.registration) : ''}</option>`).join('')}</select></td><td class="numeric" data-inv-tax>${money(totals.tax)}</td><td></td></tr>
               <tr><td colspan="6">Invoice total</td><td colspan="2"></td><td class="numeric" data-inv-gross><strong>${money(totals.gross)}</strong></td><td></td></tr>
             </tfoot>
           </table></div>
@@ -3164,12 +3172,13 @@ const ITEM_ACCOUNT_RULES = [
             <div class="related"><button type="button" class="button" data-ret-add>Add return row</button></div>
           </div>
           <div class="panel-body form-grid">${(() => {
+            const retAuthority = (TAX_AUTHORITIES.find((a) => a.id === selected.taxAuthority) || defaultAuthorityFor(isSales ? 'output' : 'input')).name;
             const entry = isSales
-              ? [{account: '4100', party: '', debit: totals.net, credit: 0}, {account: selected.taxAccount || TAX_DEFAULTS.output, party: '', debit: totals.tax, credit: 0}, {account: '1100', party: selected.party, debit: 0, credit: totals.gross}]
+              ? [{account: '4100', party: '', debit: totals.net, credit: 0}, {account: TAX_DEFAULTS.output, party: '', authority: retAuthority, debit: totals.tax, credit: 0}, {account: '1100', party: selected.party, debit: 0, credit: totals.gross}]
               : (() => {
                 const trackedNet = round2(lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked).reduce((n, l) => n + retLineCalc(l).net, 0));
                 const otherNet = round2(totals.net - trackedNet);
-                const rows = [{account: '2100', party: selected.party, debit: totals.gross, credit: 0}, {account: selected.taxAccount || TAX_DEFAULTS.input, party: '', debit: 0, credit: totals.tax}];
+                const rows = [{account: '2100', party: selected.party, debit: totals.gross, credit: 0}, {account: TAX_DEFAULTS.input, party: '', authority: retAuthority, debit: 0, credit: totals.tax}];
                 if (otherNet) rows.push({account: '5200', party: '', debit: 0, credit: otherNet});
                 if (trackedNet) rows.push({account: itemAccountFor('inventory'), party: '', debit: 0, credit: trackedNet});
                 return rows;
@@ -3221,7 +3230,7 @@ const ITEM_ACCOUNT_RULES = [
       advance: (tr.querySelector('[data-inv-adv]') || {}).value || '',
       amount: (tr.querySelector('[data-inv-adv-amount]') || {}).value || '',
     }));
-    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding, advances, taxAccount: v.taxAccount || draft.taxAccount || '', stockMove: v.stockMove || 'no', warehouse: v.warehouse || 'HQ'});
+    Object.assign(draft, {party: v.party, date: v.date, due: v.due, terms: v.terms, reference: v.reference, location: v.location, description: v.description, lines, withholding, advances, taxAuthority: v.taxAuthority || draft.taxAuthority || '', stockMove: v.stockMove || 'no', warehouse: v.warehouse || 'HQ'});
     return draft;
   }
   function bindInvoices(kind, rerender, notify, navigate) {
@@ -3501,11 +3510,11 @@ const ITEM_ACCOUNT_RULES = [
         let invId = editing;
         if (editing) {
           const target = INVOICES.find((x) => x.id === editing);
-          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, advances: draft.advances || [], taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
+          if (target) Object.assign(target, {party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, advances: draft.advances || [], taxAuthority: draft.taxAuthority || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, session: true});
           notify('Document updated for this session.');
         } else {
           invId = (kind === 'sales' ? 'SI-2026-' : 'PI-2026-') + String(300 + INV_SEQ++);
-          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, advances: draft.advances || [], taxAccount: draft.taxAccount || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
+          INVOICES.push({id: invId, kind, party: draft.party, date: draft.date, due: draft.due, terms: draft.terms, reference: draft.reference, location: draft.location, description: draft.description, lines: draft.lines, withholding: draft.withholding, advances: draft.advances || [], taxAuthority: draft.taxAuthority || '', discount: totals.discount, net: totals.net, tax: totals.tax, gross: totals.gross, netDue, files: INV_FILES[kind].slice(), session: true});
           notify(`Saved for this session: ${draft.party} · ${kind === 'sales' ? 'net receivable' : 'net payable'} ${netDue.toFixed(2)}.`);
         }
         if (INV_PAY[kind]) {
@@ -3551,7 +3560,7 @@ const ITEM_ACCOUNT_RULES = [
         INV_FILES[kind] = [];
         INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', description: kind === 'sales' ? 'Service invoiced' : 'Supplier bill',
           lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}],
-          withholding: [{type: kind === 'sales' ? 'advance_income' : 'withholding_income', rate: '', basis: 'net', custom: ''}], advances: [], taxAccount: '', stockMove: 'no', warehouse: 'HQ'};
+          withholding: [{type: kind === 'sales' ? 'advance_income' : 'withholding_income', rate: '', basis: 'net', custom: ''}], advances: [], taxAuthority: '', stockMove: 'no', warehouse: 'HQ'};
         goBack();
       });
     }
@@ -3644,7 +3653,7 @@ const ITEM_ACCOUNT_RULES = [
       const totals = lines.reduce((n, l) => { const c = retLineCalc(l); return {net: round2(n.net + c.net), tax: round2(n.tax + c.tax), gross: round2(n.gross + c.gross)}; }, {net: 0, tax: 0, gross: 0});
       if (totals.gross <= 0) { notify('Enter at least one returned quantity or amount.'); return; }
       if (totals.gross > inv.gross - inv.returned + 0.005) { notify('The return is more than the document still carries.'); return; }
-      RETURNS[kind].push({id: (kind === 'sales' ? 'SR-2026-' : 'PR-2026-') + String(RET_SEQ[kind]++), invoiceId: inv.id, date: v.date, party: inv.party, net: totals.net, tax: totals.tax, gross: totals.gross, reason: v.reason, notes: v.notes || '', lines, session: true});
+      RETURNS[kind].push({id: (kind === 'sales' ? 'SR-2026-' : 'PR-2026-') + String(RET_SEQ[kind]++), invoiceId: inv.id, date: v.date, party: inv.party, net: totals.net, tax: totals.tax, gross: totals.gross, reason: v.reason, notes: v.notes || '', lines, session: true, taxAuthority: inv.taxAuthority || TAX_DEFAULT_AUTHORITIES[kind === 'sales' ? 'output' : 'input']});
       const trackedBack = (lines || []).filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked && Number(l.returnQty) > 0);
       if (trackedBack.length) STOCK_MOVES.push({id: 'STK-2026-' + String(100 + STOCK_MOVES.length), kind, date: v.date, party: inv.party, warehouse: inv.location || 'HQ', invoice: inv.id, direction: kind === 'sales' ? 'receipt' : 'issue', lines: trackedBack.map((l) => ({item: l.item, qty: l.returnQty, value: retLineCalc(l).net}))});
       INV_TAB[kind] = 'returns';
@@ -3724,8 +3733,8 @@ const ITEM_ACCOUNT_RULES = [
         <label class="wide">Description<input name="description" maxlength="120" value="${e(v('description'))}" placeholder="What the item is; prints on documents"></label>
         <label>Income head<select name="income" class="inline-input">${accounts().filter((a) => a.type === 'income').map((a) => `<option value="${a.code}" ${a.code === v('income', '4000') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
         <label>Expense head<select name="expense" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === v('expense', '5000') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-        <label>Sales tax default<select name="salesTax" class="inline-input"><option value="">No tax</option>${TAX_RULES.filter((r) => r.kind === 'sales').map((r) => `<option value="${r.code}" ${r.code === v('salesTax', v('tax')) ? 'selected' : ''}>${e(r.name)} · ${r.rate}%</option>`).join('')}</select></label>
-        <label>Purchase tax default<select name="purchaseTax" class="inline-input"><option value="">No tax</option>${TAX_RULES.filter((r) => r.kind === 'purchase').map((r) => `<option value="${r.code}" ${r.code === v('purchaseTax', v('tax')) ? 'selected' : ''}>${e(r.name)} · ${r.rate}%</option>`).join('')}</select></label>
+        <label>Sales tax default<select name="salesTax" class="inline-input"><option value="">No tax</option>${TAX_RULES.filter((r) => r.kind === 'output').map((r) => `<option value="${r.code}" ${r.code === v('salesTax', v('tax')) ? 'selected' : ''}>${e(r.name)} · ${r.rate}%</option>`).join('')}</select></label>
+        <label>Purchase tax default<select name="purchaseTax" class="inline-input"><option value="">No tax</option>${TAX_RULES.filter((r) => r.kind === 'input').map((r) => `<option value="${r.code}" ${r.code === v('purchaseTax', v('tax')) ? 'selected' : ''}>${e(r.name)} · ${r.rate}%</option>`).join('')}</select></label>
         <label>Stock<select name="tracked" class="inline-input"><option value="no" ${v('tracked') ? '' : 'selected'}>Service or untracked</option><option value="yes" ${v('tracked') ? 'selected' : ''}>Tracked in Inventory</option></select></label>
         <label>Sale price<input name="salePrice" inputmode="decimal" value="${e(v('salePrice', '0.00'))}"></label>
         <label>Purchase price<input name="purchasePrice" inputmode="decimal" value="${e(v('purchasePrice', '0.00'))}"></label>
@@ -3791,39 +3800,155 @@ const ITEM_ACCOUNT_RULES = [
       </table></div>
     </section>`;
   }
+  /* ---- shared register formatting for the tax module ------------------ */
+  function taxColumnValue(row, key) { return row[key] ?? ''; }
+  function taxColumnValues(rows, key, valueFn) {
+    const value = valueFn || taxColumnValue;
+    return [...new Set(rows.map((r) => String(value(r, key) ?? '')).filter((v) => v !== ''))].sort((a, b) => a.localeCompare(b, undefined, {numeric: true})).slice(0, 200);
+  }
+  function taxColumnLabel(key, value) {
+    if (['amount', 'tax', 'base', 'balance'].includes(key)) return money(Number(value) || 0);
+    if (key === 'rate') return value === 'custom' ? 'Custom' : value === 'adjustment' ? 'Adjustment' : value + '%';
+    return value;
+  }
+  function taxTableHead(prefix, state, cols, rows, valueFn) {
+    const value = valueFn || taxColumnValue;
+    return `<thead><tr>${cols.map(([key, label, cls, filterable = true]) => {
+      const selected = (state.cf && state.cf[key]) || [];
+      const values = filterable ? taxColumnValues(rows, key, value) : [];
+      const panel = filterable ? `<div class="col-filter-panel" data-col-panel="${key}" data-col-prefix="${prefix}" hidden>
+        <div class="gl-sortrow"><span class="gl-sortlabel">Sort</span><button type="button" class="sort-toggle ${state.sort.key === key ? 'active' : ''}" data-col-toggle="${key}" data-col-prefix="${prefix}">${state.sort.key === key ? (state.sort.dir === 'asc' ? '↑' : '↓') : '↕'}</button></div>
+        <div class="ms-searchrow"><input class="ms-search col-menu-search" type="search" placeholder="Search values" aria-label="Search ${e(label)} values"></div>
+        <div class="ms-head"><button type="button" class="text-button" data-col-all="${key}" data-col-prefix="${prefix}">Select all</button><span class="ms-count">${values.length}</span><button type="button" class="text-button" data-col-none="${key}" data-col-prefix="${prefix}">Clear</button></div>
+        <div class="ms-list">${values.map((v) => `<label class="ms-row"><input class="check" type="checkbox" value="${e(v)}" ${selected.includes(v) ? 'checked' : ''}><span>${e(taxColumnLabel(key, v))}</span></label>`).join('') || '<div class="ms-empty">No values</div>'}</div>
+        <div class="gl-applyrow"><button type="button" class="button primary" data-col-apply="${key}" data-col-prefix="${prefix}">Apply filter</button></div>
+      </div>` : '';
+      return `<th class="col col-${key} ${cls || ''}"><div class="th-flex"><button class="sortable" data-col-sort="${key}" data-col-prefix="${prefix}" aria-sort="${state.sort.key === key ? (state.sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}">${label}<span class="sort-mark">${state.sort.key === key ? (state.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button>${filterable ? `<button type="button" class="col-filter-btn" data-col-filter="${key}" data-col-prefix="${prefix}" aria-label="Filter ${e(label)}" aria-expanded="false">${icon('chevron')}${selected.length ? `<b>${selected.length}</b>` : ''}</button>` : ''}</div>${panel}</th>`;
+    }).join('')}</tr></thead>`;
+  }
+  function taxFilterRows(rows, state, valueFn) {
+    const value = valueFn || taxColumnValue;
+    return rows.filter((row) => Object.entries(state.cf || {}).every(([key, selected]) => !selected || !selected.length || selected.includes(String(value(row, key) ?? ''))));
+  }
+  function taxSortRows(rows, state, valueFn) {
+    const value = valueFn || taxColumnValue;
+    return rows.slice().sort((a, b) => {
+      const x = value(a, state.sort.key), y = value(b, state.sort.key);
+      const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), undefined, {numeric: true});
+      return state.sort.dir === 'desc' ? -d : d;
+    });
+  }
+  function bindTaxColumnMenus(prefix, state, rerender) {
+    let open = '';
+    const close = (except) => {
+      document.querySelectorAll(`[data-col-panel][data-col-prefix="${prefix}"]`).forEach((p) => { if (p !== except) p.hidden = true; });
+      document.querySelectorAll(`[data-col-filter][data-col-prefix="${prefix}"]`).forEach((b) => b.setAttribute('aria-expanded', 'false'));
+      open = '';
+    };
+    const openMenu = (key) => {
+      const btn = document.querySelector(`[data-col-filter="${key}"][data-col-prefix="${prefix}"]`);
+      const panel = document.querySelector(`[data-col-panel="${key}"][data-col-prefix="${prefix}"]`);
+      if (!btn || !panel) return;
+      close(panel);
+      panel.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      const r = btn.getBoundingClientRect();
+      panel.classList.add('col-filter-panel--fixed');
+      const left = r.left > window.innerWidth / 2 ? r.right - 270 : r.left;
+      panel.style.left = Math.round(Math.min(Math.max(8, left), window.innerWidth - 278)) + 'px';
+      const top = Math.round(r.bottom + 4);
+      panel.style.top = top + 'px';
+      panel.style.maxHeight = Math.max(220, Math.min(380, window.innerHeight - top - 12)) + 'px';
+      const search = panel.querySelector('.col-menu-search');
+      if (search) { search.value = ''; search.focus(); }
+      open = key;
+    };
+    document.querySelectorAll(`[data-col-filter][data-col-prefix="${prefix}"]`).forEach((b) => b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const key = b.dataset.colFilter;
+      if (open === key) { close(); return; }
+      openMenu(key);
+    }));
+    document.addEventListener('click', (ev) => {
+      if (ev.target.closest(`[data-col-panel][data-col-prefix="${prefix}"]`) || ev.target.closest(`[data-col-filter][data-col-prefix="${prefix}"]`)) return;
+      close();
+    });
+    document.querySelectorAll(`[data-col-panel][data-col-prefix="${prefix}"]`).forEach((panel) => {
+      panel.addEventListener('click', (ev) => ev.stopPropagation());
+      panel.querySelector('.col-menu-search')?.addEventListener('input', (ev) => {
+        const q = ev.target.value.toLowerCase();
+        panel.querySelectorAll('.ms-row').forEach((row) => { row.hidden = q && !row.textContent.toLowerCase().includes(q); });
+      });
+    });
+    document.querySelectorAll(`[data-col-all][data-col-prefix="${prefix}"]`).forEach((b) => b.addEventListener('click', () => {
+      const panel = document.querySelector(`[data-col-panel="${b.dataset.colAll}"][data-col-prefix="${prefix}"]`);
+      panel?.querySelectorAll('input[type=checkbox]').forEach((box) => { if (!box.closest('.ms-row').hidden) box.checked = true; });
+    }));
+    document.querySelectorAll(`[data-col-none][data-col-prefix="${prefix}"]`).forEach((b) => b.addEventListener('click', () => {
+      const panel = document.querySelector(`[data-col-panel="${b.dataset.colNone}"][data-col-prefix="${prefix}"]`);
+      panel?.querySelectorAll('input[type=checkbox]').forEach((box) => { box.checked = false; });
+    }));
+    document.querySelectorAll(`[data-col-apply][data-col-prefix="${prefix}"]`).forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.colApply;
+      const panel = document.querySelector(`[data-col-panel="${key}"][data-col-prefix="${prefix}"]`);
+      state.cf = {...(state.cf || {}), [key]: [...panel.querySelectorAll('input[type=checkbox]:checked')].map((x) => x.value)};
+      close();
+      rerender();
+    }));
+    document.querySelectorAll(`[data-col-sort][data-col-prefix="${prefix}"]`).forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.colSort;
+      state.sort = {key, dir: state.sort.key === key && state.sort.dir === 'asc' ? 'desc' : 'asc'};
+      close();
+      rerender();
+    }));
+    document.querySelectorAll(`[data-col-toggle][data-col-prefix="${prefix}"]`).forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.colToggle;
+      state.sort = {key, dir: state.sort.key === key && state.sort.dir === 'asc' ? 'desc' : 'asc'};
+      close();
+      rerender();
+    }));
+  }
+
+  function nextTaxRuleCode() { return 'TAX-' + String(TAX_RULE_SEQ).padStart(4, '0'); }
   function taxRulesPanel() {
-    const f = FILTERS.tax;
-    const rules = TAX_RULES.filter((r) => hit(f.q, r.code, r.name, r.kind, r.scope, r.description));
-    const accountName = (code) => (accounts().find((a) => a.code === code) || {}).name || code;
-    return `<form class="filterbar" data-filter="tax">
-        ${filterInput('tax', f.q, 'Code, name, kind, scope')}
-        <button class="button" type="button" data-filter-reset="tax">Reset</button>
+    const f = TAX_RULE_FILTER;
+    const all = TAX_RULES.map((r) => ({
+      ...r,
+      nature: taxKindLabel(r.kind),
+      scopeLabel: r.scope === 'items' ? 'Specific items' : r.scope === 'group' ? 'Group · ' + (r.group || r.scopeValue || '') : 'All items',
+      effective: r.from + (r.to ? ' → ' + r.to : ''),
+      statusLabel: r.status || 'Active',
+    }));
+    const searched = all.filter((r) => !f.q || (r.code + ' ' + r.name + ' ' + r.nature + ' ' + r.scopeLabel + ' ' + (r.description || '')).toLowerCase().includes(f.q.toLowerCase()));
+    const rows = taxSortRows(taxFilterRows(searched, f), f);
+    const cols = [['code', 'Rule no.', '', false], ['name', 'Rule'], ['nature', 'Nature'], ['rate', 'Rate', 'numeric', false], ['scopeLabel', 'Scope'], ['effective', 'Effective', '', false], ['statusLabel', 'Status']];
+    return `<form class="filterbar" data-tax-rule-filter>
+        <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Rule number, name, nature, scope"></label>
+        <button class="button" type="button" data-tax-rule-reset>Reset</button>
       </form>
       <section class="panel">
-      <div class="panel-head"><h2>Tax rules</h2><span class="badge">${rules.length} of ${TAX_RULES.length} rules</span></div>
-      <div class="table-scroll" data-hscroll><table>
-        <thead><tr><th>Code</th><th>Rule</th><th>Kind</th><th class="numeric">Rate</th><th>Account</th><th>Scope</th><th>Effective</th><th>Projects</th><th>Locations</th><th>Status</th><th></th></tr></thead>
-        <tbody>${rules.map((r) => `<tr class="row-link" data-edit="tax:${e(r.code)}"><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(taxKindLabel(r.kind))}</td><td class="numeric">${r.rate}%</td><td>${e(r.account)} · ${e(accountName(r.account))}</td><td>${r.scope === 'items' ? 'Specific items' : r.scope === 'group' ? 'Group · ' + e(r.group || r.scopeValue || '') : 'All items'}</td><td>${e(r.from)}${r.to ? ` → ${e(r.to)}` : ''}</td><td>${e(scopeText(r.projects))}</td><td>${e(scopeText(r.locations))}</td><td>${badge(r.status || 'Active', (r.status || 'Active') === 'Active' ? 'good' : 'warn')}</td><td class="row-go">›</td></tr>`).join('')}</tbody>
+      <div class="panel-head"><h2>Tax rules</h2><div class="related"><span class="badge">${rows.length} of ${TAX_RULES.length} rules</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <div class="table-scroll" data-hscroll><table class="tax-register">
+        ${taxTableHead('taxrule', f, cols, all)}
+        <tbody>${rows.map((r) => `<tr class="row-link" data-edit="tax:${e(r.code)}"><td class="mono">${e(r.code)}</td><td>${e(r.name)}${r.description ? `<small class="secondary">${e(r.description)}</small>` : ''}</td><td>${e(r.nature)}</td><td class="numeric">${r.rate}%</td><td>${e(r.scopeLabel)}</td><td>${e(r.effective)}</td><td>${badge(r.statusLabel, r.statusLabel === 'Active' ? 'good' : 'warn')}</td></tr>`).join('') || '<tr><td colspan="7">No tax rule matches these filters.</td></tr>'}</tbody>
       </table></div>
-      <div class="table-footer">A rule is a default. Any document line may override the rate or switch tax off. Withholding and advance rules post to their own liability and asset accounts. Click a row to open its form.</div>
+      <div class="table-footer">A rule is a default. The number is assigned by the system; the name is yours. The authority is not part of the rule: it comes from Taxes → Default accounts, and a document can override it. Any document line may still override the rate or switch tax off.</div>
     </section>`;
   }
 
   function taxEditor(code) {
     const editingRow = code ? (TAX_RULES.find((r) => r.code === code) || {}) : {};
     const v = (key, fallback = '') => (editingRow[key] !== undefined ? editingRow[key] : fallback);
-    const ordering = (a, b) => Number(/tax/i.test(b.name)) - Number(/tax/i.test(a.name));
+    const ruleNumber = editingRow.code || nextTaxRuleCode();
     return `<section class="panel">
-      <div class="panel-head"><h2>${editingRow.code ? e(editingRow.name) : 'New tax rule'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'Blank access means all'}</span></div>
+      <div class="panel-head"><h2>${editingRow.code ? e(editingRow.name) : 'New tax rule'}</h2><span class="badge">${editingRow.code ? `Editing ${e(editingRow.code)}` : 'System numbered'}</span></div>
       <form data-tax-form class="panel-body form-grid">
         <input type="hidden" name="editingCode" value="${e(editingRow.code || '')}">
-        <label>Code<input name="code" required pattern="[A-Z0-9-]{2,20}" value="${e(v('code'))}" ${editingRow.code ? 'readonly' : ''} placeholder="STD-SALE"></label>
+        <label>Rule no. (system)<input name="code" readonly value="${e(ruleNumber)}"><small class="secondary">Assigned in order, TAX-0001, TAX-0002, …</small></label>
         <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="Sales tax 10%"></label>
         <label>Nature<select name="kind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${v('kind', 'output') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label>Authority<select name="authority" class="inline-input"><option value="">Use the default authority</option>${TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${v('authority') === a.id ? 'selected' : ''}>${e(a.name)} · ${(a.kinds || []).map(taxKindLabel).join(', ')}</option>`).join('')}</select></label>
         <label>Rate %<input name="rate" required inputmode="decimal" value="${e(v('rate', '10.00'))}"></label>
-        <div class="wide"><p class="form-note">Price basis: <strong>tax exclusive</strong>. The line price is net; tax is added. There is no inclusive-price mode.</p></div>
-        <label>Account<select name="account" class="inline-input">${accounts().filter((a) => a.subtype === 'tax').map((a) => `<option value="${a.code}" ${a.code === v('account', '2200') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+        <div class="wide"><p class="form-note">Price basis: <strong>tax exclusive</strong>. The line price is net; tax is added. There is no inclusive-price mode. The control account and default authority for this nature are set under <strong>Default accounts</strong>; a document can change the authority.</p></div>
         <label>Applies to<select name="scopeType" class="inline-input"><option value="group" ${v('scopeType', v('scope') === 'items' ? 'items' : 'group') === 'group' ? 'selected' : ''}>One item group</option><option value="items" ${v('scopeType', v('scope') === 'items' ? 'items' : 'group') === 'items' ? 'selected' : ''}>Specific items</option></select></label>
         <label>Item group<select name="group" class="inline-input"><option value="">Choose group</option>${ITEM_GROUPS.map((g) => `<option value="${e(g.name)}" ${v('group', v('scope') === 'group' ? v('scopeValue') : '') === g.name ? 'selected' : ''}>${e(g.name)}</option>`).join('')}</select></label>
         ${ms('tax-items', 'Items', ITEMS.map((it) => [it.code, `${it.code} · ${it.name}`]), v('items', []))}
@@ -3836,29 +3961,28 @@ const ITEM_ACCOUNT_RULES = [
         ${ms('tax-locations', 'Allowed locations', LOCATIONS.map((l) => [l.code, `${l.code} · ${l.name}`]), v('locations', []))}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add tax rule'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">Scope narrows where the rule is offered; the effective dates decide when it applies. Rules never post on their own — they fill a document line, and the document posts the tax.</p></div>
+      <div class="panel-body"><p class="form-note">Scope narrows where the rule is offered; the effective dates decide when it applies. The rule number is generated and never reused. Rules never post on their own — they fill a document line, and the document posts the tax with its authority.</p></div>
     </section>`;
   }
 
   function taxPanel(id) {
     if (id === 'authorities') return taxAuthoritiesPanel();
     if (id === 'entries') return taxEntriesPanel();
-    if (id === 'parties') return taxPartyReconPanel();
-    if (id === 'reconciliation') return taxReconciliationPanel();
+    if (id === 'parties') { TAX_RECON_TAB = 'balances'; return taxReconciliationPage(); }
+    if (id === 'reconciliation') return taxReconciliationPage();
     if (id === 'defaults') return taxDefaultsPanel();
     return taxRulesPanel();
   }
   function taxDefaultsPanel() {
-    const option = (code, side) => accounts().filter((a) => a.subtype === 'tax' && a.type === side).map((a) => `<option value="${a.code}" ${a.code === code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+    const accountOption = (code, side) => accounts().filter((a) => a.subtype === 'tax' && a.type === side).map((a) => `<option value="${a.code}" ${a.code === code ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+    const authorityOption = (kind, id) => `<option value="">Use no default</option>${TAX_AUTHORITIES.filter((a) => authorityHas(a, kind) && a.active !== false).map((a) => `<option value="${e(a.id)}" ${a.id === id ? 'selected' : ''}>${e(a.name)}${a.registration ? ' · ' + e(a.registration) : ''}</option>`).join('')}`;
+    const side = {input: 'asset', output: 'liability', advance_income: 'asset', advance_sales: 'asset', withholding_income: 'liability', withholding_sales: 'liability'};
     return `<section class="panel">
-      <div class="panel-head"><h2>Default tax accounts</h2><span class="badge">Used by documents</span></div>
-      <form class="panel-body form-grid" data-tax-defaults>
-        <label>Output sales tax<select name="output" class="inline-input">${option(TAX_DEFAULTS.output, 'liability')}</select></label>
-        <label>Input tax<select name="input" class="inline-input">${option(TAX_DEFAULTS.input, 'asset')}</select></label>
-        <label>Income tax withholding payable<select name="withholdingIncome" class="inline-input">${option(TAX_DEFAULTS.withholdingIncome, 'liability')}</select></label>
-        <label>Sales tax withheld<select name="withholdingSales" class="inline-input">${option(TAX_DEFAULTS.withholdingSales, 'liability')}</select></label>
-        <label>Advance income tax receivable<select name="advanceIncome" class="inline-input">${option(TAX_DEFAULTS.advanceIncome, 'asset')}</select></label>
-        <label>Advance sales tax receivable<select name="advanceSales" class="inline-input">${option(TAX_DEFAULTS.advanceSales, 'asset')}</select></label>
+      <div class="panel-head"><h2>Default tax accounts and authorities</h2><span class="badge">Used by documents</span></div>
+      <form class="panel-body" data-tax-defaults>
+        <div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Tax nature</th><th>Control account</th><th>Default authority</th></tr></thead><tbody>
+          ${TAX_KINDS.map(([kind, label]) => `<tr><td>${e(label)}</td><td><select name="${kind}" class="inline-input" aria-label="${e(label)} control account">${accountOption(TAX_DEFAULTS[taxNatureMeta(kind).defaultKey], side[kind])}</select></td><td><select name="${kind}Authority" class="inline-input" aria-label="${e(label)} default authority">${authorityOption(kind, TAX_DEFAULT_AUTHORITIES[kind])}</select></td></tr>`).join('')}
+        </tbody></table></div>
         <div class="related"><button class="button primary">Save default accounts</button></div>
       </form>
       <div class="panel-body"><div class="section-title">Sales tax basis for calculation</div>
@@ -3867,7 +3991,7 @@ const ITEM_ACCOUNT_RULES = [
           <div class="wide"><p class="form-note">Some authorities tax the original price before a discount, others tax what the customer pays. This is a policy, not a document choice.</p></div>
           <div class="related"><button class="button primary">Save tax calculation</button></div>
         </form></div>
-        <div class="panel-body"><p class="form-note">Six kinds of tax: input, output, advance income, advance sales, withholding income and withholding sales. Each has its own control account; only accounts with the tax subtype and the correct side are offered. Authorities are sub-accounts of those controls. Stored for this session.</p></div>
+        <div class="panel-body"><p class="form-note">Each nature has one control account and one default authority. Only tax-subtype accounts of the correct side are offered, and only authorities assigned to that nature. These defaults fill invoices, bills and rules; a document can change its authority. Stored for this session.</p></div>
     </section>`;
   }
   function advanceOpen(a) { return round2(Number(a.amount || 0) - Number(a.applied || 0)); }
@@ -4114,7 +4238,8 @@ const ITEM_ACCOUNT_RULES = [
     return ageing();
   }
   function taxPage(id) {
-    if (TAX_TABS.some(([k]) => k === id)) TAX_ACTIVE = id;
+    if (id === 'parties') { TAX_ACTIVE = 'reconciliation'; TAX_RECON_TAB = 'balances'; }
+    else if (TAX_TABS.some(([k]) => k === id)) TAX_ACTIVE = id;
     return `<div id="tax-panel">${taxPanel(TAX_ACTIVE)}</div>`;
   }
   function taxKindLabel(kind) {
@@ -4137,10 +4262,13 @@ const ITEM_ACCOUNT_RULES = [
       {account: offsetAccount, party: party || '', authority: '', debit: debitControl ? 0 : amount, credit: debitControl ? amount : 0},
     ];
   }
-  function taxAuthorityFor(kind, rate) {
-    const rule = TAX_RULES.find((r) => r.kind === kind && (rate === undefined || Number(r.rate) === Number(rate)) && r.authority);
-    const byRule = rule ? TAX_AUTHORITIES.find((a) => a.id === rule.authority) : null;
-    return byRule || TAX_AUTHORITIES.find((a) => authorityHas(a, kind)) || {id: '', name: '—', registration: ''};
+  function defaultAuthorityFor(kind) {
+    return TAX_AUTHORITIES.find((a) => a.id === TAX_DEFAULT_AUTHORITIES[kind] && a.active !== false && authorityHas(a, kind))
+      || TAX_AUTHORITIES.find((a) => authorityHas(a, kind) && a.active !== false)
+      || {id: '', name: '—', registration: ''};
+  }
+  function documentAuthority(doc, kind) {
+    return (doc && TAX_AUTHORITIES.find((a) => a.id === doc.taxAuthority)) || defaultAuthorityFor(kind);
   }
   function taxEntries() {
     const entries = [];
@@ -4150,7 +4278,7 @@ const ITEM_ACCOUNT_RULES = [
       (inv.lines || []).forEach((l, i) => {
         const amount = invLineTax(l);
         if (!amount) return;
-        const authority = taxAuthorityFor(kind, l.tax);
+        const authority = documentAuthority(inv, kind);
         entries.push({id: 'TE-' + inv.id + '-' + i, date: inv.date, document: inv.id, docKind: inv.kind, party: inv.party, kind, authority: authority.id, authorityName: authority.name, base: invLineNet(l), rate: l.tax, amount, period: inv.date.slice(0, 7)});
       });
       (inv.withholding || []).forEach((w, i) => {
@@ -4158,7 +4286,7 @@ const ITEM_ACCOUNT_RULES = [
         const amount = whtAmount(w, totals);
         if (!amount) return;
         const k = w.type === 'advance_sales' ? 'advance_sales' : w.type === 'advance' || w.type === 'advance_income' ? 'advance_income' : w.type === 'sales' || w.type === 'withholding_sales' ? 'withholding_sales' : 'withholding_income';
-        const auth = taxAuthorityFor(k, w.rate === 'custom' ? undefined : w.rate);
+        const auth = (TAX_AUTHORITIES.find((a) => a.id === inv.taxAuthority && authorityHas(a, k))) || defaultAuthorityFor(k);
         entries.push({id: 'TE-' + inv.id + '-W' + i, date: inv.date, document: inv.id, docKind: inv.kind, party: inv.party, kind: k, authority: auth.id, authorityName: auth.name, base: totals.net, rate: w.rate === 'custom' ? 'custom' : w.rate, amount, period: inv.date.slice(0, 7)});
       });
     });
@@ -4166,7 +4294,7 @@ const ITEM_ACCOUNT_RULES = [
       if (d.subtype !== 'Invoice' && d.subtype !== 'Bill') return;
       const sale = d.subtype === 'Invoice';
       const kind = sale ? 'output' : 'input';
-      const authority = taxAuthorityFor(kind);
+      const authority = TAX_AUTHORITIES.find((a) => a.id === TAX_FIXTURE_AUTHORITIES[kind]) || defaultAuthorityFor(kind);
       const taxLine = d.lines.find((l) => l.account === (sale ? '2200' : '1300'));
       const base = round2(d.lines.filter((l) => (sale ? String(l.account).startsWith('4') : String(l.account).startsWith('5'))).reduce((n, l) => n + (sale ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
       const amount = round2(taxLine ? (sale ? num(taxLine.credit) - num(taxLine.debit) : num(taxLine.debit) - num(taxLine.credit)) : 0);
@@ -4176,13 +4304,13 @@ const ITEM_ACCOUNT_RULES = [
         if (!map[l.account]) return;
         const amt = round2(sale ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit));
         if (!amt) return;
-        const whtAuth = taxAuthorityFor(map[l.account]); entries.push({id: 'TE-' + d.id + '-W' + i, date: d.date, document: d.id, docKind: sale ? 'sales' : 'purchase', party: d.party, kind: map[l.account], authority: whtAuth.id, authorityName: whtAuth.name, base: amt, rate: 'custom', amount: amt, period: d.date.slice(0, 7)});
+        const whtAuth = TAX_AUTHORITIES.find((a) => a.id === TAX_FIXTURE_AUTHORITIES[map[l.account]]) || defaultAuthorityFor(map[l.account]); entries.push({id: 'TE-' + d.id + '-W' + i, date: d.date, document: d.id, docKind: sale ? 'sales' : 'purchase', party: d.party, kind: map[l.account], authority: whtAuth.id, authorityName: whtAuth.name, base: amt, rate: 'custom', amount: amt, period: d.date.slice(0, 7)});
       });
     });
     RETURNS.sales.concat(RETURNS.purchase).forEach((r) => {
       const sale = r.id.startsWith('SR-');
       const kind = sale ? 'output' : 'input';
-      const authority = taxAuthorityFor(kind);
+      const authority = documentAuthority(r, kind);
       const rate = r.net ? round2((r.tax / r.net) * 100) : 0;
       entries.push({id: 'TE-' + r.id, date: r.date, document: r.id, docKind: sale ? 'sales-return' : 'purchase-return', party: r.party, kind, authority: authority.id, authorityName: authority.name, base: r.net, rate, amount: -round2(r.tax), period: r.date.slice(0, 7)});
     });
@@ -4196,14 +4324,13 @@ const ITEM_ACCOUNT_RULES = [
     const entries = taxEntries();
     const kind = TAX_AUTH_TAB;
     const f = TAX_AUTH_FILTER;
-    const rows = TAX_AUTHORITIES.filter((a) => authorityHas(a, kind)
-      && (!f.q || (a.name + ' ' + a.registration + ' ' + (a.jurisdiction || '')).toLowerCase().includes(f.q.toLowerCase())))
-      .map((a) => {
-        const mine = entries.filter((e) => e.kind === kind && e.authority === a.id && (!f.asof || e.date <= f.asof));
-        return {...a, count: mine.length, base: round2(mine.reduce((n, e) => n + Number(e.base || 0), 0)), tax: round2(mine.reduce((n, e) => n + Number(e.amount || 0), 0))};
-      });
-    rows.sort((a, b) => { const x = f.sort.key === 'balance' ? a.tax : a[f.sort.key]; const y = f.sort.key === 'balance' ? b.tax : b[f.sort.key]; const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? '')); return f.sort.dir === 'desc' ? -d : d; });
-    const sortBtn = (key, label) => `<button class="sortable" data-tax-auth-sort="${key}">${label}<span class="sort-mark">${f.sort.key === key ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button>`;
+    const all = TAX_AUTHORITIES.filter((a) => authorityHas(a, kind)).map((a) => {
+      const mine = entries.filter((e) => e.kind === kind && e.authority === a.id && (!f.asof || e.date <= f.asof));
+      return {...a, count: mine.length, base: round2(mine.reduce((n, e) => n + Number(e.base || 0), 0)), tax: round2(mine.reduce((n, e) => n + Number(e.amount || 0), 0))};
+    });
+    const searched = all.filter((a) => !f.q || (a.name + ' ' + a.registration + ' ' + (a.jurisdiction || '') + ' ' + a.frequency).toLowerCase().includes(f.q.toLowerCase()));
+    const rows = taxSortRows(taxFilterRows(searched, f), f);
+    const cols = [['name', 'Authority'], ['registration', 'Registration'], ['jurisdiction', 'Jurisdiction'], ['frequency', 'Frequency'], ['count', 'Entries', 'numeric', false], ['base', 'Taxable base', 'numeric', false], ['tax', 'Tax balance', 'numeric', false]];
     return `<div class="tabs" role="tablist" aria-label="Authority tax kinds">${TAX_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-auth-kind="${k}">${label}</button>`).join('')}</div>
       <form class="filterbar" data-tax-auth-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Authority, registration, jurisdiction"></label>
@@ -4211,9 +4338,10 @@ const ITEM_ACCOUNT_RULES = [
         <button class="button" type="button" data-tax-auth-reset>Reset</button>
         <button class="button primary" type="button" data-tax-auth-new>New authority</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>${e(taxKindLabel(kind))} authorities</h2><span class="badge">${rows.length} authorities</span></div>
-      <div class="table-scroll"><table><thead><tr><th>${sortBtn('name', 'Authority')}</th><th>${sortBtn('registration', 'Registration')}</th><th>${sortBtn('jurisdiction', 'Jurisdiction')}</th><th>Frequency</th><th class="numeric">${sortBtn('count', 'Entries')}</th><th class="numeric">Taxable base</th><th class="numeric">${sortBtn('balance', 'Tax balance')}</th></tr></thead>
-      <tbody>${rows.map((a) => `<tr class="row-link" data-tax-auth-open="${e(a.id)}"><td>${e(a.name)}</td><td class="mono">${e(a.registration)}</td><td>${e(a.jurisdiction || '—')}</td><td>${e(a.frequency)}</td><td class="numeric">${a.count}</td><td class="numeric">${money(a.base)}</td><td class="numeric">${money(a.tax)}</td></tr>`).join('') || '<tr><td colspan="7">No authority for this kind.</td></tr>'}</tbody>
+      <section class="panel"><div class="panel-head"><h2>${e(taxKindLabel(kind))} authorities</h2><div class="related"><span class="badge">${rows.length} of ${all.length} authorities</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <div class="table-scroll"><table class="tax-register">
+        ${taxTableHead('taxauth', f, cols, all)}
+        <tbody>${rows.map((a) => `<tr class="row-link" data-tax-auth-open="${e(a.id)}"><td>${e(a.name)}${a.active === false ? ' · archived' : ''}</td><td class="mono">${e(a.registration)}</td><td>${e(a.jurisdiction || '—')}</td><td>${e(a.frequency)}</td><td class="numeric">${a.count}</td><td class="numeric">${money(a.base)}</td><td class="numeric">${money(a.tax)}</td></tr>`).join('') || '<tr><td colspan="7">No authority for this kind.</td></tr>'}</tbody>
       <tfoot><tr><td colspan="4">Total</td><td class="numeric">${rows.reduce((n, a) => n + a.count, 0)}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.base, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, a) => n + a.tax, 0)))}</td></tr></tfoot></table></div>
       <div class="table-footer">An authority can serve several tax natures; it appears in every tab it is assigned to. Balance is the sum of tax entries up to the chosen date. Click a row to edit the authority.</div></section>`;
   }
@@ -4232,32 +4360,38 @@ const ITEM_ACCOUNT_RULES = [
         <div class="wide"><span class="ms-label">Applies to tax natures</span><div class="checkgrid" data-auth-kinds>${TAX_KINDS.map(([k, l]) => `<label class="checkgrid-row"><input type="checkbox" value="${k}" ${(v('kinds', []) || []).includes(k) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></div>
         <div class="related"><button class="button primary">${a ? 'Save changes' : 'Add authority'}</button><button type="button" class="button" data-tax-authority-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">One authority can cover all six natures or only some. Authorities are sub-accounts of the tax-nature control; a tax rule points at the authority.</p></div>
+      <div class="panel-body"><p class="form-note">One authority can cover all six natures or only some. Authorities are sub-accounts of the tax-nature control. The default authority per nature is set under Default accounts; invoices and bills can override it.</p></div>
     </section>`;
   }
   function taxEntriesPanel() {
     const f = TAX_ENTRY_FILTER;
-    const all = taxEntries();
-    let rows = all.filter((e) => (!f.q || (e.document + ' ' + e.party + ' ' + (e.authorityName || '')).toLowerCase().includes(f.q.toLowerCase()))
-      && (!f.kind || e.kind === f.kind) && (!f.authority || e.authority === f.authority)
+    const all = taxEntries().map((e) => ({...e, kindLabel: taxKindLabel(e.kind), authorityLabel: e.authorityName || '—', rateLabel: e.rate === 'custom' ? 'Custom' : e.rate === 'adjustment' ? 'Adjustment' : e.rate + '%'}));
+    const searched = all.filter((e) => (!f.q || (e.document + ' ' + e.party + ' ' + e.authorityLabel).toLowerCase().includes(f.q.toLowerCase()))
       && (!f.from || e.date >= f.from) && (!f.to || e.date <= f.to));
-    rows = rows.slice().sort((a, b) => { const pick = (row) => f.sort.key === 'authority' ? (row.authorityName || '') : (row[f.sort.key] ?? ''); const x = pick(a), y = pick(b); const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y)); return f.sort.dir === 'desc' ? -d : d; });
-    const authorities = [...new Map(all.filter((e) => e.authority).map((e) => [e.authority, e.authorityName])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
+    const rows = taxSortRows(taxFilterRows(searched, f), f);
+    const cols = [['date', 'Date', '', false], ['document', 'Document'], ['party', 'Party'], ['kindLabel', 'Kind'], ['authorityLabel', 'Authority'], ['base', 'Taxable base', 'numeric', false], ['rateLabel', 'Rate'], ['amount', 'Tax', 'numeric', false], ['period', 'Period']];
     return `<form class="filterbar" data-tax-entry-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Document, party, authority"></label>
         <label>From<input type="date" name="from" value="${e(f.from)}"></label>
         <label>To<input type="date" name="to" value="${e(f.to)}"></label>
-        <label>Kind<select name="kind"><option value="">All kinds</option>${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${f.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label>Authority<select name="authority"><option value="">All authorities</option>${authorities.map(([id, name]) => `<option value="${e(id)}" ${f.authority === id ? 'selected' : ''}>${e(name)}</option>`).join('')}</select></label>
         <button class="button" type="button" data-tax-entry-reset>Reset</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>Tax entries</h2><span class="badge">${rows.length} entries</span></div>
-      <div class="table-scroll"><table class="pay-register"><thead><tr>${[['date','Date'],['document','Document'],['party','Party'],['kind','Kind'],['authority','Authority'],['base','Taxable base'],['rate','Rate'],['amount','Tax'],['period','Period']].map(([k,l]) => `<th class="${['base','rate','amount'].includes(k) ? 'numeric' : ''}"><button class="sortable" data-tax-entry-sort="${k}">${l}<span class="sort-mark">${f.sort.key===k?(f.sort.dir==='asc'?'▲':'▼'):''}</span></button></th>`).join('')}</tr></thead>
-      <tbody>${rows.map((e) => `<tr class="row-link" data-tax-doc="${e.docKind}:${e.document}"><td>${e.date}</td><td class="mono">${e.document}</td><td>${e.party}</td><td>${taxKindLabel(e.kind)}</td><td>${e.authorityName || '—'}</td><td class="numeric">${e.base ? money(e.base) : '—'}</td><td class="numeric">${e.rate === 'custom' ? 'custom' : e.rate === 'adjustment' ? '—' : e.rate + '%'}</td><td class="numeric">${money(e.amount)}</td><td>${e.period}</td></tr>`).join('') || '<tr><td colspan="9">No tax entries match these filters.</td></tr>'}</tbody>
+      <section class="panel"><div class="panel-head"><h2>Tax entries</h2><div class="related"><span class="badge">${rows.length} of ${all.length} entries</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <div class="table-scroll"><table class="tax-register">
+        ${taxTableHead('taxentry', f, cols, all)}
+        <tbody>${rows.map((e) => `<tr class="row-link" data-tax-doc="${e.docKind}:${e.document}"><td>${e.date}</td><td class="mono">${e.document}</td><td>${e.party}</td><td>${e.kindLabel}</td><td>${e.authorityLabel}</td><td class="numeric">${e.base ? money(e.base) : '—'}</td><td class="numeric">${e.rateLabel}</td><td class="numeric">${money(e.amount)}</td><td>${e.period}</td></tr>`).join('') || '<tr><td colspan="9">No tax entries match these filters.</td></tr>'}</tbody>
       <tfoot><tr><td colspan="5">Total shown</td><td class="numeric">${money(round2(rows.reduce((n, e) => n + e.base, 0)))}</td><td></td><td class="numeric">${money(round2(rows.reduce((n, e) => n + e.amount, 0)))}</td><td></td></tr></tfoot></table></div>
       <div class="table-footer">Entries come from invoices, bills, returns and tax reconciliations; they are never typed here. Click a row to open the document that created it, or the reconciliation for an adjustment.</div></section>`;
   }
-  function taxPartyReconPanel() {
+  function taxReconciliationPage() {
+    const tab = TAX_RECON_TAB === 'balances' ? 'balances' : 'register';
+    return `<div class="tabs" role="tablist" aria-label="Reconciliation views">
+        <button type="button" role="tab" aria-selected="${tab === 'balances'}" data-tax-recon-tab="balances">Party balances</button>
+        <button type="button" role="tab" aria-selected="${tab === 'register'}" data-tax-recon-tab="register">Reconciliations</button>
+      </div>
+      ${tab === 'balances' ? taxPartyBalancesPanel() : taxReconciliationRegisterPanel()}`;
+  }
+  function taxPartyBalancesPanel() {
     const f = TAX_PARTY_FILTER;
     const entries = taxEntries();
     const map = new Map();
@@ -4267,47 +4401,68 @@ const ITEM_ACCOUNT_RULES = [
       row.base = round2(row.base + e.base); row.tax = round2(row.tax + e.amount); row.count++;
       map.set(key, row);
     });
-    let rows = [...map.values()].filter((r) => (!f.q || r.party.toLowerCase().includes(f.q.toLowerCase())) && (!f.kind || r.kind === f.kind) && (!f.status || (TAX_PARTY_STATUS.get(r.key) || 'Unverified') === f.status));
-    rows = rows.sort((a, b) => { const x = f.sort.key === 'tax' ? a.tax : a[f.sort.key]; const y = f.sort.key === 'tax' ? b.tax : b[f.sort.key]; const d = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y)); return f.sort.dir === 'desc' ? -d : d; });
-    const sortBtn = (k, l) => `<button class="sortable" data-tax-party-sort="${k}">${l}<span class="sort-mark">${f.sort.key === k ? (f.sort.dir === 'asc' ? '▲' : '▼') : ''}</span></button>`;
+    const all = [...map.values()].map((r) => ({...r, kindLabel: taxKindLabel(r.kind), status: TAX_PARTY_STATUS.get(r.key) || 'Unverified'}));
+    const searched = all.filter((r) => !f.q || r.party.toLowerCase().includes(f.q.toLowerCase()));
+    const rows = taxSortRows(taxFilterRows(searched, f), f);
+    const cols = [['party', 'Party'], ['kindLabel', 'Kind'], ['count', 'Entries', 'numeric', false], ['base', 'Base', 'numeric', false], ['tax', 'Tax', 'numeric', false], ['status', 'Status']];
     return `<form class="filterbar" data-tax-party-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Party"></label>
-        <label>Kind<select name="kind"><option value="">All kinds</option>${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${f.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label>Status<select name="status"><option value="">Any status</option>${['Unverified', 'Verified', 'At risk'].map((x) => `<option ${f.status === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <button class="button" type="button" data-tax-party-reset>Reset</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>Party tax reconciliation</h2><span class="badge">${rows.length} party/kind balances</span></div>
-      <div class="table-scroll"><table><thead><tr><th>${sortBtn('party', 'Party')}</th><th>${sortBtn('kind', 'Kind')}</th><th class="numeric">Entries</th><th class="numeric">Base</th><th class="numeric">${sortBtn('tax', 'Tax')}</th><th>Status</th><th></th></tr></thead>
-      <tbody>${rows.map((r) => { const status = TAX_PARTY_STATUS.get(r.key) || 'Unverified'; return `<tr><td>${e(r.party)}</td><td>${taxKindLabel(r.kind)}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.base)}</td><td class="numeric">${money(r.tax)}</td><td>${badge(status, status === 'Verified' ? 'good' : status === 'At risk' ? 'warn' : '')}</td><td><button type="button" class="text-button" data-tax-party="${e(r.key)}">${status === 'Verified' ? 'Mark at risk' : 'Mark verified'}</button></td></tr>`; }).join('') || '<tr><td colspan="7">No party tax entries match these filters.</td></tr>'}</tbody>
-      <tfoot><tr><td colspan="2">Total</td><td class="numeric">${rows.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.base, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td colspan="2"></td></tr></tfoot></table></div>
-      <div class="table-footer">Party tax balances come from tax entries, not a GL sub-account. Use Reconciliation to adjust a party and its authority when a claim is invalid or a filing changes.</div></section>`;
+      <section class="panel"><div class="panel-head"><h2>Party tax balances</h2><div class="related"><span class="badge">${rows.length} of ${all.length} party/kind balances</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <div class="table-scroll"><table class="tax-register">
+        ${taxTableHead('taxparty', f, cols, all)}
+        <tbody>${rows.map((r) => `<tr><td>${e(r.party)}</td><td>${e(r.kindLabel)}</td><td class="numeric">${r.count}</td><td class="numeric">${money(r.base)}</td><td class="numeric">${money(r.tax)}</td><td>${badge(r.status, r.status === 'Verified' ? 'good' : r.status === 'At risk' ? 'warn' : '')}<button type="button" class="text-button" data-tax-party="${e(r.key)}">${r.status === 'Verified' ? 'Mark at risk' : 'Mark verified'}</button></td></tr>`).join('') || '<tr><td colspan="6">No party tax entries match these filters.</td></tr>'}</tbody>
+        <tfoot><tr><td colspan="2">Total</td><td class="numeric">${rows.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.base, 0)))}</td><td class="numeric">${money(round2(rows.reduce((n, r) => n + r.tax, 0)))}</td><td></td></tr></tfoot></table></div>
+      <div class="table-footer">Party tax balances come from tax entries, not a GL sub-account. Use the Reconciliations tab to adjust a party and its authority when a claim is invalid or a filing changes.</div></section>`;
   }
-  function taxReconciliationPanel() {
-    const recs = TAX_RECONCILIATIONS.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  function taxReconciliationRegisterPanel() {
+    const f = TAX_RECON_FILTER;
     const authorityName = (id) => (TAX_AUTHORITIES.find((a) => a.id === id) || {}).name || '—';
-    return `<section class="panel"><div class="panel-head"><h2>Tax reconciliations</h2><span class="badge">${recs.length} adjustment${recs.length === 1 ? '' : 's'}</span></div>
-      <div class="table-scroll"><table class="recon-register"><thead><tr><th>Date</th><th>Reference</th><th>Nature</th><th>Party</th><th>Authority</th><th class="numeric">Amount</th><th>Offset</th><th>Reason</th><th></th></tr></thead>
-      <tbody>${recs.map((r) => {
-        const open = TAX_RECON_OPEN.has(r.id);
-        const entry = r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, r.offset || 'pnl', r.authority);
-        const detail = open ? `<tr class="entry-detail"><td colspan="9">${ledgerIllustration('Adjustment ' + r.id, entry, 'A separate voucher: the tax control line carries authority ' + authorityName(r.authority) + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}</td></tr>` : '';
-        return `<tr><td>${r.date}</td><td class="mono">${r.id}</td><td>${taxKindLabel(r.kind)}</td><td>${e(r.party)}</td><td>${e(authorityName(r.authority))}</td><td class="numeric" title="${r.direction === 'decrease' ? 'Decrease' : 'Increase'}">${r.direction === 'decrease' ? '−' : '+'}${money(r.amount)}</td><td>${taxOffsetLabel(r.offset)}</td><td>${e(r.reason)}</td><td><button type="button" class="text-button" data-tax-recon-toggle="${e(r.id)}" aria-expanded="${open}">${open ? 'Hide entry' : 'Entry'}</button></td></tr>${detail}`;
-      }).join('') || '<tr><td colspan="9">No tax reconciliations yet.</td></tr>'}</tbody></table></div>
-      <div class="table-footer">A reconciliation adjusts the party and the authority sub-account without editing the original invoice or bill. A decrease in input tax reduces the party claim and the authority balance; it is the correct way to handle a supplier default or a rejected claim. Open <strong>Entry</strong> to see the debit and credit.</div></section>
-      <section class="panel"><div class="panel-head"><h2>Record a tax reconciliation</h2><span class="badge">Adjustment voucher</span></div>
-      <form class="panel-body form-grid" data-tax-recon-form>
-        <label>Nature<select name="kind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
-        <label>Authority<select name="authority" class="inline-input"><option value="">Choose authority</option>${TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}">${e(a.name)} · ${(a.kinds || []).map(taxKindLabel).join(', ')}</option>`).join('')}</select></label>
-        <label>Party<select name="party" class="inline-input" required><option value="">Choose party</option>${PARTIES.map((p) => `<option value="${e(p.name)}">${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="2026-11-30" required></label>
-        <label>Direction<select name="direction" class="inline-input"><option value="decrease">Decrease the tax balance</option><option value="increase">Increase the tax balance</option></select></label>
-        <label>Offset<select name="offset" class="inline-input"><option value="pnl">Profit &amp; loss — tax adjustment expense / income</option><option value="party">Party balance — receivable / payable</option></select></label>
-        <label>Amount<input name="amount" inputmode="decimal" placeholder="0.00" required></label>
-        <label class="wide">Reason<input name="reason" maxlength="100" placeholder="Supplier default, rejected claim, filing correction" required></label>
-        <div class="wide" data-tax-recon-preview></div>
-        <div class="related"><button class="button primary">Record adjustment</button></div>
+    const all = TAX_RECONCILIATIONS.map((r) => ({...r, kindLabel: taxKindLabel(r.kind), authorityLabel: authorityName(r.authority), offsetLabel: taxOffsetLabel(r.offset), signed: (r.direction === 'decrease' ? -1 : 1) * r.amount}));
+    const searched = all.filter((r) => (!f.q || (r.id + ' ' + r.party + ' ' + r.authorityLabel + ' ' + r.reason).toLowerCase().includes(f.q.toLowerCase()))
+      && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to));
+    const rows = taxSortRows(taxFilterRows(searched, f), f);
+    const cols = [['date', 'Date', '', false], ['id', 'Reference'], ['kindLabel', 'Nature'], ['party', 'Party'], ['authorityLabel', 'Authority'], ['signed', 'Amount', 'numeric', false], ['offsetLabel', 'Offset'], ['reason', 'Reason']];
+    return `<form class="filterbar" data-tax-recon-filter>
+        <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Reference, party, authority, reason"></label>
+        <label>From<input type="date" name="from" value="${e(f.from)}"></label>
+        <label>To<input type="date" name="to" value="${e(f.to)}"></label>
+        <button class="button" type="button" data-tax-recon-reset>Reset</button>
+        <button class="button primary" type="button" data-tax-recon-new>New reconciliation</button>
       </form>
-      <div class="panel-body"><p class="form-note">The adjustment is its own voucher, not an edit of the source document. The tax control line carries the authority; every line carries the party. <strong>Profit &amp; loss</strong> uses Tax adjustment expense or income; <strong>party balance</strong> uses trade receivables or payables, so AR/AP moves only when that offset is chosen.</p></div></section>`;
+      <section class="panel"><div class="panel-head"><h2>Tax reconciliations</h2><div class="related"><span class="badge">${rows.length} of ${all.length} adjustments</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <div class="table-scroll"><table class="recon-register tax-register">
+        ${taxTableHead('taxrecon', f, cols, all)}
+        <tbody>${rows.map((r) => {
+          const open = TAX_RECON_OPEN.has(r.id);
+          const entry = r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, r.offset || 'pnl', r.authority);
+          const detail = open ? `<tr class="entry-detail"><td colspan="8">${ledgerIllustration('Adjustment ' + r.id, entry, 'A separate voucher: the tax control line carries authority ' + authorityName(r.authority) + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}</td></tr>` : '';
+          return `<tr class="row-link" data-tax-recon-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${r.id}</td><td>${e(r.kindLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td class="numeric" title="${r.direction === 'decrease' ? 'Decrease' : 'Increase'}">${r.direction === 'decrease' ? '−' : '+'}${money(r.amount)}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
+        }).join('') || '<tr><td colspan="8">No tax reconciliations yet. Use New reconciliation to record one.</td></tr>'}</tbody></table></div>
+      <div class="table-footer">A reconciliation adjusts the party and the authority sub-account without editing the original invoice or bill. Click a row to show or hide its debit and credit entry. The form opens on its own page.</div></section>`;
+  }
+  function taxReconciliationEditor(code) {
+    const r = code ? TAX_RECONCILIATIONS.find((x) => x.id === code) : null;
+    const v = (key, fallback = '') => (r && r[key] !== undefined ? r[key] : fallback);
+    const defaultKind = v('kind', 'input');
+    const defaultAuth = v('authority', TAX_DEFAULT_AUTHORITIES[defaultKind] || '');
+    return `<section class="panel">
+      <div class="panel-head"><h2>${r ? e(r.id) : 'New tax reconciliation'}</h2><span class="badge">Adjustment voucher</span></div>
+      <form class="panel-body form-grid" data-tax-recon-form data-editing="${r ? e(r.id) : ''}">
+        <label>Nature<select name="kind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${defaultKind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label>Authority<select name="authority" class="inline-input"><option value="">Choose authority</option>${TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${defaultAuth === a.id ? 'selected' : ''}>${e(a.name)} · ${(a.kinds || []).map(taxKindLabel).join(', ')}</option>`).join('')}</select></label>
+        <label>Party<select name="party" class="inline-input" required><option value="">Choose party</option>${PARTIES.map((p) => `<option value="${e(p.name)}" ${v('party') === p.name ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+        <label>Date<input name="date" type="date" value="${e(v('date', '2026-11-30'))}" required></label>
+        <label>Direction<select name="direction" class="inline-input"><option value="decrease" ${v('direction', 'decrease') === 'decrease' ? 'selected' : ''}>Decrease the tax balance</option><option value="increase" ${v('direction') === 'increase' ? 'selected' : ''}>Increase the tax balance</option></select></label>
+        <label>Offset<select name="offset" class="inline-input"><option value="pnl" ${v('offset', 'pnl') === 'pnl' ? 'selected' : ''}>Profit &amp; loss — tax adjustment expense / income</option><option value="party" ${v('offset') === 'party' ? 'selected' : ''}>Party balance — receivable / payable</option></select></label>
+        <label>Amount<input name="amount" inputmode="decimal" placeholder="0.00" value="${e(v('amount'))}" required></label>
+        <label class="wide">Reason<input name="reason" maxlength="100" value="${e(v('reason'))}" placeholder="Supplier default, rejected claim, filing correction" required></label>
+        <div class="wide" data-tax-recon-preview></div>
+        <div class="related"><button class="button primary">${r ? 'Save changes' : 'Record adjustment'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+      </form>
+      <div class="panel-body"><p class="form-note">The adjustment is its own voucher, not an edit of the source document. The tax control line carries the authority; every line carries the party. <strong>Profit &amp; loss</strong> uses Tax adjustment expense or income; <strong>party balance</strong> uses trade receivables or payables, so AR/AP moves only when that offset is chosen.</p></div>
+    </section>`;
   }
   function taxesView() {
     const current = TAX_TABS.some(([k]) => k === TAX_ACTIVE) ? TAX_ACTIVE : 'rules';
@@ -4315,7 +4470,8 @@ const ITEM_ACCOUNT_RULES = [
       <div id="tax-panel">${taxPanel(current)}</div>`;
   }
   function bindTaxes(rerender, notify, navigate) {
-    const goBack = () => navigate({module: 'tax', tab: 'rules'});
+    const goRules = () => navigate({module: 'tax', tab: 'rules'});
+    const goRecon = () => navigate({module: 'tax', tab: 'reconciliation'});
     document.querySelectorAll('[data-tax-tab]').forEach((btn) => btn.addEventListener('click', () => {
       TAX_ACTIVE = btn.dataset.taxTab;
       rerender();
@@ -4325,7 +4481,17 @@ const ITEM_ACCOUNT_RULES = [
       if (type !== 'tax') return;
       navigate({module: 'tax', tab: 'rules', mode: 'editor', code});
     }));
-    document.querySelector('[data-tax-form] [data-form-cancel]')?.addEventListener('click', goBack);
+    const ruleFilter = document.querySelector('[data-tax-rule-filter]');
+    if (ruleFilter) {
+      let timer = 0;
+      ruleFilter.addEventListener('input', (ev) => {
+        TAX_RULE_FILTER.q = ev.target.value;
+        clearTimeout(timer); timer = setTimeout(() => rerender(), 150);
+      });
+    }
+    document.querySelector('[data-tax-rule-reset]')?.addEventListener('click', () => { Object.assign(TAX_RULE_FILTER, {q: '', cf: {}}); rerender(); });
+    bindTaxColumnMenus('taxrule', TAX_RULE_FILTER, rerender);
+    document.querySelector('[data-tax-form] [data-form-cancel]')?.addEventListener('click', goRules);
     const scopeSel = document.querySelector('[data-tax-form] [name="scopeType"]');
     if (scopeSel) {
       const groupLabel = document.querySelector('[data-tax-form] [name="group"]')?.closest('label');
@@ -4341,14 +4507,18 @@ const ITEM_ACCOUNT_RULES = [
     document.querySelectorAll('[data-tax-auth-kind]').forEach((b) => b.addEventListener('click', () => { TAX_AUTH_TAB = b.dataset.taxAuthKind; rerender(); }));
     const af = document.querySelector('[data-tax-auth-filter]');
     if (af) {
-      const apply = () => Object.assign(TAX_AUTH_FILTER, Object.fromEntries(new FormData(af)));
+      const apply = () => {
+        const v = Object.fromEntries(new FormData(af));
+        TAX_AUTH_FILTER.q = v.q || '';
+        TAX_AUTH_FILTER.asof = v.asof || '';
+      };
       af.addEventListener('input', (ev) => { apply(); if (ev.target.type === 'search') { clearTimeout(af._t); af._t = setTimeout(() => rerender(), 150); } });
       af.addEventListener('change', () => { apply(); rerender(); });
     }
-    document.querySelector('[data-tax-auth-reset]')?.addEventListener('click', () => { Object.assign(TAX_AUTH_FILTER, {q: '', asof: ''}); rerender(); });
+    document.querySelector('[data-tax-auth-reset]')?.addEventListener('click', () => { Object.assign(TAX_AUTH_FILTER, {q: '', asof: '', cf: {}}); rerender(); });
     document.querySelector('[data-tax-auth-new]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'authorities', mode: 'editor', form: 'authority', code: ''}));
     document.querySelectorAll('[data-tax-auth-open]').forEach((tr) => tr.addEventListener('click', (ev) => { if (ev.target.closest('button')) return; navigate({module: 'tax', tab: 'authorities', mode: 'editor', form: 'authority', code: tr.dataset.taxAuthOpen}); }));
-    document.querySelectorAll('[data-tax-auth-sort]').forEach((b) => b.addEventListener('click', () => { const key = b.dataset.taxAuthSort; TAX_AUTH_FILTER.sort = {key, dir: TAX_AUTH_FILTER.sort.key === key && TAX_AUTH_FILTER.sort.dir === 'asc' ? 'desc' : 'asc'}; rerender(); }));
+    bindTaxColumnMenus('taxauth', TAX_AUTH_FILTER, rerender);
     const authorityForm = document.querySelector('[data-tax-authority-form]');
     authorityForm?.querySelector('[data-tax-authority-cancel]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'authorities'}));
     authorityForm?.addEventListener('submit', (ev) => {
@@ -4370,7 +4540,12 @@ const ITEM_ACCOUNT_RULES = [
     });
     const ef = document.querySelector('[data-tax-entry-filter]');
     if (ef) {
-      const apply = () => Object.assign(TAX_ENTRY_FILTER, Object.fromEntries(new FormData(ef)));
+      const apply = () => {
+        const v = Object.fromEntries(new FormData(ef));
+        TAX_ENTRY_FILTER.q = v.q || '';
+        TAX_ENTRY_FILTER.from = v.from || '';
+        TAX_ENTRY_FILTER.to = v.to || '';
+      };
       let timer = 0;
       ef.addEventListener('input', (ev) => {
         apply();
@@ -4379,7 +4554,7 @@ const ITEM_ACCOUNT_RULES = [
       });
       ef.addEventListener('change', () => { apply(); rerender(); });
     }
-    document.querySelector('[data-tax-entry-reset]')?.addEventListener('click', () => { Object.assign(TAX_ENTRY_FILTER, {q: '', from: '', to: '', kind: '', authority: ''}); rerender(); });
+    document.querySelector('[data-tax-entry-reset]')?.addEventListener('click', () => { Object.assign(TAX_ENTRY_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
     document.querySelectorAll('[data-tax-doc]').forEach((tr) => tr.addEventListener('click', () => {
       const [kind, id] = tr.dataset.taxDoc.split(':');
       if (kind === 'sales-return' || kind === 'purchase-return') {
@@ -4389,21 +4564,58 @@ const ITEM_ACCOUNT_RULES = [
       }
       if (kind === 'adjustment') {
         TAX_RECON_OPEN.add(id);
-        TAX_ACTIVE = 'reconciliation';
+        TAX_RECON_TAB = 'register';
         navigate({module: 'tax', tab: 'reconciliation'});
         return;
       }
       navigate({module: 'accounting', tab: kind === 'sales' ? 'sales-invoices' : 'purchase-invoices', mode: 'editor', form: 'invoice', code: id});
     }));
-    document.querySelectorAll('[data-tax-entry-sort]').forEach((b) => b.addEventListener('click', () => { const key = b.dataset.taxEntrySort; TAX_ENTRY_FILTER.sort = {key, dir: TAX_ENTRY_FILTER.sort.key === key && TAX_ENTRY_FILTER.sort.dir === 'asc' ? 'desc' : 'asc'}; rerender(); }));
+    bindTaxColumnMenus('taxentry', TAX_ENTRY_FILTER, rerender);
+    document.querySelectorAll('[data-tax-recon-tab]').forEach((b) => b.addEventListener('click', () => {
+      TAX_RECON_TAB = b.dataset.taxReconTab;
+      rerender();
+      try { window.scrollTo({top: 0, behavior: 'auto'}); } catch {}
+    }));
     const pf = document.querySelector('[data-tax-party-filter]');
     if (pf) {
-      const apply = () => Object.assign(TAX_PARTY_FILTER, Object.fromEntries(new FormData(pf)));
-      pf.addEventListener('input', (ev) => { apply(); if (ev.target.type === 'search') { clearTimeout(pf._t); pf._t = setTimeout(() => rerender(), 150); } });
-      pf.addEventListener('change', () => { apply(); rerender(); });
+      let timer = 0;
+      pf.addEventListener('input', (ev) => {
+        TAX_PARTY_FILTER.q = ev.target.value;
+        clearTimeout(timer); timer = setTimeout(() => rerender(), 150);
+      });
     }
-    document.querySelector('[data-tax-party-reset]')?.addEventListener('click', () => { Object.assign(TAX_PARTY_FILTER, {q: '', kind: '', status: ''}); rerender(); });
-    document.querySelectorAll('[data-tax-party-sort]').forEach((b) => b.addEventListener('click', () => { const key = b.dataset.taxPartySort; TAX_PARTY_FILTER.sort = {key, dir: TAX_PARTY_FILTER.sort.key === key && TAX_PARTY_FILTER.sort.dir === 'asc' ? 'desc' : 'asc'}; rerender(); }));
+    document.querySelector('[data-tax-party-reset]')?.addEventListener('click', () => { Object.assign(TAX_PARTY_FILTER, {q: '', cf: {}}); rerender(); });
+    bindTaxColumnMenus('taxparty', TAX_PARTY_FILTER, rerender);
+    const rf = document.querySelector('[data-tax-recon-filter]');
+    if (rf) {
+      const apply = () => {
+        const v = Object.fromEntries(new FormData(rf));
+        TAX_RECON_FILTER.q = v.q || '';
+        TAX_RECON_FILTER.from = v.from || '';
+        TAX_RECON_FILTER.to = v.to || '';
+      };
+      let timer = 0;
+      rf.addEventListener('input', (ev) => {
+        apply();
+        if (ev.target.matches('input[type="search"], input[type="text"]')) { clearTimeout(timer); timer = setTimeout(() => rerender(), 150); return; }
+        rerender();
+      });
+      rf.addEventListener('change', () => { apply(); rerender(); });
+    }
+    document.querySelector('[data-tax-recon-reset]')?.addEventListener('click', () => { Object.assign(TAX_RECON_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
+    document.querySelector('[data-tax-recon-new]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'reconciliation', mode: 'editor', form: 'reconciliation', code: ''}));
+    bindTaxColumnMenus('taxrecon', TAX_RECON_FILTER, rerender);
+    document.querySelectorAll('[data-tax-recon-toggle]').forEach((tr) => tr.addEventListener('click', (ev) => {
+      if (ev.target.closest('button, a, input, select')) return;
+      const id = tr.dataset.taxReconToggle;
+      if (TAX_RECON_OPEN.has(id)) TAX_RECON_OPEN.delete(id); else TAX_RECON_OPEN.add(id);
+      rerender();
+    }));
+    document.querySelectorAll('[data-tax-party]').forEach((b) => b.addEventListener('click', () => {
+      const key = b.dataset.taxParty;
+      TAX_PARTY_STATUS.set(key, TAX_PARTY_STATUS.get(key) === 'Verified' ? 'At risk' : 'Verified');
+      rerender();
+    }));
     const reconForm = document.querySelector('[data-tax-recon-form]');
     if (reconForm) {
       const preview = () => {
@@ -4422,8 +4634,17 @@ const ITEM_ACCOUNT_RULES = [
         box.innerHTML = ledgerIllustration('Illustrative adjustment entry', entry, note);
       };
       reconForm.addEventListener('input', preview);
-      reconForm.addEventListener('change', preview);
+      reconForm.addEventListener('change', (ev) => {
+        if (ev.target.name === 'kind') {
+          const kind = ev.target.value;
+          const auth = reconForm.querySelector('[name="authority"]');
+          const current = TAX_AUTHORITIES.find((a) => a.id === auth.value);
+          if (!current || !authorityHas(current, kind)) { auth.value = TAX_DEFAULT_AUTHORITIES[kind] || ''; auth.dispatchEvent(new Event('change', {bubbles: true})); }
+        }
+        preview();
+      });
       preview();
+      reconForm.querySelector('[data-form-cancel]')?.addEventListener('click', goRecon);
       reconForm.addEventListener('submit', (ev) => {
         ev.preventDefault();
         if (!reconForm.reportValidity()) return;
@@ -4433,29 +4654,28 @@ const ITEM_ACCOUNT_RULES = [
         if (!v.authority) { notify('Choose the tax authority.'); return; }
         const auth = TAX_AUTHORITIES.find((a) => a.id === v.authority);
         if (auth && !authorityHas(auth, v.kind)) { notify('That authority does not handle this tax nature.'); return; }
-        const id = 'TXR-2026-' + String(TAX_RECON_SEQ++).padStart(4, '0');
         const entry = taxAdjustmentEntry(v.kind, v.party, v.direction, amount, v.offset, v.authority);
-        TAX_RECONCILIATIONS.push({id, date: v.date, kind: v.kind, authority: v.authority, party: v.party, direction: v.direction, amount, offset: v.offset, reason: v.reason, entry});
+        const editing = reconForm.dataset.editing || '';
+        const record = TAX_RECONCILIATIONS.find((x) => x.id === editing);
+        const id = record ? record.id : 'TXR-2026-' + String(TAX_RECON_SEQ++).padStart(4, '0');
+        const values = {id, date: v.date, kind: v.kind, authority: v.authority, party: v.party, direction: v.direction, amount, offset: v.offset, reason: v.reason, entry};
+        if (record) Object.assign(record, values); else TAX_RECONCILIATIONS.push(values);
         TAX_RECON_OPEN.add(id);
+        TAX_RECON_TAB = 'register';
         notify('Tax reconciliation recorded. The entry moves the party and authority balances together; the source document is unchanged.');
-        rerender();
+        goRecon();
       });
     }
-    document.querySelectorAll('[data-tax-recon-toggle]').forEach((b) => b.addEventListener('click', () => {
-      const id = b.dataset.taxReconToggle;
-      if (TAX_RECON_OPEN.has(id)) TAX_RECON_OPEN.delete(id); else TAX_RECON_OPEN.add(id);
-      rerender();
-    }));
-    document.querySelectorAll('[data-tax-party]').forEach((b) => b.addEventListener('click', () => {
-      const key = b.dataset.taxParty;
-      TAX_PARTY_STATUS.set(key, TAX_PARTY_STATUS.get(key) === 'Verified' ? 'At risk' : 'Verified');
-      rerender();
-    }));
     document.querySelector('[data-tax-defaults]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const v = Object.fromEntries(new FormData(ev.target));
-      TAX_DEFAULTS = {output: v.output, input: v.input, withholdingIncome: v.withholdingIncome, withholdingSales: v.withholdingSales, advanceIncome: v.advanceIncome, advanceSales: v.advanceSales};
-      notify('Default tax accounts saved for this session.');
+      const next = {...TAX_DEFAULTS};
+      TAX_KINDS.forEach(([kind]) => {
+        next[taxNatureMeta(kind).defaultKey] = v[kind];
+        TAX_DEFAULT_AUTHORITIES[kind] = v[kind + 'Authority'] || '';
+      });
+      TAX_DEFAULTS = next;
+      notify('Default tax accounts and authorities saved for this session.');
       rerender();
     });
     document.querySelector('[data-tax-calc]')?.addEventListener('submit', (ev) => {
@@ -4471,23 +4691,22 @@ const ITEM_ACCOUNT_RULES = [
       if (!form.reportValidity()) return;
       const v = Object.fromEntries(new FormData(form));
       const editingCode = v.editingCode || '';
-      if (!editingCode && TAX_RULES.some((r) => r.code === v.code)) { notify('That tax rule code already exists.'); return; }
-      const chosenAuth = TAX_AUTHORITIES.find((a) => a.id === v.authority);
-      if (chosenAuth && !authorityHas(chosenAuth, v.kind)) { notify('Choose an authority assigned to this tax nature.'); return; }
       const box = (n) => form.querySelector(`.ms[data-ms="${n}"]`);
       const items = box('tax-items') ? picked(box('tax-items')) : [];
       const group = v.group || '';
       const scopeType = v.scopeType === 'items' ? 'items' : 'group';
-      const record = {code: v.code, name: v.name, kind: v.kind, authority: v.authority || '', rate: Number(v.rate), basis: 'exclusive', account: v.account, scopeType, group: scopeType === 'group' ? group : '', items: scopeType === 'items' ? items : [], scope: scopeType === 'items' && items.length ? 'items' : group ? 'group' : 'all', scopeValue: scopeType === 'items' ? '' : group, from: v.from, to: v.to || '', status: v.status || 'Active', override: v.override || 'yes', description: v.description || '', projects: box('tax-projects') ? picked(box('tax-projects')) : [], locations: box('tax-locations') ? picked(box('tax-locations')) : []};
+      const code = editingCode || nextTaxRuleCode();
+      const record = {code, name: v.name, kind: v.kind, rate: Number(v.rate), basis: 'exclusive', scopeType, group: scopeType === 'group' ? group : '', items: scopeType === 'items' ? items : [], scope: scopeType === 'items' && items.length ? 'items' : group ? 'group' : 'all', scopeValue: scopeType === 'items' ? '' : group, from: v.from, to: v.to || '', status: v.status || 'Active', override: v.override || 'yes', description: v.description || '', projects: box('tax-projects') ? picked(box('tax-projects')) : [], locations: box('tax-locations') ? picked(box('tax-locations')) : []};
       if (editingCode) {
         const target = TAX_RULES.find((r) => r.code === editingCode);
         if (target) Object.assign(target, record);
         notify('Tax rule updated for this session.');
       } else {
         TAX_RULES.push(record);
-        notify('Tax rule added for this session. It is available to documents from its effective date.');
+        TAX_RULE_SEQ++;
+        notify(`Tax rule ${code} added for this session.`);
       }
-      goBack();
+      goRules();
     });
   }
 
@@ -5383,6 +5602,6 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, taxAuthorityEditor, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, taxAuthorityEditor, taxReconciliationEditor, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

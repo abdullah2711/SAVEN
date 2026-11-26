@@ -2,7 +2,7 @@
 
 > **Current state is the last round.** Earlier sections are the chronological record and
 > some are superseded: chart groups §258, accounting heads §257, tax six natures
-> §251–255, tax-exclusive prices and adjustment vouchers §269–272, six-digit target
+> §251–255, tax-exclusive prices and adjustment vouchers §269–278, six-digit target
 > §240/§253, payment/stock menu §226–228, document menu
 > §222, register widths §235/§236. Where a later section conflicts with an earlier one,
 > the later section governs.
@@ -3558,6 +3558,8 @@ Accounts added for the P&L side: **Tax adjustment expense** (5300 in the demo) a
 
 ## 271. Form and register
 
+*Superseded by §275–276: the form is a separate page and registers use column menus.*
+
 The Reconciliation page has a register showing date, reference, nature, party,
 authority, signed amount (− for a decrease, + for an increase), offset and reason, with
 an **Entry** control that expands the debit/credit lines. The form has nature, authority,
@@ -3579,3 +3581,76 @@ renders; the authority form lists six natures and saves; an input decrease with 
 offset posts Dr Trade payables / Cr Recoverable input tax with FBR on the control line;
 the entry balances; the Settings → Accounting tax tab is gone and Control accounts no
 longer duplicates tax defaults.
+
+
+---
+
+# Round 59 — authority defaults, system rules, merged reconciliation, registers
+
+## 273. The authority belongs to the document, not the rule
+
+The rule form no longer asks for an authority. **Default accounts** now holds one control
+account and one **default authority per tax nature**. A rule points at its nature, rate
+and scope; the control account and authority are applied when the document posts.
+
+Invoices and bills now show a **tax authority** field instead of a sales/purchase tax
+account field. It defaults to the authority set for output or input tax and may be
+changed on that document. The control account comes from Default accounts. A withholding
+row uses the document authority when that authority handles the withholding nature;
+otherwise it uses the default authority for that nature. Fixture history keeps the
+authority snapshot current at build time, so changing a default does not rewrite old
+entries.
+
+## 274. Tax rules are system numbered
+
+Rules are numbered `TAX-0001`, `TAX-0002`, … by the system. The form shows the number
+read-only and assigns the next number on save; it is never typed or reused. The name
+remains the user's. Seeded rules and item tax references were migrated to the new
+numbers.
+
+## 275. Party balances and adjustments are one page
+
+The separate Party reconciliation and Reconciliation top-level pages are merged into one
+**Reconciliation** page with two tabs:
+
+- **Party balances** — party/kind balances with status and the verified/at-risk action.
+- **Reconciliations** — the adjustment register.
+
+The adjustment form is no longer on the register page. **New reconciliation** opens a
+separate voucher form page; saving returns to the register with the new entry expanded.
+Clicking a register row shows or hides its debit/credit entry.
+
+## 276. Standard register formatting
+
+All tax registers now use the same pattern as the other registers:
+
+- top bar with search, the relevant date range or as-at date, Reset, and New where it
+  applies;
+- sort on every column through the header;
+- a per-column filter menu with a single sort toggle, value search, Select all, Clear,
+  checkbox values and **Apply filter**.
+
+Type, status, authority and similar filters live in the column menus, not as extra
+selects in the top bar. This applies to Rules, Authorities, Tax entries, Party balances
+and Reconciliations.
+
+## 277. Authority routing
+
+Clicking an authority opened the tax-rule form because the app passed only the code to
+the tax editor and dropped the form type. The route now passes `form`, the editor picks
+the authority form, and the page heading and description match. Editing an authority
+opens the authority form; editing a rule opens the rule form.
+
+## 278. Invoice and bill authority
+
+The invoice/bill form's tax-account select is replaced by a tax-authority select. The
+selected authority is stored on the document, shown on the illustrative tax line, and
+used for its tax entries. Returns carry the original document's authority. The control
+account is derived from Default accounts, not typed on the document.
+
+Verified: the authority route opens the authority form; the default page holds six
+account/authority pairs; a new rule saves as `TAX-0005`; a column filter reduces the
+rules register and Reset restores it; the Reconciliation page has two tabs with no form
+on the register; New reconciliation opens the separate form; a saved adjustment returns
+to the register with its entry expanded; a new invoice shows the default authority and
+has no tax-account field.
