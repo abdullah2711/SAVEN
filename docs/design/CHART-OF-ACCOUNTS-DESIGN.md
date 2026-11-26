@@ -9,9 +9,10 @@ is the contract for the chart rebuild.
 - **Implemented:** accounting heads (five classes), **accounting groups** register and
   form in the Chart page, group sequence per class, group selection and validation on
   the account form, tax module with six natures, authorities as records, system-numbered
-  rules, entries, merged party balances and adjustment registers, and tax adjustment
-  vouchers. Prices are tax-exclusive; the default authority per nature is set under
-  Default accounts.
+  rules with multi-group scopes and conflict checks, entries, six party-balance tabs and
+  adjustment registers, and tax adjustment vouchers with an explicit offset account.
+  Prices are tax-exclusive; the default authority per nature is set under Default
+  accounts.
 - **Still target, not implemented:** the six-digit account codes and full fixture
   migration; account codes remain the four-digit demo codes for now. Groups already
   carry the two-digit segment that will become the middle of the code.
@@ -222,7 +223,7 @@ This gives the reports the owner asked for without a chart explosion:
 
 - **Input tax by supplier** — claimed input tax per supplier, authority and period.
   Compare it with authority filing/payment data or the supplier's certificate; flag
-  “supplier has not reported/paid”, “mismatch”, “claim at risk”, “matched”.
+  “supplier has not reported/paid”, “mismatch”, “claim unmatched”, “matched”.
 - **Output tax by customer** — what the customer may claim; supports customer queries
   and certificates.
 - **Sales tax withheld** — by customer/supplier, authority, certificate and period.
@@ -234,12 +235,43 @@ A supplier charging input tax while not filing output tax is detected by reconci
 cannot know a supplier failed to file without that data; it records the claim, the
 evidence and the reconciliation status honestly.
 
+### 6.1a How the tax balances are measured
+
+Every tax entry carries six things that make the statistics possible: **nature**, **party**,
+**authority**, **taxable base**, **rate** and **tax amount**. From the same entries:
+
+- **Control account balance** — sum of the tax entries for one nature. There is one
+  control per nature, not one per party or one per authority.
+- **Authority balance** — sum of the entries for that authority inside the nature's
+  control. The control is the total of its authority sub-accounts.
+- **Party balance** — sum of the entries for that party inside the nature. This is a
+  tax-ledger view, not a separate GL control account.
+- **Reconciliation** — control = sum of authorities = sum of parties, with an explicit
+  unallocated bucket if an entry has no party or authority. All three views are built
+  from the same tax entries, so they cannot disagree.
+
+The six natures are always kept separate: input, output, advance income, advance sales,
+withholding income, withholding sales. There is no single merged “tax balance”. In this
+prototype the balances are derived from tax entries; a live posting writes the control
+line, the authority sub-account and the party tax entry in one transaction.
+
+| Nature | Demo control | Side | What the balance means |
+|---|---|---|---|
+| Input tax | 1300 Recoverable input tax | asset | tax we can recover from the authority |
+| Output tax | 2200 Output tax payable | liability | tax we owe the authority |
+| Advance income tax | 1400 Advance tax receivable | asset | income tax a customer deducted and paid for us |
+| Advance sales tax | 1024 Advance sales tax receivable | asset | sales tax a customer deducted and paid for us |
+| Withholding income tax | 2150 Withholding tax payable | liability | income tax we deducted and owe |
+| Withholding sales tax | 2210 Sales tax withheld | liability | sales tax we deducted and owe |
+
 ### 6.2 Tax reconciliation adjustments
 
 A tax balance is never corrected by editing the original invoice or bill. It is
 corrected by a **tax reconciliation voucher** that carries the nature, party and
-authority, and posts to the control and an offset. The authority defaults from
-Taxes → Default accounts for the nature and can be changed on the voucher:
+authority, and posts to the control and an explicit **offset account** chosen from the
+active chart. The authority defaults from Taxes → Default accounts for the
+nature and can be changed on the voucher. The tax control line is fixed by the nature;
+the offset account receives the opposite debit or credit:
 
 - **Input tax decrease** (invalid claim / supplier default), loss borne by us:
   Dr Tax adjustment expense · Cr Input tax control. Both lines carry the party;
@@ -258,12 +290,11 @@ Taxes → Default accounts for the nature and can be changed on the voucher:
 Every line carries the party. Only the tax control line carries the authority
 sub-account; the offset line never does.
 
-Two accounts carry the P&L side: **Tax adjustment expense** (5300 in the demo) and
-**Tax adjustment income** (4200). The voucher's offset is either **P&L** (those two
-accounts) or **party** (trade receivables/payables). It updates the party tax balance and
-the authority sub-account in the same transaction, and only touches AR/AP when the offset
-is the party balance. It never edits the source document; the original tax entry remains
-for audit.
+The common offsets are **5300 Tax adjustment expense**, **4200 Tax adjustment income**,
+trade receivables/payables and cash, but the voucher allows any active account. It
+updates the party tax balance and the authority sub-account in the same transaction, and
+touches AR/AP only when the chosen offset is a receivable/payable. It never edits the
+source document; the original tax entry remains for audit.
 
 ### 6.3 Worked example — party A input tax falls from 100 to 70
 

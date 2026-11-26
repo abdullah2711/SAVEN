@@ -69,12 +69,13 @@ cash, bank, inventory, fixed-asset cost/accumulated, advances and clearing; **no
 control**; statistics from line dimensions and subledgers. Tax has one control per nature
 (input, output, advance income, advance sales, withholding income, withholding sales)
 with tax authorities as **sub-accounts**, not separate controls. The Tax module pages
-are Rules, Authorities (six tabs), Tax entries, Reconciliation (party balances and
-adjustment registers) and Default accounts (accounts, authorities and calculation
-basis). Prices are always tax-exclusive.
-Rules apply to one item group or specific items, never both; tax
-entries open their document; party tax balances are reconciled by party/kind without a
-tax sub-account. Party tax claims are dimensions
+are Rules, Authorities (six tabs), Tax entries, Parties (six party-balance tabs and the
+adjustment register) and Default accounts (accounts, authorities and calculation basis).
+Prices are always tax-exclusive.
+Rules apply to all items (fallback), several item groups, or several specific items;
+specific scopes must not overlap for the same nature and effective period. Tax entries
+open their document; party tax balances are reconciled by party/kind without a tax
+sub-account. Party tax claims are dimensions
 on tax entries, reconciled against authority data and certificates. The demo four-digit
 chart is to be replaced and fixtures remapped.
 
@@ -103,7 +104,7 @@ chart is to be replaced and fixtures remapped.
 - Trial balance: totals strip, formatted amounts, drill to the ledger.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
 - Taxes: Rules (system-numbered), Authorities (six natures), Tax entries,
-  Reconciliation (party balances and adjustments in two tabs) and Default accounts
+  Parties (six party-balance tabs plus the adjustment register) and Default accounts
   (six control accounts, six default authorities and the calculation basis). Prices are
   tax-exclusive.
 - **Settings** is a separate module with seven pages: Company, Accounting,
@@ -164,25 +165,31 @@ chart is to be replaced and fixtures remapped.
   filter**. Type, status and balance live in the column menus, not the top bar. The
   state lives outside the page and survives navigation.
 - **Taxes** (top-level module; Accounting no longer carries it): **Rules** (system
-  number `TAX-0001`, name, nature, rate, one item group or specific items;
+  number `TAX-0001`, name, nature, rate, several item groups or several items;
   **tax-exclusive** prices, no inclusive mode), **Authorities** (six tabs: input,
   output, advance income, advance sales, withholding income, withholding sales),
   **Tax entries** (filterable, row opens the document, return or adjustment),
-  **Reconciliation** (two tabs: party balances with verified/at-risk, and the tax
-  adjustment register) and **Default accounts** (six control accounts, six default
-  authorities and the sales-tax calculation basis).
-  Rules do **not** carry an authority. The default authority for each nature is set in
-  Default accounts; an invoice or bill chooses the authority for its output/input tax
-  and defaults to that setting. Authorities have a multi-nature register/form and
-  filters with balances as at a date. An adjustment uses a **separate form page**, not
-  an inline form; it carries nature, party, authority, direction, amount, reason and an
-  **offset** (P&L or party), renders its debit/credit entry, changes the party and
-  authority balances together and never edits the source document. P&L accounts are
-  **5300 Tax adjustment expense** and **4200 Tax adjustment income**. Authorities are
-  sub-accounts of the tax-nature control in the design; the demo derives their balances
-  from tax entries. Party balances are reconciled by party/kind without a tax
-  sub-account. All tax registers use the standard register top bar and per-column filter
-  menus.
+  **Parties** (two tabs: party balances and the tax adjustment register) and
+  **Default accounts** (six control accounts, six default authorities and the
+  sales-tax calculation basis).
+  Rules do **not** carry an authority or account. The control account and default
+  authority for each nature are set in Default accounts; an invoice or bill chooses the
+  authority for its output/input tax and defaults to that setting. Rules support
+  **several item groups** or several specific items. **All items** is a fallback;
+  specific group/item rules must not overlap another active specific rule of the same
+  nature and overlapping effective dates. A conflict blocks saving and names the rule
+  and the overlapping group/item.
+  Authorities have a multi-nature register/form and filters with balances as at a date.
+  **Parties → Party balances** has one tab for each of the six natures; each tab shows
+  that nature's control account and its party balances, with Verified/Unverified only.
+  An adjustment uses a **separate form page**, not an inline form; it shows the fixed tax
+  side (control account, party, authority), asks for an **offset account** from the
+  active chart, renders its debit/credit entry, changes the party and authority balances
+  together and never edits the source document. The common offsets are 5300/4200, but
+  any active account can be chosen. Authorities are sub-accounts of the tax-nature
+  control in the design; the demo derives their balances from tax entries. Party
+  balances are reconciled by party/kind without a tax sub-account. All tax registers use
+  the standard register top bar and per-column filter menus.
   20 modules and 153 pages mapped; planned pages render their specification.
 - **Reports** (top-level module): Revenue (dashboard plus By customer / By item
   registers), Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
@@ -237,12 +244,16 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
 - **The authority belongs to the document, not the rule.** The default authority for
   each nature is set under Default accounts; an invoice or bill shows that authority and
   can change it. A rule is system-numbered and has no authority field.
-- **Party balances and adjustments are one page with two tabs.** The adjustment form is
-  a separate form page opened by New reconciliation, never an inline form.
+- **The page is Parties, with six party-balance tabs.** Party balances and adjustments
+  are two tabs; the adjustment form is a separate page opened by New reconciliation.
+  Verification is only Verified or Unverified.
 - **A tax adjustment is a separate voucher**, never an edit of the source document. It
-  carries party and authority, and posts either to the P&L adjustment accounts or to
-  the party receivable/payable. The tax control line carries the authority; every line
+  fixes the tax side by nature (control account, party, authority) and asks for an
+  explicit **offset account**. The tax control line carries the authority; every line
   carries the party.
+- **Tax balances have three views of the same entries:** the nature control account is
+  the total for that nature, the authority sub-account is the total for that authority,
+  and the party balance is the total for that party. The six natures are never merged.
 - **Business switching happens at sign-in.** The topbar shows the active business as
   text, never a dropdown.
 - Posting guards: no future time, nothing before business creation, nothing in a

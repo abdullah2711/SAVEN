@@ -106,10 +106,10 @@ export const PAGE_MAP = {
     ['facilities', 'Debt & facilities', 'Drawdowns, repayments, interest and covenants.', 'planned'],
   ],
   tax: [
-    ['rules', 'Tax rules', 'System-numbered rules register and form: nature, one item group or specific items, rate and effective dates. Prices are tax-exclusive; control accounts and authorities come from Default accounts.', 'built'],
+    ['rules', 'Tax rules', 'System-numbered rules register and form: nature, several item groups or several items, rate and effective dates. Overlapping specific rules are blocked. Prices are tax-exclusive; control accounts and authorities come from Default accounts.', 'built'],
     ['authorities', 'Authorities', 'Authority register by tax nature with a multi-nature form, search, balances as at a date and sorting.', 'built'],
     ['entries', 'Tax entries', 'Entries from invoices, bills, returns and tax reconciliations, filterable and sortable; a row opens its source document or the adjustment.', 'built'],
-    ['reconciliation', 'Reconciliation', 'Party balances and tax adjustments in two tabs; adjustments use a separate voucher form, never an inline form.', 'built'],
+    ['reconciliation', 'Parties', 'Party balances by tax nature and tax adjustments in two tabs; adjustments use a separate voucher form.', 'built'],
     ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities and the sales-tax calculation basis.', 'built'],
   ],
   reports: [
