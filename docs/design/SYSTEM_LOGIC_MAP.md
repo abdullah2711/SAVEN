@@ -57,6 +57,19 @@ Companion documents:
 | Reports | complete | ageing, trial balance, P&L, position, cash flow, equity |
 | Reports | complete | ageing, P&L, position, cash flow, equity |
 
+### Taxes
+
+Taxes is a top-level module. Accounting no longer carries a tax page.
+
+| Page | State | Owns |
+|---|---|---|
+| Rules | complete | rule register/form: nature, one item group or specific items, tax-exclusive rate, authority, account, effective dates |
+| Authorities | complete | multi-nature authority register/form; six tabs; search, balances as at a date, sorting |
+| Tax entries | complete | entries from invoices, bills, returns and reconciliations; filters, sorting, source link |
+| Party reconciliation | complete | tax balances by party and nature, filters, status |
+| Reconciliation | complete | adjustment voucher register/form; entry shows tax control with authority and P&L or party offset |
+| Default accounts | complete | six tax controls and the sales-tax calculation basis |
+
 ### Operations
 
 | Module | State | Covers |
@@ -80,15 +93,17 @@ form where it edits one object):
 | Tab | Kind |
 |---|---|
 | Numbering | configuration form |
-| Default accounts | configuration form |
-| Chart accounts and groups | Accounts register and form; Accounting groups register and form |
+| Control accounts | configuration form |
 | Projects | register + form page |
 | Locations | register + form page |
 | Cost centres | register + form page |
 | Party groups | register + form page |
 | Item groups | register + form page |
-| Taxes and withholding | rules register + form page, withholding configuration |
 | Approvals | configuration form |
+
+Accounts and accounting groups are not Settings tabs; they live in Accounting → Chart
+of accounts. Tax rules, authorities and tax default accounts live in the top-level
+Taxes module.
 
 Settings → Periods owns the period lock: closing a past period locks it, and only an
 administrator may lock or reopen.
@@ -134,7 +149,7 @@ State decides the actions:
 | Party (customer/supplier) | code, name, type, group, contact, phone, email, currency, terms, credit limit, opening, tax id, status, address, notes | allowed projects, allowed locations | the sub-account of 1100 or 2100 |
 | Cash / bank sub-account | code, name, control head, kind, bank, branch, IBAN/reference, currency, opening, status, notes | allowed projects, allowed locations | the sub-account of a bank or cash control |
 | Item | code, name, group, unit, description, income head, expense head, tax rule, tracked flag, sale/purchase price, status | — | shared with Inventory; quantity lives there |
-| Tax rule | code, name, kind, rate, basis, account, scope, effective from/to, status, line override, description | allowed projects, allowed locations | a default, never a posting |
+| Tax rule | code, name, nature, rate (tax-exclusive), authority, account, scope, effective from/to, status, line override, description | allowed projects, allowed locations | a default, never a posting; the line price is always net |
 | Project | code, name, manager, state, start, end, budget, description | — | data field, no balance |
 | Location | code, name, kind, address, contact, phone, notes | — | a branch is a location kind |
 | Accounting head | five classes only: asset, liability, equity, income, expense | — | never a user-created register |
@@ -208,10 +223,16 @@ when the correction must stay visible. The audit log keeps everything.
 - **Invoices and bills** carry party, dates, terms, reference, location, narration,
   lines with quantity and price, and tax at the rule’s rate. They are session records
   until ledger posting exists.
-- **Taxes**: rules are defaults (kind, rate, basis, account, scope, effective dates,
-  access). Registers are derived from the tax lines on documents. Withholding is a
-  liability that is never ours; advance tax is our asset. Reconciliation compares the
-  register total with the tax control balance and shows the difference.
+- **Taxes**: rules are defaults (nature, tax-exclusive rate, authority, account, scope,
+  effective dates, access). Prices are always tax-exclusive; there is no inclusive mode.
+  Registers are derived from the tax lines on invoices, bills and returns, plus tax
+  adjustments. Withholding is a liability that is never ours; advance tax is our asset.
+  **Reconciliation** records an adjustment voucher; it does not edit the source
+  document. The voucher carries nature, party, authority, direction and amount, and
+  posts either to **5300 Tax adjustment expense / 4200 Tax adjustment income** or to the
+  party receivable/payable. Every line carries the party; the tax control line carries
+  the authority, so the party and authority balances move together. **Party
+  reconciliation** shows the resulting party/nature balances and their verified state.
 - The fixture records none of the withholding or advance, so those pages show a
   visible gap rather than an invented number.
 
@@ -266,7 +287,7 @@ not claimed.
 | Journal numbering | `JV-MM-YYYY-0001` in the form vs `JE-2026-` in settings | one source: settings define the series, the form composes it | 89 (resolved) |
 | Cash & bank statistics | four KPI figures | removed; the cash flow report answers it for this phase | 90 (resolved) |
 | Settings registers | tables with inline forms | registers with form pages; groups added | 93/94 (resolved) |
-| Taxes in Accounting | taxes page | moved to Settings → Accounting → Taxes | 97 (resolved) |
+| Taxes in Accounting | taxes page | moved to the top-level Taxes module; the Settings tax tab was removed | 97, 255 (resolved) |
 | Period close in Accounting | checklist page | Settings → Periods owns the lock | 99 (resolved) |
 | Party statement page | party page with statement | Open leads to the GL with the party filter; row opens the form | 95 (resolved) |
 | Cash statement page | rows opened the form only | Open leads to the GL with the sub-account filter | 96 (resolved) |
@@ -331,6 +352,7 @@ permissions. See §100 of the decision log.
 | 54–55 | 256–259 | tax verification, accounting groups in the chart, accounting-heads tab removed |
 | 56 | 260–262 | documentation alignment, supersessions, implemented vs target |
 | 57 | 263–268 | tax authority form/filters, entry links, reconciliation adjustments, calculation under defaults |
+| 58 | 269–272 | tax-exclusive prices, adjustment voucher entry and offset, full reconciliation form |
 
 ---
 
@@ -341,7 +363,8 @@ permissions. See §100 of the decision log.
 - Field-by-field form audit and print formats review.
 - Posting from operations to the ledger, persistence, permissions.
 - Print formats and the remaining settings pages need review.
-- Posting: invoices and payments record session documents but do not write the ledger.
+- Posting: invoices, payments and tax adjustments record session documents but do not
+  write the ledger.
 - Party balances by project/location (deferred, needs the subledger).
 - Six-digit account codes and chart migration are target; the demo still uses
   four-digit codes and the tax accounts 2200/1300/2150/2210/1400/1024.

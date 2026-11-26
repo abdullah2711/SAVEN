@@ -1,15 +1,15 @@
 # Chart of accounts — agreed design
 
-Status: design decision, not implemented. Owner decision 26 November 2026.
-This document is the contract for the chart rebuild. Code changes start only after
-this record is accepted.
+Status: target agreed; group tagging and the tax module are implemented, the six-digit
+codes and full chart migration are not. Owner decision 26 November 2026. This document
+is the contract for the chart rebuild.
 
 ## Implementation status (26 November 2026)
 
 - **Implemented:** accounting heads (five classes), **accounting groups** register and
   form in the Chart page, group sequence per class, group selection and validation on
-  the account form, tax module with six natures, authorities as records, rules, entries
-  and party reconciliation.
+  the account form, tax module with six natures, authorities as records, rules, entries,
+  party reconciliation and tax adjustment vouchers. Prices are tax-exclusive.
 - **Still target, not implemented:** the six-digit account codes and full fixture
   migration; account codes remain the four-digit demo codes for now. Groups already
   carry the two-digit segment that will become the middle of the code.
@@ -17,7 +17,9 @@ this record is accepted.
   demo derives authority balances from tax entries. Real chart sub-accounts are part of
   the six-digit rebuild.
 - **Demo tax accounts:** 2200, 1300, 2150, 2210, 1400 and 1024 are used until the
-  migration; the six-digit codes in this document are the target.
+  migration; the six-digit codes in this document are the target. The adjustment P&L
+  accounts exist as **5300 Tax adjustment expense** and **4200 Tax adjustment income**;
+  they do not yet appear in the six-digit target table.
 
 ## 1. Code structure — six digits
 
@@ -184,7 +186,7 @@ provincial or local authority is added.
 | Sales tax withheld | 202002 | each withholding authority/registration |
 | Income tax withholding payable | 202005 | the entity's income-tax authority (one per entity) |
 | Advance income tax receivable | 102002 | the entity's income-tax authority |
-| Advance sales tax receivable | 1024 | each sales-tax authority/registration |
+| Advance sales tax receivable | 102004 | each sales-tax authority/registration |
 
 Rules:
 
@@ -195,6 +197,8 @@ Rules:
   independently; within one entity, sub-accounts are enough.
 - A taxable supply's output tax belongs to the authority of the supplier's
   registration; input tax belongs to the authority of the purchase registration.
+  **Prices are always exclusive of tax.** The line price is net; tax is added. There is
+  no inclusive-price mode.
 - A tax authority registration is a first-class record: name, jurisdiction,
   registration number, tax types, filing frequency, control account, effective dates.
 
@@ -225,7 +229,65 @@ A supplier charging input tax while not filing output tax is detected by reconci
 cannot know a supplier failed to file without that data; it records the claim, the
 evidence and the reconciliation status honestly.
 
-## 7. Fixed assets## 7. Fixed assets
+### 6.2 Tax reconciliation adjustments
+
+A tax balance is never corrected by editing the original invoice or bill. It is
+corrected by a **tax reconciliation voucher** that carries the nature, party and
+authority, and posts to the control and an offset:
+
+- **Input tax decrease** (invalid claim / supplier default), loss borne by us:
+  Dr Tax adjustment expense · Cr Input tax control. Both lines carry the party;
+  the tax control line also carries the authority.
+- **Input tax decrease, recovered from the supplier:** Dr Trade payables · Cr Input tax
+  control (party offset).
+- **Output tax decrease:** Dr Output tax control · Cr Tax adjustment income, or credit
+  the customer receivable when the customer is credited.
+- **Withholding decrease:** Dr Withholding tax payable · Cr Tax adjustment income, or
+  the supplier payable when it is returned to the supplier.
+- **Advance tax decrease:** Dr Tax adjustment expense · Cr Advance tax receivable, or
+  debit the customer receivable when the customer owes it back. Advance sales tax follows
+  the same pattern with its own receivable.
+- Increases reverse the direction.
+
+Every line carries the party. Only the tax control line carries the authority
+sub-account; the offset line never does.
+
+Two accounts carry the P&L side: **Tax adjustment expense** (5300 in the demo) and
+**Tax adjustment income** (4200). The voucher's offset is either **P&L** (those two
+accounts) or **party** (trade receivables/payables). It updates the party tax balance and
+the authority sub-account in the same transaction, and only touches AR/AP when the offset
+is the party balance. It never edits the source document; the original tax entry remains
+for audit.
+
+### 6.3 Worked example — party A input tax falls from 100 to 70
+
+Party A has claimed 100 input tax against authority FBR. A supplier default makes 30
+invalid. The accountant records a tax reconciliation: nature input, party A, authority
+FBR, direction decrease, amount 30, offset P&L.
+
+```
+Dr  5300 Tax adjustment expense        30   party A
+Cr  1300 Input tax control             30   party A · authority FBR
+```
+
+- **GL:** input tax control falls by 30; tax adjustment expense rises by 30; the voucher
+  is balanced. Nothing on the original bill changes.
+- **Authority:** FBR's input-tax sub-account falls by 30, so the control and its
+  sub-accounts still reconcile.
+- **Party:** party A's input tax ledger falls by 30, from 100 to 70. The negative
+  adjustment entry remains visible next to the original entries.
+
+If the supplier repays the 30, the same adjustment uses the party offset instead:
+
+```
+Dr  2100 Trade payables                30   party A
+Cr  1300 Input tax control             30   party A · authority FBR
+```
+
+The input control and FBR sub-account still fall by 30, but the other side reduces what
+we owe the supplier instead of hitting profit. AR/AP moves only with the party offset.
+
+## 7. Fixed assets
 
 The asset register is the subledger; class-level accounts are the GL.
 

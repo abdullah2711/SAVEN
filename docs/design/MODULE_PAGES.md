@@ -183,7 +183,7 @@ States: **built** working screen · **partial** working, covers part of the page
 | # | Page | State | Specification |
 |---|---|---|---|
 | 1 | Company `company` | built | Legal identity, addresses, base currency, fiscal year and the active period. |
-| 2 | Accounting `accounting` | built | Tabs of registers with their own forms: numbering, default accounts, accounting heads, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals. |
+| 2 | Accounting `accounting` | built | Tabs of registers with their own forms: numbering, control accounts, projects, locations, cost centres, party groups, item groups, approvals. Accounts and groups live in the Chart page; tax defaults live in Taxes. |
 | 3 | Inventory `inventory` | built | Costing method, negative stock, default warehouse and the inventory accounts. |
 | 4 | Manufacturing `manufacturing` | built | Material issue policy, BOM requirement, default work centre and the manufacturing accounts. |
 | 5 | People & access `people` | built | Users, roles, scope and invitations for this business. |

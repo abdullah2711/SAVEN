@@ -60,16 +60,18 @@ the decision index in one place.
 | `docs/design/save/ui/theme.css` | their stylesheet plus our component classes at the end |
 | `docs/design/*.md` | decision log, module map, workflows, backend contract, forms/views, page register |
 
-## Chart of accounts — agreed, not yet built
+## Chart of accounts — groups built, six-digit codes still target
 
 Read `docs/design/CHART-OF-ACCOUNTS-DESIGN.md` before touching the chart. Six-digit
-codes `D GG AAA`; groups by class in Settings; one AR and one AP control; controls for
+codes `D GG AAA` are the target; groups are tagged in Chart of accounts → Accounting
+groups; one AR and one AP control; controls for
 cash, bank, inventory, fixed-asset cost/accumulated, advances and clearing; **no sales
 control**; statistics from line dimensions and subledgers. Tax has one control per nature
 (input, output, advance income, advance sales, withholding income, withholding sales)
 with tax authorities as **sub-accounts**, not separate controls. The Tax module pages
-are Rules, Authorities (six tabs), Tax entries, Party reconciliation, Default accounts
-and Calculation. Rules apply to one item group or specific items, never both; tax
+are Rules, Authorities (six tabs), Tax entries, Party reconciliation, Reconciliation and
+Default accounts (including the calculation basis). Prices are always tax-exclusive.
+Rules apply to one item group or specific items, never both; tax
 entries open their document; party tax balances are reconciled by party/kind without a
 tax sub-account. Party tax claims are dimensions
 on tax entries, reconciled against authority data and certificates. The demo four-digit
@@ -99,11 +101,12 @@ chart is to be replaced and fixtures remapped.
 - Chart of accounts: group totals, per-head closing balance (Dr/Cr), control badges.
 - Trial balance: totals strip, formatted amounts, drill to the ledger.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
-- Taxes: Rules, Authorities (six natures), Tax entries, Party reconciliation, Default
-  accounts and Calculation.
+- Taxes: Rules, Authorities (six natures), Tax entries, Party reconciliation,
+  Reconciliation (adjustment voucher) and Default accounts. Prices are tax-exclusive.
 - **Settings** is a separate module with seven pages: Company, Accounting,
   People & access, Periods, Forms & fields, Saved views, Print & templates.
-  Accounting holds numbering, default accounts, projects & locations and approvals.
+  Accounting holds numbering, control accounts, projects & locations and approvals.
+  Tax rules, authorities and tax default accounts live in the Taxes module.
   Accounts and accounting groups live in the Chart page; heads are the five classes.
 - **Parties**: register and party page. Party numbers are system generated
   (`Party-0001`), the group comes from Settings party groups, the control account is
@@ -158,15 +161,20 @@ chart is to be replaced and fixtures remapped.
   filter**. Type, status and balance live in the column menus, not the top bar. The
   state lives outside the page and survives navigation.
 - **Taxes** (top-level module; Accounting no longer carries it): **Rules** (nature,
-  group or specific items, authority, rate, account), **Authorities** (six tabs: input,
-  output, advance income, advance sales, withholding income, withholding sales),
-  **Tax entries** (filterable, row opens the document), **Party reconciliation**
-  (party/kind balances with verified/at-risk), **Default accounts** (six, with the sales-tax calculation basis) and
-  **Reconciliation** (tax adjustment register/form). Authorities have a multi-nature
-  register/form and filters with balances as at a date; tax entries and party
-  reconciliation are filterable/sortable. Authorities are sub-accounts of the tax-nature control in the
-  design; the demo derives their balances from tax entries. Party balances are
-  reconciled by party/kind without a tax sub-account.
+  group or specific items, authority, rate, account; **tax-exclusive** prices, no
+  inclusive mode), **Authorities** (six tabs: input, output, advance income, advance
+  sales, withholding income, withholding sales), **Tax entries** (filterable, row opens
+  the document, return or adjustment), **Party reconciliation** (party/kind balances
+  with verified/at-risk), **Reconciliation** (adjustment voucher register/form) and
+  **Default accounts** (six, with the sales-tax calculation basis below).
+  Authorities have a multi-nature register/form and filters with balances as at a date;
+  tax entries and party reconciliation are filterable/sortable. An adjustment carries
+  nature, party, authority, direction, amount, reason and an **offset** (P&L or party);
+  it renders its debit/credit entry, changes the party and authority balances together
+  and never edits the source document. P&L accounts are **5300 Tax adjustment expense**
+  and **4200 Tax adjustment income**. Authorities are sub-accounts of the tax-nature
+  control in the design; the demo derives their balances from tax entries. Party
+  balances are reconciled by party/kind without a tax sub-account.
   20 modules and 154 pages mapped; planned pages render their specification.
 - **Reports** (top-level module): Revenue (dashboard plus By customer / By item
   registers), Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
@@ -176,7 +184,7 @@ chart is to be replaced and fixtures remapped.
   item master/form; the separate Accounting → Items entry is gone.
 
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
-tool); posting from invoices and payments into the ledger; invoice numbering and
+tool); posting from invoices, payments and tax adjustments into the ledger; invoice numbering and
 cancelling a saved invoice; per-item-group tax scope; evidence bytes, hashing and
 scanning; advances inside the payments form; permissions enforcement; persistence
 (reload returns to fixtures).
@@ -215,6 +223,13 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
   expense). **Accounting groups** are created in Chart of accounts → Accounting groups,
   tagged to accounts and used for statements. Control accounts require a party or the
   appropriate sub-account on every line.
+- **Prices are always tax-exclusive.** The line price is net; tax is added. There is no
+  inclusive-price mode. The only tax-base policy is the discount setting under Taxes →
+  Default accounts.
+- **A tax adjustment is a separate voucher**, never an edit of the source document. It
+  carries party and authority, and posts either to the P&L adjustment accounts or to
+  the party receivable/payable. The tax control line carries the authority; every line
+  carries the party.
 - **Business switching happens at sign-in.** The topbar shows the active business as
   text, never a dropdown.
 - Posting guards: no future time, nothing before business creation, nothing in a

@@ -106,11 +106,11 @@ export const PAGE_MAP = {
     ['facilities', 'Debt & facilities', 'Drawdowns, repayments, interest and covenants.', 'planned'],
   ],
   tax: [
-    ['rules', 'Tax rules', 'Rules register and form: nature, item group or specific items, rate, basis, authority and effective dates.', 'built'],
-    ['authorities', 'Authorities', 'Authority register by tax kind with registration, frequency, taxable base and tax balance.', 'built'],
-    ['entries', 'Tax entries', 'Every tax entry created by an invoice or bill, filterable by date, kind, authority and party; a row opens the document.', 'built'],
+    ['rules', 'Tax rules', 'Rules register and form: nature, item group or specific items, rate, authority and effective dates. Prices are always tax-exclusive.', 'built'],
+    ['authorities', 'Authorities', 'Authority register by tax nature with a multi-nature form, search, balances as at a date and sorting.', 'built'],
+    ['entries', 'Tax entries', 'Entries from invoices, bills, returns and tax reconciliations, filterable and sortable; a row opens its source document or the adjustment.', 'built'],
     ['parties', 'Party reconciliation', 'Tax balances by party and kind, filtered and sortable, with a verified/at-risk note.', 'built'],
-    ['reconciliation', 'Reconciliation', 'Tax adjustment register and form; adjusts the party and authority without editing the source document.', 'built'],
+    ['reconciliation', 'Reconciliation', 'Adjustment voucher register and form: tax control with authority, party on every line, P&L or party offset, full entry.', 'built'],
     ['defaults', 'Default accounts', 'Six tax accounts and the sales-tax calculation basis.', 'built'],
   ],
   reports: [
@@ -149,7 +149,7 @@ export const PAGE_MAP = {
   ],
   settings: [
     ['company', 'Company', 'Legal identity, addresses, base currency, fiscal year and the active period.', 'built'],
-    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, default accounts, projects, locations, cost centres, party groups, item groups, taxes and withholding, approvals. Accounting heads are only the five classes; accounts and groups live in the Chart page.', 'built'],
+    ['accounting', 'Accounting', 'Tabs of registers with their own forms: numbering, control accounts, projects, locations, cost centres, party groups, item groups, approvals. Tax defaults and authorities live in the Taxes module. Accounting heads are only the five classes; accounts and groups live in the Chart page.', 'built'],
     ['inventory', 'Inventory', 'Costing method, negative stock, default warehouse and the inventory accounts.', 'built'],
     ['manufacturing', 'Manufacturing', 'Material issue policy, BOM requirement, default work centre and the manufacturing accounts.', 'built'],
     ['people', 'People & access', 'Users, roles, scope and invitations for this business.', 'built'],

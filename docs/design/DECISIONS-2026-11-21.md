@@ -2,7 +2,8 @@
 
 > **Current state is the last round.** Earlier sections are the chronological record and
 > some are superseded: chart groups §258, accounting heads §257, tax six natures
-> §251–255, six-digit target §240/§253, payment/stock menu §226–228, document menu
+> §251–255, tax-exclusive prices and adjustment vouchers §269–272, six-digit target
+> §240/§253, payment/stock menu §226–228, document menu
 > §222, register widths §235/§236. Where a later section conflicts with an earlier one,
 > the later section governs.
 
@@ -3428,8 +3429,8 @@ the groups dropdown; account save validates the group class.
 - **Tax** has six natures: input, output, advance income, advance sales, withholding
   income, withholding sales. Authorities are sub-accounts of the nature control in the
   design; in the demo they are records and authority balances are derived from tax
-  entries. Pages: Rules, Authorities, Tax entries, Party reconciliation, Default
-  accounts, Calculation.
+  entries. Pages: Rules, Authorities, Tax entries, Party reconciliation, Reconciliation,
+  Default accounts (with the calculation basis), and prices are tax-exclusive.
 - **Party tax reconciliation** uses tax-entry dimensions, no tax sub-account.
 - **Reports, Taxes and Items** are top-level modules; Accounting no longer carries
   them.
@@ -3463,13 +3464,16 @@ authority sub-accounts are built.
 
 ## 263. What tax basis means
 
-The rule's “Price basis” is inclusive vs exclusive:
+*Superseded by §269: the price is always tax-exclusive; this section records the earlier
+choice.*
+
+The rule's “Price basis” was inclusive vs exclusive:
 
 - **Tax exclusive** — the rate applies to the line net; tax is added.
 - **Tax inclusive** — the price already contains tax; the base is extracted and the tax is
   part of the price.
 
-It is not the discount setting; that is the separate Calculation policy.
+It is not the discount setting; that policy lives under Default accounts.
 
 ## 264. Authority form and multi-nature authorities
 
@@ -3489,7 +3493,8 @@ entries up to the date.
 
 Entries have search, From/To, nature and authority filters, sortable columns, and row
 links. A row opens the invoice or bill that created it; a return entry opens the
-returns register; a reconciliation adjustment row has no source document.
+returns register; a reconciliation adjustment row opens the Reconciliation page with
+that entry expanded.
 
 ## 267. Party reconciliation and tax adjustments
 
@@ -3505,7 +3510,72 @@ adjust the corresponding control. The authority must handle the selected nature.
 
 The separate Calculation page is removed. The sales-tax basis select (discounted vs
 original amount) now sits at the bottom of **Default accounts**, with the six default
-accounts.
+accounts. Each account selector offers only tax-subtype accounts of the correct side
+(asset for input and advances, liability for output and withholding).
 
 Verified: all six pages render; a reconciliation of 30 records; a new authority with a
 selected nature saves.
+
+
+---
+
+# Round 58 — exclusive prices and tax adjustment postings
+
+## 269. Prices are always tax-exclusive
+
+The line price is net. Tax is added; there is no inclusive-price mode. The rule form no
+longer offers a price basis — it states “Tax exclusive” — and the rule register no
+longer has a price-basis column. Saving a rule forces `basis: 'exclusive'`; document
+and withholding calculations treat the line as net. The only tax-base policy is the
+discount setting under Default accounts (tax the discounted or original net).
+
+## 270. How a party tax adjustment posts
+
+A tax adjustment is its own voucher, not an edit of the invoice/bill. It carries nature,
+party, authority, direction (increase/decrease), amount, reason and an **offset**:
+
+- **Expense/income** (default): the loss or gain goes to Tax adjustment expense/income.
+- **Party balance**: the offset is AR for a customer-side adjustment or AP for a
+  supplier-side adjustment.
+
+Examples:
+
+| Adjustment | Entry |
+|---|---|
+| Input 100 → 70, loss borne (supplier default) | Dr Tax adjustment expense 30 · Cr Input tax control 30 |
+| Input 100 → 70, recovered from supplier | Dr Trade payables 30 · Cr Input tax control 30 |
+| Output 100 → 70, customer credited | Dr Output tax control 30 · Cr Trade receivables 30 |
+| Withholding 50 → 20, returned to supplier | Dr Withholding tax payable 30 · Cr Trade payables 30 |
+| Advance income 40 → 10, customer owes it | Dr Trade receivables 30 · Cr Advance income tax receivable 30 |
+
+Every line carries the party; the tax control line also carries the authority
+sub-account. The party tax balance and the authority balance fall/rise together. AR/AP
+moves only with the party offset. The source invoice/bill and its tax entry are never
+changed; the adjustment is linked by party, authority and reference.
+
+Accounts added for the P&L side: **Tax adjustment expense** (5300 in the demo) and
+**Tax adjustment income** (4200). The six-digit chart maps them later.
+
+## 271. Form and register
+
+The Reconciliation page has a register showing date, reference, nature, party,
+authority, signed amount (− for a decrease, + for an increase), offset and reason, with
+an **Entry** control that expands the debit/credit lines. The form has nature, authority,
+party, date, direction, **offset** (P&L or party balance), amount and reason, plus a live
+illustrative entry. The authority must handle the selected nature; the amount must be
+positive; the entry is session data until posting is connected.
+
+## 272. Implementation
+
+Price basis fixed to exclusive in the rule form and removed from the register. The
+reconciliation voucher stores the offset and its balanced entry, renders a live preview,
+and keeps an expandable entry on the register. Tax entries include adjustments, so
+authority and party balances move together; an adjustment row opens the reconciliation.
+The P&L accounts 5300 and 4200 exist in the demo chart. This remains a session build;
+no ledger write.
+
+Verified: the rule register/form have no price-basis control; the six-page tax module
+renders; the authority form lists six natures and saves; an input decrease with party
+offset posts Dr Trade payables / Cr Recoverable input tax with FBR on the control line;
+the entry balances; the Settings → Accounting tax tab is gone and Control accounts no
+longer duplicates tax defaults.
