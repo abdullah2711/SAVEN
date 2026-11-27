@@ -191,7 +191,109 @@ Annual close does not merge the six natures and does not zero a balance that sti
   and ageing by nature.
 - **Permissions** — prepare, review, file, settle, lock, unallocated adjustment.
 
-## 9. Decisions needed from the owner
+## 9. Settlement entries and where they are posted
+
+Period-end filings and payments are **settlements**, not one-sided adjustments. They move
+two balances and must create the matching tax entries so the control, authority and party
+views stay tied together.
+
+### 9.1 Input claimed against output at filing
+
+Example: output tax 200, input tax 100, claimable input in the return 90. The return pays
+output less 90 input. The books must reduce both controls by the claimed 90:
+
+```
+Dr 2200 Output tax control        90   Unallocated · FBR
+Cr 1300 Input tax control         90   Unallocated · FBR
+```
+
+Tax entries created with the settlement:
+
+- output tax decrease 90 (authority FBR)
+- input tax decrease 90 (authority FBR)
+
+After the settlement the output control is 110, the input control is 10 (the unclaimed
+balance), and the return payable is 110. The 90 is a return-level claim, so the party is
+**Unallocated** unless the claim is deliberately allocated to specific parties. If the
+claim is allocated, use those party rows instead.
+
+If output is less than the claimable input, only the offsettable amount is settled; the
+remaining input stays as an asset or becomes a refund receivable.
+
+### 9.2 Withholding paid to the authority
+
+Example: withholding income tax payable 50, paid from bank:
+
+```
+Dr 2150 Withholding tax payable   50   Unallocated · FBR (or one supplier)
+Cr 1010 Bank                      50
+```
+
+Tax entry: withholding income tax decrease 50 (authority FBR).
+
+If the payment covers several suppliers, the tax side is Unallocated. If it is one
+supplier, use that party. A remaining unpaid amount stays as a liability and carries
+forward. This is a deposit/payment, not an expense.
+
+### 9.3 Advance tax applied against the actual tax expense
+
+Example: advance income tax asset 100, annual income tax expense 80.
+
+If the expense has not yet been recorded:
+
+```
+Dr Income tax expense             80
+Cr 1400 Advance income tax        80   Unallocated or the customer
+```
+
+If the expense was already recorded as a liability:
+
+```
+Dr Income tax payable             80
+Cr 1400 Advance income tax        80
+```
+
+The remaining advance 20 stays as an asset, is refunded, or is written off only with
+approval. The demo chart does not yet have a dedicated **Income tax expense** account;
+one should be added when this settlement is built. The advance is reduced with the party
+whose customer deducted it, or Unallocated if the annual assessment is pooled.
+
+### 9.4 Where these are done
+
+These belong on a **Tax → Settlements** page, separate from Adjustments:
+
+| Settlement type | Debit | Credit |
+|---|---|---|
+| Input claimed against output | Output tax control | Input tax control |
+| Withholding deposited | Withholding control | Bank |
+| Advance applied to income tax | Income tax expense/payable | Advance income tax |
+| Tax payment/refund | Tax control | Bank / tax control |
+
+Each settlement form collects the period, authority, date, amount, party or Unallocated,
+the bank/expense/liability side and a reference. The preview shows both the journal and
+the tax entries. The register lists settlements by period, type and status.
+
+The **Adjustments** page remains for corrections and write-offs: one tax control against
+a non-tax offset account. Cross-control movements belong to Settlements.
+
+### 9.5 Why the general journal is not the place
+
+The general journal does not know the tax **authority** dimension, and its party picker is
+driven by ordinary control flags, not by tax nature. Posting a tax control there would
+move the GL balance without creating the authority/party tax entry, so the control would
+no longer reconcile to its subledger.
+
+The correct fix is not to loosen the journal. It is to:
+
+1. block tax control accounts from manual journal lines, with a message pointing to
+   Tax → Adjustments or Settlements; and
+2. post settlement/adjustment vouchers that create the journal and the tax entries in one
+   operation.
+
+The journal's current behaviour — allowing a tax account line but not offering a party —
+is a gap to close when the settlement page is built.
+
+## 10. Decisions needed from the owner
 
 1. Which natures carry forward indefinitely, which expire, and after how long?
 2. Is the tax year the calendar year, the fiscal year, or per authority?
@@ -206,5 +308,5 @@ Annual close does not merge the six natures and does not zero a balance that sti
    the authority confirms the claim?
 
 Until these are answered, the implemented UI only derives balances from tax entries and
-shows the reconciliation entry. It does not claim a filed return, a locked tax period, a
-carry-forward snapshot or an annual close.
+shows the adjustment entry. It does not claim a filed return, a locked tax period, a
+carry-forward snapshot, a settlement or an annual close.
