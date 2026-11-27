@@ -4336,13 +4336,13 @@ const ITEM_ACCOUNT_RULES = [
   }
   function taxAdjustmentTaxEntry(record, documentId) {
     const authority = TAX_AUTHORITIES.find((a) => a.id === record.authority) || {name: '—'};
-    return {id: 'TE-' + documentId + '-A', date: record.date, document: documentId, docKind: 'adjustment', party: record.party, kind: record.kind, authority: record.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: record.direction === 'decrease' ? -record.amount : record.amount, period: record.date.slice(0, 7)};
+    return {id: 'TE-' + documentId + '-A', date: record.date, document: documentId, docKind: 'adjustment', party: record.party, kind: record.kind, authority: record.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: record.direction === 'decrease' ? -record.amount : record.amount, period: record.period || record.date.slice(0, 7)};
   }
-  function openTaxEntries(kind, authorityId, periods, extra = []) {
+  function openTaxEntries(kind, authorityId, periods, extra = [], asOf = '') {
     const all = taxEntries(extra);
-    const positive = all.filter((e) => e.kind === kind && e.authority === authorityId && e.amount > 0 && (!periods || !periods.length || periods.includes(e.period)));
+    const positive = all.filter((e) => e.kind === kind && e.authority === authorityId && e.amount > 0 && (!asOf || e.date <= asOf) && (!periods || !periods.length || periods.includes(e.period)));
     const settled = new Map();
-    all.filter((e) => e.docKind === 'settlement' && e.kind === kind && e.settledEntry).forEach((e) => {
+    all.filter((e) => e.docKind === 'settlement' && e.kind === kind && e.settledEntry && (!asOf || e.date <= asOf)).forEach((e) => {
       settled.set(e.settledEntry, round2((settled.get(e.settledEntry) || 0) + Math.abs(e.amount)));
     });
     return positive.map((e) => ({...e, open: round2(e.amount - (settled.get(e.id) || 0))}))
@@ -4355,17 +4355,17 @@ const ITEM_ACCOUNT_RULES = [
     meta.sources.forEach((kind) => openTaxEntries(kind, authorityId, [], extra).forEach((e) => periods.add(e.period)));
     return [...periods].sort();
   }
-  function netTaxBalance(kind, authorityId, periods, extra = []) {
+  function netTaxBalance(kind, authorityId, periods, extra = [], asOf = '') {
     return round2(taxEntries(extra)
-      .filter((e) => e.kind === kind && e.authority === authorityId && (!periods || !periods.length || periods.includes(e.period)))
+      .filter((e) => e.kind === kind && e.authority === authorityId && (!asOf || e.date <= asOf) && (!periods || !periods.length || periods.includes(e.period)))
       .reduce((n, e) => n + e.amount, 0));
   }
-  function settlementCapacity(type, authorityId, periods, extra = []) {
+  function settlementCapacity(type, authorityId, periods, extra = [], asOf = '') {
     const meta = settlementMeta(type);
     const totals = {};
     meta.sources.forEach((kind) => {
-      const openSum = round2(openTaxEntries(kind, authorityId, periods, extra).reduce((n, e) => n + e.open, 0));
-      totals[kind] = round2(Math.max(0, Math.min(openSum, netTaxBalance(kind, authorityId, periods, extra))));
+      const openSum = round2(openTaxEntries(kind, authorityId, periods, extra, asOf).reduce((n, e) => n + e.open, 0));
+      totals[kind] = round2(Math.max(0, Math.min(openSum, netTaxBalance(kind, authorityId, periods, extra, asOf))));
     });
     const values = meta.sources.map((kind) => totals[kind]);
     return {capacity: round2(Math.min(...values)), totals, meta};
@@ -4382,11 +4382,11 @@ const ITEM_ACCOUNT_RULES = [
     }
     return {allocations, remaining};
   }
-  function buildSettlementAllocations(type, authorityId, periods, amount, extra = []) {
+  function buildSettlementAllocations(type, authorityId, periods, amount, extra = [], asOf = '') {
     const meta = settlementMeta(type);
     const allocations = [];
     for (const kind of meta.sources) {
-      const open = openTaxEntries(kind, authorityId, periods, extra);
+      const open = openTaxEntries(kind, authorityId, periods, extra, asOf);
       const result = allocateOpen(open, amount);
       allocations.push(...result.allocations);
     }
@@ -4500,13 +4500,13 @@ const ITEM_ACCOUNT_RULES = [
     });
     TAX_ADJUSTMENTS.forEach((r) => {
       const authority = TAX_AUTHORITIES.find((a) => a.id === r.authority) || {name: '—'};
-      entries.push({id: 'TE-' + r.id, date: r.date, document: r.id, docKind: 'adjustment', party: r.party, kind: r.kind, authority: r.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: r.direction === 'decrease' ? -r.amount : r.amount, period: r.date.slice(0, 7)});
+      entries.push({id: 'TE-' + r.id, date: r.date, document: r.id, docKind: 'adjustment', party: r.party, kind: r.kind, authority: r.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: r.direction === 'decrease' ? -r.amount : r.amount, period: r.period || r.date.slice(0, 7)});
     });
     TAX_SETTLEMENTS.forEach((st) => {
       if (st.adjustment) {
         const a = st.adjustment;
         const authority = TAX_AUTHORITIES.find((x) => x.id === a.authority) || {name: '—'};
-        entries.push({id: 'TE-' + st.id + '-A', date: st.date, document: st.id, docKind: 'adjustment', party: a.party, kind: a.kind, authority: a.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: a.direction === 'decrease' ? -a.amount : a.amount, period: st.date.slice(0, 7)});
+        entries.push({id: 'TE-' + st.id + '-A', date: st.date, document: st.id, docKind: 'adjustment', party: a.party, kind: a.kind, authority: a.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: a.direction === 'decrease' ? -a.amount : a.amount, period: a.period || st.date.slice(0, 7)});
       }
       (st.allocations || []).forEach((a, i) => {
         const authority = TAX_AUTHORITIES.find((x) => x.id === a.authority) || {name: '—'};
@@ -4621,27 +4621,38 @@ const ITEM_ACCOUNT_RULES = [
       natureLabel: taxKindLabel(r.kind),
       party: r.party,
       authorityLabel: authorityName(r.authority),
-      periodLabel: r.date.slice(0, 7),
+      periodLabel: r.period || r.date.slice(0, 7),
       amount: (r.direction === 'decrease' ? -1 : 1) * r.amount,
       offsetLabel: taxOffsetAccountLabel(legacyOffsetAccount(r)),
       reason: r.reason,
       entry: r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, legacyOffsetAccount(r), r.authority),
       kind: 'adjustment',
     }));
-    const settlementRows = TAX_SETTLEMENTS.map((r) => ({
-      id: r.id,
-      date: r.date,
-      typeLabel: r.adjustment ? 'Adjustment + closing' : 'Closing',
-      natureLabel: settlementNatureLabel(r.type),
-      party: settlementPartyLabel(r),
-      authorityLabel: authorityName(r.authority),
-      periodLabel: settlementPeriodLabel(r),
-      amount: r.amount,
-      offsetLabel: settlementTargetLabel(r),
-      reason: r.reason,
-      entry: r.adjustment ? [...taxAdjustmentEntry(r.adjustment.kind, r.adjustment.party, r.adjustment.direction, r.adjustment.amount, r.adjustment.offsetAccount, r.adjustment.authority, r.adjustment.offsetSub), ...(r.entry || [])] : (r.entry || []),
-      kind: 'settlement',
-    }));
+    const settlementRows = TAX_SETTLEMENTS.map((r) => {
+      const baseParty = settlementPartyLabel(r);
+      const adjParty = r.adjustment ? r.adjustment.party : '';
+      const baseAuthority = authorityName(r.authority);
+      const adjAuthority = r.adjustment ? authorityName(r.adjustment.authority) : '';
+      const periodLabel = settlementPeriodLabel(r) + (r.adjustment && r.adjustment.period && !settlementPeriodLabel(r).includes(r.adjustment.period) ? ' + adj ' + r.adjustment.period : '');
+      const partyLabel = r.adjustment && adjParty && !baseParty.includes(adjParty) ? (baseParty === '—' ? adjParty : `${baseParty} + ${adjParty}`) : baseParty;
+      return {
+        id: r.id,
+        date: r.date,
+        typeLabel: r.adjustment ? 'Adjustment + closing' : 'Closing',
+        natureLabel: r.adjustment && !settlementMeta(r.type).sources.includes(r.adjustment.kind) ? `${settlementNatureLabel(r.type)} + ${taxKindLabel(r.adjustment.kind)}` : settlementNatureLabel(r.type),
+        party: partyLabel,
+        authorityLabel: adjAuthority && adjAuthority !== baseAuthority ? `${baseAuthority} + ${adjAuthority}` : baseAuthority,
+        periodLabel: periodLabel,
+        amount: r.amount,
+        adjustmentAmount: r.adjustment ? r.adjustment.amount : 0,
+        adjustmentDirection: r.adjustment ? r.adjustment.direction : '',
+        offsetLabel: settlementTargetLabel(r),
+        reason: r.reason,
+        entry: r.adjustment ? [...(r.adjustmentEntry || taxAdjustmentEntry(r.adjustment.kind, r.adjustment.party, r.adjustment.direction, r.adjustment.amount, r.adjustment.offsetAccount, r.adjustment.authority, r.adjustment.offsetSub)), ...(r.entry || [])] : (r.entry || []),
+        allocations: r.allocations || [],
+        kind: 'settlement',
+      };
+    });
     const all = adjustmentRows.concat(settlementRows).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     const searched = all.filter((r) => (!f.q || (r.id + ' ' + r.typeLabel + ' ' + r.natureLabel + ' ' + r.party + ' ' + r.authorityLabel + ' ' + r.reason).toLowerCase().includes(f.q.toLowerCase()))
       && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to));
@@ -4659,8 +4670,9 @@ const ITEM_ACCOUNT_RULES = [
         ${taxTableHead('taxadj', f, cols, all)}
         <tbody>${rows.map((r) => {
           const open = TAX_ADJUSTMENT_OPEN.has(r.id);
-          const detail = open ? `<tr class="entry-detail"><td colspan="10">${ledgerIllustration((r.kind === 'settlement' ? 'Closing ' : 'Adjustment ') + r.id, r.entry, r.kind === 'settlement' ? 'The closing entry moves the selected tax entries into the settlement. Party/authority detail remains in the tax entries; the control lines are authority-level.' : 'A separate voucher: the tax control line carries authority ' + r.authorityLabel + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}</td></tr>` : '';
-          return `<tr class="row-link" data-tax-adj-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${e(r.id)}</td><td>${e(r.typeLabel)}</td><td>${e(r.natureLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td>${e(r.periodLabel)}</td><td class="numeric">${r.amount < 0 ? '−' : ''}${money(Math.abs(r.amount))}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
+          const allocationRows = r.kind === 'settlement' && r.allocations.length ? `<div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Settled party</th><th>Nature</th><th>Period</th><th class="numeric">Amount</th></tr></thead><tbody>${r.allocations.map((a) => `<tr><td>${e(a.party)}</td><td>${e(taxKindLabel(a.kind))}</td><td>${e(a.period)}</td><td class="numeric">${money(a.amount)}</td></tr>`).join('')}</tbody></table></div>` : '';
+          const detail = open ? `<tr class="entry-detail"><td colspan="10">${ledgerIllustration((r.kind === 'settlement' ? 'Closing ' : 'Adjustment ') + r.id, r.entry, r.kind === 'settlement' ? 'The closing entry moves the selected tax entries into the settlement. Party/authority detail remains in the tax entries; the control lines are authority-level.' : 'A separate voucher: the tax control line carries authority ' + r.authorityLabel + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}${allocationRows}</td></tr>` : '';
+          return `<tr class="row-link" data-tax-adj-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${e(r.id)}</td><td>${e(r.typeLabel)}</td><td>${e(r.natureLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td>${e(r.periodLabel)}</td><td class="numeric">${r.amount < 0 ? '−' : ''}${money(Math.abs(r.amount))}${r.adjustmentAmount ? `<small class="secondary">adj ${r.adjustmentDirection === 'decrease' ? '−' : '+'}${money(r.adjustmentAmount)}</small>` : ''}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
         }).join('') || '<tr><td colspan="10">No tax entry vouchers yet. Use New tax entry.</td></tr>'}</tbody></table></div>
       <div class="table-footer">Adjustments correct one tax control against a non-tax account. Closing entries settle selected open tax entries against another tax control or cash/bank, and create the matching negative tax entries so party and authority balances fall to zero while retaining history. Combined entries post an adjustment before the closing.</div></section>`;
   }
@@ -4709,7 +4721,7 @@ const ITEM_ACCOUNT_RULES = [
         <div class="wide" data-tax-entry-preview></div>
         <div class="related"><button class="button primary">Record tax entry</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">Adjustment: one tax control against a non-tax account. Closing: settles selected open entries against another tax control or bank; the tax entries are reduced per party and period, so balances go to zero without deleting history. Combined: posts the adjustment first, then closes what remains.</p></div>
+      <div class="panel-body"><p class="form-note">Adjustment: one tax control against a non-tax account. Closing: settles selected open entries against another tax control or bank; the tax entries are reduced per party and period, so balances go to zero without deleting history. Combined: posts the adjustment first, then closes what remains; the adjustment is attributed to the latest selected closing period.</p></div>
     </section>`;
   }
   function taxesView() {
@@ -4891,15 +4903,15 @@ const ITEM_ACCOUNT_RULES = [
       const capacityBox = entryForm.querySelector('[data-settle-capacity]');
       const partyOf = (value) => value === '__unallocated__' ? 'Unallocated' : value;
       const selectedPeriods = () => periodsBox ? picked(periodsBox) : [];
-      const adjustmentDraft = () => {
+      const adjustmentDraft = (periods = []) => {
         const v = Object.fromEntries(new FormData(entryForm));
         const amount = round2(Number(v.adjAmount) || 0);
-        return {date: v.date, kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: v.adjOffsetSub, reason: v.reason};
+        return {date: v.date, period: periods.length ? periods[periods.length - 1] : v.date.slice(0, 7), kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: v.adjOffsetSub, reason: v.reason};
       };
       const settlementDraft = (extra = []) => {
         const v = Object.fromEntries(new FormData(entryForm));
         const meta = settlementMeta(v.settleType);
-        const cap = settlementCapacity(v.settleType, v.settleAuthority, selectedPeriods(), extra);
+        const cap = settlementCapacity(v.settleType, v.settleAuthority, selectedPeriods(), extra, v.date);
         const amount = round2(Number(v.settleAmount) || cap.capacity);
         return {v, meta, cap, amount, gl: settlementGlLines(v.settleType, v.settleAuthority, amount, v.settleOffset, v.bankAccount)};
       };
@@ -4927,7 +4939,8 @@ const ITEM_ACCOUNT_RULES = [
         syncSections();
         const type = typeSelect.value;
         const chunks = [];
-        const adj = adjustmentDraft();
+        const closingPeriods = selectedPeriods();
+        const adj = adjustmentDraft(closingPeriods);
         const needAdj = type !== 'closing';
         const needSettle = type !== 'adjustment';
         let extra = [];
@@ -4980,6 +4993,7 @@ const ITEM_ACCOUNT_RULES = [
         const type = v.entryType;
         const needAdj = type !== 'closing';
         const needSettle = type !== 'adjustment';
+        const closingPeriods = selectedPeriods();
         let adjustment = null;
         let extra = [];
         if (needAdj) {
@@ -4994,28 +5008,29 @@ const ITEM_ACCOUNT_RULES = [
           if (v.adjOffset === taxControlAccount(v.adjKind)) { notify('The adjustment offset must differ from the tax control.'); return; }
           const subs = ['bank', 'cash'].includes(offset.control) ? CASH_BANK.filter((c) => c.control === offset.code) : [];
           if (subs.length && !v.adjOffsetSub) { notify('Choose the bank or cash sub-account for the adjustment.'); return; }
-          adjustment = {date: v.date, kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: subs.length ? v.adjOffsetSub : '', reason: v.reason};
+          adjustment = {date: v.date, period: type === 'combined' && closingPeriods.length ? closingPeriods[closingPeriods.length - 1] : v.date.slice(0, 7), kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: subs.length ? v.adjOffsetSub : '', reason: v.reason};
           if (type === 'combined') extra = [taxAdjustmentTaxEntry(adjustment, 'TEMP')];
         }
         if (needSettle) {
           const meta = settlementMeta(v.settleType);
           const auth = TAX_AUTHORITIES.find((a) => a.id === v.settleAuthority);
           if (!auth || !meta.sources.every((kind) => authorityHas(auth, kind))) { notify('Choose an authority that handles every tax nature in this settlement.'); return; }
-          const periods = selectedPeriods();
-          const cap = settlementCapacity(v.settleType, v.settleAuthority, periods, extra);
+          const periods = closingPeriods;
+          const cap = settlementCapacity(v.settleType, v.settleAuthority, periods, extra, v.date);
           if (cap.capacity <= 0.004) { notify('There is no open balance to close for that authority and period.'); return; }
           const amount = round2(Number(v.settleAmount) || cap.capacity);
           if (amount <= 0) { notify('Enter a closing amount.'); return; }
           if (amount > cap.capacity + 0.005) { notify(`The closing amount is more than the available ${money(cap.capacity)}.`); return; }
-          if (meta.target === 'bank' && !v.bankAccount) { notify('Choose the bank or cash sub-account.'); return; }
+          if (meta.target === 'bank' && (!v.bankAccount || !bankControlFor(v.bankAccount))) { notify('Choose a valid bank or cash sub-account.'); return; }
           if (meta.target === 'expense') {
             const offset = accounts().find((a) => a.code === v.settleOffset && a.active !== false && a.subtype !== 'tax');
             if (!offset) { notify('Choose an active non-tax target account for the settlement.'); return; }
           }
-          const allocations = buildSettlementAllocations(v.settleType, v.settleAuthority, periods, amount, extra);
+          const allocations = buildSettlementAllocations(v.settleType, v.settleAuthority, periods, amount, extra, v.date);
           const entry = settlementGlLines(v.settleType, v.settleAuthority, amount, v.settleOffset, v.bankAccount);
+          const adjustmentEntry = type === 'combined' && adjustment ? taxAdjustmentEntry(adjustment.kind, adjustment.party, adjustment.direction, adjustment.amount, adjustment.offsetAccount, adjustment.authority, adjustment.offsetSub) : null;
           const id = 'SET-2026-' + String(TAX_SETTLEMENT_SEQ++).padStart(4, '0');
-          TAX_SETTLEMENTS.push({id, date: v.date, type: v.settleType, authority: v.settleAuthority, periods, amount, offsetAccount: v.settleOffset, bankAccount: v.bankAccount, allocations, entry, reason: v.reason, adjustment: type === 'combined' ? adjustment : null});
+          TAX_SETTLEMENTS.push({id, date: v.date, type: v.settleType, authority: v.settleAuthority, periods, amount, offsetAccount: v.settleOffset, bankAccount: v.bankAccount, allocations, entry, adjustmentEntry, reason: v.reason, adjustment: type === 'combined' ? adjustment : null});
           TAX_ADJUSTMENT_OPEN.add(id);
           notify(type === 'combined' ? 'Combined tax entry recorded. Party and authority balances were reduced; history remains.' : 'Closing entry recorded. The selected open tax entries are settled; history remains.');
           goAdjustments();

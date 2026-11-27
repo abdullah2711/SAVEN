@@ -3875,9 +3875,13 @@ The closing also posts the GL entry:
 | Advance sales written off | Dr expense / Cr advance sales |
 | Output tax paid | Dr output control / Cr bank |
 
-The form can settle **all open periods** or selected months. One closing can cover three
-months at once; the allocation records each source period. If the filing needs per-month
-audit, post separate closings per month. Both are supported.
+The form can settle **all open periods** or selected months. It only settles entries
+dated on or before the closing date and allocates FIFO by entry date inside each
+selected period. One closing can cover three months at once; the allocation records each
+source period. If the filing needs per-month
+audit, post separate closings per month. Both are supported. A combined adjustment is
+attributed to the latest selected closing period so it reduces that filing's available
+amount; for a month-specific adjustment, post it separately or split the closing.
 
 ## 289. Bank/cash sub-accounts
 
@@ -3889,19 +3893,21 @@ carries the sub-account; the tax control line carries the authority.
 
 - **Withholding** is always paid in cash/bank; it is not offset against output. The
   closing type targets the withholding control and bank.
-- **Advance income tax** is applied to income tax expense (5400 in the demo) or a chosen
-  non-tax liability account.
+- **Advance income tax** is applied to income tax expense (5400 in the demo) or income
+  tax payable (2160) / another non-tax liability account.
 - **Advance sales tax** can be applied to the output tax control or written off to a
   sales-tax expense account.
 - **Input/output offset** is only for claimable input. Unclaimable input is first adjusted
   to expense/Unallocated, then the remaining claimable amount is closed.
 
-The general journal now blocks tax control lines and points to Tax entry. When a party-level adjustment is used, the selected party balance can reach zero. When an
-**Unallocated** adjustment is used, the unidentified amount remains as an Unallocated row;
-the total party balance and the control still agree. It cannot be both unidentified and
-zero against a real party.
+The general journal now blocks tax control lines and points to Tax entry. When a
+party-level adjustment is used, the selected party balance can reach zero. When an
+**Unallocated** adjustment is used, the unidentified amount remains as an Unallocated
+row; the total party balance and the control still agree. It cannot be both unidentified
+and zero against a real party.
 
 Verified: adjustment-only and combined entries save; a closing created `SET-2026-0001`,
 negative settlement entries and zeroed the selected input party; as-at before the closing
 still showed 100; a combined unallocated adjustment left the Unallocated row and history
-intact.
+intact; a combined October closing selected with October periods settled 90 after the 10
+adjustment, not 100.

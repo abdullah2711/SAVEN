@@ -115,11 +115,12 @@ tax is computed per line from base, rate and account, and stored on the tax line
 
 ### 2.6 Tax line
 
-`id, document_line_id, tax_code_id, base, rate, amount, account_id, jurisdiction,
-recoverable, withholding_kind`.
+`id, document_line_id, nature, party_id, authority_id, base, rate, amount,
+control_account_id, recoverable, withholding_kind`.
 
-Invariants: amount = base × rate rounded per the tax settings; the account comes
-from the tax code or the manual override; a tax line never exists without a base.
+Invariants: amount = base × rate rounded per the tax settings; the control account is
+set by the tax nature; the authority and party are dimensions on the entry; a tax line
+never exists without a base.
 
 ### 2.7 Open item and allocation
 

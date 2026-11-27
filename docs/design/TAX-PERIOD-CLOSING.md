@@ -256,9 +256,9 @@ Cr 1400 Advance income tax        80
 ```
 
 The remaining advance 20 stays as an asset, is refunded, or is written off only with
-approval. The demo chart does not yet have a dedicated **Income tax expense** account;
-one should be added when this settlement is built. The advance is reduced with the party
-whose customer deducted it, or Unallocated if the annual assessment is pooled.
+approval. The demo chart now carries **5400 Income tax expense** and **2160 Income tax
+payable**. The advance is reduced with the party whose customer deducted it, or
+Unallocated if the annual assessment is pooled.
 
 ### 9.4 Where these are done
 
@@ -297,6 +297,61 @@ The correct fix is not to loosen the journal. It is to:
 
 The journal now blocks tax control lines with that message. The Tax entry page creates
 adjustment, closing and combined vouchers.
+
+### 9.6 Multi-period and catch-up filing
+
+A closing can select one period, several periods, or **all open periods**. It only
+settles entries dated on or before the closing date. Allocation is FIFO by entry date
+inside each selected period, and the period is stored on every allocation. One voucher
+can cover January to March filed in May; each negative tax entry still knows its source
+period.
+
+If the filing needs one snapshot per month, post one closing per month. Both produce the
+same current control/party result; the difference is the audit grouping.
+
+A combined adjustment is attributed to the **latest selected closing period**, because
+it is part of that filing. If the adjustment itself belongs to a specific month, post a
+separate adjustment dated in that month or split the combined entry.
+
+### 9.7 Combined adjustment + closing
+
+The combined type posts the adjustment first and then closes the remaining open amount in
+one voucher:
+
+1. Adjustment reduces/increases the selected tax control by the party or Unallocated.
+2. The extra adjustment tax entry is included when calculating how much is available to
+   close.
+3. The closing allocates the remaining amount across source entries.
+4. One `SET-...` record holds both components and the register shows
+   **Adjustment + closing** with the closing amount and the adjustment amount beneath it.
+
+This is useful for the monthly case: adjust the 10 unclaimable input, then close the
+remaining 90 input against output.
+
+### 9.8 What “party balance zero” means
+
+The closing creates a negative tax entry against each source entry it settles. Therefore:
+
+- a party whose entries are fully settled has a zero current balance and disappears from
+  the current register;
+- the same party still appears at an as-at date before the closing;
+- the original entries and the negative closing entries remain in the tax ledger.
+
+If an adjustment is posted to **Unallocated**, the unidentified amount remains as an
+Unallocated row. The control and authority can still be zero, but the real party rows
+cannot all be forced to zero without allocating that difference to a party. That is the
+correct representation of an unidentified difference. Allocate it later with a second
+adjustment when the party is known.
+
+### 9.9 Withholding and advances
+
+- **Withholding** is paid in cash/bank; it is never offset against output. Periods are
+  optional; leaving them blank pays all open withholding entries for the authority.
+- **Advance income tax** is applied to income tax expense/payable and the advance
+  entries are reduced per customer or Unallocated.
+- **Advance sales tax** can be applied to output tax (both controls move) or written off
+  to a sales-tax expense. The output form reduces the selected output entries as well.
+- **Output tax** can be paid directly to the bank after any input offset.
 
 ## 10. Decisions needed from the owner
 

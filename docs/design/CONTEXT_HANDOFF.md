@@ -260,7 +260,8 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
   adjustment fixes the tax side by nature (control account, party, authority) and asks
   for an explicit offset account. A closing settles open entries and creates negative
   tax entries per source. The tax control line carries the authority; every line carries
-  the party or Unallocated.
+  the party or Unallocated. Tax control accounts are blocked in the general journal and
+  must be posted through Tax → Tax entry.
 - **Tax balances have three views of the same entries:** the nature control account is
   the total for that nature, the authority sub-account is the total for that authority,
   and the party balance is the total for that party. The six natures are never merged.

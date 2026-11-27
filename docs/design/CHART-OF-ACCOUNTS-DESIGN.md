@@ -21,8 +21,9 @@ is the contract for the chart rebuild.
   the six-digit rebuild.
 - **Demo tax accounts:** 2200, 1300, 2150, 2210, 1400 and 1024 are used until the
   migration; the six-digit codes in this document are the target. The adjustment P&L
-  accounts exist as **5300 Tax adjustment expense**, **4200 Tax adjustment income** and
-  **5400 Income tax expense**; they do not yet appear in the six-digit target table.
+  accounts exist as **5300 Tax adjustment expense**, **4200 Tax adjustment income**,
+  **5400 Income tax expense** and **2160 Income tax payable**; they do not yet appear
+  in the six-digit target table.
 
 ## 1. Code structure — six digits
 
