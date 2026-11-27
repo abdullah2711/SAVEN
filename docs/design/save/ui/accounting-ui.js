@@ -83,6 +83,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
      for(const l of draft.lines){
        if(!accounts.some(a=>a.code===l.account&&a.active)){errors.push('Every line needs an active account.');break;}
        const a=accounts.find(x=>x.code===l.account);
+       if(a&&a.subtype==='tax')errors.push(`${a.code} ${a.name} is a tax control account. Post it through Tax → Tax entry, not the general journal.`);
        if((a.control||a.code==='1010'||a.code==='1000')&&!(l.party||'').trim())errors.push(`${a.code} ${a.name} needs a party or sub-account.`);
        debit+=cents(l.debit||'0'); credit+=cents(l.credit||'0');
      }
@@ -353,7 +354,7 @@ export function createAccountingUI({render,navigate,notify,dirty,getCompany}){
  }
  document.querySelectorAll('[data-form-action]').forEach(b=>b.addEventListener('click',()=>{
    const act=b.dataset.formAction;
-   const controlProblem=()=>{for(const [i,l] of draft.lines.entries()){const a=accounts.find(x=>x.code===l.account);if(a&&a.control&&!String(l.party||'').trim())return `${a.code} ${a.name} on line ${i+1} is a control account. Choose a party or sub-account before continuing.`;}return '';};
+   const controlProblem=()=>{for(const [i,l] of draft.lines.entries()){const a=accounts.find(x=>x.code===l.account);if(a&&a.subtype==='tax')return `${a.code} ${a.name} on line ${i+1} is a tax control account. Post it through Tax → Tax entry, not the general journal.`;if(a&&a.control&&!String(l.party||'').trim())return `${a.code} ${a.name} on line ${i+1} is a control account. Choose a party or sub-account before continuing.`;}return '';};
    const customPatch=()=>{const out={};CUSTOM_FIELDS.filter(f=>f.form==='Journal entry').forEach(f=>{const k='custom_'+f.name.toLowerCase().replace(/[^a-z0-9]+/g,'_');out[k]=draft[k]||'';});return out;};
    const patch=()=>({date:draft.date,narrative:draft.narrative,location:draft.location,lines:draft.lines.map(l=>({account:l.account,debit:l.debit,credit:l.credit,party:l.party,project:l.project,costCentre:l.costCentre})),...customPatch()});
    if(act==='save'){capture();const problem=controlProblem();if(problem){notify(problem);return;}if(draft.editingId){screens.updateJournalDoc(draft.editingId,patch());notify('Draft updated. No ledger effect.');navigate({module:'accounting',tab:'journals'});return;}localStorage.setItem('sa7en:sample-journal:v1',JSON.stringify(draft));saved=true;notify('Saved as a draft. No ledger effect.');render();return;}
@@ -417,7 +418,7 @@ break;case 'open-group':navigate({module:'accounting',tab:'coa',mode:'editor',fo
    if(tab==='journals'&&code)return {title:'Journal entry',description:'Opened in the same form it was created in. Drafts and returned entries are editable; posted entries are read-only until cancelled or duplicated.'};
    if((tab==='sales-invoices'||tab==='purchase-invoices')&&form==='return')return {title:tab==='sales-invoices'?'New sales return':'New purchase return',description:'Returns reduce the original document. Partial returns are allowed and the balance updates immediately.'};
    if(tab==='taxes'&&form==='authority')return {title:code?'Edit tax authority':'New tax authority',description:'An authority can serve one or several tax natures and is a sub-account of the tax-nature control.'};
-   if(tab==='taxes'&&form==='adjustment')return {title:code?'Tax adjustment':'New tax adjustment',description:'A separate adjustment voucher. The tax control line carries the authority; every line carries the party or Unallocated.'};
+   if(tab==='taxes'&&form==='entry')return {title:'New tax entry',description:'Adjustment, closing or combined: choose the type, the tax side and the offset/target.'};
    if(tab==='taxes')return {title:code?'Edit tax rule':'New tax rule',description:'The rule number is system generated. Prices are tax-exclusive and the authority comes from Default accounts.'};
    if(tab==='coa'&&form==='group')return {title:code?'Edit accounting group':'New accounting group',description:'Groups sit inside an accounting head and take the next number in sequence. The account code uses the group number.'};
    if(tab==='advances'&&code)return {title:'Advance record',description:'The advance voucher and every application against a document, read-only.'};
@@ -435,7 +436,7 @@ break;case 'open-group':navigate({module:'accounting',tab:'coa',mode:'editor',fo
    if(tab==='cash')return form==='recon'?screens.cashReconEditor(code||''):screens.cashEditor(code||'');
    if(tab==='parties')return form==='recon'?screens.partyReconEditor(code||''):screens.partyEditor(code||'');
    if(tab==='items')return screens.itemEditor(code||'');
-   if(tab==='taxes')return form==='authority'?screens.taxAuthorityEditor(code||''):form==='adjustment'?screens.taxAdjustmentEditor(code||''):screens.taxEditor(code||'');
+   if(tab==='taxes')return form==='authority'?screens.taxAuthorityEditor(code||''):form==='entry'?screens.taxEntryEditor(code||''):screens.taxEditor(code||'');
    if(tab==='payments')return screens.paymentEditor(code);
    if(tab==='advances')return form==='apply'?screens.applyAdvanceEditor():(code?screens.advanceRecord(code):screens.advanceEditor());
    if(tab==='sales-invoices')return form==='stock'?screens.stockEditor('sales',code||''):form==='return'?screens.returnEditor('sales',code||''):screens.invoiceEditor('sales',code||'');

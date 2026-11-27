@@ -121,9 +121,9 @@ export function bindProjectForm(rerender, notify) {
 const TAX_TABS = [
   ['rules', 'Rules'],
   ['authorities', 'Authorities'],
-  ['entries', 'Tax entries'],
+  ['entries', 'Tax ledger'],
   ['parties', 'Parties'],
-  ['adjustments', 'Adjustments'],
+  ['adjustments', 'Tax entry'],
   ['defaults', 'Default accounts'],
 ];
 let TAX_DEFAULTS = {output: '2200', input: '1300', withholdingIncome: '2150', withholdingSales: '2210', advanceIncome: '1400', advanceSales: '1024'};
@@ -155,6 +155,8 @@ const TAX_AUTHORITIES = [
 let TAX_AUTH_SEQ = 4;
 const TAX_ADJUSTMENTS = [];
 let TAX_ADJUSTMENT_SEQ = 1;
+const TAX_SETTLEMENTS = [];
+let TAX_SETTLEMENT_SEQ = 1;
 const TAX_ADJUSTMENT_OPEN = new Set();
 let TAX_AUTH_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'name', dir: 'asc'}};
 let TAX_PARTY_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'party', dir: 'asc'}};
@@ -4013,7 +4015,7 @@ const ITEM_ACCOUNT_RULES = [
     if (id === 'authorities') return taxAuthoritiesPanel();
     if (id === 'entries') return taxEntriesPanel();
     if (id === 'parties') return taxPartyBalancesPanel();
-    if (id === 'adjustments') return taxAdjustmentsPanel();
+    if (id === 'adjustments') return taxEntryPanel();
     if (id === 'reconciliation') return taxPartyBalancesPanel();
     if (id === 'defaults') return taxDefaultsPanel();
     return taxRulesPanel();
@@ -4305,17 +4307,144 @@ const ITEM_ACCOUNT_RULES = [
     const account = accounts().find((a) => a.code === code);
     return account ? `${code} · ${account.name}` : code;
   }
-  function taxAdjustmentEntry(kind, party, direction, amount, offsetAccount, authority) {
+  function taxAdjustmentEntry(kind, party, direction, amount, offsetAccount, authority, offsetSub) {
     const meta = taxNatureMeta(kind);
     const control = taxControlAccount(kind);
     const increase = direction === 'increase';
     const debitControl = meta.side === 'asset' ? increase : !increase;
     const offset = offsetAccount || suggestedOffsetAccount(kind);
     const authorityName = (TAX_AUTHORITIES.find((a) => a.id === authority) || {}).name || '';
+    const offsetDef = accounts().find((a) => a.code === offset);
+    const useSub = Boolean(offsetSub && offsetDef && ['bank', 'cash'].includes(offsetDef.control));
     return [
       {account: control, party: party || '', authority: authorityName, debit: debitControl ? amount : 0, credit: debitControl ? 0 : amount},
-      {account: offset, party: party || '', authority: '', debit: debitControl ? 0 : amount, credit: debitControl ? amount : 0},
+      {account: offset, party: useSub ? offsetSub : (party || ''), authority: '', debit: debitControl ? 0 : amount, credit: debitControl ? amount : 0},
     ];
+  }
+  const TAX_SETTLEMENT_TYPES = [
+    ['input-output', 'Input tax offset against output tax', ['input', 'output'], 'control', 'input'],
+    ['withholding-income', 'Withholding income tax paid', ['withholding_income'], 'bank', 'withholding_income'],
+    ['withholding-sales', 'Withholding sales tax paid', ['withholding_sales'], 'bank', 'withholding_sales'],
+    ['advance-income', 'Advance income tax applied', ['advance_income'], 'expense', 'advance_income'],
+    ['advance-sales-output', 'Advance sales tax applied to output tax', ['advance_sales', 'output'], 'control', 'advance_sales'],
+    ['advance-sales-expense', 'Advance sales tax written off', ['advance_sales'], 'expense', 'advance_sales'],
+    ['output-payment', 'Output tax paid to authority', ['output'], 'bank', 'output'],
+  ];
+  function settlementMeta(type) {
+    const row = TAX_SETTLEMENT_TYPES.find(([id]) => id === type) || TAX_SETTLEMENT_TYPES[0];
+    return {id: row[0], label: row[1], sources: row[2], target: row[3], adjNature: row[4]};
+  }
+  function taxAdjustmentTaxEntry(record, documentId) {
+    const authority = TAX_AUTHORITIES.find((a) => a.id === record.authority) || {name: '—'};
+    return {id: 'TE-' + documentId + '-A', date: record.date, document: documentId, docKind: 'adjustment', party: record.party, kind: record.kind, authority: record.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: record.direction === 'decrease' ? -record.amount : record.amount, period: record.date.slice(0, 7)};
+  }
+  function openTaxEntries(kind, authorityId, periods, extra = []) {
+    const all = taxEntries(extra);
+    const positive = all.filter((e) => e.kind === kind && e.authority === authorityId && e.amount > 0 && (!periods || !periods.length || periods.includes(e.period)));
+    const settled = new Map();
+    all.filter((e) => e.docKind === 'settlement' && e.kind === kind && e.settledEntry).forEach((e) => {
+      settled.set(e.settledEntry, round2((settled.get(e.settledEntry) || 0) + Math.abs(e.amount)));
+    });
+    return positive.map((e) => ({...e, open: round2(e.amount - (settled.get(e.id) || 0))}))
+      .filter((e) => e.open > 0)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  }
+  function settlementPeriods(type, authorityId, extra = []) {
+    const meta = settlementMeta(type);
+    const periods = new Set();
+    meta.sources.forEach((kind) => openTaxEntries(kind, authorityId, [], extra).forEach((e) => periods.add(e.period)));
+    return [...periods].sort();
+  }
+  function netTaxBalance(kind, authorityId, periods, extra = []) {
+    return round2(taxEntries(extra)
+      .filter((e) => e.kind === kind && e.authority === authorityId && (!periods || !periods.length || periods.includes(e.period)))
+      .reduce((n, e) => n + e.amount, 0));
+  }
+  function settlementCapacity(type, authorityId, periods, extra = []) {
+    const meta = settlementMeta(type);
+    const totals = {};
+    meta.sources.forEach((kind) => {
+      const openSum = round2(openTaxEntries(kind, authorityId, periods, extra).reduce((n, e) => n + e.open, 0));
+      totals[kind] = round2(Math.max(0, Math.min(openSum, netTaxBalance(kind, authorityId, periods, extra))));
+    });
+    const values = meta.sources.map((kind) => totals[kind]);
+    return {capacity: round2(Math.min(...values)), totals, meta};
+  }
+  function allocateOpen(entries, amount) {
+    let remaining = round2(amount);
+    const allocations = [];
+    for (const entry of entries) {
+      if (remaining <= 0.004) break;
+      const take = round2(Math.min(entry.open, remaining));
+      if (take <= 0.004) continue;
+      allocations.push({sourceId: entry.id, kind: entry.kind, party: entry.party, authority: entry.authority, period: entry.period, amount: take});
+      remaining = round2(remaining - take);
+    }
+    return {allocations, remaining};
+  }
+  function buildSettlementAllocations(type, authorityId, periods, amount, extra = []) {
+    const meta = settlementMeta(type);
+    const allocations = [];
+    for (const kind of meta.sources) {
+      const open = openTaxEntries(kind, authorityId, periods, extra);
+      const result = allocateOpen(open, amount);
+      allocations.push(...result.allocations);
+    }
+    return allocations;
+  }
+  function bankControlFor(name) {
+    const sub = CASH_BANK.find((c) => c.name === name);
+    return sub ? sub.control : '';
+  }
+  function settlementGlLines(type, authorityId, amount, offsetAccount, bankAccount) {
+    const meta = settlementMeta(type);
+    const auth = (TAX_AUTHORITIES.find((a) => a.id === authorityId) || {}).name || '';
+    const bankCode = bankControlFor(bankAccount) || offsetAccount;
+    const control = (kind) => taxControlAccount(kind);
+    if (type === 'input-output') return [
+      {account: control('output'), party: '', authority: auth, debit: amount, credit: 0},
+      {account: control('input'), party: '', authority: auth, debit: 0, credit: amount},
+    ];
+    if (type === 'advance-sales-output') return [
+      {account: control('output'), party: '', authority: auth, debit: amount, credit: 0},
+      {account: control('advance_sales'), party: '', authority: auth, debit: 0, credit: amount},
+    ];
+    if (type === 'withholding-income' || type === 'withholding-sales') return [
+      {account: control(meta.sources[0]), party: '', authority: auth, debit: amount, credit: 0},
+      {account: bankCode, party: bankAccount || '', authority: '', debit: 0, credit: amount},
+    ];
+    if (type === 'output-payment') return [
+      {account: control('output'), party: '', authority: auth, debit: amount, credit: 0},
+      {account: bankCode, party: bankAccount || '', authority: '', debit: 0, credit: amount},
+    ];
+    // advance income / advance sales expense
+    return [
+      {account: offsetAccount, party: '', authority: '', debit: amount, credit: 0},
+      {account: control(meta.sources[0]), party: '', authority: auth, debit: 0, credit: amount},
+    ];
+  }
+  function settlementNatureLabel(type) {
+    const meta = settlementMeta(type);
+    return meta.sources.map(taxKindLabel).join(' ↔ ');
+  }
+  function settlementPartyLabel(record) {
+    const parties = [...new Set((record.allocations || []).map((a) => a.party).filter(Boolean))];
+    if (!parties.length) return '—';
+    if (parties.length === 1) return parties[0];
+    return `${parties.length} parties`;
+  }
+  function settlementPeriodLabel(record) {
+    const periods = record.periods && record.periods.length ? record.periods : [...new Set((record.allocations || []).map((a) => a.period))];
+    return periods.length ? periods.join(', ') : '—';
+  }
+  function settlementTargetLabel(record) {
+    if (!record) return '—';
+    let base;
+    if (record.type === 'input-output' || record.type === 'advance-sales-output') base = 'Output tax control';
+    else if (record.type === 'withholding-income' || record.type === 'withholding-sales' || record.type === 'output-payment') base = record.bankAccount || 'Bank / cash';
+    else base = taxOffsetAccountLabel(record.offsetAccount);
+    if (record.adjustment) base += ' · adj ' + taxOffsetAccountLabel(record.adjustment.offsetAccount);
+    return base;
   }
   function defaultAuthorityFor(kind) {
     return TAX_AUTHORITIES.find((a) => a.id === TAX_DEFAULT_AUTHORITIES[kind] && a.active !== false && authorityHas(a, kind))
@@ -4325,7 +4454,7 @@ const ITEM_ACCOUNT_RULES = [
   function documentAuthority(doc, kind) {
     return (doc && TAX_AUTHORITIES.find((a) => a.id === doc.taxAuthority)) || defaultAuthorityFor(kind);
   }
-  function taxEntries() {
+  function taxEntries(extra = []) {
     const entries = [];
     INVOICES.forEach((inv) => {
       const totals = invoiceTotals(inv.kind, inv.lines || []);
@@ -4373,6 +4502,18 @@ const ITEM_ACCOUNT_RULES = [
       const authority = TAX_AUTHORITIES.find((a) => a.id === r.authority) || {name: '—'};
       entries.push({id: 'TE-' + r.id, date: r.date, document: r.id, docKind: 'adjustment', party: r.party, kind: r.kind, authority: r.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: r.direction === 'decrease' ? -r.amount : r.amount, period: r.date.slice(0, 7)});
     });
+    TAX_SETTLEMENTS.forEach((st) => {
+      if (st.adjustment) {
+        const a = st.adjustment;
+        const authority = TAX_AUTHORITIES.find((x) => x.id === a.authority) || {name: '—'};
+        entries.push({id: 'TE-' + st.id + '-A', date: st.date, document: st.id, docKind: 'adjustment', party: a.party, kind: a.kind, authority: a.authority, authorityName: authority.name, base: 0, rate: 'adjustment', amount: a.direction === 'decrease' ? -a.amount : a.amount, period: st.date.slice(0, 7)});
+      }
+      (st.allocations || []).forEach((a, i) => {
+        const authority = TAX_AUTHORITIES.find((x) => x.id === a.authority) || {name: '—'};
+        entries.push({id: 'TE-' + st.id + '-S' + i, date: st.date, document: st.id, docKind: 'settlement', party: a.party, kind: a.kind, authority: a.authority, authorityName: authority.name, base: 0, rate: 'settlement', amount: -a.amount, period: a.period || st.date.slice(0, 7), settledEntry: a.sourceId});
+      });
+    });
+    entries.push(...extra);
     return entries.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
   function taxAuthoritiesPanel() {
@@ -4432,12 +4573,12 @@ const ITEM_ACCOUNT_RULES = [
         <label>To<input type="date" name="to" value="${e(f.to)}"></label>
         <button class="button" type="button" data-tax-entry-reset>Reset</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>Tax entries</h2><div class="related"><span class="badge">${rows.length} of ${all.length} entries</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <section class="panel"><div class="panel-head"><h2>Tax ledger</h2><div class="related"><span class="badge">${rows.length} of ${all.length} entries</span><button class="button" data-export-table>Export CSV</button></div></div>
       <div class="table-scroll"><table class="tax-register">
         ${taxTableHead('taxentry', f, cols, all)}
         <tbody>${rows.map((e) => `<tr class="row-link" data-tax-doc="${e.docKind}:${e.document}"><td>${e.date}</td><td class="mono">${e.document}</td><td>${e.party}</td><td>${e.kindLabel}</td><td>${e.authorityLabel}</td><td class="numeric">${e.base ? money(e.base) : '—'}</td><td class="numeric">${e.rateLabel}</td><td class="numeric">${money(e.amount)}</td><td>${e.period}</td></tr>`).join('') || '<tr><td colspan="9">No tax entries match these filters.</td></tr>'}</tbody>
       <tfoot><tr><td colspan="5">Total shown</td><td class="numeric">${money(round2(rows.reduce((n, e) => n + e.base, 0)))}</td><td></td><td class="numeric">${money(round2(rows.reduce((n, e) => n + e.amount, 0)))}</td><td></td></tr></tfoot></table></div>
-      <div class="table-footer">Entries come from invoices, bills, returns and tax adjustments; they are never typed here. Click a row to open the document that created it, or the adjustment.</div></section>`;
+      <div class="table-footer">Entries come from invoices, bills, returns, adjustments and closings; they are never typed here. Click a row to open the document or voucher that created it.</div></section>`;
   }
   function taxPartyBalancesPanel() {
     const f = TAX_PARTY_FILTER;
@@ -4450,7 +4591,7 @@ const ITEM_ACCOUNT_RULES = [
       row.tax = round2(row.tax + e.amount); row.count++;
       map.set(key, row);
     });
-    const all = [...map.values()].map((r) => ({...r, kindLabel: taxKindLabel(r.kind), status: TAX_PARTY_STATUS.get(r.key) === 'Verified' ? 'Verified' : 'Unverified'}));
+    const all = [...map.values()].filter((r) => Math.abs(r.tax) > 0.005).map((r) => ({...r, kindLabel: taxKindLabel(r.kind), status: TAX_PARTY_STATUS.get(r.key) === 'Verified' ? 'Verified' : 'Unverified'}));
     const searched = all.filter((r) => !f.q || r.party.toLowerCase().includes(f.q.toLowerCase()));
     const rows = taxSortRows(taxFilterRows(searched, f), f);
     const cols = [['party', 'Party'], ['count', 'Entries', 'numeric', false], ['tax', 'Tax balance', 'numeric', false], ['status', 'Verification']];
@@ -4470,62 +4611,105 @@ const ITEM_ACCOUNT_RULES = [
         <tfoot><tr><td>Total</td><td class="numeric">${rows.reduce((n, r) => n + r.count, 0)}</td><td class="numeric">${money(totalTax)}</td><td></td></tr></tfoot></table></div>
       <div class="table-footer">${e(taxKindLabel(kind))} control account: <strong>${e(control)} · ${e(controlName)}</strong>. A party balance is the net of that party's entries for this nature; the authority balance is the same entries grouped by authority; the control is the total of both. Mark a row verified or unverified. Use the Adjustments page to adjust a party and its authority when a claim is invalid or a filing changes.</div></section>`;
   }
-  function taxAdjustmentsPanel() {
+  function taxEntryPanel() {
     const f = TAX_ADJUSTMENT_FILTER;
     const authorityName = (id) => (TAX_AUTHORITIES.find((a) => a.id === id) || {}).name || '—';
-    const all = TAX_ADJUSTMENTS.map((r) => ({...r, kindLabel: taxKindLabel(r.kind), authorityLabel: authorityName(r.authority), offsetLabel: taxOffsetAccountLabel(legacyOffsetAccount(r)), signed: (r.direction === 'decrease' ? -1 : 1) * r.amount}));
-    const searched = all.filter((r) => (!f.q || (r.id + ' ' + r.party + ' ' + r.authorityLabel + ' ' + r.reason).toLowerCase().includes(f.q.toLowerCase()))
+    const adjustmentRows = TAX_ADJUSTMENTS.map((r) => ({
+      id: r.id,
+      date: r.date,
+      typeLabel: 'Adjustment',
+      natureLabel: taxKindLabel(r.kind),
+      party: r.party,
+      authorityLabel: authorityName(r.authority),
+      periodLabel: r.date.slice(0, 7),
+      amount: (r.direction === 'decrease' ? -1 : 1) * r.amount,
+      offsetLabel: taxOffsetAccountLabel(legacyOffsetAccount(r)),
+      reason: r.reason,
+      entry: r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, legacyOffsetAccount(r), r.authority),
+      kind: 'adjustment',
+    }));
+    const settlementRows = TAX_SETTLEMENTS.map((r) => ({
+      id: r.id,
+      date: r.date,
+      typeLabel: r.adjustment ? 'Adjustment + closing' : 'Closing',
+      natureLabel: settlementNatureLabel(r.type),
+      party: settlementPartyLabel(r),
+      authorityLabel: authorityName(r.authority),
+      periodLabel: settlementPeriodLabel(r),
+      amount: r.amount,
+      offsetLabel: settlementTargetLabel(r),
+      reason: r.reason,
+      entry: r.adjustment ? [...taxAdjustmentEntry(r.adjustment.kind, r.adjustment.party, r.adjustment.direction, r.adjustment.amount, r.adjustment.offsetAccount, r.adjustment.authority, r.adjustment.offsetSub), ...(r.entry || [])] : (r.entry || []),
+      kind: 'settlement',
+    }));
+    const all = adjustmentRows.concat(settlementRows).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const searched = all.filter((r) => (!f.q || (r.id + ' ' + r.typeLabel + ' ' + r.natureLabel + ' ' + r.party + ' ' + r.authorityLabel + ' ' + r.reason).toLowerCase().includes(f.q.toLowerCase()))
       && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to));
     const rows = taxSortRows(taxFilterRows(searched, f), f);
-    const cols = [['date', 'Date', '', false], ['id', 'Reference'], ['kindLabel', 'Nature'], ['party', 'Party'], ['authorityLabel', 'Authority'], ['signed', 'Amount', 'numeric', false], ['offsetLabel', 'Offset account'], ['reason', 'Reason']];
+    const cols = [['date', 'Date', '', false], ['id', 'Reference'], ['typeLabel', 'Entry type'], ['natureLabel', 'Nature'], ['party', 'Party'], ['authorityLabel', 'Authority'], ['periodLabel', 'Period'], ['amount', 'Amount', 'numeric', false], ['offsetLabel', 'Offset / target'], ['reason', 'Reason']];
     return `<form class="filterbar" data-tax-adj-filter>
-        <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Reference, party, authority, reason"></label>
+        <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Reference, type, party, authority, reason"></label>
         <label>From<input type="date" name="from" value="${e(f.from)}"></label>
         <label>To<input type="date" name="to" value="${e(f.to)}"></label>
         <button class="button" type="button" data-tax-adj-reset>Reset</button>
-        <button class="button primary" type="button" data-tax-adj-new>New adjustment</button>
+        <button class="button primary" type="button" data-tax-adj-new>New tax entry</button>
       </form>
-      <section class="panel"><div class="panel-head"><h2>Tax adjustments</h2><div class="related"><span class="badge">${rows.length} of ${all.length} entries</span><button class="button" data-export-table>Export CSV</button></div></div>
+      <section class="panel"><div class="panel-head"><h2>Tax entry vouchers</h2><div class="related"><span class="badge">${rows.length} of ${all.length} entries</span><button class="button" data-export-table>Export CSV</button></div></div>
       <div class="table-scroll"><table class="adj-register tax-register">
         ${taxTableHead('taxadj', f, cols, all)}
         <tbody>${rows.map((r) => {
           const open = TAX_ADJUSTMENT_OPEN.has(r.id);
-          const entry = r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, legacyOffsetAccount(r), r.authority);
-          const detail = open ? `<tr class="entry-detail"><td colspan="8">${ledgerIllustration('Adjustment ' + r.id, entry, 'A separate voucher: the tax control line carries authority ' + authorityName(r.authority) + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}</td></tr>` : '';
-          return `<tr class="row-link" data-tax-adj-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${r.id}</td><td>${e(r.kindLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td class="numeric" title="${r.direction === 'decrease' ? 'Decrease' : 'Increase'}">${r.direction === 'decrease' ? '−' : '+'}${money(r.amount)}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
-        }).join('') || '<tr><td colspan="8">No tax adjustments yet. Use New adjustment to record one.</td></tr>'}</tbody></table></div>
-      <div class="table-footer">Every adjustment shows its nature, party (or Unallocated), authority, amount, offset account and reason. Click a row to show its debit and credit entry. The form opens on its own page. Cross-control settlements, such as advance tax applied to another tax liability, are separate settlement vouchers — not one-sided adjustments.</div></section>`;
+          const detail = open ? `<tr class="entry-detail"><td colspan="10">${ledgerIllustration((r.kind === 'settlement' ? 'Closing ' : 'Adjustment ') + r.id, r.entry, r.kind === 'settlement' ? 'The closing entry moves the selected tax entries into the settlement. Party/authority detail remains in the tax entries; the control lines are authority-level.' : 'A separate voucher: the tax control line carries authority ' + r.authorityLabel + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}</td></tr>` : '';
+          return `<tr class="row-link" data-tax-adj-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${e(r.id)}</td><td>${e(r.typeLabel)}</td><td>${e(r.natureLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td>${e(r.periodLabel)}</td><td class="numeric">${r.amount < 0 ? '−' : ''}${money(Math.abs(r.amount))}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
+        }).join('') || '<tr><td colspan="10">No tax entry vouchers yet. Use New tax entry.</td></tr>'}</tbody></table></div>
+      <div class="table-footer">Adjustments correct one tax control against a non-tax account. Closing entries settle selected open tax entries against another tax control or cash/bank, and create the matching negative tax entries so party and authority balances fall to zero while retaining history. Combined entries post an adjustment before the closing.</div></section>`;
   }
-  function taxAdjustmentEditor(code) {
-    const r = code ? TAX_ADJUSTMENTS.find((x) => x.id === code) : null;
-    const v = (key, fallback = '') => (r && r[key] !== undefined ? r[key] : fallback);
-    const defaultKind = v('kind', 'input');
-    const defaultAuth = v('authority', TAX_DEFAULT_AUTHORITIES[defaultKind] || '');
-    const offsetAccount = v('offsetAccount', r ? legacyOffsetAccount(r) : suggestedOffsetAccount(defaultKind));
-    const accountOptions = accounts().filter((a) => a.active !== false && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === offsetAccount ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+  function taxEntryEditor(code) {
+    const periods = [...new Set(taxEntries().map((e) => e.period))].sort();
+    const accountOptions = (selected) => accounts().filter((a) => a.active !== false && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === selected ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
+    const bankOptions = CASH_BANK.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
+    const authorityOptions = (selected) => TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${a.id === selected ? 'selected' : ''}>${e(a.name)}</option>`).join('');
     return `<section class="panel">
-      <div class="panel-head"><h2>${r ? e(r.id) : 'New tax adjustment'}</h2><span class="badge">Adjustment voucher</span></div>
-      <form class="panel-body form-grid" data-tax-adj-form data-editing="${r ? e(r.id) : ''}">
-        <label>Tax nature<select name="kind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${defaultKind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-        <label>Authority<select name="authority" class="inline-input"><option value="">Choose authority</option>${TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${defaultAuth === a.id ? 'selected' : ''}>${e(a.name)} · ${(a.kinds || []).map(taxKindLabel).join(', ')}</option>`).join('')}</select></label>
-        <label>Party<select name="party" class="inline-input" required><option value="">Choose party</option><option value="__unallocated__" ${v('party') === 'Unallocated' ? 'selected' : ''}>Unallocated — authority-level difference</option>${PARTIES.map((p) => `<option value="${e(p.name)}" ${v('party') === p.name ? 'selected' : ''}>${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
-        <label>Date<input name="date" type="date" value="${e(v('date', '2026-11-30'))}" required></label>
-        <label>Direction<select name="direction" class="inline-input"><option value="decrease" ${v('direction', 'decrease') === 'decrease' ? 'selected' : ''}>Decrease the tax balance</option><option value="increase" ${v('direction') === 'increase' ? 'selected' : ''}>Increase the tax balance</option></select></label>
-        <label>Amount<input name="amount" inputmode="decimal" placeholder="0.00" value="${e(v('amount'))}" required></label>
-        <label class="wide">Reason<input name="reason" maxlength="120" required value="${e(v('reason'))}" placeholder="Unclaimable input, filing difference, withholding paid, advance adjusted"></label>
-        <div class="wide adj-target">
-          <div class="section-title">Tax balance being adjusted</div>
-          <div class="record-summary">
-            <div><small>Control account</small><strong data-adj-control>—</strong></div>
-            <div><small>Party</small><span data-adj-party>Choose party</span></div>
-            <div><small>Authority</small><span data-adj-authority>Choose authority</span></div>
+      <div class="panel-head"><h2>New tax entry</h2><span class="badge">Adjustment or closing</span></div>
+      <form class="panel-body form-grid" data-tax-entry-form>
+        <label>Entry type<select name="entryType" class="inline-input">
+          <option value="adjustment">Adjustment only</option>
+          <option value="closing">Closing / settlement</option>
+          <option value="combined">Adjustment + closing</option>
+        </select></label>
+        <label>Date<input name="date" type="date" value="2026-11-30" required></label>
+        <label class="wide">Reason<input name="reason" maxlength="160" required placeholder="Unclaimable input, monthly filing, withholding deposit, advance application"></label>
+
+        <div class="wide" data-entry-adjustment>
+          <div class="section-title">Adjustment</div>
+          <div class="form-grid">
+            <label>Tax nature<select name="adjKind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${k === 'input' ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+            <label>Authority<select name="adjAuthority" class="inline-input">${authorityOptions(TAX_DEFAULT_AUTHORITIES.input)}</select></label>
+            <label>Party<select name="adjParty" class="inline-input"><option value="">Choose party</option><option value="__unallocated__">Unallocated — authority-level difference</option>${PARTIES.map((p) => `<option value="${e(p.name)}">${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
+            <label>Direction<select name="adjDirection" class="inline-input"><option value="decrease">Decrease the tax balance</option><option value="increase">Increase the tax balance</option></select></label>
+            <label>Amount<input name="adjAmount" inputmode="decimal" placeholder="0.00"></label>
+            <label>Offset account<select name="adjOffset" class="inline-input">${accountOptions('5300')}</select></label>
+            <label class="wide" data-adj-sub-wrap hidden>Bank / cash sub-account<select name="adjOffsetSub" class="inline-input">${bankOptions}</select></label>
           </div>
         </div>
-        <label class="wide">Offset account<select name="offsetAccount" class="inline-input" required>${accountOptions}</select><small class="secondary">The other side of the adjustment. Search by code or name. Tax control accounts are excluded here; they can only move through their own tax entries or a settlement voucher.</small></label>
-        <div class="wide" data-tax-adj-preview></div>
-        <div class="related"><button class="button primary">${r ? 'Save changes' : 'Record adjustment'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
+
+        <div class="wide" data-entry-settlement>
+          <div class="section-title">Closing / settlement</div>
+          <div class="form-grid">
+            <label>Settlement type<select name="settleType" class="inline-input">${TAX_SETTLEMENT_TYPES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label>
+            <label>Authority<select name="settleAuthority" class="inline-input">${authorityOptions('AUTH-FBR')}</select></label>
+            <label>Amount<input name="settleAmount" inputmode="decimal" placeholder="Blank = all available"></label>
+            <label data-settle-offset-wrap>Offset / target account<select name="settleOffset" class="inline-input">${accountOptions('5400')}</select></label>
+            <label class="wide" data-bank-wrap hidden>Bank / cash sub-account<select name="bankAccount" class="inline-input">${bankOptions}</select></label>
+            <div class="wide">${ms('settle-periods', 'Periods to close', periods.map((p) => [p, p]), [], '', 'All open periods')}</div>
+            <p class="wide form-note" data-settle-capacity>Choose the settlement type, authority and periods to see what is available.</p>
+          </div>
+        </div>
+
+        <div class="wide" data-tax-entry-preview></div>
+        <div class="related"><button class="button primary">Record tax entry</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">The tax side is fixed by the nature: its control account, the selected party and the selected authority. Use <strong>Unallocated</strong> when the authority-level difference cannot be tied to a party; it appears as a system row in party balances. The offset account is where the debit or credit lands. The adjustment never edits the source document.</p></div>
+      <div class="panel-body"><p class="form-note">Adjustment: one tax control against a non-tax account. Closing: settles selected open entries against another tax control or bank; the tax entries are reduced per party and period, so balances go to zero without deleting history. Combined: posts the adjustment first, then closes what remains.</p></div>
     </section>`;
   }
   function taxesView() {
@@ -4629,7 +4813,7 @@ const ITEM_ACCOUNT_RULES = [
         navigate({module: 'accounting', tab: kind.startsWith('sales') ? 'sales-invoices' : 'purchase-invoices'});
         return;
       }
-      if (kind === 'adjustment') {
+      if (kind === 'adjustment' || kind === 'settlement') {
         TAX_ADJUSTMENT_OPEN.add(id);
         navigate({module: 'tax', tab: 'adjustments'});
         return;
@@ -4675,7 +4859,7 @@ const ITEM_ACCOUNT_RULES = [
       rf.addEventListener('change', () => { apply(); rerender(); });
     }
     document.querySelector('[data-tax-adj-reset]')?.addEventListener('click', () => { Object.assign(TAX_ADJUSTMENT_FILTER, {q: '', from: '', to: '', cf: {}}); rerender(); });
-    document.querySelector('[data-tax-adj-new]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'adjustments', mode: 'editor', form: 'adjustment', code: ''}));
+    document.querySelector('[data-tax-adj-new]')?.addEventListener('click', () => navigate({module: 'tax', tab: 'adjustments', mode: 'editor', form: 'entry', code: ''}));
     bindTaxColumnMenus('taxadj', TAX_ADJUSTMENT_FILTER, rerender);
     document.querySelectorAll('[data-tax-adj-toggle]').forEach((tr) => tr.addEventListener('click', (ev) => {
       if (ev.target.closest('button, a, input, select')) return;
@@ -4688,74 +4872,160 @@ const ITEM_ACCOUNT_RULES = [
       TAX_PARTY_STATUS.set(key, TAX_PARTY_STATUS.get(key) === 'Verified' ? 'Unverified' : 'Verified');
       rerender();
     }));
-    const adjForm = document.querySelector('[data-tax-adj-form]');
-    if (adjForm) {
-      const preview = () => {
-        const v = Object.fromEntries(new FormData(adjForm));
-        const box = adjForm.querySelector('[data-tax-adj-preview]');
-        if (!box) return;
-        const control = taxControlAccount(v.kind);
-        const controlAccount = accounts().find((a) => a.code === control);
-        const authority = TAX_AUTHORITIES.find((a) => a.id === v.authority);
-        const party = v.party === '__unallocated__' ? 'Unallocated' : v.party;
-        const controlLabel = control + ' · ' + (controlAccount ? controlAccount.name : 'Unknown account');
-        const target = adjForm.querySelector('[data-adj-control]');
-        if (target) target.textContent = controlLabel;
-        const partyLabel = adjForm.querySelector('[data-adj-party]');
-        if (partyLabel) partyLabel.textContent = party || 'Choose party';
-        const authLabel = adjForm.querySelector('[data-adj-authority]');
-        if (authLabel) authLabel.textContent = authority ? authority.name : 'Choose authority';
-        const amount = round2(Number(v.amount) || 0);
-        if (!amount) {
-          box.innerHTML = ledgerIllustration('Illustrative adjustment entry', [], 'Choose the nature, party, amount and offset account to see the debit and credit.');
-          return;
-        }
-        const entry = taxAdjustmentEntry(v.kind, party, v.direction, amount, v.offsetAccount, v.authority);
-        const taxLine = entry[0];
-        const offsetLine = entry[1];
-        const taxSide = taxLine.debit ? 'debited' : 'credited';
-        const offsetSide = offsetLine.debit ? 'debit' : 'credit';
-        box.innerHTML = ledgerIllustration('Illustrative adjustment entry', entry, `The tax control (${controlLabel}) is ${taxSide} ${money(amount)} with authority ${authority ? authority.name : '—'}. The offset account takes the ${offsetSide} and carries ${party || 'the party'}.`);
+    const entryForm = document.querySelector('[data-tax-entry-form]');
+    if (entryForm) {
+      const $ = (name) => entryForm.querySelector(`[name="${name}"]`);
+      const typeSelect = $('entryType');
+      const adjSection = entryForm.querySelector('[data-entry-adjustment]');
+      const settleSection = entryForm.querySelector('[data-entry-settlement]');
+      const adjOffset = $('adjOffset');
+      const adjSubWrap = entryForm.querySelector('[data-adj-sub-wrap]');
+      const adjSub = $('adjOffsetSub');
+      const settleType = $('settleType');
+      const settleOffset = $('settleOffset');
+      const settleOffsetWrap = entryForm.querySelector('[data-settle-offset-wrap]');
+      const bankWrap = entryForm.querySelector('[data-bank-wrap]');
+      const bankAccount = $('bankAccount');
+      const periodsBox = entryForm.querySelector('.ms[data-ms="settle-periods"]');
+      const previewBox = entryForm.querySelector('[data-tax-entry-preview]');
+      const capacityBox = entryForm.querySelector('[data-settle-capacity]');
+      const partyOf = (value) => value === '__unallocated__' ? 'Unallocated' : value;
+      const selectedPeriods = () => periodsBox ? picked(periodsBox) : [];
+      const adjustmentDraft = () => {
+        const v = Object.fromEntries(new FormData(entryForm));
+        const amount = round2(Number(v.adjAmount) || 0);
+        return {date: v.date, kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: v.adjOffsetSub, reason: v.reason};
       };
-      adjForm.addEventListener('input', preview);
-      adjForm.addEventListener('change', (ev) => {
-        if (ev.target.name === 'kind') {
-          const kind = ev.target.value;
-          const auth = adjForm.querySelector('[name="authority"]');
-          const current = TAX_AUTHORITIES.find((a) => a.id === auth.value);
-          if (!current || !authorityHas(current, kind)) { auth.value = TAX_DEFAULT_AUTHORITIES[kind] || ''; auth.dispatchEvent(new Event('change', {bubbles: true})); }
-          const offset = adjForm.querySelector('[name="offsetAccount"]');
-          if (!offset.value || offset.value === '5300' || offset.value === '4200') {
-            offset.value = suggestedOffsetAccount(kind);
-            offset.dispatchEvent(new Event('change', {bubbles: true}));
+      const settlementDraft = (extra = []) => {
+        const v = Object.fromEntries(new FormData(entryForm));
+        const meta = settlementMeta(v.settleType);
+        const cap = settlementCapacity(v.settleType, v.settleAuthority, selectedPeriods(), extra);
+        const amount = round2(Number(v.settleAmount) || cap.capacity);
+        return {v, meta, cap, amount, gl: settlementGlLines(v.settleType, v.settleAuthority, amount, v.settleOffset, v.bankAccount)};
+      };
+      const syncAdjustmentSub = () => {
+        const account = accounts().find((a) => a.code === adjOffset.value);
+        const subs = account && ['bank', 'cash'].includes(account.control) ? CASH_BANK.filter((c) => c.control === account.code) : [];
+        adjSubWrap.hidden = !subs.length;
+        if (subs.length) {
+          adjSub.innerHTML = subs.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
+        }
+      };
+      const syncSections = () => {
+        const type = typeSelect.value;
+        adjSection.hidden = type === 'closing';
+        settleSection.hidden = type === 'adjustment';
+        const meta = settlementMeta(settleType.value);
+        settleOffsetWrap.hidden = meta.target !== 'expense';
+        bankWrap.hidden = meta.target !== 'bank';
+        if (meta.target === 'expense') {
+          if (!settleOffset.value || settleOffset.value === '5300' || settleOffset.value === '5400') settleOffset.value = settleType.value === 'advance-income' ? '5400' : '5300';
+        }
+        if (meta.target === 'bank' && !bankAccount.value) bankAccount.value = CASH_BANK[0] ? CASH_BANK[0].name : '';
+      };
+      const preview = () => {
+        syncSections();
+        const type = typeSelect.value;
+        const chunks = [];
+        const adj = adjustmentDraft();
+        const needAdj = type !== 'closing';
+        const needSettle = type !== 'adjustment';
+        let extra = [];
+        if (needAdj && adj.amount > 0) {
+          const adjEntry = taxAdjustmentEntry(adj.kind, adj.party, adj.direction, adj.amount, adj.offsetAccount, adj.authority, adj.offsetSub);
+          chunks.push(ledgerIllustration('Illustrative adjustment entry', adjEntry, `Adjustment control ${taxControlAccount(adj.kind)} · party ${adj.party || '—'} · authority ${(TAX_AUTHORITIES.find((a) => a.id === adj.authority) || {}).name || '—'}.`));
+          if (type === 'combined') extra = [taxAdjustmentTaxEntry(adj, 'TEMP')];
+        }
+        if (needSettle) {
+          const st = settlementDraft(extra);
+          if (capacityBox) {
+            const totals = st.meta.sources.map((kind) => `${taxKindLabel(kind)} ${money(st.cap.totals[kind])}`).join(' · ');
+            capacityBox.textContent = `${totals} · available to close ${money(st.cap.capacity)}${st.v.settleAmount ? '' : ' (blank amount uses this)'}`;
           }
+          const showAmount = Math.min(st.amount, st.cap.capacity);
+          if (showAmount > 0) {
+            const previewGl = settlementGlLines(st.v.settleType, st.v.settleAuthority, showAmount, st.v.settleOffset, st.v.bankAccount);
+            chunks.push(ledgerIllustration('Illustrative closing entry', previewGl, `Closing ${settlementNatureLabel(st.v.settleType)} for ${(TAX_AUTHORITIES.find((a) => a.id === st.v.settleAuthority) || {}).name || '—'}. The negative tax entries are created per party and period; history remains.`));
+          }
+        }
+        previewBox.innerHTML = chunks.join('') || ledgerIllustration('Illustrative tax entry', [], 'Fill the adjustment or closing section to preview the entry.');
+      };
+      entryForm.addEventListener('input', preview);
+      entryForm.addEventListener('change', (ev) => {
+        if (ev.target === typeSelect) {
+          syncSections();
+          if (typeSelect.value !== 'adjustment') {
+            const meta = settlementMeta(settleType.value);
+            const auth = $('settleAuthority');
+            if (!auth.value) auth.value = TAX_DEFAULT_AUTHORITIES[meta.sources[0]] || '';
+          }
+        }
+        if (ev.target === adjOffset) syncAdjustmentSub();
+        if (ev.target === settleType) {
+          const meta = settlementMeta(settleType.value);
+          const auth = $('settleAuthority');
+          const current = TAX_AUTHORITIES.find((a) => a.id === auth.value);
+          if (!current || !meta.sources.every((kind) => authorityHas(current, kind))) auth.value = TAX_DEFAULT_AUTHORITIES[meta.sources[0]] || '';
         }
         preview();
       });
+      syncAdjustmentSub();
+      syncSections();
       preview();
-      adjForm.querySelector('[data-form-cancel]')?.addEventListener('click', goAdjustments);
-      adjForm.addEventListener('submit', (ev) => {
+      entryForm.querySelector('[data-form-cancel]')?.addEventListener('click', goAdjustments);
+      entryForm.addEventListener('submit', (ev) => {
         ev.preventDefault();
-        if (!adjForm.reportValidity()) return;
-        const v = Object.fromEntries(new FormData(adjForm));
-        const amount = round2(Number(v.amount) || 0);
-        if (amount <= 0) { notify('Enter an amount greater than zero.'); return; }
-        if (!v.authority) { notify('Choose the tax authority.'); return; }
-        const auth = TAX_AUTHORITIES.find((a) => a.id === v.authority);
-        if (auth && !authorityHas(auth, v.kind)) { notify('That authority does not handle this tax nature.'); return; }
-        const offset = accounts().find((a) => a.code === v.offsetAccount && a.active !== false);
-        if (!offset) { notify('Choose an active offset account.'); return; }
-        if (offset.subtype === 'tax') { notify('Tax control accounts are adjusted through their own tax entries; choose a non-tax offset account.'); return; }
-        if (v.offsetAccount === taxControlAccount(v.kind)) { notify('The offset account must be different from the tax control account.'); return; }
-        const party = v.party === '__unallocated__' ? 'Unallocated' : v.party;
-        const entry = taxAdjustmentEntry(v.kind, party, v.direction, amount, v.offsetAccount, v.authority);
-        const editing = adjForm.dataset.editing || '';
-        const record = TAX_ADJUSTMENTS.find((x) => x.id === editing);
-        const id = record ? record.id : 'ADJ-2026-' + String(TAX_ADJUSTMENT_SEQ++).padStart(4, '0');
-        const values = {id, date: v.date, kind: v.kind, authority: v.authority, party, direction: v.direction, amount, offsetAccount: v.offsetAccount, reason: v.reason, entry};
-        if (record) Object.assign(record, values); else TAX_ADJUSTMENTS.push(values);
+        if (!entryForm.reportValidity()) return;
+        const v = Object.fromEntries(new FormData(entryForm));
+        const type = v.entryType;
+        const needAdj = type !== 'closing';
+        const needSettle = type !== 'adjustment';
+        let adjustment = null;
+        let extra = [];
+        if (needAdj) {
+          const amount = round2(Number(v.adjAmount) || 0);
+          if (amount <= 0) { notify('Enter the adjustment amount.'); return; }
+          if (!v.adjParty) { notify('Choose the adjustment party or Unallocated.'); return; }
+          const auth = TAX_AUTHORITIES.find((a) => a.id === v.adjAuthority);
+          if (!auth || !authorityHas(auth, v.adjKind)) { notify('The adjustment authority does not handle that tax nature.'); return; }
+          const offset = accounts().find((a) => a.code === v.adjOffset && a.active !== false);
+          if (!offset) { notify('Choose an active adjustment offset account.'); return; }
+          if (offset.subtype === 'tax') { notify('Adjustment offset cannot be a tax control account.'); return; }
+          if (v.adjOffset === taxControlAccount(v.adjKind)) { notify('The adjustment offset must differ from the tax control.'); return; }
+          const subs = ['bank', 'cash'].includes(offset.control) ? CASH_BANK.filter((c) => c.control === offset.code) : [];
+          if (subs.length && !v.adjOffsetSub) { notify('Choose the bank or cash sub-account for the adjustment.'); return; }
+          adjustment = {date: v.date, kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: subs.length ? v.adjOffsetSub : '', reason: v.reason};
+          if (type === 'combined') extra = [taxAdjustmentTaxEntry(adjustment, 'TEMP')];
+        }
+        if (needSettle) {
+          const meta = settlementMeta(v.settleType);
+          const auth = TAX_AUTHORITIES.find((a) => a.id === v.settleAuthority);
+          if (!auth || !meta.sources.every((kind) => authorityHas(auth, kind))) { notify('Choose an authority that handles every tax nature in this settlement.'); return; }
+          const periods = selectedPeriods();
+          const cap = settlementCapacity(v.settleType, v.settleAuthority, periods, extra);
+          if (cap.capacity <= 0.004) { notify('There is no open balance to close for that authority and period.'); return; }
+          const amount = round2(Number(v.settleAmount) || cap.capacity);
+          if (amount <= 0) { notify('Enter a closing amount.'); return; }
+          if (amount > cap.capacity + 0.005) { notify(`The closing amount is more than the available ${money(cap.capacity)}.`); return; }
+          if (meta.target === 'bank' && !v.bankAccount) { notify('Choose the bank or cash sub-account.'); return; }
+          if (meta.target === 'expense') {
+            const offset = accounts().find((a) => a.code === v.settleOffset && a.active !== false && a.subtype !== 'tax');
+            if (!offset) { notify('Choose an active non-tax target account for the settlement.'); return; }
+          }
+          const allocations = buildSettlementAllocations(v.settleType, v.settleAuthority, periods, amount, extra);
+          const entry = settlementGlLines(v.settleType, v.settleAuthority, amount, v.settleOffset, v.bankAccount);
+          const id = 'SET-2026-' + String(TAX_SETTLEMENT_SEQ++).padStart(4, '0');
+          TAX_SETTLEMENTS.push({id, date: v.date, type: v.settleType, authority: v.settleAuthority, periods, amount, offsetAccount: v.settleOffset, bankAccount: v.bankAccount, allocations, entry, reason: v.reason, adjustment: type === 'combined' ? adjustment : null});
+          TAX_ADJUSTMENT_OPEN.add(id);
+          notify(type === 'combined' ? 'Combined tax entry recorded. Party and authority balances were reduced; history remains.' : 'Closing entry recorded. The selected open tax entries are settled; history remains.');
+          goAdjustments();
+          return;
+        }
+        const id = 'ADJ-2026-' + String(TAX_ADJUSTMENT_SEQ++).padStart(4, '0');
+        const entry = taxAdjustmentEntry(adjustment.kind, adjustment.party, adjustment.direction, adjustment.amount, adjustment.offsetAccount, adjustment.authority, adjustment.offsetSub);
+        TAX_ADJUSTMENTS.push({...adjustment, id, entry});
         TAX_ADJUSTMENT_OPEN.add(id);
-        notify('Tax adjustment recorded. The entry moves the party and authority balances together; the source document is unchanged.');
+        notify('Tax adjustment recorded. The source document is unchanged.');
         goAdjustments();
       });
     }
@@ -5705,6 +5975,6 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   const overview = dashboard;
-  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, taxAuthorityEditor, taxAdjustmentEditor, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
+  return {overview, dashboard, gl, bindGL, journalRegister, bindJournal, journalDocById, updateJournalDoc, cancelJournalDoc, deleteJournalDoc, duplicateJournalDoc, reverseJournalDoc, setup, bindSetup, bindDimension, taxesView, bindTaxes, taxPage, taxAuthorityEditor, taxEntryEditor, reportPage, advances: advancesView, advanceEditor, advanceRecord, applyAdvanceEditor, stockEditor, bindAdvances, itemDefaults: itemDefaultsView, bindItemDefaults, accountGroups: accountGroupsView, accountGroupEditor, bindAccountGroups, accountGroupFor, cashBank: cashBankView, cashEditor, bindCashBank, cashReconView: () => reconView('cash'), partyReconView: () => reconView('party'), cashReconEditor: (code) => reconEditor('cash', code), partyReconEditor: (code) => reconEditor('party', code), bindRecon, items: itemsView, itemEditor, bindItems, partyEditor, taxEditor, paymentEditor, invoiceEditor, reports: reportsView, bindReports, parties: partiesView, bindParties, payments: paymentsView, bindPayments, invoices: invoicesView, invoiceEditor, returnEditor, bindInvoices, close: closeView, bindClose, settings: settingsView, settingsEditor, chartAccountEditor, bindChartAccount, bindSettings: bindSettingsView, bindSettingsEditors, bindRegisterFilters, bindSelects, bindTableExports, projectsView, bindProjectForm, receivables: () => partyScreen('ar'), payables: () => partyScreen('ap'), ageing, approvals, planned};
 
 }

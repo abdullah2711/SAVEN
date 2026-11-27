@@ -108,9 +108,9 @@ export const PAGE_MAP = {
   tax: [
     ['rules', 'Tax rules', 'System-numbered rules register and form: nature, several item groups or several items, rate and effective dates. Overlapping specific rules are blocked. Prices are tax-exclusive; control accounts and authorities come from Default accounts.', 'built'],
     ['authorities', 'Authorities', 'Authority register by tax nature with a multi-nature form, registration, frequency, search, balances as at a date and sorting.', 'built'],
-    ['entries', 'Tax entries', 'Entries from invoices, bills, returns and tax reconciliations, filterable and sortable; a row opens its source document or the adjustment.', 'built'],
+    ['entries', 'Tax ledger', 'All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher.', 'built'],
     ['parties', 'Parties', 'Party balances by tax nature with as-at balances and Verified/Unverified.', 'built'],
-    ['adjustments', 'Adjustments', 'All tax adjustment entries: nature, party or Unallocated, authority, amount, offset account and reason; New opens a separate form.', 'built'],
+    ['adjustments', 'Tax entry', 'Single voucher page for adjustments, closings and combined entries: tax nature, party or Unallocated, authority, periods, amount, offset/target and reason.', 'built'],
     ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities and the sales-tax calculation basis.', 'built'],
   ],
   reports: [

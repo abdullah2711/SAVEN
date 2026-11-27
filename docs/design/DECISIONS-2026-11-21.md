@@ -3,7 +3,7 @@
 > **Current state is the last round.** Earlier sections are the chronological record and
 > some are superseded: chart groups §258, accounting heads §257, tax six natures
 > §251–255, tax-exclusive prices, authority defaults, party balances, rule conflicts and
-> the closing proposal, adjustment page and Unallocated party §269–286, six-digit target
+> the closing proposal, Tax entry page and Unallocated party §269–290, six-digit target
 > §240/§253, payment/stock menu §226–228, document menu
 > §222, register widths §235/§236. Where a later section conflicts with an earlier one,
 > the later section governs.
@@ -3828,3 +3828,80 @@ subledgers cannot be broken by a one-sided adjustment.
 Verified: Parties has six tabs and no adjustment form; Adjustments has its own register
 and New page; an Unallocated input decrease of 10 saved as ADJ-2026-0001, appeared in the
 adjustment register and as an Unallocated party balance.
+
+
+---
+
+# Round 63 — unified Tax entry page and closing settlements
+
+## 287. One Tax entry page for adjustments and closings
+
+The separate Adjustments page is now **Tax entry**. It contains one register of
+adjustments, closings and combined entries, plus one form with three types:
+
+- **Adjustment** — one tax control against a non-tax account.
+- **Closing / settlement** — settles open tax entries against another tax control or
+  bank/expense.
+- **Adjustment + closing** — posts the adjustment first, then closes the remaining open
+  amount.
+
+The existing all-entries register is renamed **Tax ledger**. Its rows for adjustments
+and closings open the Tax entry page with the entry expanded.
+
+## 288. Closing creates negative tax entries per source
+
+A closing does not delete or edit the original tax entries. It selects open entries by
+nature, authority and period(s), then creates a negative settlement tax entry against
+each source entry:
+
+```
+negative tax entry = source party · source authority · source period · amount
+```
+
+The original entry remains. The settlement negative entry is dated at closing, so:
+
+- balances after the closing date are reduced/zero;
+- balances as at an earlier date still show the original position;
+- party and authority history remains inspectable.
+
+The closing also posts the GL entry:
+
+| Closing type | GL entry |
+|---|---|
+| Input offset against output | Dr output control / Cr input control |
+| Withholding income/sales paid | Dr withholding control / Cr bank |
+| Advance income applied | Dr income tax expense / Cr advance income |
+| Advance sales applied to output | Dr output control / Cr advance sales |
+| Advance sales written off | Dr expense / Cr advance sales |
+| Output tax paid | Dr output control / Cr bank |
+
+The form can settle **all open periods** or selected months. One closing can cover three
+months at once; the allocation records each source period. If the filing needs per-month
+audit, post separate closings per month. Both are supported.
+
+## 289. Bank/cash sub-accounts
+
+When an adjustment offset account is a bank/cash control, the form shows the bank/cash
+sub-account. Closing types that pay cash or bank also select the sub-account. The GL line
+carries the sub-account; the tax control line carries the authority.
+
+## 290. Withholding and advances are different closing types
+
+- **Withholding** is always paid in cash/bank; it is not offset against output. The
+  closing type targets the withholding control and bank.
+- **Advance income tax** is applied to income tax expense (5400 in the demo) or a chosen
+  non-tax liability account.
+- **Advance sales tax** can be applied to the output tax control or written off to a
+  sales-tax expense account.
+- **Input/output offset** is only for claimable input. Unclaimable input is first adjusted
+  to expense/Unallocated, then the remaining claimable amount is closed.
+
+The general journal now blocks tax control lines and points to Tax entry. When a party-level adjustment is used, the selected party balance can reach zero. When an
+**Unallocated** adjustment is used, the unidentified amount remains as an Unallocated row;
+the total party balance and the control still agree. It cannot be both unidentified and
+zero against a real party.
+
+Verified: adjustment-only and combined entries save; a closing created `SET-2026-0001`,
+negative settlement entries and zeroed the selected input party; as-at before the closing
+still showed 100; a combined unallocated adjustment left the Unallocated row and history
+intact.

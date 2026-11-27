@@ -1,7 +1,8 @@
 # Tax period closing and unidentified differences — proposal
 
-Status: **discussion draft, not implemented.** This records the model needed for periodic
-and annual tax closing, so the owner can decide the policy before code is added.
+Status: **partly prototyped, closing periods not implemented.** The Tax entry page now posts
+adjustments, closings and combined entries, and stores the closing allocations. Period
+snapshots, filing state, lock and annual carry-forward remain a discussion draft.
 
 ## 1. What the tax balance is
 
@@ -181,9 +182,10 @@ Annual close does not merge the six natures and does not zero a balance that sti
 ## 8. UI needed later
 
 - **Parties** — as-at balances by nature, Unallocated row, verified/unverified.
-- **Adjustments** — all tax adjustments with party/Unallocated, authority, nature,
-  amount, offset account and reason.
-- **Tax periods** — register of authority/nature periods and states.
+- **Tax ledger** — every tax entry, including the negative entries created by closings.
+- **Tax entry** — one form for adjustment, closing and combined adjustment + closing;
+  the register shows all vouchers and their entries.
+- **Tax periods** — register of authority/nature periods and states (not built).
 - **Tax return/snapshot** — opening, entries, adjustments, settlements, closing,
   difference and evidence.
 - **Close checklist** — reconcile, review, file, pay, lock.
@@ -260,7 +262,7 @@ whose customer deducted it, or Unallocated if the annual assessment is pooled.
 
 ### 9.4 Where these are done
 
-These belong on a **Tax → Settlements** page, separate from Adjustments:
+These are posted from the **Tax → Tax entry** page, using the Closing / settlement section. Adjustments use the same page with the Adjustment section:
 
 | Settlement type | Debit | Credit |
 |---|---|---|
@@ -269,12 +271,16 @@ These belong on a **Tax → Settlements** page, separate from Adjustments:
 | Advance applied to income tax | Income tax expense/payable | Advance income tax |
 | Tax payment/refund | Tax control | Bank / tax control |
 
-Each settlement form collects the period, authority, date, amount, party or Unallocated,
-the bank/expense/liability side and a reference. The preview shows both the journal and
-the tax entries. The register lists settlements by period, type and status.
+Each closing collects the authority, date, periods, amount, party allocation by source
+entry, and the bank/expense/liability side. The preview shows the journal entry. The
+negative tax entries are generated per source party and period, so party and authority
+balances fall to zero while the original entries remain for history. One closing can
+cover several periods; separate closings can be posted per month if that detail is
+required.
 
-The **Adjustments** page remains for corrections and write-offs: one tax control against
-a non-tax offset account. Cross-control movements belong to Settlements.
+The **Adjustment** section remains for corrections and write-offs: one tax control against
+a non-tax offset account. Cross-control movements use the **Closing / settlement**
+section. The same Tax entry form supports a combined adjustment followed by a closing.
 
 ### 9.5 Why the general journal is not the place
 
@@ -286,12 +292,11 @@ no longer reconcile to its subledger.
 The correct fix is not to loosen the journal. It is to:
 
 1. block tax control accounts from manual journal lines, with a message pointing to
-   Tax → Adjustments or Settlements; and
-2. post settlement/adjustment vouchers that create the journal and the tax entries in one
-   operation.
+   Tax → Tax entry; and
+2. post tax-entry vouchers that create the journal and the tax entries in one operation.
 
-The journal's current behaviour — allowing a tax account line but not offering a party —
-is a gap to close when the settlement page is built.
+The journal now blocks tax control lines with that message. The Tax entry page creates
+adjustment, closing and combined vouchers.
 
 ## 10. Decisions needed from the owner
 
