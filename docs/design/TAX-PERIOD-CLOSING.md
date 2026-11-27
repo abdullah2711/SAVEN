@@ -1,8 +1,9 @@
 # Tax period closing and unidentified differences — proposal
 
-Status: **partly prototyped, closing periods not implemented.** The Tax entry page now posts
-adjustments, closings and combined entries, and stores the closing allocations. Period
-snapshots, filing state, lock and annual carry-forward remain a discussion draft.
+Status: **closing entries implemented; period snapshots and lock not.** The Tax entry page
+posts adjustments, withholding payments and closings, stores effective/filed dates and
+closing allocations, and moves sales tax to final sales payable. Period snapshots, filing
+state, lock and annual carry-forward remain a discussion draft.
 
 ## 1. What the tax balance is
 
@@ -183,7 +184,7 @@ Annual close does not merge the six natures and does not zero a balance that sti
 
 - **Parties** — as-at balances by nature, Unallocated row, verified/unverified.
 - **Tax ledger** — every tax entry, including the negative entries created by closings.
-- **Tax entry** — one form for adjustment, closing and combined adjustment + closing;
+- **Tax entry** — one form for adjustment, withholding payment and closing;
   the register shows all vouchers and their entries.
 - **Tax periods** — register of authority/nature periods and states (not built).
 - **Tax return/snapshot** — opening, entries, adjustments, settlements, closing,
@@ -262,25 +263,30 @@ Unallocated if the annual assessment is pooled.
 
 ### 9.4 Where these are done
 
-These are posted from the **Tax → Tax entry** page, using the Closing / settlement section. Adjustments use the same page with the Adjustment section:
+These are posted from the **Tax → Tax entry** page. The form has three types:
 
-| Settlement type | Debit | Credit |
+| Entry type | Debit | Credit |
 |---|---|---|
-| Input claimed against output | Output tax control | Input tax control |
-| Withholding deposited | Withholding control | Bank |
-| Advance applied to income tax | Income tax expense/payable | Advance income tax |
-| Tax payment/refund | Tax control | Bank / tax control |
+| Adjustment | Chosen offset/expense | Tax control, or reverse |
+| Withholding payment | Withholding control | Bank / cash |
+| Sales tax closing | Output control | Input control, advance sales, final payable |
+| Final sales payment | Final sales payable | Bank / cash |
+| Income tax closing | Income tax expense/payable | Advance income tax |
 
-Each closing collects the authority, date, periods, amount, party allocation by source
-entry, and the bank/expense/liability side. The preview shows the journal entry. The
-negative tax entries are generated per source party and period, so party and authority
-balances fall to zero while the original entries remain for history. One closing can
-cover several periods; separate closings can be posted per month if that detail is
-required.
+A sales tax closing closes **all open input, output and advance sales** for the authority
+up to the effective period-end date. The net is:
 
-The **Adjustment** section remains for corrections and write-offs: one tax control against
-a non-tax offset account. Cross-control movements use the **Closing / settlement**
-section. The same Tax entry form supports a combined adjustment followed by a closing.
+```
+output - input - advance sales = final payable
+```
+
+and it moves to **2220 Final sales tax payable** (control, authority sub-accounts,
+Unallocated party) or to **1220 Final sales tax receivable** if negative. Filing date and
+effective date are separate: the balance is zeroed from the effective date.
+
+The negative tax entries are generated per source party and period, so party and
+authority balances fall to zero while the original entries remain for history. Adjustments
+remain available for partial changes; the remainder carries forward.
 
 ### 9.5 Why the general journal is not the place
 
@@ -296,37 +302,37 @@ The correct fix is not to loosen the journal. It is to:
 2. post tax-entry vouchers that create the journal and the tax entries in one operation.
 
 The journal now blocks tax control lines with that message. The Tax entry page creates
-adjustment, closing and combined vouchers.
+adjustment, withholding-payment and closing vouchers.
 
 ### 9.6 Multi-period and catch-up filing
 
-A closing can select one period, several periods, or **all open periods**. It only
-settles entries dated on or before the closing date. Allocation is FIFO by entry date
-inside each selected period, and the period is stored on every allocation. One voucher
-can cover January to March filed in May; each negative tax entry still knows its source
-period.
+A closing uses one **effective period-end date**. It closes all open entries dated on or
+before that date. Allocation is FIFO by entry date; every negative tax entry keeps its
+source period. Filing January to March in May is one closing effective 31 March; if the
+filing needs one snapshot per month, post one closing per month.
 
-If the filing needs one snapshot per month, post one closing per month. Both produce the
-same current control/party result; the difference is the audit grouping.
+Adjustments can be made for any amount and any date before the closing. The remainder
+carries forward. A closing does not force a full adjustment; it only closes what the
+system still shows as open.
 
-A combined adjustment is attributed to the **latest selected closing period**, because
-it is part of that filing. If the adjustment itself belongs to a specific month, post a
-separate adjustment dated in that month or split the combined entry.
+### 9.7 Effective date, filed date and closing selection
 
-### 9.7 Combined adjustment + closing
+The closing form has:
 
-The combined type posts the adjustment first and then closes the remaining open amount in
-one voucher:
+- **Effective period-end date** — the date balances are zeroed and negative entries are
+  dated.
+- **Filed on** — the actual filing date retained on the record.
 
-1. Adjustment reduces/increases the selected tax control by the party or Unallocated.
-2. The extra adjustment tax entry is included when calculating how much is available to
-   close.
-3. The closing allocates the remaining amount across source entries.
-4. One `SET-...` record holds both components and the register shows
-   **Adjustment + closing** with the closing amount and the adjustment amount beneath it.
+A party with current 50, of which 35 accumulated to 30 June, closes 35 effective 30 June
+and shows 15 after that date. July activity is not touched by a June closing.
 
-This is useful for the monthly case: adjust the 10 unclaimable input, then close the
-remaining 90 input against output.
+The sales tax closing computes the entire open input/output/advance sales position up to
+the effective date, using the **net control balance after adjustments**, not the gross
+positive entries. A partial adjustment therefore reduces the closing amount and the
+remaining party/Unallocated detail carries forward; the control itself reaches zero.
+The final sales payable control has its own authority tab (**Final sales tax payable**) so
+the authority sub-account can be identified and later paid through **Final sales
+payment**. A negative net moves to final sales tax receivable.
 
 ### 9.8 What “party balance zero” means
 

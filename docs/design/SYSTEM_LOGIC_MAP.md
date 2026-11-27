@@ -64,11 +64,11 @@ Taxes is a top-level module. Accounting no longer carries a tax page.
 | Page | State | Owns |
 |---|---|---|
 | Rules | complete | system-numbered rule register/form: nature, several item groups or several items, tax-exclusive rate, effective dates; conflicting specific scopes are blocked; no account or authority field |
-| Authorities | complete | multi-nature authority register/form; name, registration, frequency, status and natures; six tabs; search, balances as at a date, sorting |
+| Authorities | complete | multi-nature authority register/form; name, registration, frequency, status and natures; six tax tabs plus final sales tax payable; search, balances as at a date, sorting |
 | Tax ledger | complete | all entries from invoices, bills, returns, adjustments and closings; filters, sorting, source link |
-| Parties | complete | six party-balance tabs by nature with as-at balances, no base column, Verified/Unverified |
-| Tax entry | complete | adjustment, closing and combined vouchers; closing selects open entries by authority/period and creates negative settlement entries; bank/cash sub-account support |
-| Default accounts | complete | six control accounts, six default authorities and the sales-tax calculation basis |
+| Parties | complete | six tax-nature tabs plus final sales payable, as-at balances, no base column, Verified/Unverified |
+| Tax entry | complete | three types: adjustment (partial/date), withholding payment and closing (sales return, final sales payment, income tax); effective vs filed date; bank/cash sub-account support |
+| Default accounts | complete | six control accounts, six default authorities, closing accounts and the sales-tax calculation basis |
 
 ### Operations
 
@@ -229,14 +229,14 @@ when the correction must stay visible. The audit log keeps everything.
   bill chooses the authority for its output/input tax and defaults to that setting.
   Registers are derived from the tax lines on invoices, bills and returns, plus tax
   adjustments. Withholding is a liability that is never ours; advance tax is our asset.
-  **Parties** has six party-balance tabs (one per nature); **Tax entry** has one register
-  and form for adjustments, closings and combined entries. An adjustment does not edit
-  the source document; it fixes the tax side by nature (control, party or **Unallocated**,
-  authority) and asks for an explicit offset account. A closing selects open entries by
-  authority/period and creates negative tax entries per source, so party/authority
-  balances fall to zero while history remains. It supports input↔output offset,
-  withholding payment, advance income to expense, advance sales to output/expense and
-  output payment. Bank/cash sub-accounts are selected where the offset is bank/cash.
+  **Parties** has six tax-nature party tabs plus final sales payable (one per nature); **Tax entry** has three clear
+  types: adjustment, withholding payment and closing. An adjustment changes a chosen
+  amount/date and leaves the rest to carry forward. A closing works at the effective
+  period-end date, closes all open sales tax input/output/advance sales for the authority,
+  and moves the net to the **Final sales tax payable** control or the final receivable.
+  Final sales payment pays that control; income tax closing applies advance income tax to
+  expense/payable. The filed-on date is separate from the effective date. Bank/cash
+  sub-accounts are selected where payment is made.
 
   Tax statistics are three views of the same entries: the **control account** is the
   total for one nature, the **authority sub-account** is the total for one authority,
@@ -367,6 +367,7 @@ permissions. See §100 of the decision log.
 | 61 | 282–284 | authority jurisdiction removed, party as-at date and base removal, tax closing proposal |
 | 62 | 285–286 | separate Adjustments page, Unallocated party, tax-control offset guard |
 | 63 | 287–290 | unified Tax entry page, closing settlements, bank/cash sub-accounts |
+| 64 | 291–294 | three entry types, final sales payable control, effective/filed dates, sample data |
 
 ---
 

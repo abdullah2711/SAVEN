@@ -9,8 +9,9 @@ is the contract for the chart rebuild.
 - **Implemented:** accounting heads (five classes), **accounting groups** register and
   form in the Chart page, group sequence per class, group selection and validation on
   the account form, tax module with six natures, authorities as records, system-numbered
-  rules with multi-group scopes and conflict checks, entries, six party-balance tabs and
-  adjustment registers, and tax adjustment vouchers with an explicit offset account.
+  rules with multi-group scopes and conflict checks, entries, six party-balance tabs,
+  three tax-entry types (adjustment, withholding payment, closing), final sales tax
+  payable/receivable controls, income tax payable/expense, and sample June/July tax data.
   Prices are tax-exclusive; the default authority per nature is set under Default
   accounts.
 - **Still target, not implemented:** the six-digit account codes and full fixture
@@ -423,6 +424,9 @@ rule, authority, period.
 | 1300 | 104001 | Input tax control |
 | 1400 | 102002 | Advance income tax receivable |
 | 1024 | 102004 | Advance sales tax receivable |
+| 1220 | 102006 | Final sales tax receivable |
+| 2160 | 202007 | Income tax payable |
+| 2220 | 202006 | Final sales tax payable |
 | 1500/… | 10500x | Fixed asset classes |
 | 2100 | 201001 | Trade payables |
 | 2150 | 202005 | Income tax withholding payable |
@@ -430,6 +434,7 @@ rule, authority, period.
 | 2210 | 202002 | Sales tax withheld control |
 | 2300 | 203001 | Customer advances |
 | 2400 | 204001 | Goods received clearing |
+| 5400 | 503001 | Income tax expense |
 | 3000 | 301001 | Owner capital |
 | 3100 | 301002 | Opening balance equity |
 | 4000 | 402001 | Service revenue |

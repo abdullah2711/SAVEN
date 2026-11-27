@@ -69,8 +69,9 @@ cash, bank, inventory, fixed-asset cost/accumulated, advances and clearing; **no
 control**; statistics from line dimensions and subledgers. Tax has one control per nature
 (input, output, advance income, advance sales, withholding income, withholding sales)
 with tax authorities as **sub-accounts**, not separate controls. The Tax module pages
-are Rules, Authorities (six tabs), Tax ledger (all tax entries), Parties (six
-party-balance tabs), Tax entry (adjustment/closing vouchers) and Default accounts
+are Rules, Authorities (seven tabs: six tax natures plus final sales tax payable),
+Tax ledger (all tax entries), Parties (six tax-nature tabs plus final sales payable),
+Tax entry (adjustment/withholding/closing) and Default accounts
 (accounts, authorities and calculation basis). Prices are always tax-exclusive.
 Rules apply to all items (fallback), several item groups, or several specific items;
 specific scopes must not overlap for the same nature and effective period. Tax entries
@@ -103,9 +104,11 @@ chart is to be replaced and fixtures remapped.
 - Chart of accounts: group totals, per-head closing balance (Dr/Cr), control badges.
 - Trial balance: totals strip, formatted amounts, drill to the ledger.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
-- Taxes: Rules (system-numbered), Authorities (six natures), Tax ledger, Parties (six
-  party-balance tabs), Tax entry (adjustment/closing register and form) and Default accounts
-  (six control accounts, six default authorities and the calculation basis). Prices are
+- Taxes: Rules (system-numbered), Authorities (seven tabs), Tax ledger, Parties (six
+  tax-nature tabs plus final sales payable), Tax entry (adjustment/withholding/closing
+  register and form) and Default accounts
+  (six control accounts, six default authorities, closing accounts and the calculation
+  basis). Prices are
   tax-exclusive.
 - **Settings** is a separate module with seven pages: Company, Accounting,
   People & access, Periods, Forms & fields, Saved views, Print & templates.
@@ -166,13 +169,12 @@ chart is to be replaced and fixtures remapped.
   state lives outside the page and survives navigation.
 - **Taxes** (top-level module; Accounting no longer carries it): **Rules** (system
   number `TAX-0001`, name, nature, rate, several item groups or several items;
-  **tax-exclusive** prices, no inclusive mode), **Authorities** (six tabs: input,
-  output, advance income, advance sales, withholding income, withholding sales),
+  **tax-exclusive** prices, no inclusive mode), **Authorities** (seven tabs: the six tax natures plus final sales tax payable),
   **Tax ledger** (all entries, filterable; a row opens its document or voucher),
-  **Parties** (six party-balance tabs with as-at balances and Verified/Unverified),
-  **Tax entry** (one form and register for adjustments, closings and combined entries)
-  and **Default accounts** (six control accounts, six default authorities and the
-  sales-tax calculation basis).
+  **Parties** (six tax-nature party tabs plus final sales payable with as-at balances and Verified/Unverified),
+  **Tax entry** (adjustment, withholding payment and closing) and **Default accounts**
+  (six control accounts, six default authorities, closing accounts and the sales-tax
+  calculation basis).
   Rules do **not** carry an authority or account. The control account and default
   authority for each nature are set in Default accounts; an invoice or bill chooses the
   authority for its output/input tax and defaults to that setting. Rules support
@@ -182,21 +184,26 @@ chart is to be replaced and fixtures remapped.
   and the overlapping group/item.
   Authorities have a multi-nature register/form (name, registration, frequency, status
   and natures; no jurisdiction) and filters with balances as at a date.
-  **Parties → Party balances** has one tab for each of the six natures; each tab shows
-  that nature's control account, parties, entries and net tax balance, with a **Balances
-  as at** date and Verified/Unverified only. There is no Base column.
-  Tax entry has three types: **adjustment** (one tax control against a non-tax account),
-  **closing** (settle open tax entries against another tax control or bank) and
-  **combined** (adjust, then close). Closing selects open entries by authority/period and
-  creates negative settlement tax entries per source, so party/authority balances fall
-  to zero while history remains. It supports input↔output offset, withholding payment,
-  advance income to income tax expense, advance sales to output or expense, and output
-  payment. Bank/cash sub-accounts are selected when the offset is bank/cash. **Unallocated**
-  is a system party for authority-level differences; it appears as a row in party
-  balances. Authorities are sub-accounts of the tax-nature
+  **Parties → Party balances** has one tab for each of the six tax natures plus final
+  sales payable; each tab shows that control account, parties, entries and net tax
+  balance, with a **Balances as at** date and Verified/Unverified only. There is no Base
+  column.
+  Tax entry has three types: **adjustment** (any nature, partial amount and chosen date;
+  the rest carries forward), **withholding payment** (pays open withholding from
+  bank/cash) and **closing** (sales tax return, final sales payment or income tax
+  closing). A sales tax closing closes all open input, output and advance sales up to the
+  effective period-end date and moves the net to the **Final sales tax payable** control
+  (authority sub-account, Unallocated party) or the final receivable. It records both the
+  effective date and the filed-on date, so balances zero from the period end, not the
+  filing date. Final sales payment pays that control from bank/cash. Income tax closing
+  applies advance income tax to income tax expense/payable. Bank/cash sub-accounts are
+  selected where payment is made. **Unallocated** is a system party for authority-level
+  differences; it appears as a row in party balances. Authorities are sub-accounts of the tax-nature
   control in the design; the demo derives their balances from tax entries. Party
   balances are reconciled by party/kind without a tax sub-account. All tax registers use
-  the standard register top bar and per-column filter menus.
+  the standard register top bar and per-column filter menus. Synthetic opening tax data
+  covers June/July 2026 across all six natures so closing, withholding payment and
+  advance-income application can be tested.
   20 modules and 154 pages mapped; planned pages render their specification.
 - **Reports** (top-level module): Revenue (dashboard plus By customer / By item
   registers), Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
@@ -253,9 +260,10 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
 - **The authority belongs to the document, not the rule.** The default authority for
   each nature is set under Default accounts; an invoice or bill shows that authority and
   can change it. A rule is system-numbered and has no authority field.
-- **Parties and Tax entry are separate pages.** Parties has six party-balance tabs; Tax
-  entry has the adjustment/closing register and form. Verification is only Verified or
-  Unverified. **Unallocated** is the system party for authority-level differences.
+- **Parties and Tax entry are separate pages.** Parties has six tax-nature tabs plus
+  final sales payable; Tax entry has adjustment, withholding payment and closing.
+  Verification is only Verified or Unverified. **Unallocated** is the system party for
+  authority-level differences.
 - **A tax entry is a separate voucher**, never an edit of the source document. An
   adjustment fixes the tax side by nature (control account, party, authority) and asks
   for an explicit offset account. A closing settles open entries and creates negative
@@ -265,6 +273,10 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
 - **Tax balances have three views of the same entries:** the nature control account is
   the total for that nature, the authority sub-account is the total for that authority,
   and the party balance is the total for that party. The six natures are never merged.
+- **Sales tax closing uses an effective period-end date and a filed-on date.** Balances
+  zero from the period end; the filing date is retained on the record.
+- **Final sales tax payable is a control account** with its own authority tab; the pooled
+  net uses the Unallocated party. Withholding payment remains a separate bank/cash entry.
 - **Business switching happens at sign-in.** The topbar shows the active business as
   text, never a dropdown.
 - Posting guards: no future time, nothing before business creation, nothing in a

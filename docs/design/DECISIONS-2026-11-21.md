@@ -3,7 +3,7 @@
 > **Current state is the last round.** Earlier sections are the chronological record and
 > some are superseded: chart groups §258, accounting heads §257, tax six natures
 > §251–255, tax-exclusive prices, authority defaults, party balances, rule conflicts and
-> the closing proposal, Tax entry page and Unallocated party §269–290, six-digit target
+> the closing proposal, Tax entry page and Unallocated party §269–294, six-digit target
 > §240/§253, payment/stock menu §226–228, document menu
 > §222, register widths §235/§236. Where a later section conflicts with an earlier one,
 > the later section governs.
@@ -3784,7 +3784,7 @@ is implemented yet.
 
 The **Reconciliation** name is removed from the tax UI. The tax module now has:
 
-- **Parties** — six party-balance tabs only, with as-at balances and
+- **Parties** — six tax-nature party tabs plus final sales payable only, with as-at balances and
   Verified/Unverified.
 - **Adjustments** — the register of every tax adjustment entry, with New adjustment
   opening a separate form page.
@@ -3833,6 +3833,9 @@ adjustment register and as an Unallocated party balance.
 ---
 
 # Round 63 — unified Tax entry page and closing settlements
+
+*The combined type and generic settlement types are superseded by the three clear types
+in §291; effective/filed dates and final sales payable control are added in §292–294.*
 
 ## 287. One Tax entry page for adjustments and closings
 
@@ -3911,3 +3914,103 @@ negative settlement entries and zeroed the selected input party; as-at before th
 still showed 100; a combined unallocated adjustment left the Unallocated row and history
 intact; a combined October closing selected with October periods settled 90 after the 10
 adjustment, not 100.
+
+
+---
+
+# Round 64 — three entry types, final sales payable and sample data
+
+## 291. Three entry types only
+
+Tax entry now has exactly three forms:
+
+- **Adjustment** — one tax balance, by the amount the user chooses, at the chosen date;
+  the remainder carries forward.
+- **Withholding payment** — pays open withholding income/sales tax from bank/cash.
+- **Closing** — works at the effective period-end date and closes all open balances for the
+  selected authority.
+
+The combined adjustment + closing type and the earlier generic settlement types are gone
+from the user interface.
+
+## 292. Effective date and filed date
+
+A closing records two dates:
+
+- **Period end / effective date** — the date the tax balances are zeroed and the negative
+  tax entries are dated. Example: 30 June.
+- **Filed on** — the date the return was actually filed. Example: 5 July.
+
+The closing register shows both. Party and authority balances therefore reduce from the
+period-end date, not the filing date. A party with 50 at the current date and 35
+accumulated to 30 June closes 35 on 30 June and keeps 15 after it.
+
+## 293. Sales tax closing and final sales payable control
+
+The sales tax closing computes all open input, output and advance sales tax for the
+authority up to the period end:
+
+```
+output - input - advance sales = net
+```
+
+Entry:
+
+```
+Dr Output tax control
+Cr Input tax control
+Cr Advance sales tax
+Cr Final sales tax payable       (or Dr Final sales tax receivable if net negative)
+```
+
+The net moves to **2220 Final sales tax payable**, a control account with authority
+sub-accounts and an Unallocated party dimension. A seventh authority tab, **Final sales
+tax payable**, is available for these authorities. The remaining outstanding balance can
+be paid by the **Final sales payment** closing kind:
+
+```
+Dr 2220 Final sales tax payable
+Cr Bank / Cash
+```
+
+If the closing is paid immediately, the closing form can pay the net directly from
+bank/cash instead of leaving it in 2220.
+
+The four closing kinds are:
+
+- Sales tax return
+- Final sales payment
+- Income tax closing
+- Withholding payment (separate entry type)
+
+Income tax closing applies open advance income tax to **2160 Income tax payable** or
+**5400 Income tax expense**; the remainder carries forward.
+
+## 294. Sample data and accounts
+
+The demo now contains a healthy opening tax dataset for June and July 2026 across all six
+natures:
+
+- output 34,000, input 14,000, advance sales 10,000 for SRB in June
+- July output 5,000, input 2,000, advance sales 1,000
+- advance income tax under FBR, plus withholding income and sales samples
+
+New accounts:
+
+| Demo code | Target six-digit | Account |
+|---|---|---|
+| 2220 | 202006 | Final sales tax payable (control) |
+| 1220 | 102006 | Final sales tax receivable |
+| 2160 | 202007 | Income tax payable (non-control) |
+| 5400 | 503001 | Income tax expense |
+
+The sales tax closing test for June 30 therefore produces 10,000 final sales tax payable,
+leaving July activity open. The closing uses net control balances after adjustments, so
+a partial adjustment reduces the closing amount and the residual stays in party/
+Unallocated detail. The effective-date test uses 30 June vs filed 5 July.
+
+Verified: three entry sections render; sales closing of June created `CLS-2026-0001` with
+10,000 final payable; party balances for June zeroed while July activity remained; final
+sales payment cleared the authority balance; withholding payment cleared the sample
+withholding; income tax closing applied 3,000 of advance income and left 1,000 carrying
+forward.

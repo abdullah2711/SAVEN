@@ -107,11 +107,11 @@ export const PAGE_MAP = {
   ],
   tax: [
     ['rules', 'Tax rules', 'System-numbered rules register and form: nature, several item groups or several items, rate and effective dates. Overlapping specific rules are blocked. Prices are tax-exclusive; control accounts and authorities come from Default accounts.', 'built'],
-    ['authorities', 'Authorities', 'Authority register by tax nature with a multi-nature form, registration, frequency, search, balances as at a date and sorting.', 'built'],
+    ['authorities', 'Authorities', 'Authority register with six tax natures plus final sales tax payable; multi-nature form, registration, frequency, search, balances as at a date and sorting.', 'built'],
     ['entries', 'Tax ledger', 'All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher.', 'built'],
-    ['parties', 'Parties', 'Party balances by tax nature with as-at balances and Verified/Unverified.', 'built'],
-    ['adjustments', 'Tax entry', 'Single voucher page for adjustments, closings and combined entries: tax nature, party or Unallocated, authority, periods, amount, offset/target and reason.', 'built'],
-    ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities and the sales-tax calculation basis.', 'built'],
+    ['parties', 'Parties', 'Party balances for the six tax natures plus final sales tax payable, with as-at balances and Verified/Unverified.', 'built'],
+    ['adjustments', 'Tax entry', 'Three clear entry types: adjustment, withholding payment and closing. Closing works at the effective period-end date and transfers sales tax to final payable or pays it.', 'built'],
+    ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities, closing accounts and the sales-tax calculation basis.', 'built'],
   ],
   reports: [
     ['revenue', 'Revenue', 'Revenue dashboard with sales by customer and sales by item, from the same documents.', 'built'],

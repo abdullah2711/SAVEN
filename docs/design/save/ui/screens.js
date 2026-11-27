@@ -126,9 +126,27 @@ const TAX_TABS = [
   ['adjustments', 'Tax entry'],
   ['defaults', 'Default accounts'],
 ];
-let TAX_DEFAULTS = {output: '2200', input: '1300', withholdingIncome: '2150', withholdingSales: '2210', advanceIncome: '1400', advanceSales: '1024'};
-let TAX_DEFAULT_AUTHORITIES = {output: 'AUTH-FBR', input: 'AUTH-FBR', advance_income: 'AUTH-FBR', advance_sales: 'AUTH-SRB', withholding_income: 'AUTH-FBR', withholding_sales: 'AUTH-SRB'};
+let TAX_DEFAULTS = {output: '2200', input: '1300', withholdingIncome: '2150', withholdingSales: '2210', advanceIncome: '1400', advanceSales: '1024', finalSales: '2220'};
+let TAX_DEFAULT_AUTHORITIES = {output: 'AUTH-FBR', input: 'AUTH-FBR', advance_income: 'AUTH-FBR', advance_sales: 'AUTH-SRB', withholding_income: 'AUTH-FBR', withholding_sales: 'AUTH-SRB', final_sales: 'AUTH-FBR'};
 const TAX_FIXTURE_AUTHORITIES = {...TAX_DEFAULT_AUTHORITIES};
+// Opening tax entries keep a healthy synthetic set of balances across all six
+// natures, with June and July activity so date-sensitive closing can be tested.
+const TAX_OPENING_ENTRIES = [
+  {id: 'OPEN-2026-06-OUT-1', date: '2026-06-10', party: 'Atlas Studio', kind: 'output', authority: 'AUTH-SRB', base: 200000, rate: 10, amount: 20000, period: '2026-06'},
+  {id: 'OPEN-2026-06-OUT-2', date: '2026-06-20', party: 'Linden Design', kind: 'output', authority: 'AUTH-SRB', base: 140000, rate: 10, amount: 14000, period: '2026-06'},
+  {id: 'OPEN-2026-06-IN-1', date: '2026-06-05', party: 'Willow Supplies', kind: 'input', authority: 'AUTH-SRB', base: 80000, rate: 10, amount: 8000, period: '2026-06'},
+  {id: 'OPEN-2026-06-IN-2', date: '2026-06-15', party: 'Maple Packaging', kind: 'input', authority: 'AUTH-SRB', base: 60000, rate: 10, amount: 6000, period: '2026-06'},
+  {id: 'OPEN-2026-06-ADVS-1', date: '2026-06-12', party: 'Atlas Studio', kind: 'advance_sales', authority: 'AUTH-SRB', base: 6000, rate: 'custom', amount: 6000, period: '2026-06'},
+  {id: 'OPEN-2026-06-ADVS-2', date: '2026-06-24', party: 'Sapphire Retail', kind: 'advance_sales', authority: 'AUTH-SRB', base: 4000, rate: 'custom', amount: 4000, period: '2026-06'},
+  {id: 'OPEN-2026-06-ADVI-1', date: '2026-06-18', party: 'Orion Logistics', kind: 'advance_income', authority: 'AUTH-FBR', base: 3000, rate: 'custom', amount: 3000, period: '2026-06'},
+  {id: 'OPEN-2026-06-WHTI-1', date: '2026-06-22', party: 'Willow Supplies', kind: 'withholding_income', authority: 'AUTH-FBR', base: 1500, rate: 'custom', amount: 1500, period: '2026-06'},
+  {id: 'OPEN-2026-06-WHTS-1', date: '2026-06-22', party: 'Maple Packaging', kind: 'withholding_sales', authority: 'AUTH-SRB', base: 800, rate: 'custom', amount: 800, period: '2026-06'},
+  {id: 'OPEN-2026-07-OUT-1', date: '2026-07-05', party: 'Crescent Textiles', kind: 'output', authority: 'AUTH-SRB', base: 50000, rate: 10, amount: 5000, period: '2026-07'},
+  {id: 'OPEN-2026-07-IN-1', date: '2026-07-03', party: 'Cedar Services', kind: 'input', authority: 'AUTH-SRB', base: 20000, rate: 10, amount: 2000, period: '2026-07'},
+  {id: 'OPEN-2026-07-ADVS-1', date: '2026-07-08', party: 'Atlas Studio', kind: 'advance_sales', authority: 'AUTH-SRB', base: 1000, rate: 'custom', amount: 1000, period: '2026-07'},
+  {id: 'OPEN-2026-07-ADVI-1', date: '2026-07-09', party: 'Orion Logistics', kind: 'advance_income', authority: 'AUTH-FBR', base: 1000, rate: 'custom', amount: 1000, period: '2026-07'},
+];
+
 let TAX_RULE_SEQ = 5;
 let TAX_AFTER_DISCOUNT = true;
 const TAX_KINDS = [
@@ -139,6 +157,8 @@ const TAX_KINDS = [
   ['withholding_income', 'Withholding — income tax'],
   ['withholding_sales', 'Withholding — sales tax'],
 ];
+const TAX_AUTHORITY_KINDS = [...TAX_KINDS, ['final_sales', 'Final sales tax payable']];
+const TAX_CLOSING_ACCOUNTS = {finalPayable: '2220', finalReceivable: '1220', incomeTaxPayable: '2160', incomeTaxExpense: '5400'};
 const TAX_NATURE_META = {
   input: {defaultKey: 'input', side: 'asset', party: '2100', fallback: '1300'},
   output: {defaultKey: 'output', side: 'liability', party: '1100', fallback: '2200'},
@@ -146,17 +166,20 @@ const TAX_NATURE_META = {
   advance_sales: {defaultKey: 'advanceSales', side: 'asset', party: '1100', fallback: '1024'},
   withholding_income: {defaultKey: 'withholdingIncome', side: 'liability', party: '2100', fallback: '2150'},
   withholding_sales: {defaultKey: 'withholdingSales', side: 'liability', party: '2100', fallback: '2210'},
+  final_sales: {defaultKey: 'finalSales', side: 'liability', party: 'Unallocated', fallback: '2220'},
 };
 const TAX_AUTHORITIES = [
-  {id: 'AUTH-FBR', name: 'FBR', registration: 'FBR-STRN-001', frequency: 'Monthly', kinds: ['input', 'output', 'advance_income', 'withholding_income'], active: true},
-  {id: 'AUTH-SRB', name: 'SRB — Sindh', registration: 'SRB-STRN-014', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
-  {id: 'AUTH-PRA', name: 'PRA — Punjab', registration: 'PRA-STRN-022', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales'], active: true},
+  {id: 'AUTH-FBR', name: 'FBR', registration: 'FBR-STRN-001', frequency: 'Monthly', kinds: ['input', 'output', 'advance_income', 'withholding_income', 'final_sales'], active: true},
+  {id: 'AUTH-SRB', name: 'SRB — Sindh', registration: 'SRB-STRN-014', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales', 'final_sales'], active: true},
+  {id: 'AUTH-PRA', name: 'PRA — Punjab', registration: 'PRA-STRN-022', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales', 'final_sales'], active: true},
 ];
 let TAX_AUTH_SEQ = 4;
 const TAX_ADJUSTMENTS = [];
 let TAX_ADJUSTMENT_SEQ = 1;
 const TAX_SETTLEMENTS = [];
 let TAX_SETTLEMENT_SEQ = 1;
+const TAX_CLOSINGS = [];
+let TAX_CLOSING_SEQ = 1;
 const TAX_ADJUSTMENT_OPEN = new Set();
 let TAX_AUTH_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'name', dir: 'asc'}};
 let TAX_PARTY_FILTER = {q: '', asof: '', cf: {}, sort: {key: 'party', dir: 'asc'}};
@@ -164,8 +187,8 @@ const TAX_PARTY_STATUS = new Map();
 let TAX_AUTH_TAB = 'output';
 let TAX_PARTY_TAB = 'output';
 let TAX_RULE_FILTER = {q: '', cf: {}, sort: {key: 'code', dir: 'asc'}};
-const TAX_ENTRY_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
-const TAX_ADJUSTMENT_FILTER = {q: '', from: '2026-11-01', to: '2026-11-30', cf: {}, sort: {key: 'date', dir: 'desc'}};
+const TAX_ENTRY_FILTER = {q: '', from: '2026-01-01', to: '2026-12-31', cf: {}, sort: {key: 'date', dir: 'desc'}};
+const TAX_ADJUSTMENT_FILTER = {q: '', from: '2026-01-01', to: '2026-12-31', cf: {}, sort: {key: 'date', dir: 'desc'}};
 let REV_TAB = 'customer';
 let ADV_PICK = '';
 let ADV_TAB = 'balances';
@@ -4032,6 +4055,14 @@ const ITEM_ACCOUNT_RULES = [
         </tbody></table></div>
         <div class="related"><button class="button primary">Save default accounts</button></div>
       </form>
+      <div class="panel-body"><div class="section-title">Closing accounts</div>
+        <form class="form-grid" data-tax-closing-accounts>
+          <label>Final sales tax payable<select name="finalPayable" class="inline-input">${accountOption(TAX_CLOSING_ACCOUNTS.finalPayable, 'liability')}</select></label>
+          <label>Final sales tax receivable<select name="finalReceivable" class="inline-input">${accountOption(TAX_CLOSING_ACCOUNTS.finalReceivable, 'asset')}</select></label>
+          <label>Income tax payable<select name="incomeTaxPayable" class="inline-input">${accounts().filter((a) => a.type === 'liability' && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === TAX_CLOSING_ACCOUNTS.incomeTaxPayable ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Income tax expense<select name="incomeTaxExpense" class="inline-input">${accounts().filter((a) => a.type === 'expense' && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === TAX_CLOSING_ACCOUNTS.incomeTaxExpense ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <div class="related"><button class="button primary">Save closing accounts</button></div>
+        </form></div>
       <div class="panel-body"><div class="section-title">Sales tax basis for calculation</div>
         <form class="form-grid" data-tax-calc>
           <label>Sales tax and discounts<select name="afterDiscount" class="inline-input"><option value="yes" ${TAX_AFTER_DISCOUNT ? 'selected' : ''}>Tax the discounted amount</option><option value="no" ${TAX_AFTER_DISCOUNT ? '' : 'selected'}>Tax the original amount</option></select></label>
@@ -4290,7 +4321,7 @@ const ITEM_ACCOUNT_RULES = [
     return `<div id="tax-panel">${taxPanel(TAX_ACTIVE)}</div>`;
   }
   function taxKindLabel(kind) {
-    const row = TAX_KINDS.find(([k]) => k === kind);
+    const row = TAX_AUTHORITY_KINDS.find(([k]) => k === kind);
     return row ? row[1] : kind;
   }
   function authorityHas(a, kind) { return (a.kinds || []).includes(kind); }
@@ -4392,6 +4423,112 @@ const ITEM_ACCOUNT_RULES = [
     }
     return allocations;
   }
+  function openTotal(kind, authorityId, asOf) {
+    return round2(openTaxEntries(kind, authorityId, [], [], asOf).reduce((n, e) => n + e.open, 0));
+  }
+  function closingGlLine(account, debit, credit, party = '', authority = '') {
+    return {account, party, authority, debit: debit || 0, credit: credit || 0};
+  }
+  function buildSalesClosing(authorityId, effectiveDate, filedOn, reference, reason, settleNow, bankAccount) {
+    const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
+    if (!auth || ['input', 'output', 'advance_sales', 'final_sales'].some((kind) => !authorityHas(auth, kind))) return {error: 'Choose a sales tax authority assigned to input, output, advance sales and final sales payable.'};
+    const inputOpen = openTotal('input', authorityId, effectiveDate);
+    const outputOpen = openTotal('output', authorityId, effectiveDate);
+    const advanceOpen = openTotal('advance_sales', authorityId, effectiveDate);
+    const inputNet = netTaxBalance('input', authorityId, [], [], effectiveDate);
+    const outputNet = netTaxBalance('output', authorityId, [], [], effectiveDate);
+    const advanceNet = netTaxBalance('advance_sales', authorityId, [], [], effectiveDate);
+    if (inputNet < -0.004 || outputNet < -0.004 || advanceNet < -0.004) return {error: 'A tax control has a negative balance. Adjust it before closing.'};
+    const input = round2(Math.max(0, Math.min(inputOpen, inputNet)));
+    const output = round2(Math.max(0, Math.min(outputOpen, outputNet)));
+    const advance = round2(Math.max(0, Math.min(advanceOpen, advanceNet)));
+    if (input + output + advance <= 0.004) return {error: 'There is no open input, output or advance sales tax to close.'};
+    const net = round2(output - input - advance);
+    if (settleNow && !bankControlFor(bankAccount)) return {error: 'Choose a valid bank or cash sub-account.'};
+    const allocations = [
+      ...allocateOpen(openTaxEntries('input', authorityId, [], [], effectiveDate), input).allocations,
+      ...allocateOpen(openTaxEntries('output', authorityId, [], [], effectiveDate), output).allocations,
+      ...allocateOpen(openTaxEntries('advance_sales', authorityId, [], [], effectiveDate), advance).allocations,
+    ];
+    const entry = [
+      closingGlLine(taxControlAccount('output'), output, 0, '', authorityId),
+      closingGlLine(taxControlAccount('input'), 0, input, '', authorityId),
+      closingGlLine(taxControlAccount('advance_sales'), 0, advance, '', authorityId),
+    ];
+    if (net > 0.004) {
+      if (settleNow) entry.push(closingGlLine(bankControlFor(bankAccount) || bankAccount, 0, net, bankAccount, ''));
+      else entry.push(closingGlLine(TAX_CLOSING_ACCOUNTS.finalPayable, 0, net, 'Unallocated', authorityId));
+    } else if (net < -0.004) {
+      if (settleNow) entry.push(closingGlLine(bankControlFor(bankAccount) || bankAccount, -net, 0, bankAccount, ''));
+      else entry.push(closingGlLine(TAX_CLOSING_ACCOUNTS.finalReceivable, -net, 0, 'Unallocated', authorityId));
+    }
+    const totalDebit = round2(entry.reduce((n, l) => n + l.debit, 0));
+    const totalCredit = round2(entry.reduce((n, l) => n + l.credit, 0));
+    if (Math.abs(totalDebit - totalCredit) > 0.005) return {error: 'The sales tax closing does not balance.'};
+    const finalEntry = !settleNow && Math.abs(net) > 0.004 ? {kind: 'final_sales', party: 'Unallocated', authority: authorityId, amount: net, date: effectiveDate, period: effectiveDate.slice(0, 7)} : null;
+    return {input, output, advance, net, allocations, entry, finalEntry, amounts: {input, output, advance, net}};
+  }
+  function buildWithholdingClosing(nature, authorityId, effectiveDate, amount, bankAccount, reason) {
+    const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
+    if (!auth || !authorityHas(auth, nature)) return {error: 'Choose an authority assigned to that withholding nature.'};
+    if (!bankControlFor(bankAccount)) return {error: 'Choose a valid bank or cash sub-account.'};
+    const open = openTaxEntries(nature, authorityId, [], [], effectiveDate);
+    const openSum = round2(open.reduce((n, e) => n + e.open, 0));
+    const net = netTaxBalance(nature, authorityId, [], [], effectiveDate);
+    if (net < -0.004) return {error: 'The withholding control is negative. Adjust it before paying.'};
+    const total = round2(Math.max(0, Math.min(openSum, net)));
+    const target = amount === '' || amount === undefined ? total : round2(Number(amount) || 0);
+    if (total <= 0.004) return {error: 'There is no open withholding balance for that authority.'};
+    if (target <= 0) return {error: 'Enter a withholding amount greater than zero.'};
+    if (target > total + 0.005) return {error: `The withholding amount is more than the open ${money(total)}.`};
+    const allocations = allocateOpen(open, target).allocations;
+    const entry = [
+      closingGlLine(taxControlAccount(nature), target, 0, '', authorityId),
+      closingGlLine(bankControlFor(bankAccount) || bankAccount, 0, target, bankAccount, ''),
+    ];
+    return {total, amount: target, allocations, entry};
+  }
+  function buildFinalSalesPayment(authorityId, effectiveDate, amount, bankAccount) {
+    const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
+    if (!auth || !authorityHas(auth, 'final_sales')) return {error: 'Choose an authority assigned to final sales tax payable.'};
+    if (!bankControlFor(bankAccount)) return {error: 'Choose a valid bank or cash sub-account.'};
+    const open = openTaxEntries('final_sales', authorityId, [], [], effectiveDate);
+    const openSum = round2(open.reduce((n, e) => n + e.open, 0));
+    const net = netTaxBalance('final_sales', authorityId, [], [], effectiveDate);
+    if (net < -0.004) return {error: 'Final sales tax is in a receivable position, not payable.'};
+    const total = round2(Math.max(0, Math.min(openSum, net)));
+    const target = amount === '' || amount === undefined ? total : round2(Number(amount) || 0);
+    if (total <= 0.004) return {error: 'There is no final sales tax payable for that authority.'};
+    if (target <= 0) return {error: 'Enter a payment amount greater than zero.'};
+    if (target > total + 0.005) return {error: `The payment is more than the final payable ${money(total)}.`};
+    const allocations = allocateOpen(open, target).allocations;
+    const entry = [
+      closingGlLine(TAX_CLOSING_ACCOUNTS.finalPayable, target, 0, 'Unallocated', authorityId),
+      closingGlLine(bankControlFor(bankAccount) || bankAccount, 0, target, bankAccount, ''),
+    ];
+    return {total, amount: target, allocations, entry};
+  }
+  function buildIncomeTaxClosing(authorityId, effectiveDate, amount, targetAccount, reason) {
+    const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
+    if (!auth || !authorityHas(auth, 'advance_income')) return {error: 'Choose an authority assigned to advance income tax.'};
+    const targetAccountDef = accounts().find((a) => a.code === targetAccount && a.active !== false && a.subtype !== 'tax');
+    if (!targetAccountDef) return {error: 'Choose a valid non-tax income tax account.'};
+    const open = openTaxEntries('advance_income', authorityId, [], [], effectiveDate);
+    const openSum = round2(open.reduce((n, e) => n + e.open, 0));
+    const net = netTaxBalance('advance_income', authorityId, [], [], effectiveDate);
+    if (net < -0.004) return {error: 'Advance income tax is negative. Adjust it before closing.'};
+    const total = round2(Math.max(0, Math.min(openSum, net)));
+    const target = amount === '' || amount === undefined ? total : round2(Number(amount) || 0);
+    if (total <= 0.004) return {error: 'There is no open advance income tax for that authority.'};
+    if (target <= 0) return {error: 'Enter an advance amount greater than zero.'};
+    if (target > total + 0.005) return {error: `The amount is more than the open advance ${money(total)}.`};
+    const allocations = allocateOpen(open, target).allocations;
+    const entry = [
+      closingGlLine(targetAccount, target, 0, '', ''),
+      closingGlLine(taxControlAccount('advance_income'), 0, target, '', authorityId),
+    ];
+    return {total, amount: target, allocations, entry};
+  }
   function bankControlFor(name) {
     const sub = CASH_BANK.find((c) => c.name === name);
     return sub ? sub.control : '';
@@ -4491,6 +4628,10 @@ const ITEM_ACCOUNT_RULES = [
         const whtAuth = TAX_AUTHORITIES.find((a) => a.id === TAX_FIXTURE_AUTHORITIES[map[l.account]]) || defaultAuthorityFor(map[l.account]); entries.push({id: 'TE-' + d.id + '-W' + i, date: d.date, document: d.id, docKind: sale ? 'sales' : 'purchase', party: d.party, kind: map[l.account], authority: whtAuth.id, authorityName: whtAuth.name, base: amt, rate: 'custom', amount: amt, period: d.date.slice(0, 7)});
       });
     });
+    TAX_OPENING_ENTRIES.forEach((e) => {
+      const authority = TAX_AUTHORITIES.find((a) => a.id === e.authority) || {name: '—'};
+      entries.push({id: 'TE-' + e.id, date: e.date, document: e.id, docKind: 'opening', party: e.party, kind: e.kind, authority: e.authority, authorityName: authority.name, base: e.base, rate: e.rate, amount: e.amount, period: e.period});
+    });
     RETURNS.sales.concat(RETURNS.purchase).forEach((r) => {
       const sale = r.id.startsWith('SR-');
       const kind = sale ? 'output' : 'input';
@@ -4513,6 +4654,15 @@ const ITEM_ACCOUNT_RULES = [
         entries.push({id: 'TE-' + st.id + '-S' + i, date: st.date, document: st.id, docKind: 'settlement', party: a.party, kind: a.kind, authority: a.authority, authorityName: authority.name, base: 0, rate: 'settlement', amount: -a.amount, period: a.period || st.date.slice(0, 7), settledEntry: a.sourceId});
       });
     });
+    TAX_CLOSINGS.forEach((cl) => {
+      const authority = TAX_AUTHORITIES.find((a) => a.id === cl.authority) || {name: '—'};
+      (cl.allocations || []).forEach((a, i) => {
+        entries.push({id: 'TE-' + cl.id + '-C' + i, date: cl.effectiveDate, document: cl.id, docKind: 'closing', party: a.party, kind: a.kind, authority: a.authority, authorityName: (TAX_AUTHORITIES.find((x) => x.id === a.authority) || {}).name || authority.name, base: 0, rate: 'closing', amount: -a.amount, period: a.period || cl.effectiveDate.slice(0, 7), settledEntry: a.sourceId});
+      });
+      if (cl.finalEntry) {
+        entries.push({id: 'TE-' + cl.id + '-F', date: cl.effectiveDate, document: cl.id, docKind: 'closing', party: cl.finalEntry.party, kind: 'final_sales', authority: cl.finalEntry.authority, authorityName: authority.name, base: 0, rate: 'closing', amount: cl.finalEntry.amount, period: cl.finalEntry.period || cl.effectiveDate.slice(0, 7)});
+      }
+    });
     entries.push(...extra);
     return entries.sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
   }
@@ -4529,7 +4679,7 @@ const ITEM_ACCOUNT_RULES = [
     const cols = [['name', 'Authority'], ['registration', 'Registration'], ['frequency', 'Frequency'], ['count', 'Entries', 'numeric', false], ['base', 'Taxable base', 'numeric', false], ['tax', 'Tax balance', 'numeric', false]];
     const control = taxControlAccount(kind);
     const controlName = (accounts().find((a) => a.code === control) || {}).name || 'Unknown account';
-    return `<div class="tabs" role="tablist" aria-label="Authority tax kinds">${TAX_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-auth-kind="${k}">${label}</button>`).join('')}</div>
+    return `<div class="tabs" role="tablist" aria-label="Authority tax kinds">${TAX_AUTHORITY_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-auth-kind="${k}">${label}</button>`).join('')}</div>
       <form class="filterbar" data-tax-auth-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Authority, registration"></label>
         <label>Balances as at<input type="date" name="asof" value="${e(f.asof)}"></label>
@@ -4554,10 +4704,10 @@ const ITEM_ACCOUNT_RULES = [
         <label>Registration<input name="registration" maxlength="40" value="${e(v('registration'))}" placeholder="STRN / VAT number"></label>
         <label>Filing frequency<select name="frequency" class="inline-input">${['Monthly', 'Quarterly', 'Yearly', 'On demand'].map((x) => `<option ${v('frequency', 'Monthly') === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
         <label>Status<select name="status" class="inline-input"><option ${v('active', true) ? 'selected' : ''}>Active</option><option ${v('active', true) ? '' : 'selected'}>Archived</option></select></label>
-        <div class="wide"><span class="ms-label">Applies to tax natures</span><div class="checkgrid" data-auth-kinds>${TAX_KINDS.map(([k, l]) => `<label class="checkgrid-row"><input type="checkbox" value="${k}" ${(v('kinds', []) || []).includes(k) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></div>
+        <div class="wide"><span class="ms-label">Applies to tax and settlement natures</span><div class="checkgrid" data-auth-kinds>${TAX_AUTHORITY_KINDS.map(([k, l]) => `<label class="checkgrid-row"><input type="checkbox" value="${k}" ${(v('kinds', []) || []).includes(k) ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div></div>
         <div class="related"><button class="button primary">${a ? 'Save changes' : 'Add authority'}</button><button type="button" class="button" data-tax-authority-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">One authority can cover all six natures or only some. Authorities are sub-accounts of the tax-nature control. The default authority per nature is set under Default accounts; invoices and bills can override it.</p></div>
+      <div class="panel-body"><p class="form-note">One authority can cover several tax or settlement natures. Authorities are sub-accounts of the relevant control. The default authority per tax nature is set under Default accounts; closing uses the final sales tax authority selected on the closing.</p></div>
     </section>`;
   }
   function taxEntriesPanel() {
@@ -4598,7 +4748,7 @@ const ITEM_ACCOUNT_RULES = [
     const totalTax = round2(rows.reduce((n, r) => n + r.tax, 0));
     const control = taxControlAccount(kind);
     const controlName = (accounts().find((a) => a.code === control) || {}).name || 'Unknown account';
-    return `<div class="tabs" role="tablist" aria-label="Party balance tax natures">${TAX_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-party-kind="${k}">${label}</button>`).join('')}</div>
+    return `<div class="tabs" role="tablist" aria-label="Party balance tax natures">${TAX_AUTHORITY_KINDS.map(([k, label]) => `<button type="button" role="tab" aria-selected="${kind === k}" data-tax-party-kind="${k}">${label}</button>`).join('')}</div>
       <form class="filterbar" data-tax-party-filter>
         <label>Search<input type="search" name="q" value="${e(f.q)}" placeholder="Party"></label>
         <label>Balances as at<input type="date" name="asof" value="${e(f.asof)}"></label>
@@ -4628,32 +4778,44 @@ const ITEM_ACCOUNT_RULES = [
       entry: r.entry || taxAdjustmentEntry(r.kind, r.party, r.direction, r.amount, legacyOffsetAccount(r), r.authority),
       kind: 'adjustment',
     }));
-    const settlementRows = TAX_SETTLEMENTS.map((r) => {
-      const baseParty = settlementPartyLabel(r);
-      const adjParty = r.adjustment ? r.adjustment.party : '';
+    const closingRows = TAX_CLOSINGS.map((r) => {
       const baseAuthority = authorityName(r.authority);
-      const adjAuthority = r.adjustment ? authorityName(r.adjustment.authority) : '';
-      const periodLabel = settlementPeriodLabel(r) + (r.adjustment && r.adjustment.period && !settlementPeriodLabel(r).includes(r.adjustment.period) ? ' + adj ' + r.adjustment.period : '');
-      const partyLabel = r.adjustment && adjParty && !baseParty.includes(adjParty) ? (baseParty === '—' ? adjParty : `${baseParty} + ${adjParty}`) : baseParty;
+      if (r.kind === 'withholding') {
+        return {
+          id: r.id, date: r.effectiveDate, typeLabel: 'Withholding payment',
+          natureLabel: taxKindLabel(r.nature), party: settlementPartyLabel(r),
+          authorityLabel: baseAuthority, periodLabel: settlementPeriodLabel(r),
+          amount: r.amount, offsetLabel: r.bankAccount || 'Bank / cash', reason: r.reason,
+          entry: r.entry || [], allocations: r.allocations || [], kind: 'closing',
+        };
+      }
+      if (r.kind === 'sales-return') {
+        return {
+          id: r.id, date: r.effectiveDate, typeLabel: 'Sales tax closing',
+          natureLabel: 'Input ↔ Output ↔ Advance sales', party: settlementPartyLabel(r) + ' · final Unallocated',
+          authorityLabel: baseAuthority, periodLabel: `${r.effectiveDate}${r.filedOn ? ' · filed ' + r.filedOn : ''}${r.reference ? ' · ' + r.reference : ''}`,
+          amount: r.net, offsetLabel: r.settleNow ? (r.bankAccount || 'Bank / cash') : (r.net >= 0 ? 'Final sales tax payable' : 'Final sales tax receivable'),
+          reason: r.reason, entry: r.entry || [], allocations: r.allocations || [], kind: 'closing',
+        };
+      }
+      if (r.kind === 'final-payment') {
+        return {
+          id: r.id, date: r.effectiveDate, typeLabel: 'Final sales payment',
+          natureLabel: 'Final sales tax payable', party: 'Unallocated',
+          authorityLabel: baseAuthority, periodLabel: r.effectiveDate,
+          amount: r.amount, offsetLabel: r.bankAccount || 'Bank / cash', reason: r.reason,
+          entry: r.entry || [], allocations: r.allocations || [], kind: 'closing',
+        };
+      }
       return {
-        id: r.id,
-        date: r.date,
-        typeLabel: r.adjustment ? 'Adjustment + closing' : 'Closing',
-        natureLabel: r.adjustment && !settlementMeta(r.type).sources.includes(r.adjustment.kind) ? `${settlementNatureLabel(r.type)} + ${taxKindLabel(r.adjustment.kind)}` : settlementNatureLabel(r.type),
-        party: partyLabel,
-        authorityLabel: adjAuthority && adjAuthority !== baseAuthority ? `${baseAuthority} + ${adjAuthority}` : baseAuthority,
-        periodLabel: periodLabel,
-        amount: r.amount,
-        adjustmentAmount: r.adjustment ? r.adjustment.amount : 0,
-        adjustmentDirection: r.adjustment ? r.adjustment.direction : '',
-        offsetLabel: settlementTargetLabel(r),
-        reason: r.reason,
-        entry: r.adjustment ? [...(r.adjustmentEntry || taxAdjustmentEntry(r.adjustment.kind, r.adjustment.party, r.adjustment.direction, r.adjustment.amount, r.adjustment.offsetAccount, r.adjustment.authority, r.adjustment.offsetSub)), ...(r.entry || [])] : (r.entry || []),
-        allocations: r.allocations || [],
-        kind: 'settlement',
+        id: r.id, date: r.effectiveDate, typeLabel: 'Income tax closing',
+        natureLabel: 'Advance income tax', party: settlementPartyLabel(r),
+        authorityLabel: baseAuthority, periodLabel: `${r.effectiveDate}${r.filedOn ? ' · filed ' + r.filedOn : ''}${r.reference ? ' · ' + r.reference : ''}`,
+        amount: r.amount, offsetLabel: taxOffsetAccountLabel(r.targetAccount), reason: r.reason,
+        entry: r.entry || [], allocations: r.allocations || [], kind: 'closing',
       };
     });
-    const all = adjustmentRows.concat(settlementRows).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+    const all = adjustmentRows.concat(closingRows).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
     const searched = all.filter((r) => (!f.q || (r.id + ' ' + r.typeLabel + ' ' + r.natureLabel + ' ' + r.party + ' ' + r.authorityLabel + ' ' + r.reason).toLowerCase().includes(f.q.toLowerCase()))
       && (!f.from || r.date >= f.from) && (!f.to || r.date <= f.to));
     const rows = taxSortRows(taxFilterRows(searched, f), f);
@@ -4670,33 +4832,32 @@ const ITEM_ACCOUNT_RULES = [
         ${taxTableHead('taxadj', f, cols, all)}
         <tbody>${rows.map((r) => {
           const open = TAX_ADJUSTMENT_OPEN.has(r.id);
-          const allocationRows = r.kind === 'settlement' && r.allocations.length ? `<div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Settled party</th><th>Nature</th><th>Period</th><th class="numeric">Amount</th></tr></thead><tbody>${r.allocations.map((a) => `<tr><td>${e(a.party)}</td><td>${e(taxKindLabel(a.kind))}</td><td>${e(a.period)}</td><td class="numeric">${money(a.amount)}</td></tr>`).join('')}</tbody></table></div>` : '';
-          const detail = open ? `<tr class="entry-detail"><td colspan="10">${ledgerIllustration((r.kind === 'settlement' ? 'Closing ' : 'Adjustment ') + r.id, r.entry, r.kind === 'settlement' ? 'The closing entry moves the selected tax entries into the settlement. Party/authority detail remains in the tax entries; the control lines are authority-level.' : 'A separate voucher: the tax control line carries authority ' + r.authorityLabel + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}${allocationRows}</td></tr>` : '';
+          const allocationRows = r.kind === 'closing' && r.allocations.length ? `<div class="table-scroll"><table class="invoice-lines"><thead><tr><th>Settled party</th><th>Nature</th><th>Period</th><th class="numeric">Amount</th></tr></thead><tbody>${r.allocations.map((a) => `<tr><td>${e(a.party)}</td><td>${e(taxKindLabel(a.kind))}</td><td>${e(a.period)}</td><td class="numeric">${money(a.amount)}</td></tr>`).join('')}</tbody></table></div>` : '';
+          const detail = open ? `<tr class="entry-detail"><td colspan="10">${ledgerIllustration((r.kind === 'closing' ? 'Closing ' : 'Adjustment ') + r.id, r.entry, r.kind === 'closing' ? 'The closing entry moves the selected tax entries into the closing. Party/authority detail remains in the tax entries; the control lines are authority-level.' : 'A separate voucher: the tax control line carries authority ' + r.authorityLabel + '; both lines carry party ' + r.party + '. The original document and its tax entry are unchanged.')}${allocationRows}</td></tr>` : '';
           return `<tr class="row-link" data-tax-adj-toggle="${e(r.id)}" aria-expanded="${open}"><td>${r.date}</td><td class="mono">${e(r.id)}</td><td>${e(r.typeLabel)}</td><td>${e(r.natureLabel)}</td><td>${e(r.party)}</td><td>${e(r.authorityLabel)}</td><td>${e(r.periodLabel)}</td><td class="numeric">${r.amount < 0 ? '−' : ''}${money(Math.abs(r.amount))}${r.adjustmentAmount ? `<small class="secondary">adj ${r.adjustmentDirection === 'decrease' ? '−' : '+'}${money(r.adjustmentAmount)}</small>` : ''}</td><td>${e(r.offsetLabel)}</td><td>${e(r.reason)}</td></tr>${detail}`;
         }).join('') || '<tr><td colspan="10">No tax entry vouchers yet. Use New tax entry.</td></tr>'}</tbody></table></div>
-      <div class="table-footer">Adjustments correct one tax control against a non-tax account. Closing entries settle selected open tax entries against another tax control or cash/bank, and create the matching negative tax entries so party and authority balances fall to zero while retaining history. Combined entries post an adjustment before the closing.</div></section>`;
+      <div class="table-footer">Adjustments change one tax balance by the amount you choose; the remainder carries forward. Withholding payment pays open withholding to bank/cash. Closing works at the effective date, closes all open balances for the authority, creates negative tax entries per party/period, and moves the net to Final sales tax payable or pays it.</div></section>`;
   }
   function taxEntryEditor(code) {
-    const periods = [...new Set(taxEntries().map((e) => e.period))].sort();
     const accountOptions = (selected) => accounts().filter((a) => a.active !== false && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === selected ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
     const bankOptions = CASH_BANK.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
     const authorityOptions = (selected) => TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${a.id === selected ? 'selected' : ''}>${e(a.name)}</option>`).join('');
     return `<section class="panel">
-      <div class="panel-head"><h2>New tax entry</h2><span class="badge">Adjustment or closing</span></div>
+      <div class="panel-head"><h2>New tax entry</h2><span class="badge">Adjustment · withholding payment · closing</span></div>
       <form class="panel-body form-grid" data-tax-entry-form>
         <label>Entry type<select name="entryType" class="inline-input">
-          <option value="adjustment">Adjustment only</option>
-          <option value="closing">Closing / settlement</option>
-          <option value="combined">Adjustment + closing</option>
+          <option value="adjustment">Adjustment</option>
+          <option value="withholding">Withholding payment</option>
+          <option value="closing">Closing</option>
         </select></label>
-        <label>Date<input name="date" type="date" value="2026-11-30" required></label>
-        <label class="wide">Reason<input name="reason" maxlength="160" required placeholder="Unclaimable input, monthly filing, withholding deposit, advance application"></label>
+        <label data-entry-date>Entry date<input name="date" type="date" value="2026-11-30" required></label>
+        <label class="wide">Reason<input name="reason" maxlength="160" required placeholder="Unclaimable input, withholding deposit, monthly filing"></label>
 
         <div class="wide" data-entry-adjustment>
           <div class="section-title">Adjustment</div>
           <div class="form-grid">
             <label>Tax nature<select name="adjKind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${k === 'input' ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-            <label>Authority<select name="adjAuthority" class="inline-input">${authorityOptions(TAX_DEFAULT_AUTHORITIES.input)}</select></label>
+            <label>Authority<select name="adjAuthority" class="inline-input">${authorityOptions('AUTH-FBR')}</select></label>
             <label>Party<select name="adjParty" class="inline-input"><option value="">Choose party</option><option value="__unallocated__">Unallocated — authority-level difference</option>${PARTIES.map((p) => `<option value="${e(p.name)}">${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
             <label>Direction<select name="adjDirection" class="inline-input"><option value="decrease">Decrease the tax balance</option><option value="increase">Increase the tax balance</option></select></label>
             <label>Amount<input name="adjAmount" inputmode="decimal" placeholder="0.00"></label>
@@ -4705,23 +4866,36 @@ const ITEM_ACCOUNT_RULES = [
           </div>
         </div>
 
-        <div class="wide" data-entry-settlement>
-          <div class="section-title">Closing / settlement</div>
+        <div class="wide" data-entry-withholding>
+          <div class="section-title">Withholding payment</div>
           <div class="form-grid">
-            <label>Settlement type<select name="settleType" class="inline-input">${TAX_SETTLEMENT_TYPES.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select></label>
-            <label>Authority<select name="settleAuthority" class="inline-input">${authorityOptions('AUTH-FBR')}</select></label>
-            <label>Amount<input name="settleAmount" inputmode="decimal" placeholder="Blank = all available"></label>
-            <label data-settle-offset-wrap>Offset / target account<select name="settleOffset" class="inline-input">${accountOptions('5400')}</select></label>
-            <label class="wide" data-bank-wrap hidden>Bank / cash sub-account<select name="bankAccount" class="inline-input">${bankOptions}</select></label>
-            <div class="wide">${ms('settle-periods', 'Periods to close', periods.map((p) => [p, p]), [], '', 'All open periods')}</div>
-            <p class="wide form-note" data-settle-capacity>Choose the settlement type, authority and periods to see what is available.</p>
+            <label>Withholding nature<select name="whtKind" class="inline-input"><option value="withholding_income">Withholding — income tax</option><option value="withholding_sales">Withholding — sales tax</option></select></label>
+            <label>Authority<select name="whtAuthority" class="inline-input">${authorityOptions('AUTH-FBR')}</select></label>
+            <label>Amount<input name="whtAmount" inputmode="decimal" placeholder="Blank = all open"></label>
+            <label>Pay from bank / cash<select name="whtBank" class="inline-input">${bankOptions}</select></label>
+          </div>
+        </div>
+
+        <div class="wide" data-entry-closing>
+          <div class="section-title">Closing</div>
+          <div class="form-grid">
+            <label>Closing kind<select name="closeKind" class="inline-input"><option value="sales-return">Sales tax return closing</option><option value="final-payment">Final sales tax payment</option><option value="income-tax">Income tax closing</option></select></label>
+            <label>Authority<select name="closeAuthority" class="inline-input">${authorityOptions('AUTH-SRB')}</select></label>
+            <label>Period end / effective date<input name="periodEnd" type="date" value="2026-06-30" required></label>
+            <label>Filed on<input name="filedOn" type="date" value="2026-07-05"></label>
+            <label>Reference<input name="closeReference" maxlength="60" placeholder="Return / acknowledgement"></label>
+            <label data-close-amount-wrap hidden>Amount<input name="closeAmount" inputmode="decimal" placeholder="Blank = all open"></label>
+            <label data-close-target-wrap hidden>Income tax account<select name="closeTarget" class="inline-input">${accountOptions(TAX_CLOSING_ACCOUNTS.incomeTaxPayable)}</select></label>
+            <label data-close-bank-wrap>Bank / cash<select name="closeBank" class="inline-input">${bankOptions}</select></label>
+            <div class="wide" data-close-pay-wrap><span class="ms-label">Sales tax return payment</span><label class="checkgrid-row"><input type="checkbox" name="closeSettleNow"> Pay the final balance now from the selected bank / cash</label></div>
+            <p class="wide form-note" data-close-note>Sales tax return closes all open input, output and advance sales up to the period end and transfers the net to Final sales tax payable.</p>
           </div>
         </div>
 
         <div class="wide" data-tax-entry-preview></div>
         <div class="related"><button class="button primary">Record tax entry</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">Adjustment: one tax control against a non-tax account. Closing: settles selected open entries against another tax control or bank; the tax entries are reduced per party and period, so balances go to zero without deleting history. Combined: posts the adjustment first, then closes what remains; the adjustment is attributed to the latest selected closing period.</p></div>
+      <div class="panel-body"><p class="form-note">Adjustment changes one tax balance by the amount you choose and leaves the rest to carry forward. Withholding payment pays open withholding to bank/cash. Closing works at the period-end date: it closes all open balances for that authority up to that date, creates negative tax entries per party/period, and moves the net to the final sales tax payable control or pays it.</p></div>
     </section>`;
   }
   function taxesView() {
@@ -4825,11 +4999,12 @@ const ITEM_ACCOUNT_RULES = [
         navigate({module: 'accounting', tab: kind.startsWith('sales') ? 'sales-invoices' : 'purchase-invoices'});
         return;
       }
-      if (kind === 'adjustment' || kind === 'settlement') {
+      if (kind === 'adjustment' || kind === 'settlement' || kind === 'closing') {
         TAX_ADJUSTMENT_OPEN.add(id);
         navigate({module: 'tax', tab: 'adjustments'});
         return;
       }
+      if (kind === 'opening') return;
       navigate({module: 'accounting', tab: kind === 'sales' ? 'sales-invoices' : 'purchase-invoices', mode: 'editor', form: 'invoice', code: id});
     }));
     bindTaxColumnMenus('taxentry', TAX_ENTRY_FILTER, rerender);
@@ -4889,101 +5064,109 @@ const ITEM_ACCOUNT_RULES = [
       const $ = (name) => entryForm.querySelector(`[name="${name}"]`);
       const typeSelect = $('entryType');
       const adjSection = entryForm.querySelector('[data-entry-adjustment]');
-      const settleSection = entryForm.querySelector('[data-entry-settlement]');
+      const whtSection = entryForm.querySelector('[data-entry-withholding]');
+      const closeSection = entryForm.querySelector('[data-entry-closing]');
+      const dateWrap = entryForm.querySelector('[data-entry-date]');
       const adjOffset = $('adjOffset');
       const adjSubWrap = entryForm.querySelector('[data-adj-sub-wrap]');
       const adjSub = $('adjOffsetSub');
-      const settleType = $('settleType');
-      const settleOffset = $('settleOffset');
-      const settleOffsetWrap = entryForm.querySelector('[data-settle-offset-wrap]');
-      const bankWrap = entryForm.querySelector('[data-bank-wrap]');
-      const bankAccount = $('bankAccount');
-      const periodsBox = entryForm.querySelector('.ms[data-ms="settle-periods"]');
+      const closeKind = $('closeKind');
+      const closeAmountWrap = entryForm.querySelector('[data-close-amount-wrap]');
+      const closeTargetWrap = entryForm.querySelector('[data-close-target-wrap]');
+      const closeBankWrap = entryForm.querySelector('[data-close-bank-wrap]');
+      const closePayWrap = entryForm.querySelector('[data-close-pay-wrap]');
+      const closeNote = entryForm.querySelector('[data-close-note]');
+      const settleNow = $('closeSettleNow');
       const previewBox = entryForm.querySelector('[data-tax-entry-preview]');
-      const capacityBox = entryForm.querySelector('[data-settle-capacity]');
       const partyOf = (value) => value === '__unallocated__' ? 'Unallocated' : value;
-      const selectedPeriods = () => periodsBox ? picked(periodsBox) : [];
-      const adjustmentDraft = (periods = []) => {
-        const v = Object.fromEntries(new FormData(entryForm));
-        const amount = round2(Number(v.adjAmount) || 0);
-        return {date: v.date, period: periods.length ? periods[periods.length - 1] : v.date.slice(0, 7), kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: v.adjOffsetSub, reason: v.reason};
-      };
-      const settlementDraft = (extra = []) => {
-        const v = Object.fromEntries(new FormData(entryForm));
-        const meta = settlementMeta(v.settleType);
-        const cap = settlementCapacity(v.settleType, v.settleAuthority, selectedPeriods(), extra, v.date);
-        const amount = round2(Number(v.settleAmount) || cap.capacity);
-        return {v, meta, cap, amount, gl: settlementGlLines(v.settleType, v.settleAuthority, amount, v.settleOffset, v.bankAccount)};
-      };
       const syncAdjustmentSub = () => {
         const account = accounts().find((a) => a.code === adjOffset.value);
         const subs = account && ['bank', 'cash'].includes(account.control) ? CASH_BANK.filter((c) => c.control === account.code) : [];
         adjSubWrap.hidden = !subs.length;
-        if (subs.length) {
-          adjSub.innerHTML = subs.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
+        if (subs.length) adjSub.innerHTML = subs.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
+      };
+      const syncClosing = () => {
+        const kind = closeKind.value;
+        const sales = kind === 'sales-return';
+        const income = kind === 'income-tax';
+        closeAmountWrap.hidden = sales;
+        closeTargetWrap.hidden = !income;
+        closePayWrap.hidden = !sales;
+        closeBankWrap.hidden = income || (sales && !settleNow.checked);
+        if (closeNote) {
+          closeNote.textContent = sales
+            ? 'Sales tax return closes all open input, output and advance sales up to the period end and transfers the net to Final sales tax payable. Tick Pay now to settle it immediately from the selected bank/cash.'
+            : kind === 'final-payment'
+              ? 'Pays the open Final sales tax payable for that authority. The amount is blank = all open.'
+              : 'Applies open advance income tax to the selected income tax payable or expense account; the remaining advance carries forward.';
         }
       };
       const syncSections = () => {
         const type = typeSelect.value;
-        adjSection.hidden = type === 'closing';
-        settleSection.hidden = type === 'adjustment';
-        const meta = settlementMeta(settleType.value);
-        settleOffsetWrap.hidden = meta.target !== 'expense';
-        bankWrap.hidden = meta.target !== 'bank';
-        if (meta.target === 'expense') {
-          if (!settleOffset.value || settleOffset.value === '5300' || settleOffset.value === '5400') settleOffset.value = settleType.value === 'advance-income' ? '5400' : '5300';
-        }
-        if (meta.target === 'bank' && !bankAccount.value) bankAccount.value = CASH_BANK[0] ? CASH_BANK[0].name : '';
+        adjSection.hidden = type !== 'adjustment';
+        whtSection.hidden = type !== 'withholding';
+        closeSection.hidden = type !== 'closing';
+        dateWrap.hidden = type === 'closing';
+        if (type === 'withholding' && !$('whtAuthority').value) $('whtAuthority').value = 'AUTH-FBR';
+        if (type === 'closing') syncClosing();
+      };
+      const adjustmentDraft = () => {
+        const v = Object.fromEntries(new FormData(entryForm));
+        const amount = round2(Number(v.adjAmount) || 0);
+        return {date: v.date, period: v.date.slice(0, 7), kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: v.adjOffsetSub, reason: v.reason};
       };
       const preview = () => {
         syncSections();
         const type = typeSelect.value;
         const chunks = [];
-        const closingPeriods = selectedPeriods();
-        const adj = adjustmentDraft(closingPeriods);
-        const needAdj = type !== 'closing';
-        const needSettle = type !== 'adjustment';
-        let extra = [];
-        if (needAdj && adj.amount > 0) {
-          const adjEntry = taxAdjustmentEntry(adj.kind, adj.party, adj.direction, adj.amount, adj.offsetAccount, adj.authority, adj.offsetSub);
-          chunks.push(ledgerIllustration('Illustrative adjustment entry', adjEntry, `Adjustment control ${taxControlAccount(adj.kind)} · party ${adj.party || '—'} · authority ${(TAX_AUTHORITIES.find((a) => a.id === adj.authority) || {}).name || '—'}.`));
-          if (type === 'combined') extra = [taxAdjustmentTaxEntry(adj, 'TEMP')];
-        }
-        if (needSettle) {
-          const st = settlementDraft(extra);
-          if (capacityBox) {
-            const totals = st.meta.sources.map((kind) => `${taxKindLabel(kind)} ${money(st.cap.totals[kind])}`).join(' · ');
-            capacityBox.textContent = `${totals} · available to close ${money(st.cap.capacity)}${st.v.settleAmount ? '' : ' (blank amount uses this)'}`;
-          }
-          const showAmount = Math.min(st.amount, st.cap.capacity);
-          if (showAmount > 0) {
-            const previewGl = settlementGlLines(st.v.settleType, st.v.settleAuthority, showAmount, st.v.settleOffset, st.v.bankAccount);
-            chunks.push(ledgerIllustration('Illustrative closing entry', previewGl, `Closing ${settlementNatureLabel(st.v.settleType)} for ${(TAX_AUTHORITIES.find((a) => a.id === st.v.settleAuthority) || {}).name || '—'}. The negative tax entries are created per party and period; history remains.`));
+        if (type === 'adjustment') {
+          const adj = adjustmentDraft();
+          if (adj.amount > 0) {
+            const entry = taxAdjustmentEntry(adj.kind, adj.party, adj.direction, adj.amount, adj.offsetAccount, adj.authority, adj.offsetSub);
+            chunks.push(ledgerIllustration('Illustrative adjustment entry', entry, `Adjustment control ${taxControlAccount(adj.kind)} · party ${adj.party || '—'} · authority ${(TAX_AUTHORITIES.find((a) => a.id === adj.authority) || {}).name || '—'}. The remaining balance carries forward.`));
           }
         }
-        previewBox.innerHTML = chunks.join('') || ledgerIllustration('Illustrative tax entry', [], 'Fill the adjustment or closing section to preview the entry.');
+        if (type === 'withholding') {
+          const v = Object.fromEntries(new FormData(entryForm));
+          const built = buildWithholdingClosing(v.whtKind, v.whtAuthority, v.date, v.whtAmount, v.whtBank, v.reason);
+          if (built.error) chunks.push(ledgerIllustration('Illustrative withholding payment', [], built.error));
+          else chunks.push(ledgerIllustration('Illustrative withholding payment', built.entry, `Pays ${money(built.amount)} of open withholding to ${v.whtBank}. The remaining withholding stays open.`));
+        }
+        if (type === 'closing') {
+          const v = Object.fromEntries(new FormData(entryForm));
+          if (v.closeKind === 'sales-return') {
+            const built = buildSalesClosing(v.closeAuthority, v.periodEnd, v.filedOn, v.closeReference, v.reason, settleNow.checked, v.closeBank);
+            if (built.error) chunks.push(ledgerIllustration('Illustrative sales tax closing', [], built.error));
+            else chunks.push(ledgerIllustration('Illustrative sales tax closing', built.entry, `Output ${money(built.output)} − input ${money(built.input)} − advance ${money(built.advance)} = ${built.net >= 0 ? 'payable' : 'receivable'} ${money(Math.abs(built.net))}. Balance date ${v.periodEnd}; filed ${v.filedOn || '—'}.`));
+          } else if (v.closeKind === 'final-payment') {
+            const built = buildFinalSalesPayment(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeBank);
+            if (built.error) chunks.push(ledgerIllustration('Illustrative final sales payment', [], built.error));
+            else chunks.push(ledgerIllustration('Illustrative final sales payment', built.entry, `Pays ${money(built.amount)} of final sales tax payable for ${(TAX_AUTHORITIES.find((a) => a.id === v.closeAuthority) || {}).name || '—'} from ${v.closeBank}.`));
+          } else {
+            if (!v.filedOn) { notify('Choose the filed-on date.'); return; }
+        const built = buildIncomeTaxClosing(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeTarget, v.reason);
+            if (built.error) chunks.push(ledgerIllustration('Illustrative income tax closing', [], built.error));
+            else chunks.push(ledgerIllustration('Illustrative income tax closing', built.entry, `Applies ${money(built.amount)} of advance income tax to ${taxOffsetAccountLabel(v.closeTarget)}; the remaining advance carries forward.`));
+          }
+        }
+        previewBox.innerHTML = chunks.join('') || ledgerIllustration('Illustrative tax entry', [], 'Choose the entry type and fill the section to preview the entry.');
       };
       entryForm.addEventListener('input', preview);
       entryForm.addEventListener('change', (ev) => {
-        if (ev.target === typeSelect) {
-          syncSections();
-          if (typeSelect.value !== 'adjustment') {
-            const meta = settlementMeta(settleType.value);
-            const auth = $('settleAuthority');
-            if (!auth.value) auth.value = TAX_DEFAULT_AUTHORITIES[meta.sources[0]] || '';
-          }
-        }
+        if (ev.target === typeSelect) syncSections();
         if (ev.target === adjOffset) syncAdjustmentSub();
-        if (ev.target === settleType) {
-          const meta = settlementMeta(settleType.value);
-          const auth = $('settleAuthority');
-          const current = TAX_AUTHORITIES.find((a) => a.id === auth.value);
-          if (!current || !meta.sources.every((kind) => authorityHas(current, kind))) auth.value = TAX_DEFAULT_AUTHORITIES[meta.sources[0]] || '';
+        if (ev.target === closeKind) {
+          if (closeKind.value === 'income-tax') $('closeAuthority').value = 'AUTH-FBR';
+          else $('closeAuthority').value = 'AUTH-SRB';
+          syncClosing();
         }
+        if (ev.target === settleNow) syncClosing();
+        if (ev.target === $('whtKind')) $('whtAuthority').value = $('whtKind').value === 'withholding_income' ? 'AUTH-FBR' : 'AUTH-SRB';
         preview();
       });
       syncAdjustmentSub();
       syncSections();
+      syncClosing();
       preview();
       entryForm.querySelector('[data-form-cancel]')?.addEventListener('click', goAdjustments);
       entryForm.addEventListener('submit', (ev) => {
@@ -4991,12 +5174,7 @@ const ITEM_ACCOUNT_RULES = [
         if (!entryForm.reportValidity()) return;
         const v = Object.fromEntries(new FormData(entryForm));
         const type = v.entryType;
-        const needAdj = type !== 'closing';
-        const needSettle = type !== 'adjustment';
-        const closingPeriods = selectedPeriods();
-        let adjustment = null;
-        let extra = [];
-        if (needAdj) {
+        if (type === 'adjustment') {
           const amount = round2(Number(v.adjAmount) || 0);
           if (amount <= 0) { notify('Enter the adjustment amount.'); return; }
           if (!v.adjParty) { notify('Choose the adjustment party or Unallocated.'); return; }
@@ -5008,42 +5186,67 @@ const ITEM_ACCOUNT_RULES = [
           if (v.adjOffset === taxControlAccount(v.adjKind)) { notify('The adjustment offset must differ from the tax control.'); return; }
           const subs = ['bank', 'cash'].includes(offset.control) ? CASH_BANK.filter((c) => c.control === offset.code) : [];
           if (subs.length && !v.adjOffsetSub) { notify('Choose the bank or cash sub-account for the adjustment.'); return; }
-          adjustment = {date: v.date, period: type === 'combined' && closingPeriods.length ? closingPeriods[closingPeriods.length - 1] : v.date.slice(0, 7), kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: subs.length ? v.adjOffsetSub : '', reason: v.reason};
-          if (type === 'combined') extra = [taxAdjustmentTaxEntry(adjustment, 'TEMP')];
-        }
-        if (needSettle) {
-          const meta = settlementMeta(v.settleType);
-          const auth = TAX_AUTHORITIES.find((a) => a.id === v.settleAuthority);
-          if (!auth || !meta.sources.every((kind) => authorityHas(auth, kind))) { notify('Choose an authority that handles every tax nature in this settlement.'); return; }
-          const periods = closingPeriods;
-          const cap = settlementCapacity(v.settleType, v.settleAuthority, periods, extra, v.date);
-          if (cap.capacity <= 0.004) { notify('There is no open balance to close for that authority and period.'); return; }
-          const amount = round2(Number(v.settleAmount) || cap.capacity);
-          if (amount <= 0) { notify('Enter a closing amount.'); return; }
-          if (amount > cap.capacity + 0.005) { notify(`The closing amount is more than the available ${money(cap.capacity)}.`); return; }
-          if (meta.target === 'bank' && (!v.bankAccount || !bankControlFor(v.bankAccount))) { notify('Choose a valid bank or cash sub-account.'); return; }
-          if (meta.target === 'expense') {
-            const offset = accounts().find((a) => a.code === v.settleOffset && a.active !== false && a.subtype !== 'tax');
-            if (!offset) { notify('Choose an active non-tax target account for the settlement.'); return; }
-          }
-          const allocations = buildSettlementAllocations(v.settleType, v.settleAuthority, periods, amount, extra, v.date);
-          const entry = settlementGlLines(v.settleType, v.settleAuthority, amount, v.settleOffset, v.bankAccount);
-          const adjustmentEntry = type === 'combined' && adjustment ? taxAdjustmentEntry(adjustment.kind, adjustment.party, adjustment.direction, adjustment.amount, adjustment.offsetAccount, adjustment.authority, adjustment.offsetSub) : null;
-          const id = 'SET-2026-' + String(TAX_SETTLEMENT_SEQ++).padStart(4, '0');
-          TAX_SETTLEMENTS.push({id, date: v.date, type: v.settleType, authority: v.settleAuthority, periods, amount, offsetAccount: v.settleOffset, bankAccount: v.bankAccount, allocations, entry, adjustmentEntry, reason: v.reason, adjustment: type === 'combined' ? adjustment : null});
+          const adjustment = {date: v.date, period: v.date.slice(0, 7), kind: v.adjKind, authority: v.adjAuthority, party: partyOf(v.adjParty), direction: v.adjDirection, amount, offsetAccount: v.adjOffset, offsetSub: subs.length ? v.adjOffsetSub : '', reason: v.reason};
+          const id = 'ADJ-2026-' + String(TAX_ADJUSTMENT_SEQ++).padStart(4, '0');
+          const entry = taxAdjustmentEntry(adjustment.kind, adjustment.party, adjustment.direction, adjustment.amount, adjustment.offsetAccount, adjustment.authority, adjustment.offsetSub);
+          TAX_ADJUSTMENTS.push({...adjustment, id, entry});
           TAX_ADJUSTMENT_OPEN.add(id);
-          notify(type === 'combined' ? 'Combined tax entry recorded. Party and authority balances were reduced; history remains.' : 'Closing entry recorded. The selected open tax entries are settled; history remains.');
+          notify('Tax adjustment recorded. The remaining balance carries forward.');
           goAdjustments();
           return;
         }
-        const id = 'ADJ-2026-' + String(TAX_ADJUSTMENT_SEQ++).padStart(4, '0');
-        const entry = taxAdjustmentEntry(adjustment.kind, adjustment.party, adjustment.direction, adjustment.amount, adjustment.offsetAccount, adjustment.authority, adjustment.offsetSub);
-        TAX_ADJUSTMENTS.push({...adjustment, id, entry});
+        if (type === 'withholding') {
+          const built = buildWithholdingClosing(v.whtKind, v.whtAuthority, v.date, v.whtAmount, v.whtBank, v.reason);
+          if (built.error) { notify(built.error); return; }
+          const id = 'CLS-2026-' + String(TAX_CLOSING_SEQ++).padStart(4, '0');
+          TAX_CLOSINGS.push({id, kind: 'withholding', nature: v.whtKind, authority: v.whtAuthority, effectiveDate: v.date, filedOn: v.date, amount: built.amount, bankAccount: v.whtBank, allocations: built.allocations, entry: built.entry, reason: v.reason});
+          TAX_ADJUSTMENT_OPEN.add(id);
+          notify('Withholding payment recorded. The selected open withholding is paid; any remainder stays open.');
+          goAdjustments();
+          return;
+        }
+        // closing
+        if (v.closeKind === 'sales-return') {
+          if (!v.periodEnd) { notify('Choose the period-end date.'); return; }
+          if (!v.filedOn) { notify('Choose the filed-on date.'); return; }
+          if (settleNow.checked && !v.closeBank) { notify('Choose the bank or cash account for payment.'); return; }
+          const built = buildSalesClosing(v.closeAuthority, v.periodEnd, v.filedOn, v.closeReference, v.reason, settleNow.checked, v.closeBank);
+          if (built.error) { notify(built.error); return; }
+          const id = 'CLS-2026-' + String(TAX_CLOSING_SEQ++).padStart(4, '0');
+          TAX_CLOSINGS.push({id, kind: 'sales-return', authority: v.closeAuthority, effectiveDate: v.periodEnd, filedOn: v.filedOn, reference: v.closeReference, amount: Math.abs(built.net), net: built.net, amounts: built.amounts, allocations: built.allocations, entry: built.entry, finalEntry: built.finalEntry, settleNow: settleNow.checked, bankAccount: v.closeBank, reason: v.reason});
+          TAX_ADJUSTMENT_OPEN.add(id);
+          notify(settleNow.checked ? 'Sales tax closing recorded and final balance paid.' : 'Sales tax closing recorded; the net is in Final sales tax payable.');
+          goAdjustments();
+          return;
+        }
+        if (v.closeKind === 'final-payment') {
+          const built = buildFinalSalesPayment(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeBank);
+          if (built.error) { notify(built.error); return; }
+          const id = 'CLS-2026-' + String(TAX_CLOSING_SEQ++).padStart(4, '0');
+          TAX_CLOSINGS.push({id, kind: 'final-payment', authority: v.closeAuthority, effectiveDate: v.periodEnd, filedOn: v.periodEnd, amount: built.amount, bankAccount: v.closeBank, allocations: built.allocations, entry: built.entry, reason: v.reason});
+          TAX_ADJUSTMENT_OPEN.add(id);
+          notify('Final sales tax payment recorded; the authority payable is reduced.');
+          goAdjustments();
+          return;
+        }
+        if (!v.filedOn) { notify('Choose the filed-on date.'); return; }
+        const built = buildIncomeTaxClosing(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeTarget, v.reason);
+        if (built.error) { notify(built.error); return; }
+        const id = 'CLS-2026-' + String(TAX_CLOSING_SEQ++).padStart(4, '0');
+        TAX_CLOSINGS.push({id, kind: 'income-tax', authority: v.closeAuthority, effectiveDate: v.periodEnd, filedOn: v.filedOn, reference: v.closeReference, amount: built.amount, targetAccount: v.closeTarget, allocations: built.allocations, entry: built.entry, reason: v.reason});
         TAX_ADJUSTMENT_OPEN.add(id);
-        notify('Tax adjustment recorded. The source document is unchanged.');
+        notify('Income tax closing recorded; advance income tax is applied and the remainder carries forward.');
         goAdjustments();
       });
     }
+    document.querySelector('[data-tax-closing-accounts]')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const v = Object.fromEntries(new FormData(ev.target));
+      Object.assign(TAX_CLOSING_ACCOUNTS, {finalPayable: v.finalPayable, finalReceivable: v.finalReceivable, incomeTaxPayable: v.incomeTaxPayable, incomeTaxExpense: v.incomeTaxExpense});
+      TAX_DEFAULTS.finalSales = v.finalPayable;
+      notify('Closing accounts saved for this session.');
+      rerender();
+    });
     document.querySelector('[data-tax-defaults]')?.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const v = Object.fromEntries(new FormData(ev.target));
