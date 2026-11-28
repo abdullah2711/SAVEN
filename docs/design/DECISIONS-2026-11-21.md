@@ -4028,7 +4028,7 @@ forward.
 The Adjustment section previously rendered all six nature options but did not tie the
 authority list or the default offset to the chosen nature. The authority could stay on a
 value that does not handle the selected nature, and the offset stayed on the input
-default, so non-input adjustments could fail validation.
+default, so the form did not reliably reflect the selected nature.
 
 The form now synchronizes on every nature change:
 
@@ -4100,9 +4100,9 @@ tax, Withholding — income tax and Withholding — sales tax. On a nature chang
 - dispatches `change` after a programmatic value change so the custom select's visible
   label matches the native value.
 
-The custom-select display bug was the reason the form looked stuck on the input
-defaults: the underlying offset was 4200 after choosing output, but the visible trigger
-still read 5300. The native select always held the correct value; the label did not.
+One reason the form could look stuck on the input defaults was the custom-select
+display: the underlying offset was 4200 after choosing output, but the visible trigger
+could still read 5300. The native select held the correct value; the label did not.
 
 ## 299. Closing and final sales payable
 
