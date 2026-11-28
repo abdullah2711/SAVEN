@@ -418,7 +418,7 @@ break;case 'open-group':navigate({module:'accounting',tab:'coa',mode:'editor',fo
    if(tab==='journals'&&code)return {title:'Journal entry',description:'Opened in the same form it was created in. Drafts and returned entries are editable; posted entries are read-only until cancelled or duplicated.'};
    if((tab==='sales-invoices'||tab==='purchase-invoices')&&form==='return')return {title:tab==='sales-invoices'?'New sales return':'New purchase return',description:'Returns reduce the original document. Partial returns are allowed and the balance updates immediately.'};
    if(tab==='taxes'&&form==='authority')return {title:code?'Edit tax authority':'New tax authority',description:'An authority can serve one or several tax natures and is a sub-account of the tax-nature control.'};
-   if(tab==='taxes'&&form==='entry')return {title:'New tax entry',description:'Adjustment, closing or combined: choose the type, the tax side and the offset/target.'};
+   if(tab==='taxes'&&form==='entry')return {title:'New tax entry',description:'Three entry types: adjustment, withholding payment and closing. Choose the nature, date and offset or target.'};
    if(tab==='taxes')return {title:code?'Edit tax rule':'New tax rule',description:'The rule number is system generated. Prices are tax-exclusive and the authority comes from Default accounts.'};
    if(tab==='coa'&&form==='group')return {title:code?'Edit accounting group':'New accounting group',description:'Groups sit inside an accounting head and take the next number in sequence. The account code uses the group number.'};
    if(tab==='advances'&&code)return {title:'Advance record',description:'The advance voucher and every application against a document, read-only.'};
