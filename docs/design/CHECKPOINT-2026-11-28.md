@@ -222,7 +222,7 @@ defaults, bank controls, tax defaults and fixture ledger all use six digits.
 | `docs/design/save/ui/screens.js` `enhanceSelects()` | native select plus visible `.ss` trigger; the native select keeps the value, the visible label must be synced on programmatic changes |
 | `docs/design/TAX-PERIOD-CLOSING.md` | closing design, effective/filed dates, balances, remaining period model |
 | `docs/design/CHART-OF-ACCOUNTS-DESIGN.md` | chart, final sales controls, target mapping |
-| `docs/design/DECISIONS-2026-11-21.md` | decisions; rounds 64–66 cover this flow |
+| `docs/design/DECISIONS-2026-11-21.md` | decisions; rounds 64–67 cover this flow |
 | `docs/design/SYSTEM_LOGIC_MAP.md` | page map and pending work |
 
 Legacy: `TAX_SETTLEMENTS` and `TAX_SETTLEMENT_SEQ` still exist and `taxEntries()` reads
