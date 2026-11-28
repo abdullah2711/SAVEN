@@ -4923,7 +4923,7 @@ const ITEM_ACCOUNT_RULES = [
           <option value="withholding">Withholding payment</option>
           <option value="closing">Closing</option>
         </select></label>
-        <label data-entry-date>Entry date<input name="date" type="date" value="2026-11-30" required></label>
+        <label data-entry-date>Entry date<input name="date" type="date" value="${todayISO()}" required></label>
         <label class="wide">Reason<input name="reason" maxlength="160" required placeholder="Unclaimable input, withholding deposit, monthly filing"></label>
 
         <div class="wide" data-entry-adjustment>
