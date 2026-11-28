@@ -30,26 +30,12 @@ const ACCOUNT_GROUPS = [
   {id: 'income-04', class: 'income', code: '04', name: 'Sales returns', description: 'Contra income for returned goods', active: true},
   {id: 'expense-01', class: 'expense', code: '01', name: 'Cost of sales', description: 'Cost of goods and services sold', active: true},
   {id: 'expense-02', class: 'expense', code: '02', name: 'Operating expenses', description: 'Administration, selling and general', active: true},
-  {id: 'expense-03', class: 'expense', code: '03', name: 'Payroll', description: 'Salaries, wages and benefits', active: true},
-  {id: 'expense-04', class: 'expense', code: '04', name: 'Impairment and tax', description: 'Impairment, tax expense and other', active: true},
+  {id: 'expense-03', class: 'expense', code: '03', name: 'Impairment and tax', description: 'Impairment, income tax and tax adjustments', active: true},
+  {id: 'expense-04', class: 'expense', code: '04', name: 'Depreciation and overhead', description: 'Depreciation and applied overhead', active: true},
   {id: 'expense-05', class: 'expense', code: '05', name: 'Purchase returns', description: 'Contra expense for returned purchases', active: true},
+  {id: 'expense-06', class: 'expense', code: '06', name: 'Payroll', description: 'Salaries, wages and benefits', active: true},
 ];
-const ACCOUNT_GROUP_MAP = {
-  101001: 'Cash and bank', 101002: 'Cash and bank', 101003: 'Cash and bank',
-  102001: 'Receivables and advances', 102002: 'Receivables and advances', 102004: 'Receivables and advances', 102005: 'Receivables and advances', 102006: 'Receivables and advances',
-  103001: 'Inventory', 103002: 'Inventory', 103003: 'Inventory',
-  104001: 'Tax assets',
-  105001: 'Fixed assets — cost', 105002: 'Fixed assets — cost', 105003: 'Fixed assets — cost',
-  106001: 'Accumulated depreciation', 106002: 'Accumulated depreciation', 106003: 'Accumulated depreciation',
-  201001: 'Payables',
-  202001: 'Tax liabilities', 202002: 'Tax liabilities', 202005: 'Tax liabilities', 202006: 'Tax liabilities', 202007: 'Tax liabilities',
-  203001: 'Advances', 204001: 'Clearing', 205001: 'Clearing',
-  301001: 'Capital and reserves', 301002: 'Capital and reserves',
-  402001: 'Sales — services', 403001: 'Other income', 404001: 'Sales returns',
-  501001: 'Cost of sales', 502001: 'Operating expenses', 502002: 'Operating expenses',
-  503001: 'Tax expenses', 503002: 'Tax expenses', 504001: 'Depreciation', 504002: 'Overhead applied', 505001: 'Purchase returns',
-};
-function accountGroupFor(a) { return ACCOUNT_GROUP_MAP[a.code] || a.group || ''; }
+function accountGroupFor(a) { return a.group || ''; }
 function nextGroupCode(cls) {
   const nums = ACCOUNT_GROUPS.filter((g) => g.class === cls).map((g) => Number(g.code) || 0);
   return String((nums.length ? Math.max(...nums) : 0) + 1).padStart(2, '0');

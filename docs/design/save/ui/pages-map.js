@@ -16,7 +16,7 @@ export const PAGE_MAP = {
     ['advances', 'Advances', 'Customer advances received and supplier advances paid, with balances, vouchers and adjustment against open documents.', 'built'],
     ['sales-invoices', 'Sales invoices', 'Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns.', 'built'],
     ['purchase-invoices', 'Purchase bills', 'Supplier bills with a Returns tab, row menu open/return, item rows, optional stock receipt and balances updated by returns.', 'built'],
-    ['coa', 'Chart of accounts', 'Accounts and accounting groups: account register with head, group, control, currency, state and closing balance; group register and form; both open their own form.', 'built'],
+    ['coa', 'Chart of accounts', 'Accounts and accounting groups: 40-account six-digit chart with head, group, control, currency, state and closing balance; six-digit new-account validation; group register and form.', 'built'],
   ],
   inventory: [
     ['dashboard', 'Dashboard', 'Stock value, value by warehouse, below reorder, movements today, movers.', 'built'],
@@ -110,7 +110,7 @@ export const PAGE_MAP = {
     ['authorities', 'Authorities', 'Authority register with six tax natures plus final sales tax payable; multi-nature form, registration, frequency, search, balances as at a date and sorting.', 'built'],
     ['entries', 'Tax ledger', 'All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher.', 'built'],
     ['parties', 'Parties', 'Party balances for the six tax natures plus final sales tax payable, with as-at balances and Verified/Unverified.', 'built'],
-    ['adjustments', 'Tax entry', 'Three clear entry types: adjustment, withholding payment and closing. Adjustment covers all six natures; the authority list and offset follow the nature. Closing works at the effective period-end date and transfers sales tax to final payable or pays it.', 'built'],
+    ['adjustments', 'Tax entry', 'Three clear entry types: adjustment, withholding payment and closing. Adjustment covers all six natures; the authority list and offset follow the nature. Closing works at the effective period-end date, rejects a filed-on date before the period end or any future date, and transfers sales tax to final payable or pays it.', 'built'],
     ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities, closing accounts and the sales-tax calculation basis.', 'built'],
   ],
   reports: [
