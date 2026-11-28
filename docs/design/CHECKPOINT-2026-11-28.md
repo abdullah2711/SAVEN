@@ -23,6 +23,10 @@ evidence and the remaining gaps so a compacted session can continue without gues
 - Live preview: <https://savenuitest.economicsystems.cc>. Local:
   `http://savenuitest.localhost:8795/`. The preview server serves the working tree
   directly; reload after changing a module. This is not a production deployment.
+- Tax entry test route:
+  `http://savenuitest.localhost:8795/#module=tax&tab=adjustments&mode=editor&form=entry`.
+  The form defaults to Adjustment; choose Withholding payment or Closing in the first
+  field.
 
 ## 2. Owner requirements retained from the 27–28 November review
 
