@@ -1,9 +1,10 @@
 # Tax period closing and unidentified differences — proposal
 
 Status: **closing entries implemented; period snapshots and lock not.** The Tax entry page
-posts adjustments, withholding payments and closings, stores effective/filed dates and
-closing allocations, and moves sales tax to final sales payable. Period snapshots, filing
-state, lock and annual carry-forward remain a discussion draft.
+posts adjustments for all six natures, withholding payments and closings, stores
+effective/filed dates and closing allocations, and moves sales tax to final sales
+payable. Period snapshots, filing state, lock and annual carry-forward remain a
+discussion draft.
 
 ## 1. What the tax balance is
 
@@ -180,13 +181,19 @@ Annual close is a stricter version of period close:
 
 Annual close does not merge the six natures and does not zero a balance that still exists.
 
-## 8. UI needed later
+## 8. UI status for the period model
 
-- **Parties** — as-at balances by nature, Unallocated row, verified/unverified.
+Built in the fixture UI:
+
+- **Parties** — as-at balances by nature, Unallocated row, Verified/Unverified.
 - **Tax ledger** — every tax entry, including the negative entries created by closings.
-- **Tax entry** — one form for adjustment, withholding payment and closing;
-  the register shows all vouchers and their entries.
-- **Tax periods** — register of authority/nature periods and states (not built).
+- **Tax entry** — adjustment, withholding payment and closing; the register shows all
+  vouchers and their entries.
+- **Default accounts** — control accounts, default authorities and closing accounts.
+
+Not built:
+
+- **Tax periods** — register of authority/nature periods and states.
 - **Tax return/snapshot** — opening, entries, adjustments, settlements, closing,
   difference and evidence.
 - **Close checklist** — reconcile, review, file, pay, lock.
@@ -202,26 +209,29 @@ views stay tied together.
 
 ### 9.1 Input claimed against output at filing
 
-Example: output tax 200, input tax 100, claimable input in the return 90. The return pays
-output less 90 input. The books must reduce both controls by the claimed 90:
+Example: output tax 200, input tax 100, but only 90 input is claimable.
+
+The current closing does **not** offer a “claim 90 of 100” selector. It closes the net
+control balance after adjustments. First post an adjustment for the unclaimable 10
+against the appropriate expense or Unallocated row, so the input control net becomes 90.
+Then close the authority:
 
 ```
-Dr 2200 Output tax control        90   Unallocated · FBR
+Dr 2200 Output tax control       200   Unallocated · FBR
 Cr 1300 Input tax control         90   Unallocated · FBR
+Cr 2220 Final sales tax payable  110   Unallocated · FBR
 ```
 
-Tax entries created with the settlement:
+Tax entries created with the closing:
 
-- output tax decrease 90 (authority FBR)
-- input tax decrease 90 (authority FBR)
+- output tax decrease 200 (authority FBR);
+- input tax decrease 90 (authority FBR);
+- final sales payable increase 110 (authority FBR, Unallocated).
 
-After the settlement the output control is 110, the input control is 10 (the unclaimed
-balance), and the return payable is 110. The 90 is a return-level claim, so the party is
-**Unallocated** unless the claim is deliberately allocated to specific parties. If the
-claim is allocated, use those party rows instead.
-
-If output is less than the claimable input, only the offsettable amount is settled; the
-remaining input stays as an asset or becomes a refund receivable.
+The 10 unclaimable input remains visible as the adjustment voucher and its party/
+Unallocated detail. If output is less than the claimable input, the closing produces a
+negative net and moves it to **1220 Final sales tax receivable**; there is no refund
+payment flow yet.
 
 ### 9.2 Withholding paid to the authority
 
@@ -263,11 +273,12 @@ Unallocated if the annual assessment is pooled.
 
 ### 9.4 Where these are done
 
-These are posted from the **Tax → Tax entry** page. The form has three types:
+These are posted from the **Tax → Tax entry** page. The form has three entry types —
+Adjustment, Withholding payment and Closing — and the Closing type has three kinds:
 
-| Entry type | Debit | Credit |
+| Entry type / closing kind | Debit | Credit |
 |---|---|---|
-| Adjustment | Chosen offset/expense | Tax control, or reverse |
+| Adjustment (any of six natures) | Chosen offset/expense | Chosen tax control, or reverse |
 | Withholding payment | Withholding control | Bank / cash |
 | Sales tax closing | Output control | Input control, advance sales, final payable |
 | Final sales payment | Final sales payable | Bank / cash |
@@ -351,13 +362,16 @@ adjustment when the party is known.
 
 ### 9.9 Withholding and advances
 
-- **Withholding** is paid in cash/bank; it is never offset against output. Periods are
-  optional; leaving them blank pays all open withholding entries for the authority.
-- **Advance income tax** is applied to income tax expense/payable and the advance
-  entries are reduced per customer or Unallocated.
-- **Advance sales tax** can be applied to output tax (both controls move) or written off
-  to a sales-tax expense. The output form reduces the selected output entries as well.
-- **Output tax** can be paid directly to the bank after any input offset.
+- **Withholding** is paid in cash/bank; it is never offset against output. The amount is
+  blank = all open, or a chosen partial amount. There is no period selection.
+- **Advance income tax** is applied to income tax expense/payable (2160 or 5400) and the
+  advance entries are reduced per customer or Unallocated. The remainder carries forward.
+- **Advance sales tax** is part of the sales tax closing:
+  `output - input - advance sales = final payable`. It is not a separate offset form. If
+  part of the advance is not claimable, adjust that part first; the closing then uses the
+  net advance balance.
+- **Output tax** is closed into the final payable (2220) or paid immediately from
+  bank/cash. **Final sales payment** later pays any remaining 2220.
 
 ## 10. Decisions needed from the owner
 
@@ -373,6 +387,7 @@ adjustment when the party is known.
 8. Do advance income and advance sales expire at the annual close, or continue until
    the authority confirms the claim?
 
-Until these are answered, the implemented UI only derives balances from tax entries and
-shows the adjustment entry. It does not claim a filed return, a locked tax period, a
-carry-forward snapshot, a settlement or an annual close.
+Until these are answered, the implemented UI derives balances from tax entries and posts
+adjustment, withholding-payment and closing vouchers, including the final sales payable
+and its payment. It does not claim a filed return, a locked tax period, a carry-forward
+snapshot or an annual close; those remain the proposal above.

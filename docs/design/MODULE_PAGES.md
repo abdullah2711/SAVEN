@@ -142,7 +142,7 @@ States: **built** working screen · **partial** working, covers part of the page
 | 2 | Authorities `authorities` | built | Authority register with six tax natures plus final sales tax payable; multi-nature form, registration, frequency, search, balances as at a date and sorting. |
 | 3 | Tax ledger `entries` | built | All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher. |
 | 4 | Parties `parties` | built | Party balances for the six tax natures plus final sales tax payable, with as-at balances and Verified/Unverified. |
-| 5 | Tax entry `adjustments` | built | Three clear entry types: adjustment, withholding payment and closing. Closing works at the effective period-end date and transfers sales tax to final payable or pays it. |
+| 5 | Tax entry `adjustments` | built | Three clear entry types: adjustment, withholding payment and closing. Adjustment covers all six natures; the authority list and offset follow the nature. Closing works at the effective period-end date and transfers sales tax to final payable or pays it. |
 | 6 | Default accounts `defaults` | built | Six tax control accounts, six default authorities, closing accounts and the sales-tax calculation basis. |
 
 ## Reports & BI (reports)

@@ -110,7 +110,7 @@ export const PAGE_MAP = {
     ['authorities', 'Authorities', 'Authority register with six tax natures plus final sales tax payable; multi-nature form, registration, frequency, search, balances as at a date and sorting.', 'built'],
     ['entries', 'Tax ledger', 'All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher.', 'built'],
     ['parties', 'Parties', 'Party balances for the six tax natures plus final sales tax payable, with as-at balances and Verified/Unverified.', 'built'],
-    ['adjustments', 'Tax entry', 'Three clear entry types: adjustment, withholding payment and closing. Closing works at the effective period-end date and transfers sales tax to final payable or pays it.', 'built'],
+    ['adjustments', 'Tax entry', 'Three clear entry types: adjustment, withholding payment and closing. Adjustment covers all six natures; the authority list and offset follow the nature. Closing works at the effective period-end date and transfers sales tax to final payable or pays it.', 'built'],
     ['defaults', 'Default accounts', 'Six tax control accounts, six default authorities, closing accounts and the sales-tax calculation basis.', 'built'],
   ],
   reports: [

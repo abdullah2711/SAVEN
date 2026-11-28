@@ -14,6 +14,7 @@ Companion documents:
 |---|---|
 | `DECISIONS-2026-11-21.md` | every decision, in the order it was made |
 | `CONTEXT_HANDOFF.md` | how to resume work in a new session |
+| `CHECKPOINT-2026-11-28.md` | full technical checkpoint: tax requirements, behaviour, code map, evidence, gaps |
 | `MODULE_MAP.md` | module and page descriptions |
 | `MODULE_PAGES.md` | generated page register with states |
 | `ACCOUNTING_WORKFLOWS.md` | workflow detail |
@@ -67,7 +68,7 @@ Taxes is a top-level module. Accounting no longer carries a tax page.
 | Authorities | complete | multi-nature authority register/form; name, registration, frequency, status and natures; six tax tabs plus final sales tax payable; search, balances as at a date, sorting |
 | Tax ledger | complete | all entries from invoices, bills, returns, adjustments and closings; filters, sorting, source link |
 | Parties | complete | six tax-nature tabs plus final sales payable, as-at balances, no base column, Verified/Unverified |
-| Tax entry | complete | three types: adjustment (partial/date), withholding payment and closing (sales return, final sales payment, income tax); effective vs filed date; bank/cash sub-account support |
+| Tax entry | complete | three types: adjustment (all six natures, partial/date, authority and offset follow the nature), withholding payment and closing (sales return, final sales payment, income tax); effective vs filed date; bank/cash sub-account support |
 | Default accounts | complete | six control accounts, six default authorities, closing accounts and the sales-tax calculation basis |
 
 ### Operations
@@ -230,8 +231,10 @@ when the correction must stay visible. The audit log keeps everything.
   Registers are derived from the tax lines on invoices, bills and returns, plus tax
   adjustments. Withholding is a liability that is never ours; advance tax is our asset.
   **Parties** has six tax-nature party tabs plus final sales payable (one per nature); **Tax entry** has three clear
-  types: adjustment, withholding payment and closing. An adjustment changes a chosen
-  amount/date and leaves the rest to carry forward. A closing works at the effective
+  types: adjustment, withholding payment and closing. An adjustment works for any of the
+  six natures, changes a chosen amount/date and leaves the rest to carry forward. Changing
+  the nature rebuilds the authority list and switches the offset between 5300 (asset
+  natures) and 4200 (liability natures). A closing works at the effective
   period-end date, closes all open sales tax input/output/advance sales for the authority,
   and moves the net to the **Final sales tax payable** control or the final receivable.
   Final sales payment pays that control; income tax closing applies advance income tax to
@@ -369,6 +372,7 @@ permissions. See §100 of the decision log.
 | 63 | 287–290 | unified Tax entry page, closing settlements, bank/cash sub-accounts |
 | 64 | 291–294 | three entry types, final sales payable control, effective/filed dates, sample data |
 | 65 | 295–296 | adjustment supports all six natures; authority and offset follow the nature |
+| 66 | 297–301 | session checkpoint; all-six adjustment evidence, closing/final payable, gaps |
 
 ---
 
@@ -381,12 +385,13 @@ permissions. See §100 of the decision log.
 - Print formats and the remaining settings pages need review.
 - Posting: invoices, payments and tax entries record session documents but do not write
   the ledger.
-- Closing entries (adjustment/closing/combined) are built. Tax-period snapshots, filing
-  state, lock, annual carry-forward and the full period model remain a proposal in
-  `TAX-PERIOD-CLOSING.md`.
+- Closing entries (adjustment, withholding payment, closing) are built. Tax-period
+  snapshots, filing state, lock, annual carry-forward and the full period model remain a
+  proposal in `TAX-PERIOD-CLOSING.md`. Final sales tax receivable/refund payment is not
+  built.
 - Party balances by project/location (deferred, needs the subledger).
 - Six-digit account codes and chart migration are target; the demo still uses
-  four-digit codes and the tax accounts 2200/1300/2150/2210/1400/1024.
+  four-digit codes and the tax accounts 2200/1300/2150/2210/1400/1024/2220/1220/2160/5400.
 - The chart rebuild follows `docs/design/CHART-OF-ACCOUNTS-DESIGN.md`; no code has
   changed for it yet.
 - Permission enforcement; settings are not enforced by the server yet.

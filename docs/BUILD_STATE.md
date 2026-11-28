@@ -1,3 +1,40 @@
+# Design-theme branch checkpoint — 28 November 2026
+
+**Scope:** fixture accounting UI on branch `opencode/design-theme-v1`, worktree
+`/home/esc/saven/wt-design-theme`. This checkpoint does **not** change `main`, the live
+native app, the database schema, production configuration or client records. Reload
+returns the fixtures; no real ledger posting is claimed.
+
+Read `docs/design/CONTEXT_HANDOFF.md` and
+`docs/design/CHECKPOINT-2026-11-28.md` before continuing this branch.
+
+- Latest application commits: `77c5cd1` (remove stale combined-entry subtitle),
+  `bf4a9ea` (adjustment supports all six tax natures; authority/offset follow the
+  nature), `08ab592` (three entry types, final sales closing, final sales payable
+  control, effective/filed dates, sample June/July tax data, 2220/1220/2160/5400).
+- Tax entry has exactly three types: **Adjustment** (all six natures, partial amount and
+  chosen date), **Withholding payment** (bank/cash) and **Closing** (sales tax return,
+  final sales payment, income tax closing).
+- Sales tax closing uses the effective period-end date, closes open input/output/advance
+  sales after adjustments, and moves the net to **2220 Final sales tax payable** or
+  **1220 Final sales tax receivable**. Filed-on date is retained separately. Final sales
+  payment pays 2220 from bank/cash.
+- All six adjustment natures were selected through the visible custom dropdown and
+  saved; authority and offset followed the nature. June SRB test produced 34,000 output
+  − 14,000 input − 10,000 advance = 10,000 final payable. Withholding, income-tax
+  closing, partial adjustment and effective-date/as-at tests passed.
+- Checks: all UI JavaScript parses; `make-page-docs.mjs` reports 21 modules, 154 pages,
+  68 built; `build_design_library.py` and `build_feature_catalog.py` report 269
+  requirements/25 modules/282 screen mappings; `validate_plan.py` passes.
+- Remaining: no tax-period snapshot/lock/annual carry-forward, no real ledger
+  persistence, no final sales receivable/refund flow, no cancel/reverse of tax vouchers,
+  no full income-tax return computation. `TAX_SETTLEMENTS` is legacy/unused by the
+  current form.
+- Next: owner review of the tax flow, then period snapshot/lock or final sales
+  receivable/refund, or 2220/1220 adjustment if requested.
+
+---
+
 # CLI-ready publication - 15 November 2026
 
 Initial checkpoint2bff157 saved309 intended files and both workflows passed. Follow-up e348422410d09d5556b3262d965f55bb80a44b1a saved24 verified files; Native43660392119 and Verify43660392085 both passed. Current final source additionally includes a portable synthetic UI fixture (npm run native:preview), freshly started and returning HTTP200, so another engineer can run the real UI from a normal clone without this chat/SSH/private files. Current totals:145 passed Node tests,144 parses,269 requirements,204 small actions and17 project-local skills/271 integrity-checked files. Full Accounting, remaining MVP scope, final recovery/deployment gates and hosted AI privacy eligibility remain open. Main/live has not changed during this continuation. Follow CURRENT_HANDOFF for the current source/live boundary and exact next actions; all older text below is dated evidence.

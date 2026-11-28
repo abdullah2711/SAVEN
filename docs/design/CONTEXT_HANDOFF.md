@@ -23,6 +23,26 @@ Run locally: `node /home/esc/saven-preview/server.mjs`, then
 `http://savenuitest.localhost:8795/`. Host routing picks the root: `Host:
 savenuitest.localhost` → `docs/design/save`.
 
+## Latest checkpoint — 28 November 2026
+
+Read **`CHECKPOINT-2026-11-28.md`** for the complete technical record of the tax
+workflow: owner requirements, implemented behaviour, code map, probe evidence and
+known gaps.
+
+- Branch `opencode/design-theme-v1`; application commits `77c5cd1`, `bf4a9ea`,
+  `08ab592`. This worktree is a fixture UI, not `main`, the live native app, the
+  database or a client record.
+- Tax entry has exactly three types: **Adjustment**, **Withholding payment**,
+  **Closing** (sales tax return, final sales payment, income tax closing).
+- Adjustment works for all six tax natures. The authority list and the default offset
+  follow the selected nature; the custom dropdown display is kept in sync.
+- Sales tax closing uses the effective period-end date, closes all open input/output/
+  advance sales after adjustments, and moves the net to **2220 Final sales tax
+  payable** or **1220 Final sales tax receivable**. Filed-on date is retained
+  separately. Final sales payment pays 2220 from bank/cash.
+- June/July 2026 sample data covers all six natures, including SRB output 34,000,
+  input 14,000, advance sales 10,000 and a 10,000 final payable on the June close.
+
 ## Hard rules
 
 - The shell is the owner's: do not restyle it. Change screens inside it.
@@ -106,11 +126,13 @@ chart is to be replaced and fixtures remapped.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
 - Taxes: Rules (system-numbered), Authorities (seven tabs), Tax ledger, Parties (six
   tax-nature tabs plus final sales payable), Tax entry (adjustment/withholding/closing
-  register and form; adjustment exposes all six natures and follows the nature with the
-  authority list and offset default) and Default accounts
-  (six control accounts, six default authorities, closing accounts and the calculation
-  basis). Prices are
-  tax-exclusive.
+  register and form) and Default accounts (six control accounts, six default
+  authorities, closing accounts and the calculation basis). Prices are tax-exclusive.
+  Adjustment exposes all six tax natures; changing the nature rebuilds the active
+  authority list, selects the nature default and switches the offset between **5300
+  Tax adjustment expense** (asset natures) and **4200 Tax adjustment income** (liability
+  natures). The custom select display is refreshed when the value changes
+  programmatically.
 - **Settings** is a separate module with seven pages: Company, Accounting,
   People & access, Periods, Forms & fields, Saved views, Print & templates.
   Accounting holds numbering, control accounts, projects & locations and approvals.
@@ -189,8 +211,8 @@ chart is to be replaced and fixtures remapped.
   sales payable; each tab shows that control account, parties, entries and net tax
   balance, with a **Balances as at** date and Verified/Unverified only. There is no Base
   column.
-  Tax entry has three types: **adjustment** (any nature, partial amount and chosen date;
-  the rest carries forward), **withholding payment** (pays open withholding from
+  Tax entry has three types: **adjustment** (all six natures, partial amount and chosen
+  date; the rest carries forward), **withholding payment** (pays open withholding from
   bank/cash) and **closing** (sales tax return, final sales payment or income tax
   closing). A sales tax closing closes all open input, output and advance sales up to the
   effective period-end date and moves the net to the **Final sales tax payable** control
@@ -198,14 +220,16 @@ chart is to be replaced and fixtures remapped.
   effective date and the filed-on date, so balances zero from the period end, not the
   filing date. Final sales payment pays that control from bank/cash. Income tax closing
   applies advance income tax to income tax expense/payable. Bank/cash sub-accounts are
-  selected where payment is made. **Unallocated** is a system party for authority-level
+  selected where payment is made. Changing the adjustment nature also changes the
+  authority list and offset default; see `CHECKPOINT-2026-11-28.md` for the exact
+  six-nature table and test evidence. **Unallocated** is a system party for authority-level
   differences; it appears as a row in party balances. Authorities are sub-accounts of the tax-nature
   control in the design; the demo derives their balances from tax entries. Party
   balances are reconciled by party/kind without a tax sub-account. All tax registers use
   the standard register top bar and per-column filter menus. Synthetic opening tax data
   covers June/July 2026 across all six natures so closing, withholding payment and
   advance-income application can be tested.
-  20 modules and 154 pages mapped; planned pages render their specification.
+  21 modules and 154 pages mapped; planned pages render their specification.
 - **Reports** (top-level module): Revenue (dashboard plus By customer / By item
   registers), Ageing, Trial balance, Profit or loss, Financial position, Cash flow and
   Equity, each a page rather than a tab. Revenue aggregates saved invoice lines by item
@@ -216,10 +240,12 @@ chart is to be replaced and fixtures remapped.
 **Known gaps**: automatic bank statement matching (the reconciliation is a recording
 tool); posting from invoices, payments and tax entries into the ledger; tax period
 snapshots, filing state, lock and annual carry-forward (closing entries exist; the
-period model is still a proposal in `docs/design/TAX-PERIOD-CLOSING.md`); invoice numbering and
-cancelling a saved invoice; per-item-group tax scope; evidence bytes, hashing and
-scanning; advances inside the payments form; permissions enforcement; persistence
-(reload returns to fixtures).
+period model is still a proposal in `docs/design/TAX-PERIOD-CLOSING.md`); final sales
+tax receivable/refund payment; cancelling or reversing a tax voucher; invoice numbering
+and cancelling a saved invoice; per-item-group rule resolution; evidence bytes, hashing
+and scanning; advances inside the payments form; permissions enforcement; persistence
+(reload returns to fixtures). `TAX_SETTLEMENTS` remains as legacy state and is not
+created by the current form.
 
 ## Decisions already made (do not re-litigate)
 
@@ -293,19 +319,32 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
    drives the DOM and prints results into a fixed `<pre>`, screenshot it, then delete
    the probe. This is how the dropdown bug and the setup/membership flows were
    verified.
-4. `node docs/design/build/make-page-docs.mjs` after touching the page map.
-5. Commit and push.
+4. `node docs/design/build/make-page-docs.mjs` after touching the page map. Run the
+   full generator set before checkpointing: `make-page-docs.mjs`,
+   `tools/build_design_library.py`, `annotate-inventory.mjs`, `make-catalog.mjs`,
+   `tools/build_feature_catalog.py`, then `tools/validate_plan.py`.
+5. Commit and push. Record the exact result in `CHECKPOINT-2026-11-28.md` or a newer
+   checkpoint file; do not leave the evidence only in chat.
 
-Known trap: duplicate function definitions silently win (the later one overrides).
-Check with `grep -c "function editor"`. Also `grep` for the old identifier after a
-rename.
+Known traps:
+
+- Duplicate function definitions silently win (the later one overrides). Check with
+  `grep -c "function editor"`. Also `grep` for the old identifier after a rename.
+- Every `<select>` is wrapped by `enhanceSelects()`. The native select holds the
+  value; the visible `.ss-text` only refreshes on `change`. Any programmatic
+  `select.value = ...` that must be visible has to dispatch `change`, as
+  `syncAdjustmentAuthority()` does for the authority and offset.
+- The server serves the working tree directly. A browser that already loaded the
+  module keeps the old code until a reload; use Ctrl+Shift+R when reviewing.
 
 ## Next
 
 - Owner is reviewing the tax entry flow: all six adjustment natures, withholding
   payment, sales tax closing, final sales payment, income tax closing and the
-  effective-date/as-at behaviour.
+  effective-date/as-at behaviour. The full evidence and code map are in
+  `CHECKPOINT-2026-11-28.md`.
+- After that review, the next tax increment is one of: period snapshot/lock and annual
+  carry-forward; final sales tax receivable/refund; or adjustment of 2220/1220 if the
+  owner asks for it.
 - Open naming question: two rail entries called “Projects” (Accounting dimension page
   and Operations module). Decide whether to rename one.
-- Then: period snapshot/lock and annual carry-forward, or the next owner-priority
-  module.

@@ -1,12 +1,13 @@
 # Decision log — 21 November 2026 review
 
-> **Current state is the last round.** Earlier sections are the chronological record and
-> some are superseded: chart groups §258, accounting heads §257, tax six natures
+> **Current state is the last round (66).** Earlier sections are the chronological record
+> and some are superseded: chart groups §258, accounting heads §257, tax six natures
 > §251–255, tax-exclusive prices, authority defaults, party balances, rule conflicts and
-> the closing proposal, Tax entry page and Unallocated party §269–294, six-digit target
-> §240/§253, payment/stock menu §226–228, document menu
-> §222, register widths §235/§236. Where a later section conflicts with an earlier one,
-> the later section governs.
+> the closing proposal, Tax entry page and Unallocated party §269–294, the three entry
+> types and final sales payable §291–301, six-digit target §240/§253, payment/stock menu
+> §226–228, document menu §222, register widths §235/§236. Where a later section conflicts
+> with an earlier one, the later section governs. The full resume checkpoint is
+> `CHECKPOINT-2026-11-28.md`.
 
 Every instruction from the latest review, what was decided, what is implemented in
 the prototype, and where the detail lives for the backend. Status: **done** in the
@@ -3976,12 +3977,14 @@ Cr Bank / Cash
 If the closing is paid immediately, the closing form can pay the net directly from
 bank/cash instead of leaving it in 2220.
 
-The four closing kinds are:
+The three closing kinds are:
 
 - Sales tax return
 - Final sales payment
 - Income tax closing
-- Withholding payment (separate entry type)
+
+**Withholding payment** is a separate entry type, not a closing kind. It pays open
+withholding to bank/cash without a period selection.
 
 Income tax closing applies open advance income tax to **2160 Income tax payable** or
 **5400 Income tax expense**; the remainder carries forward.
@@ -4062,3 +4065,94 @@ The authority lists after switching were:
 | Input, output | FBR, SRB, PRA |
 | Advance income, withholding income | FBR |
 | Advance sales, withholding sales | SRB, PRA |
+
+---
+
+# Round 66 — session checkpoint, all-six adjustment and full context
+
+## 297. Source state
+
+The tax workflow is checkpointed on branch `opencode/design-theme-v1` in the worktree
+`/home/esc/saven/wt-design-theme`. Application commits before this documentation
+checkpoint:
+
+- `08ab592` — three entry types, final sales tax closing, final sales payable control,
+  effective/filed dates, sample June/July data, accounts 2220/1220/2160/5400.
+- `bf4a9ea` — adjustment supports all six natures; authority and offset follow the
+  nature; generated module pages regenerated.
+- `77c5cd1` — stale “combined” editor subtitle removed.
+
+This is a fixture UI. It does not change `main`, the live native app, the database,
+production configuration or client records.
+
+## 298. Adjustment, all six natures
+
+The adjustment form exposes Input tax, Output tax, Advance income tax, Advance sales
+tax, Withholding — income tax and Withholding — sales tax. On a nature change it:
+
+- rebuilds the authority list from active authorities that handle that nature;
+- selects FBR for input, output, advance income and withholding income, and SRB for
+  advance sales and withholding sales when the current authority is invalid;
+- switches the default offset to **5300 Tax adjustment expense** for the asset natures
+  (input, advance income, advance sales) or **4200 Tax adjustment income** for the
+  liability natures (output, withholding income, withholding sales);
+- keeps a manually chosen offset;
+- dispatches `change` after a programmatic value change so the custom select's visible
+  label matches the native value.
+
+The custom-select display bug was the reason the form looked stuck on the input
+defaults: the underlying offset was 4200 after choosing output, but the visible trigger
+still read 5300. The native select always held the correct value; the label did not.
+
+## 299. Closing and final sales payable
+
+Sales tax closing:
+
+```
+Dr output tax control
+Cr input tax control
+Cr advance sales tax control
+Cr 2220 Final sales tax payable        (or Dr 1220 Final sales tax receivable)
+```
+
+- It closes all open input/output/advance sales entries dated on or before the effective
+  period-end date, using net control balances after adjustments.
+- The final payable has authority sub-accounts and the `Unallocated` party. A seventh
+  Authority tab and a seventh Party tab expose it.
+- A negative net goes to **1220 Final sales tax receivable**.
+- **Final sales payment** pays 2220 from bank/cash.
+- Filing date (`filedOn`) is stored separately from the effective date. Balances zero
+  from the period end.
+
+Withholding payment is a separate bank/cash payment. Income tax closing applies open
+advance income tax to **2160 Income tax payable** or **5400 Income tax expense**; the
+remainder carries forward.
+
+## 300. Verification evidence
+
+- All six natures were selected through the visible custom dropdown and saved. Result:
+  6 saved, 6 register rows, no errors, no `undefined`.
+- Authority/offset by nature: input FBR/5300; output FBR/4200; advance income FBR/5300;
+  advance sales SRB/5300; withholding income FBR/4200; withholding sales SRB/4200.
+- June SRB closing: output 34,000 − input 14,000 − advance sales 10,000 = **10,000**
+  final payable; `CLS-2026-0001` recorded; final payment cleared it to zero.
+- Partial adjustment of 1,000 input before closing produced 11,000 final payable and
+  left the residual party/Unallocated detail; the control net closed to zero.
+- June as-at test: party balances zero at 30 June, July activity still visible.
+- Withholding payment cleared the sample withholding. Income tax closing applied 3,000
+  of advance income and left 1,000.
+- Pay-now sales closing credited bank/cash and left the final payable at zero.
+- General journal blocks tax control lines.
+- All UI JavaScript parses; page docs, design library, inventory annotation, catalog
+  and feature catalog regenerate; `tools/validate_plan.py` passes.
+
+## 301. Remaining gaps
+
+No period snapshot, filing state, hard lock or annual carry-forward. No real ledger
+posting/persistence. No final sales receivable/refund payment flow. No cancel/reverse of
+tax vouchers. Adjustment does not cover 2220/1220 directly. No full income-tax return
+computation. Final sales payable is pooled to `Unallocated`. `TAX_SETTLEMENTS` remains
+legacy state and is not created by the current form.
+
+The complete code map, exact probe method, resume order and next actions are in
+`CHECKPOINT-2026-11-28.md`.

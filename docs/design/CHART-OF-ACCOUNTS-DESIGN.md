@@ -10,8 +10,9 @@ is the contract for the chart rebuild.
   form in the Chart page, group sequence per class, group selection and validation on
   the account form, tax module with six natures, authorities as records, system-numbered
   rules with multi-group scopes and conflict checks, entries, six party-balance tabs,
-  three tax-entry types (adjustment, withholding payment, closing), final sales tax
-  payable/receivable controls, income tax payable/expense, and sample June/July tax data.
+  three tax-entry types (adjustment for all six natures, withholding payment, closing),
+  final sales tax payable/receivable controls, income tax payable/expense, and sample
+  June/July tax data.
   Prices are tax-exclusive; the default authority per nature is set under Default
   accounts.
 - **Still target, not implemented:** the six-digit account codes and full fixture
@@ -20,11 +21,12 @@ is the contract for the chart rebuild.
 - **Authorities:** the UI treats authorities as sub-accounts conceptually; the current
   demo derives authority balances from tax entries. Real chart sub-accounts are part of
   the six-digit rebuild.
-- **Demo tax accounts:** 2200, 1300, 2150, 2210, 1400 and 1024 are used until the
-  migration; the six-digit codes in this document are the target. The adjustment P&L
-  accounts exist as **5300 Tax adjustment expense**, **4200 Tax adjustment income**,
-  **5400 Income tax expense** and **2160 Income tax payable**; they do not yet appear
-  in the six-digit target table.
+- **Demo tax accounts:** 2200 output, 1300 input, 2150 withholding income, 2210
+  withholding sales, 1400 advance income, 1024 advance sales, 2220 final sales payable,
+  1220 final sales receivable, 2160 income tax payable and 5400 income tax expense are
+  used until the migration. The adjustment P&L accounts are **5300 Tax adjustment
+  expense** and **4200 Tax adjustment income**. The six-digit codes in the migration
+  table are the target; 2220/1220/2160/5400 are already mapped there.
 
 ## 1. Code structure — six digits
 
