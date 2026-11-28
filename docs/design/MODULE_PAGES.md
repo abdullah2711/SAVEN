@@ -18,11 +18,10 @@ States: **built** working screen · **partial** working, covers part of the page
 | 4 | Parties `parties` | built | Customers and suppliers with terms, credit limits, balances and status; a row opens the party page with its statement and access. |
 | 5 | Cash & bank `cash` | built | Register of cash and bank sub-accounts with balances, and a form that records the bank reference and the projects and locations each one may be used on. |
 | 6 | Payment / Receipts `payments` | built | Register of receipts and payments with type, party and method filters; a document may use bank, cash or an existing advance, is allocated oldest-first and keeps the remainder as an advance. |
-| 7 | Items `items` | built | Item register with unit, income and expense heads, tax default and the inventory-tracked flag; a form creates a new item. |
+| 7 | Advances `advances` | built | Customer advances received and supplier advances paid, with balances, vouchers and adjustment against open documents. |
 | 8 | Sales invoices `sales-invoices` | built | Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns. |
-| 9 | Purchase invoices `purchase-invoices` | built | Bill register mirroring sales, with a Returns tab, row menu open/return and balances updated by returns. |
-| 10 | Chart of accounts `coa` | built | Register of every account with code, name, accounting head, accounting group, control, currency, description, state and closing balance; the account form opens on its own page. |
-| 11 | Reports `reports` | built | Ageing, trial balance, profit or loss, financial position, cash flow and equity, all derived from the same ledger. |
+| 9 | Purchase bills `purchase-invoices` | built | Supplier bills with a Returns tab, row menu open/return, item rows, optional stock receipt and balances updated by returns. |
+| 10 | Chart of accounts `coa` | built | Accounts and accounting groups: account register with head, group, control, currency, state and closing balance; group register and form; both open their own form. |
 
 ## Inventory (inventory)
 
@@ -30,19 +29,20 @@ States: **built** working screen · **partial** working, covers part of the page
 |---|---|---|---|
 | 1 | Dashboard `dashboard` | built | Stock value, value by warehouse, below reorder, movements today, movers. |
 | 2 | Items `items` | built | The shared item master with stock fields: tracked, costing, reorder point. |
-| 3 | Item groups `groups` | built | Tree for reporting, default accounts and tax defaults. |
-| 4 | Warehouses & locations `warehouses` | built | Stores and bins with their balances, branch mapping and accounts. |
-| 5 | Stock balances `balances` | built | Quantity and value per item and warehouse, last movement, average cost. |
-| 6 | Stock movements `movements` | built | Every in and out line with source document and reason. |
-| 7 | Goods receipt `receipts` | built | Receive against a bill or order; posts movement and clearing entry. |
-| 8 | Delivery note `delivery` | built | Issue against an invoice; cost leaves at the item method. |
-| 9 | Transfers `transfers` | built | Move quantity between warehouses at unchanged total value. |
-| 10 | Stock count `counts` | built | Count sheet, variance, approval; variance becomes an adjustment. |
-| 11 | Adjustments & write-offs `adjustments` | built | Every adjustment with reason, account, approval and evidence. |
-| 12 | Valuation & costing `valuation` | built | Costing method, revaluation, NRV write-down, impairment, landed cost. |
-| 13 | Reorder & alerts `reorder` | built | Items below reorder point with suggested quantities. |
-| 14 | Reports `reports` | built | Stock ledger, movement summary, valuation, ageing, margin by item. |
-| 15 | Settings `settings` | built | Default accounts per movement type, units, costing, negative stock. |
+| 3 | Default accounts `defaults` | built | Default inventory, cost-of-sales, income and expense accounts by event and item group. |
+| 4 | Item groups `groups` | built | Tree for reporting, default accounts and tax defaults. |
+| 5 | Warehouses & locations `warehouses` | built | Stores and bins with their balances, branch mapping and accounts. |
+| 6 | Stock balances `balances` | built | Quantity and value per item and warehouse, last movement, average cost. |
+| 7 | Stock movements `movements` | built | Every in and out line with source document and reason. |
+| 8 | Goods receipt `receipts` | built | Receive against a bill or order; posts movement and clearing entry. |
+| 9 | Delivery note `delivery` | built | Issue against an invoice; cost leaves at the item method. |
+| 10 | Transfers `transfers` | built | Move quantity between warehouses at unchanged total value. |
+| 11 | Stock count `counts` | built | Count sheet, variance, approval; variance becomes an adjustment. |
+| 12 | Adjustments & write-offs `adjustments` | built | Every adjustment with reason, account, approval and evidence. |
+| 13 | Valuation & costing `valuation` | built | Costing method, revaluation, NRV write-down, impairment, landed cost. |
+| 14 | Reorder & alerts `reorder` | built | Items below reorder point with suggested quantities. |
+| 15 | Reports `reports` | built | Stock ledger, movement summary, valuation, ageing, margin by item. |
+| 16 | Settings `settings` | built | Default accounts per movement type, units, costing, negative stock. |
 
 ## Manufacturing (manufacturing)
 
@@ -134,16 +134,29 @@ States: **built** working screen · **partial** working, covers part of the page
 | 7 | Profitability `profitability` | planned | Margin by customer, product and project. |
 | 8 | Debt & facilities `facilities` | planned | Drawdowns, repayments, interest and covenants. |
 
+## Taxes (tax)
+
+| # | Page | State | Specification |
+|---|---|---|---|
+| 1 | Tax rules `rules` | built | System-numbered rules register and form: nature, several item groups or several items, rate and effective dates. Overlapping specific rules are blocked. Prices are tax-exclusive; control accounts and authorities come from Default accounts. |
+| 2 | Authorities `authorities` | built | Authority register with six tax natures plus final sales tax payable; multi-nature form, registration, frequency, search, balances as at a date and sorting. |
+| 3 | Tax ledger `entries` | built | All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher. |
+| 4 | Parties `parties` | built | Party balances for the six tax natures plus final sales tax payable, with as-at balances and Verified/Unverified. |
+| 5 | Tax entry `adjustments` | built | Three clear entry types: adjustment, withholding payment and closing. Closing works at the effective period-end date and transfers sales tax to final payable or pays it. |
+| 6 | Default accounts `defaults` | built | Six tax control accounts, six default authorities, closing accounts and the sales-tax calculation basis. |
+
 ## Reports & BI (reports)
 
 | # | Page | State | Specification |
 |---|---|---|---|
-| 1 | Dashboard `dashboard` | planned | Saved reports, scheduled jobs, recent exports. |
-| 2 | Report library `library` | planned | Built-in and saved reports by module. |
-| 3 | Report builder `builder` | planned | Choose a data source, columns, filters and grouping. |
-| 4 | Statement packs `packs` | planned | Bundle statements with notes for a period. |
-| 5 | Scheduled jobs `jobs` | planned | Run and deliver a report on a schedule. |
-| 6 | Exports `exports` | planned | What was exported, by whom, with which view. |
+| 1 | Revenue `revenue` | built | Revenue dashboard with sales by customer and sales by item, from the same documents. |
+| 2 | Ageing `ageing` | built | Receivable and payable ageing by bucket, from open documents and party balances. |
+| 3 | Trial balance `trial` | built | Every account with opening, period debit, period credit and closing balance. |
+| 4 | Profit or loss `profit` | built | Income and expenses for the period from the same ledger. |
+| 5 | Financial position `position` | built | Assets, liabilities and equity with the balance check. |
+| 6 | Cash flow `cashflow` | built | Direct cash movement from the cash and bank accounts. |
+| 7 | Equity `equity` | built | Capital and accumulated result. |
+| 8 | Report library `library` | planned | Saved reports and scheduled jobs; the report builder is a later increment. |
 
 ## Documents (drive)
 
@@ -183,7 +196,7 @@ States: **built** working screen · **partial** working, covers part of the page
 | # | Page | State | Specification |
 |---|---|---|---|
 | 1 | Company `company` | built | Legal identity, addresses, base currency, fiscal year and the active period. |
-| 2 | Accounting `accounting` | built | Tabs of registers with their own forms: numbering, control accounts, projects, locations, cost centres, party groups, item groups, approvals. Accounts and groups live in the Chart page; tax defaults live in Taxes. |
+| 2 | Accounting `accounting` | built | Tabs of registers with their own forms: numbering, control accounts, projects, locations, cost centres, party groups, item groups, approvals. Tax defaults and authorities live in the Taxes module. Accounting heads are only the five classes; accounts and groups live in the Chart page. |
 | 3 | Inventory `inventory` | built | Costing method, negative stock, default warehouse and the inventory accounts. |
 | 4 | Manufacturing `manufacturing` | built | Material issue policy, BOM requirement, default work centre and the manufacturing accounts. |
 | 5 | People & access `people` | built | Users, roles, scope and invitations for this business. |
@@ -256,4 +269,4 @@ States: **built** working screen · **partial** working, covers part of the page
 
 ---
 
-**20 modules · 146 pages · 55 built · 0 partial · 91 planned.**
+**21 modules · 154 pages · 68 built · 0 partial · 86 planned.**

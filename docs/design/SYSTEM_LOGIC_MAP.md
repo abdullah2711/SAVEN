@@ -368,6 +368,7 @@ permissions. See §100 of the decision log.
 | 62 | 285–286 | separate Adjustments page, Unallocated party, tax-control offset guard |
 | 63 | 287–290 | unified Tax entry page, closing settlements, bank/cash sub-accounts |
 | 64 | 291–294 | three entry types, final sales payable control, effective/filed dates, sample data |
+| 65 | 295–296 | adjustment supports all six natures; authority and offset follow the nature |
 
 ---
 

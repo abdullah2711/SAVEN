@@ -4842,6 +4842,7 @@ const ITEM_ACCOUNT_RULES = [
     const accountOptions = (selected) => accounts().filter((a) => a.active !== false && a.subtype !== 'tax').map((a) => `<option value="${a.code}" ${a.code === selected ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('');
     const bankOptions = CASH_BANK.map((c) => `<option value="${e(c.name)}">${e(c.name)} · ${c.control}</option>`).join('');
     const authorityOptions = (selected) => TAX_AUTHORITIES.map((a) => `<option value="${e(a.id)}" ${a.id === selected ? 'selected' : ''}>${e(a.name)}</option>`).join('');
+    const adjAuthorityOptions = (kind, selected) => TAX_AUTHORITIES.filter((a) => a.active !== false && authorityHas(a, kind)).map((a) => `<option value="${e(a.id)}" ${a.id === selected ? 'selected' : ''}>${e(a.name)}</option>`).join('');
     return `<section class="panel">
       <div class="panel-head"><h2>New tax entry</h2><span class="badge">Adjustment · withholding payment · closing</span></div>
       <form class="panel-body form-grid" data-tax-entry-form>
@@ -4857,7 +4858,7 @@ const ITEM_ACCOUNT_RULES = [
           <div class="section-title">Adjustment</div>
           <div class="form-grid">
             <label>Tax nature<select name="adjKind" class="inline-input">${TAX_KINDS.map(([k, l]) => `<option value="${k}" ${k === 'input' ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-            <label>Authority<select name="adjAuthority" class="inline-input">${authorityOptions('AUTH-FBR')}</select></label>
+            <label>Authority<select name="adjAuthority" class="inline-input">${adjAuthorityOptions('input', 'AUTH-FBR')}</select></label>
             <label>Party<select name="adjParty" class="inline-input"><option value="">Choose party</option><option value="__unallocated__">Unallocated — authority-level difference</option>${PARTIES.map((p) => `<option value="${e(p.name)}">${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
             <label>Direction<select name="adjDirection" class="inline-input"><option value="decrease">Decrease the tax balance</option><option value="increase">Increase the tax balance</option></select></label>
             <label>Amount<input name="adjAmount" inputmode="decimal" placeholder="0.00"></label>
@@ -4895,7 +4896,7 @@ const ITEM_ACCOUNT_RULES = [
         <div class="wide" data-tax-entry-preview></div>
         <div class="related"><button class="button primary">Record tax entry</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
-      <div class="panel-body"><p class="form-note">Adjustment changes one tax balance by the amount you choose and leaves the rest to carry forward. Withholding payment pays open withholding to bank/cash. Closing works at the period-end date: it closes all open balances for that authority up to that date, creates negative tax entries per party/period, and moves the net to the final sales tax payable control or pays it.</p></div>
+      <div class="panel-body"><p class="form-note">Adjustment works for any of the six tax natures: choose the nature, then the authority and offset follow it. It changes one tax balance by the amount you choose and leaves the rest to carry forward. Withholding payment pays open withholding to bank/cash. Closing works at the period-end date: it closes all open balances for that authority up to that date, creates negative tax entries per party/period, and moves the net to the final sales tax payable control or pays it.</p></div>
     </section>`;
   }
   function taxesView() {
@@ -5101,6 +5102,22 @@ const ITEM_ACCOUNT_RULES = [
               : 'Applies open advance income tax to the selected income tax payable or expense account; the remaining advance carries forward.';
         }
       };
+      const syncAdjustmentAuthority = () => {
+        const kind = $('adjKind').value;
+        const authority = $('adjAuthority');
+        const valid = TAX_AUTHORITIES.filter((a) => a.active !== false && authorityHas(a, kind));
+        const current = authority.value;
+        const preferred = valid.some((a) => a.id === current) ? current : (valid.find((a) => a.id === TAX_DEFAULT_AUTHORITIES[kind]) || valid[0] || {}).id || '';
+        authority.innerHTML = valid.map((a) => `<option value="${e(a.id)}" ${a.id === preferred ? 'selected' : ''}>${e(a.name)}</option>`).join('');
+        if (preferred) authority.value = preferred;
+        authority.dispatchEvent(new Event('change', {bubbles: true}));
+        const offset = $('adjOffset');
+        const nextOffset = suggestedOffsetAccount(kind);
+        if ((!offset.value || offset.value === '5300' || offset.value === '4200') && offset.value !== nextOffset) {
+          offset.value = nextOffset;
+          offset.dispatchEvent(new Event('change', {bubbles: true}));
+        }
+      };
       const syncSections = () => {
         const type = typeSelect.value;
         adjSection.hidden = type !== 'adjustment';
@@ -5154,6 +5171,7 @@ const ITEM_ACCOUNT_RULES = [
       entryForm.addEventListener('input', preview);
       entryForm.addEventListener('change', (ev) => {
         if (ev.target === typeSelect) syncSections();
+        if (ev.target === $('adjKind')) syncAdjustmentAuthority();
         if (ev.target === adjOffset) syncAdjustmentSub();
         if (ev.target === closeKind) {
           if (closeKind.value === 'income-tax') $('closeAuthority').value = 'AUTH-FBR';
@@ -5165,6 +5183,7 @@ const ITEM_ACCOUNT_RULES = [
         preview();
       });
       syncAdjustmentSub();
+      syncAdjustmentAuthority();
       syncSections();
       syncClosing();
       preview();

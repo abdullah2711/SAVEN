@@ -4014,3 +4014,51 @@ Verified: three entry sections render; sales closing of June created `CLS-2026-0
 sales payment cleared the authority balance; withholding payment cleared the sample
 withholding; income tax closing applied 3,000 of advance income and left 1,000 carrying
 forward.
+
+
+---
+
+# Round 65 — adjustment supports all six tax natures
+
+## 295. Nature-driven authority and offset
+
+The Adjustment section previously rendered all six nature options but did not tie the
+authority list or the default offset to the chosen nature. The authority could stay on a
+value that does not handle the selected nature, and the offset stayed on the input
+default, so non-input adjustments could fail validation.
+
+The form now synchronizes on every nature change:
+
+- The authority list is rebuilt from active authorities that handle that nature.
+- The default authority for the nature is selected when the current one is not valid
+  (FBR for input, output, advance income and withholding income; SRB for advance sales
+  and withholding sales).
+- The default offset follows the control side: **5300 Tax adjustment expense** for the
+  asset natures (input, advance income, advance sales) and **4200 Tax adjustment income**
+  for the liability natures (output, withholding income, withholding sales). A manually
+  chosen offset is kept.
+- Programmatic value changes now dispatch `change` on the native select, so the custom
+  select display updates too. Before this, the offset control kept showing 5300 after
+  switching to output even though the underlying value was 4200; the form looked stuck
+  on the input defaults.
+
+## 296. Verification
+
+All six natures were saved in sequence through the real form and checked in the
+register: Input tax, Output tax, Advance income tax, Advance sales tax,
+Withholding — income tax and Withholding — sales tax. Each row carried the correct
+nature label, amount, authority and control account; the offset defaults were
+5300/5300/5300/4200/4200/4200 for input, advance income, advance sales, output,
+withholding income and withholding sales. The custom select display was also checked
+through real clicks: after choosing Output tax the trigger read "Output tax" and the
+offset read "4200 · Tax adjustment income"; choosing Advance sales tax read
+"Advance sales tax", "SRB — Sindh" and "5300 · Tax adjustment expense". No form error was
+raised.
+
+The authority lists after switching were:
+
+| Nature | Authorities |
+|---|---|
+| Input, output | FBR, SRB, PRA |
+| Advance income, withholding income | FBR |
+| Advance sales, withholding sales | SRB, PRA |

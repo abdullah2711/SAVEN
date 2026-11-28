@@ -106,7 +106,8 @@ chart is to be replaced and fixtures remapped.
 - Reports: ageing, profit & loss, financial position, cash flow, equity.
 - Taxes: Rules (system-numbered), Authorities (seven tabs), Tax ledger, Parties (six
   tax-nature tabs plus final sales payable), Tax entry (adjustment/withholding/closing
-  register and form) and Default accounts
+  register and form; adjustment exposes all six natures and follows the nature with the
+  authority list and offset default) and Default accounts
   (six control accounts, six default authorities, closing accounts and the calculation
   basis). Prices are
   tax-exclusive.
@@ -265,8 +266,9 @@ scanning; advances inside the payments form; permissions enforcement; persistenc
   Verification is only Verified or Unverified. **Unallocated** is the system party for
   authority-level differences.
 - **A tax entry is a separate voucher**, never an edit of the source document. An
-  adjustment fixes the tax side by nature (control account, party, authority) and asks
-  for an explicit offset account. A closing settles open entries and creates negative
+  adjustment works for any of the six natures (control account, party, authority) and
+  asks for an explicit offset account; the authority list and offset default follow the
+  selected nature. A closing settles open entries and creates negative
   tax entries per source. The tax control line carries the authority; every line carries
   the party or Unallocated. Tax control accounts are blocked in the general journal and
   must be posted through Tax → Tax entry.
@@ -300,9 +302,10 @@ rename.
 
 ## Next
 
-- Owner is reviewing the data-field treatment of Projects/Locations, the ledger
-  totals and Setup heads. Wait for that review before starting another module.
+- Owner is reviewing the tax entry flow: all six adjustment natures, withholding
+  payment, sales tax closing, final sales payment, income tax closing and the
+  effective-date/as-at behaviour.
 - Open naming question: two rail entries called “Projects” (Accounting dimension page
   and Operations module). Decide whether to rename one.
-- Then: parties register (with membership visible on the party page), cash & bank,
-  payments, invoices.
+- Then: period snapshot/lock and annual carry-forward, or the next owner-priority
+  module.
