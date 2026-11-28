@@ -1,3 +1,10 @@
+> **Design-branch worktree note (28 November 2026).** If you are reading this in
+> `/home/esc/saven/wt-design-theme` on branch `opencode/design-theme-v1`, this
+> production-oriented handoff is **not** the current design state. Read
+> `docs/design/CONTEXT_HANDOFF.md` and `docs/design/CHECKPOINT-2026-11-28.md`. That branch
+> is a fixture accounting UI review build; it does not change main, the live native app,
+> the database or client records.
+
 # Current agent and Codex CLI handoff
 
 15 November 2026, Asia/Karachi. This is the authoritative present-state summary. Older BUILD_STATE entries are historical and may describe superseded branches, schemas or priorities.
