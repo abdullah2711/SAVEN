@@ -8,7 +8,7 @@ returns the fixtures; no real ledger posting is claimed.
 Read `docs/design/CONTEXT_HANDOFF.md` and
 `docs/design/CHECKPOINT-2026-11-28.md` before continuing this branch.
 
-- Latest application commits: `2ab7f5b` (group/code alignment), `eca93d2` (six-digit
+- Latest application commits: `c8d5bcd` (today default), `2ab7f5b` (group/code alignment), `eca93d2` (six-digit
   chart, filing-date guard, richer sample data and rules), `77c5cd1` (remove stale combined-entry subtitle), `bf4a9ea`
   (adjustment supports all six tax natures; authority/offset follow the nature),
   `08ab592` (three entry types, final sales closing, final sales payable control,

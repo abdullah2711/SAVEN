@@ -29,7 +29,7 @@ Read **`CHECKPOINT-2026-11-28.md`** for the complete technical record of the tax
 workflow: owner requirements, implemented behaviour, code map, probe evidence and
 known gaps.
 
-- Branch `opencode/design-theme-v1`; application commits `2ab7f5b`, `eca93d2`, `77c5cd1`,
+- Branch `opencode/design-theme-v1`; application commits `c8d5bcd`, `2ab7f5b`, `eca93d2`, `77c5cd1`,
   `bf4a9ea`, `08ab592`. This worktree is a fixture UI, not `main`, the live native app,
   the database or a client record.
 - Tax entry has exactly three types: **Adjustment**, **Withholding payment**,

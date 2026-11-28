@@ -13,6 +13,7 @@ evidence and the remaining gaps so a compacted session can continue without gues
 
 - Branch: `opencode/design-theme-v1`.
 - Latest application commits before this documentation checkpoint:
+  - `c8d5bcd` — default the tax-entry date to today after future dates were blocked.
   - `2ab7f5b` — align every account group with its six-digit group segment.
   - `eca93d2` — six-digit demo chart, filing-date guard, richer sample data and rules.
   - `77c5cd1` — remove the stale “combined” tax-entry subtitle.
