@@ -50,13 +50,11 @@ Companion documents:
 | Parties | complete | customers and suppliers, statements, access |
 | Cash & bank | complete | cash and bank sub-accounts, balances at a date |
 | Payment / Receipts | complete | receipts and payments, several methods, oldest-first allocation |
-| Items | complete | item master for accounting |
+| Advances | complete | customer advances received, supplier advances paid, balances and application to open documents |
 | Sales invoices | complete | invoice register, returns tab, open/return menu |
-| Purchase invoices | complete | bill register, returns tab, open/return menu |
-| Chart of accounts | complete | heads, groups, controls, balances |
-| Chart of accounts | complete | account register with account form page |
-| Reports | complete | ageing, trial balance, P&L, position, cash flow, equity |
-| Reports | complete | ageing, P&L, position, cash flow, equity |
+| Purchase bills | complete | bill register, returns tab, open/return menu |
+| Chart of accounts | complete | account register and form; heads, groups, controls, balances |
+| Reports | complete | revenue, ageing, trial balance, P&L, position, cash flow, equity |
 
 ### Taxes
 

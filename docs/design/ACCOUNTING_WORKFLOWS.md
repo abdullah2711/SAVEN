@@ -1,3 +1,9 @@
+> **Superseded statements about the rail and tax pages (28 November 2026).** Taxes is
+> now a top-level module and the six tax pages are built; Payments, invoices and items
+> also exist as their own pages. The workflow detail below is retained, but for the
+> current page/navigation state read `SYSTEM_LOGIC_MAP.md` and `MODULE_PAGES.md`, and for
+> the tax flow read `CHECKPOINT-2026-11-28.md`.
+
 # Accounting workflows and logic (as built)
 
 What the prototype actually does, so the next engineer can connect a database

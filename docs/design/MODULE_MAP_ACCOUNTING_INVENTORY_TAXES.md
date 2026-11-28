@@ -1,3 +1,11 @@
+> **Superseded page/navigation state (28 November 2026).** This file is retained for the
+> original module boundaries and document flows. It still shows Taxes as an Accounting
+> page with five tabs and does not include the later Advances/Purchase bills changes.
+> The current build has **Taxes as a top-level module** with Rules, Authorities, Tax
+> ledger, Parties, Tax entry and Default accounts. For the current page register read
+> `MODULE_PAGES.md` and `SYSTEM_LOGIC_MAP.md`; for the tax flow read
+> `CHECKPOINT-2026-11-28.md`.
+
 # SAVEN module map — Accounting, Inventory, Taxes
 
 > Readable, comment-friendly version: `MODULE_MAP.md` (revision 2 is authoritative). This file keeps the

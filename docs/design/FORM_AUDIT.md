@@ -1,3 +1,7 @@
+> **Tax form/state note (28 November 2026).** The tax row below describes an earlier
+> five-tab pass. The current Tax module has six pages and three tax-entry types; see
+> `SYSTEM_LOGIC_MAP.md` and `CHECKPOINT-2026-11-28.md` for the current form and register.
+
 # Form and register audit
 
 Every form below was rendered and checked in this pass (an automated probe renders
