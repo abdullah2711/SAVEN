@@ -78,6 +78,7 @@ the decision index in one place.
 | `docs/design/save/ui/accounting-model.js` | fixture ledger (~199 documents), chart, numbering, projects, locations, cost centres |
 | `docs/design/save/ui/pages-map.js` | module → page map, single source for rail and docs |
 | `docs/design/save/ui/theme.css` | their stylesheet plus our component classes at the end |
+| `docs/design/CHECKPOINT-2026-11-28.md` | full tax-session checkpoint: owner requirements, code map, evidence, gaps, resume order |
 | `docs/design/*.md` | decision log, module map, workflows, backend contract, forms/views, page register |
 
 ## Chart of accounts — groups built, six-digit codes still target
