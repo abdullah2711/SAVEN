@@ -21,7 +21,7 @@ States: **built** working screen · **partial** working, covers part of the page
 | 7 | Advances `advances` | built | Customer advances received and supplier advances paid, with balances, vouchers and adjustment against open documents. |
 | 8 | Sales invoices `sales-invoices` | built | Invoice register with filters and no statistics, a Returns tab, row menu to open or return, and balances that follow partial or complete returns. |
 | 9 | Purchase bills `purchase-invoices` | built | Supplier bills with a Returns tab, row menu open/return, item rows, optional stock receipt and balances updated by returns. |
-| 10 | Chart of accounts `coa` | built | Accounts and accounting groups: account register with head, group, control, currency, state and closing balance; group register and form; both open their own form. |
+| 10 | Chart of accounts `coa` | built | Accounts and accounting groups: 40-account six-digit chart with head, group, control, currency, state and closing balance; six-digit new-account validation; group register and form. |
 
 ## Inventory (inventory)
 
@@ -142,7 +142,7 @@ States: **built** working screen · **partial** working, covers part of the page
 | 2 | Authorities `authorities` | built | Authority register with six tax natures plus final sales tax payable; multi-nature form, registration, frequency, search, balances as at a date and sorting. |
 | 3 | Tax ledger `entries` | built | All tax entries from invoices, bills, returns, adjustments and closings, filterable and sortable; a row opens its source or voucher. |
 | 4 | Parties `parties` | built | Party balances for the six tax natures plus final sales tax payable, with as-at balances and Verified/Unverified. |
-| 5 | Tax entry `adjustments` | built | Three clear entry types: adjustment, withholding payment and closing. Adjustment covers all six natures; the authority list and offset follow the nature. Closing works at the effective period-end date and transfers sales tax to final payable or pays it. |
+| 5 | Tax entry `adjustments` | built | Three clear entry types: adjustment, withholding payment and closing. Adjustment covers all six natures; the authority list and offset follow the nature. Closing works at the effective period-end date, rejects a filed-on date before the period end or any future date, and transfers sales tax to final payable or pays it. |
 | 6 | Default accounts `defaults` | built | Six tax control accounts, six default authorities, closing accounts and the sales-tax calculation basis. |
 
 ## Reports & BI (reports)

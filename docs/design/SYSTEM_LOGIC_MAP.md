@@ -66,7 +66,7 @@ Taxes is a top-level module. Accounting no longer carries a tax page.
 | Authorities | complete | multi-nature authority register/form; name, registration, frequency, status and natures; six tax tabs plus final sales tax payable; search, balances as at a date, sorting |
 | Tax ledger | complete | all entries from invoices, bills, returns, adjustments and closings; filters, sorting, source link |
 | Parties | complete | six tax-nature tabs plus final sales payable, as-at balances, no base column, Verified/Unverified |
-| Tax entry | complete | three types: adjustment (all six natures, partial/date, authority and offset follow the nature), withholding payment and closing (sales return, final sales payment, income tax); effective vs filed date; bank/cash sub-account support |
+| Tax entry | complete | three types: adjustment (all six natures, partial/date, authority and offset follow the nature), withholding payment and closing (sales return, final sales payment, income tax); effective vs filed date with filed-on >= period end and no future dates; bank/cash sub-account support |
 | Default accounts | complete | six control accounts, six default authorities, closing accounts and the sales-tax calculation basis |
 
 ### Operations
@@ -145,7 +145,7 @@ State decides the actions:
 
 | Record | Fields that matter | Access fields | Notes |
 |---|---|---|---|
-| Party (customer/supplier) | code, name, type, group, contact, phone, email, currency, terms, credit limit, opening, tax id, status, address, notes | allowed projects, allowed locations | the sub-account of 1100 or 2100 |
+| Party (customer/supplier) | code, name, type, group, contact, phone, email, currency, terms, credit limit, opening, tax id, status, address, notes | allowed projects, allowed locations | the sub-account of 102001 or 201001 |
 | Cash / bank sub-account | code, name, control head, kind, bank, branch, IBAN/reference, currency, opening, status, notes | allowed projects, allowed locations | the sub-account of a bank or cash control |
 | Item | code, name, group, unit, description, income head, expense head, tax rule, tracked flag, sale/purchase price, status | — | shared with Inventory; quantity lives there |
 | Tax rule | system number, name, nature, rate (tax-exclusive), groups[] or items[], effective from/to, status, line override, description | allowed projects, allowed locations | a default, never a posting; the line price is always net; control account and authority are set per nature in Default accounts; specific scopes must not overlap |
@@ -231,8 +231,8 @@ when the correction must stay visible. The audit log keeps everything.
   **Parties** has six tax-nature party tabs plus final sales payable (one per nature); **Tax entry** has three clear
   types: adjustment, withholding payment and closing. An adjustment works for any of the
   six natures, changes a chosen amount/date and leaves the rest to carry forward. Changing
-  the nature rebuilds the authority list and switches the offset between 5300 (asset
-  natures) and 4200 (liability natures). A closing works at the effective
+  the nature rebuilds the authority list and switches the offset between 503002 (asset
+  natures) and 403001 (liability natures). A closing works at the effective
   period-end date, closes all open sales tax input/output/advance sales for the authority,
   and moves the net to the **Final sales tax payable** control or the final receivable.
   Final sales payment pays that control; income tax closing applies advance income tax to
@@ -371,6 +371,7 @@ permissions. See §100 of the decision log.
 | 64 | 291–294 | three entry types, final sales payable control, effective/filed dates, sample data |
 | 65 | 295–296 | adjustment supports all six natures; authority and offset follow the nature |
 | 66 | 297–301 | session checkpoint; all-six adjustment evidence, closing/final payable, gaps |
+| 67 | 302–306 | six-digit chart migration, filing-date guard, richer sample data and rules |
 
 ---
 
@@ -388,8 +389,10 @@ permissions. See §100 of the decision log.
   proposal in `TAX-PERIOD-CLOSING.md`. Final sales tax receivable/refund payment is not
   built.
 - Party balances by project/location (deferred, needs the subledger).
-- Six-digit account codes and chart migration are target; the demo still uses
-  four-digit codes and the tax accounts 2200/1300/2150/2210/1400/1024/2220/1220/2160/5400.
+- Six-digit account codes and chart migration are implemented in the demo: 40 accounts
+  with no four-digit aliases, including 202001/104001/202005/202002/102002/102004/
+  202006/102006/202007/503001 and the fixed-asset/WIP accounts. Production-data
+  migration remains a separate controlled gate.
 - The chart rebuild follows `docs/design/CHART-OF-ACCOUNTS-DESIGN.md`; no code has
   changed for it yet.
 - Permission enforcement; settings are not enforced by the server yet.

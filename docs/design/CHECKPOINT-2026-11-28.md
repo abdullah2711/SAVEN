@@ -13,13 +13,15 @@ evidence and the remaining gaps so a compacted session can continue without gues
 
 - Branch: `opencode/design-theme-v1`.
 - Latest application commits before this documentation checkpoint:
+  - `2ab7f5b` — align every account group with its six-digit group segment.
+  - `eca93d2` — six-digit demo chart, filing-date guard, richer sample data and rules.
   - `77c5cd1` — remove the stale “combined” tax-entry subtitle.
   - `bf4a9ea` — adjustment supports all six tax natures; authority/offset follow the
     nature; generated module pages regenerated; round 65 recorded.
   - `08ab592` — three entry types, final sales tax closing, final sales payable
-    control, effective/filed dates, sample June/July tax data, 2220/1220/2160/5400.
-- The working tree was clean and the branch matched `origin` when this checkpoint was
-  written.
+    control, effective/filed dates, sample June/July tax data, initial tax controls.
+- The chart/filing/data increment is committed as `eca93d2` and the group alignment as
+  `2ab7f5b`. This documentation checkpoint follows them; the final documentation commit hash is visible in `git log`.
 - Live preview: <https://savenuitest.economicsystems.cc>. Local:
   `http://savenuitest.localhost:8795/`. The preview server serves the working tree
   directly; reload after changing a module. This is not a production deployment.
@@ -56,13 +58,13 @@ These are explicit owner instructions. Do not silently change them.
     10**.
   - It is not a sales-tax expense. The payable is a control account because the
     authority and the party/dimension must be identified and later paid.
-- **2220 Final sales tax payable** is a control account with authority sub-accounts and
-  a party or **Unallocated** dimension. **1220 Final sales tax receivable** handles a
+- **202006 Final sales tax payable** is a control account with authority sub-accounts and
+  a party or **Unallocated** dimension. **102006 Final sales tax receivable** handles a
   negative net. The Authorities and Parties pages each gained a seventh tab for final
   sales tax payable.
-- **2160 Income tax payable** is non-control. A business has a single income tax
-  authority. **5400 Income tax expense** is the expense target. Closing applies open
-  advance income tax to 2160 or 5400; the remainder carries forward.
+- **202007 Income tax payable** is non-control. A business has a single income tax
+  authority. **503001 Income tax expense** is the expense target. Closing applies open
+  advance income tax to 202007 or 503001; the remainder carries forward.
 - Closing asks for both dates:
   - **period end / effective date** — the date the balances are zeroed and the negative
     entries are dated, e.g. 30 June;
@@ -88,12 +90,12 @@ These are explicit owner instructions. Do not silently change them.
     FBR for input/output/advance income/withholding income, SRB for advance
     sales/withholding sales;
   - changes the default offset with the control side:
-    - **5300 Tax adjustment expense** for input, advance income, advance sales;
-    - **4200 Tax adjustment income** for output, withholding income, withholding sales;
+    - **503002 Tax adjustment expense** for input, advance income, advance sales;
+    - **403001 Tax adjustment income** for output, withholding income, withholding sales;
   - preserves a manually chosen offset.
 - The custom dropdown is a wrapper around the native `<select>`. Programmatic value
   changes dispatch `change`, so the visible label and the underlying value cannot
-  disagree. This was the cause of the “stuck on 5300/input” appearance.
+  disagree. This was the cause of the “stuck on 503002/input” appearance.
 - Entry lines are built by `taxAdjustmentEntry(kind, party, direction, amount,
   offsetAccount, authority, offsetSub)`:
   - asset nature, decrease: Dr offset / Cr control;
@@ -133,20 +135,20 @@ These are explicit owner instructions. Do not silently change them.
   - Dr output control;
   - Cr input control;
   - Cr advance sales control;
-  - if net > 0: Cr **2220 Final sales tax payable** (party `Unallocated`, authority) or
+  - if net > 0: Cr **202006 Final sales tax payable** (party `Unallocated`, authority) or
     Cr bank/cash when “pay now” is ticked;
-  - if net < 0: Dr **1220 Final sales tax receivable** or Dr bank/cash when paid.
+  - if net < 0: Dr **102006 Final sales tax receivable** or Dr bank/cash when paid.
 - Negative tax entries are generated per allocation, so party and authority balances
   fall to zero from the effective date while the original entries remain.
 - The closing record stores `effectiveDate`, `filedOn`, `reference`, `amounts`,
-  `allocations`, the GL entry and an optional `finalEntry` tax entry for 2220/1220.
+  `allocations`, the GL entry and an optional `finalEntry` tax entry for 202006/102006.
 - When not paid immediately, the final payable is paid by the separate **Final sales
   payment** closing:
-  - Dr 2220 Final sales tax payable;
+  - Dr 202006 Final sales tax payable;
   - Cr bank/cash.
-- `TAX_CLOSING_ACCOUNTS` holds the account choices: `finalPayable: '2220'`,
-  `finalReceivable: '1220'`, `incomeTaxPayable: '2160'`,
-  `incomeTaxExpense: '5400'`. Default accounts can change the first two and the income
+- `TAX_CLOSING_ACCOUNTS` holds the account choices: `finalPayable: '202006'`,
+  `finalReceivable: '102006'`, `incomeTaxPayable: '202007'`,
+  `incomeTaxExpense: '503001'`. Default accounts can change the first two and the income
   tax targets for the session.
 
 ### 3.4 Income tax closing
@@ -154,7 +156,7 @@ These are explicit owner instructions. Do not silently change them.
 - Authority must handle advance income tax.
 - Amount is blank = all open, or a chosen partial amount; it cannot exceed the open/net
   advance.
-- Entry: Dr selected 2160/5400 target · Cr advance income tax control, authority.
+- Entry: Dr selected 202007/503001 target · Cr advance income tax control, authority.
 - The remainder carries forward. It is not a full income-tax return computation.
 
 ### 3.5 Dates, parties and balances
@@ -165,38 +167,56 @@ These are explicit owner instructions. Do not silently change them.
   as-at date. A full closing removes the current party row; the same party still appears
   at an as-at date before the close.
 - Authority balances are the sum for an authority/nature. The final sales tab uses the
-  2220 control and `Unallocated` pooled party.
+  202006 control and `Unallocated` pooled party.
 - `Unallocated` is a system party, not a customer or supplier.
 
 ### 3.6 Sample data and accounts
 
-Opening entries in `screens.js` (`TAX_OPENING_ENTRIES`) cover June and July 2026:
+The tax ledger now contains **193 entries** across all six natures, three authorities
+(FBR, SRB, PRA) and January–November 2026:
 
-- SRB June: output 20,000 + 14,000 = 34,000; input 8,000 + 6,000 = 14,000;
-  advance sales 6,000 + 4,000 = 10,000.
-- SRB July: output 5,000; input 2,000; advance sales 1,000.
-- FBR June: advance income 3,000; withholding income 1,500.
-- SRB June: withholding sales 800.
-- FBR July: advance income 1,000.
+- **SRB June:** output 20,000 + 14,000 = 34,000; input 8,000 + 6,000 = 14,000;
+  advance sales 6,000 + 4,000 = 10,000. This exact closing test is preserved.
+- **SRB July:** output 5,000; input 2,000; advance sales 1,000.
+- **FBR and PRA** cover every month January–November, including advance income/withholding
+  income and advance sales/withholding sales.
+- **SRB activity resumes in August–November**, so the June 34/14/10 example stays clean.
+- **Six seeded adjustments** `ADJ-2026-0001` to `ADJ-2026-0006` cover input, output,
+  advance income, advance sales, withholding income and withholding sales.
+- **Eight tax rules** cover all six natures, including specific `Services` and
+  `Packaging` group scopes.
+- The demo chart has **40 six-digit accounts**, including fixed assets, accumulated
+  depreciation, WIP, raw materials, labour clearing and overhead applied. Every code's
+  group segment matches its seeded accounting group; the Chart page shows the group
+  name, not the head.
 
-Accounts added in `accounting-model.js`:
+Key accounts:
 
-| Demo code | Target six-digit | Account |
-|---|---|---|
-| 2220 | 202006 | Final sales tax payable (control) |
-| 1220 | 102006 | Final sales tax receivable |
-| 2160 | 202007 | Income tax payable (non-control) |
-| 5400 | 503001 | Income tax expense |
+| Code | Account |
+|---|---|
+| 104001 | Recoverable input tax |
+| 202001 | Output tax payable |
+| 102002 | Advance income tax receivable |
+| 102004 | Advance sales tax receivable |
+| 202005 | Withholding tax payable |
+| 202002 | Sales tax withheld |
+| 202006 | Final sales tax payable (control) |
+| 102006 | Final sales tax receivable |
+| 202007 | Income tax payable (non-control) |
+| 503001 | Income tax expense |
+| 503002 | Tax adjustment expense |
+| 403001 | Tax adjustment income |
 
-The four-digit demo chart remains until the six-digit migration.
+No four-digit demo account code remains. The chart register, account form, journal
+defaults, bank controls, tax defaults and fixture ledger all use six digits.
 
 ## 4. Code map
 
 | File | What matters |
 |---|---|
 | `docs/design/save/ui/screens.js` | `TAX_KINDS`, `TAX_AUTHORITY_KINDS`, `TAX_CLOSING_ACCOUNTS`, `TAX_NATURE_META`, `TAX_DEFAULTS`, `TAX_DEFAULT_AUTHORITIES`, `TAX_OPENING_ENTRIES`, `TAX_ADJUSTMENTS`, `TAX_CLOSINGS`, `TAX_ADJUSTMENT_OPEN`; `taxAdjustmentEntry`, `taxControlAccount`, `suggestedOffsetAccount`, `netTaxBalance`, `openTaxEntries`, `allocateOpen`; `buildSalesClosing`, `buildWithholdingClosing`, `buildFinalSalesPayment`, `buildIncomeTaxClosing`; `taxEntryEditor`, `syncAdjustmentAuthority`; `taxEntryPanel`, `taxAuthoritiesPanel`, `taxPartyBalancesPanel`, `taxDefaultsPanel`; `taxEntries()` composes invoices, fixture documents, opening entries, returns, adjustments, legacy settlements and closings |
-| `docs/design/save/ui/accounting-model.js` | chart accounts, including 2220/1220/2160/5400, and fixture ledger |
-| `docs/design/save/ui/accounting-ui.js` | editor route metadata for `taxes` / `entry`; journal guard that blocks tax control lines and points to Tax → Tax entry |
+| `docs/design/save/ui/accounting-model.js` | 40-account six-digit chart, including tax, final sales, income tax, fixed assets and WIP; fixture ledger |
+| `docs/design/save/ui/accounting-ui.js` | editor route metadata for `taxes` / `entry`; six-digit account-code pattern; journal guard that blocks tax control lines and points to Tax → Tax entry |
 | `docs/design/save/ui/pages-map.js` | Tax page labels and descriptions |
 | `docs/design/save/ui/screens.js` `enhanceSelects()` | native select plus visible `.ss` trigger; the native select keeps the value, the visible label must be synced on programmatic changes |
 | `docs/design/TAX-PERIOD-CLOSING.md` | closing design, effective/filed dates, balances, remaining period model |
@@ -230,15 +250,15 @@ Behaviour probes (temporary pages under `docs/design/save/`, deleted after the r
   input, output, advance income, advance sales, withholding income, withholding sales.
   Result: 6 saved, 6 register rows, no errors, no `undefined`.
 - Authority and offset after switching:
-  - input: FBR / 5300;
-  - output: FBR / 4200;
-  - advance income: FBR / 5300;
-  - advance sales: SRB / 5300;
-  - withholding income: FBR / 4200;
-  - withholding sales: SRB / 4200.
+  - input: FBR / 503002;
+  - output: FBR / 403001;
+  - advance income: FBR / 503002;
+  - advance sales: SRB / 503002;
+  - withholding income: FBR / 403001;
+  - withholding sales: SRB / 403001.
 - The custom trigger text was checked, not only the hidden native value: output read
-  “Output tax” and “4200 · Tax adjustment income”; advance sales read
-  “Advance sales tax”, “SRB — Sindh” and “5300 · Tax adjustment expense”.
+  “Output tax” and “403001 · Tax adjustment income”; advance sales read
+  “Advance sales tax”, “SRB — Sindh” and “503002 · Tax adjustment expense”.
 - June sales closing for SRB: output 34,000, input 14,000, advance sales 10,000,
   net final payable **10,000**. `CLS-2026-0001` appeared in the register. Authority final
   sales tab showed 10,000; final sales payment cleared it to 0.
@@ -249,9 +269,18 @@ Behaviour probes (temporary pages under `docs/design/save/`, deleted after the r
   July activity remained visible at 31 July.
 - Withholding payment cleared the sample withholding income; income tax closing applied
   3,000 of advance income and left 1,000 carrying forward.
-- “Pay now” sales closing credited bank/cash instead of 2220 and left the final payable
+- “Pay now” sales closing credited bank/cash instead of 202006 and left the final payable
   at zero.
 - General journal blocks tax control lines.
+- The chart register shows 40 of 40 accounts, all six digits, no four-digit code in the
+  register. The new-account form pattern is `[0-9]{6}` with maxlength 6.
+- Filing guard: `2026-07-31` period end with `2026-07-05` filed-on is rejected with
+  “Filed-on date cannot be before the period-end date”; a future period end is rejected;
+  a future filed-on date is rejected; income-tax closing uses the same guard. Valid
+  `2026-06-30` / `2026-07-05` saves the 10,000 June closing.
+- The tax ledger has 193 rows across all six natures; the Rules page has 8 rules and the
+  Tax entry register has the six seeded adjustments. Trial balance and statements remain
+  balanced with the six-digit chart.
 - Tax pages render with no `undefined`; Authorities has 7 tabs and Parties has 7 tabs.
 
 These are fixture/session checks, not posted ledger entries.
@@ -262,30 +291,32 @@ These are fixture/session checks, not posted ledger entries.
   records exist; the period model in `TAX-PERIOD-CLOSING.md` is still a proposal.
 - No real ledger posting; tax vouchers and negative entries are session data and reset
   on reload.
-- No final sales tax **receivable/refund payment** flow. A negative net goes to 1220 and
+- No final sales tax **receivable/refund payment** flow. A negative net goes to 102006 and
   stops there.
 - Final sales payable uses the pooled `Unallocated` party; it is not allocated to
   customers because a net authority liability is not naturally one customer’s balance.
 - No full income-tax return computation; income tax closing only applies open advance
-  income to 2160/5400.
+  income to 202007/503001.
 - No cancel/reverse/delete for tax vouchers, no approval/evidence workflow, no return
   import or acknowledgement attachment.
-- Adjustment covers the six tax natures, not `final_sales` (2220/1220) directly.
+- Adjustment covers the six tax natures, not `final_sales` (202006/102006) directly.
 - Automatic per-item-group rule resolution on every document is not complete; rules
   are configured and conflict-checked, but invoice lines still use the item/default tax
   path.
 - Multi-currency, FX, penalties/interest, tax authority statement import and actual
   filing integration remain out of scope.
 - `TAX_SETTLEMENTS` is legacy/unused by the current form.
+- The demo chart is fully six-digit; a real production chart/data migration is still a
+  separate controlled gate with backup, reconciliation and explicit authorization.
 
 ## 7. Next actions
 
-1. Owner review of the tax flow, especially the all-six adjustment form and the
-   sales-close/final-payment sequence.
+1. Owner review of the tax flow, especially the all-six adjustment form, the
+   sales-close/final-payment sequence, the six-digit chart and the filing-date guard.
 2. Then choose the next tax increment:
    - period snapshot + lock + annual carry-forward; or
    - final sales receivable/refund flow; or
-   - adjustment of 2220/1220 if the owner asks for it.
+   - adjustment of 202006/102006 if the owner asks for it.
 3. If a new nature is added, update all of:
    `TAX_KINDS`, `TAX_AUTHORITY_KINDS`, `TAX_NATURE_META`, `TAX_DEFAULTS`,
    `TAX_DEFAULT_AUTHORITIES`, sample entries, closing builders, authority/party tabs,
@@ -299,7 +330,7 @@ These are fixture/session checks, not posted ledger entries.
 2. `docs/design/CONTEXT_HANDOFF.md`.
 3. This file.
 4. `docs/design/SYSTEM_LOGIC_MAP.md` (pages and pending).
-5. `docs/design/DECISIONS-2026-11-21.md` rounds 64–66.
+5. `docs/design/DECISIONS-2026-11-21.md` rounds 64–67.
 6. `docs/design/TAX-PERIOD-CLOSING.md` and `docs/design/CHART-OF-ACCOUNTS-DESIGN.md`.
 7. Inspect `git status`, the fresh branch head and the live page before editing.
 

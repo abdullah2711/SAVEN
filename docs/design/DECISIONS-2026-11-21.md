@@ -1,13 +1,14 @@
 # Decision log — 21 November 2026 review
 
-> **Current state is the last round (66).** Earlier sections are the chronological record
+> **Current state is the last round (67).** Earlier sections are the chronological record
 > and some are superseded: chart groups §258, accounting heads §257, tax six natures
 > §251–255, tax-exclusive prices, authority defaults, party balances, rule conflicts and
 > the closing proposal, Tax entry page and Unallocated party §269–294, the three entry
 > types and final sales payable §291–301, six-digit target §240/§253, payment/stock menu
 > §226–228, document menu §222, register widths §235/§236. Where a later section conflicts
 > with an earlier one, the later section governs. The full resume checkpoint is
-> `CHECKPOINT-2026-11-28.md`.
+> `CHECKPOINT-2026-11-28.md`. **Chart codes:** rounds before 67 use four-digit demo
+> codes; the active chart and all current code use six digits from round 67 onward.
 
 Every instruction from the latest review, what was decided, what is implemented in
 the prototype, and where the detail lives for the backend. Status: **done** in the
@@ -4156,3 +4157,94 @@ legacy state and is not created by the current form.
 
 The complete code map, exact probe method, resume order and next actions are in
 `CHECKPOINT-2026-11-28.md`.
+
+---
+
+# Round 67 — six-digit chart, filing-date guard and richer data
+
+## 302. Six-digit chart implemented
+
+The demo chart is migrated from four-digit demo codes to the six-digit `D GG AAA`
+target. There is no alias table and no four-digit code in the active chart, fixtures,
+journal defaults, bank controls, tax defaults, opening balances or tax registers.
+
+The chart now has **40 accounts**, including:
+
+- cash/bank `101001`, `101002`, `101003`;
+- receivables, advances and final sales receivable `102001`, `102002`, `102004`,
+  `102005`, `102006`;
+- inventory, WIP and raw materials `103001`, `103002`, `103003`;
+- input tax `104001`;
+- fixed assets `105001`–`105003` and accumulated depreciation `106001`–`106003`;
+- payables and tax liabilities `201001`, `202001`, `202002`, `202005`, `202006`,
+  `202007`, advances `203001`, clearing `204001`, labour clearing `205001`;
+- equity `301001`, `301002`;
+- income `402001`, `403001`, `404001`;
+- expenses `501001`, `502001`, `502002`, `503001`, `503002`, `504001`, `504002`,
+  `505001`.
+
+The group segment of every code matches the seeded Chart → Accounting groups (503
+impairment/tax, 504 depreciation/overhead, 505 purchase returns, etc.). The new-account
+form now requires exactly six digits (`pattern="[0-9]{6}"`, `maxlength="6"`). Fixtures,
+invoices, payments, tax entries, opening balances and reports were remapped together. The migration table in
+`CHART-OF-ACCOUNTS-DESIGN.md` is retained as the historical mapping and is marked
+complete.
+
+## 303. Filing-date guard
+
+Tax closing now rejects impossible filing dates:
+
+- **Filed-on before period end** — rejected. Example: period end 31 July 2026, filed on
+  5 July 2026.
+- **Period end after today** — rejected; a future period cannot be closed.
+- **Filed-on after today** — rejected; a return cannot be filed in the future.
+- The same guard applies to **income tax closing**.
+- Withholding payment, final sales payment and adjustment dates are also blocked when
+  they are in the future.
+- The native date inputs carry `min`/`max` constraints, and the submit handler checks
+  them explicitly so the user gets a clear message instead of a silent browser block.
+
+The valid example is period end 30 June 2026, filed on 5 July 2026: the entry is dated
+30 June, and the filing date is retained on the record.
+
+## 304. Richer sample data
+
+The tax sample now has **193 ledger entries** across all six natures, three authorities
+(FBR, SRB, PRA) and January–November 2026:
+
+- SRB June remains exactly output 34,000, input 14,000, advance sales 10,000, so the
+  owner's closing example is still a clean test.
+- SRB July remains output 5,000, input 2,000, advance sales 1,000.
+- FBR and PRA cover every month, including advance income/withholding income and
+  advance sales/withholding sales.
+- SRB activity resumes in August–November so the June example is not disturbed.
+- Six seeded adjustments `ADJ-2026-0001`–`ADJ-2026-0006` cover all six natures.
+- Eight tax rules cover all six natures, including specific Services and Packaging
+  group scopes.
+- The chart has 40 six-digit accounts, including fixed assets, WIP, raw materials,
+  labour clearing and overhead applied.
+
+## 305. Verification
+
+- Chart register: 40 of 40 accounts, all six digits, zero four-digit codes.
+- Account form source: pattern `[0-9]{6}`, maxlength 6.
+- Filing guard: period end 31 July / filed 5 July is rejected; future period end is
+  rejected; future filed-on is rejected; income-tax closing uses the same guard.
+- Valid June close still produces **10,000 final sales payable**; final payment clears it.
+- All six adjustment natures save through the visible custom dropdown with the new
+  offset accounts **503002 Tax adjustment expense** and **403001 Tax adjustment income**.
+- Six seeded adjustments appear in the Tax entry register.
+- 193 tax ledger rows; 8 rules; three authority tabs and seven party tabs render.
+- Trial balance and statements remain balanced with the six-digit chart.
+- All UI JavaScript parses; both generators, inventory annotation, catalog, feature
+  catalog and `tools/validate_plan.py` pass.
+
+## 306. Remaining
+
+No tax-period snapshot, filing state, hard lock or annual carry-forward. No real ledger
+posting/persistence. No final sales receivable/refund payment. No cancel/reverse of tax
+vouchers. Adjustment does not cover 202006/102006 directly. No full income-tax return.
+The demo chart migration is complete; a production chart/data migration remains a
+controlled gate with backup, reconciliation and explicit authorization.
+
+Full details and the resume order are in `CHECKPOINT-2026-11-28.md`.

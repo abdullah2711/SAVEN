@@ -29,19 +29,24 @@ Read **`CHECKPOINT-2026-11-28.md`** for the complete technical record of the tax
 workflow: owner requirements, implemented behaviour, code map, probe evidence and
 known gaps.
 
-- Branch `opencode/design-theme-v1`; application commits `77c5cd1`, `bf4a9ea`,
-  `08ab592`. This worktree is a fixture UI, not `main`, the live native app, the
-  database or a client record.
+- Branch `opencode/design-theme-v1`; application commits `2ab7f5b`, `eca93d2`, `77c5cd1`,
+  `bf4a9ea`, `08ab592`. This worktree is a fixture UI, not `main`, the live native app,
+  the database or a client record.
 - Tax entry has exactly three types: **Adjustment**, **Withholding payment**,
   **Closing** (sales tax return, final sales payment, income tax closing).
 - Adjustment works for all six tax natures. The authority list and the default offset
   follow the selected nature; the custom dropdown display is kept in sync.
 - Sales tax closing uses the effective period-end date, closes all open input/output/
-  advance sales after adjustments, and moves the net to **2220 Final sales tax
-  payable** or **1220 Final sales tax receivable**. Filed-on date is retained
-  separately. Final sales payment pays 2220 from bank/cash.
-- June/July 2026 sample data covers all six natures, including SRB output 34,000,
-  input 14,000, advance sales 10,000 and a 10,000 final payable on the June close.
+  advance sales after adjustments, and moves the net to **202006 Final sales tax
+  payable** or **102006 Final sales tax receivable**. Filed-on date is retained
+  separately. Final sales payment pays 202006 from bank/cash.
+- The chart is fully six-digit: 40 accounts, no four-digit aliases; the account form
+  requires six digits.
+- Closing rejects a filed-on date before the period end and any future period end or
+  filed-on date. Valid example: period end 30 June, filed 5 July.
+- Tax sample data has 193 ledger entries across all six natures, three authorities and
+  January–November 2026, plus six seeded adjustments and eight rules. SRB June remains
+  output 34,000, input 14,000, advance sales 10,000 and a 10,000 final payable.
 
 ## Hard rules
 
@@ -81,11 +86,12 @@ the decision index in one place.
 | `docs/design/CHECKPOINT-2026-11-28.md` | full tax-session checkpoint: owner requirements, code map, evidence, gaps, resume order |
 | `docs/design/*.md` | decision log, module map, workflows, backend contract, forms/views, page register |
 
-## Chart of accounts — groups built, six-digit codes still target
+## Chart of accounts — six-digit codes implemented
 
 Read `docs/design/CHART-OF-ACCOUNTS-DESIGN.md` before touching the chart. Six-digit
-codes `D GG AAA` are the target; groups are tagged in Chart of accounts → Accounting
-groups; one AR and one AP control; controls for
+codes `D GG AAA` are implemented in the fixture (40 accounts, including fixed assets,
+WIP, raw materials and labour clearing); groups are tagged in Chart of accounts →
+Accounting groups; one AR and one AP control; controls for
 cash, bank, inventory, fixed-asset cost/accumulated, advances and clearing; **no sales
 control**; statistics from line dimensions and subledgers. Tax has one control per nature
 (input, output, advance income, advance sales, withholding income, withholding sales)
@@ -98,8 +104,8 @@ Rules apply to all items (fallback), several item groups, or several specific it
 specific scopes must not overlap for the same nature and effective period. Tax entries
 open their document; party tax balances are reconciled by party/kind without a tax
 sub-account. Party tax claims are dimensions
-on tax entries, reconciled against authority data and certificates. The demo four-digit
-chart is to be replaced and fixtures remapped.
+on tax entries, reconciled against authority data and certificates. The old four-digit
+demo codes are fully remapped; the chart register and account form use six digits only.
 
 ## Current state
 
@@ -130,10 +136,13 @@ chart is to be replaced and fixtures remapped.
   register and form) and Default accounts (six control accounts, six default
   authorities, closing accounts and the calculation basis). Prices are tax-exclusive.
   Adjustment exposes all six tax natures; changing the nature rebuilds the active
-  authority list, selects the nature default and switches the offset between **5300
-  Tax adjustment expense** (asset natures) and **4200 Tax adjustment income** (liability
+  authority list, selects the nature default and switches the offset between **503002
+  Tax adjustment expense** (asset natures) and **403001 Tax adjustment income** (liability
   natures). The custom select display is refreshed when the value changes
-  programmatically.
+  programmatically. Closing rejects a filed-on date before the period end, a period end
+  after today and a filed-on date after today. The chart is fully six-digit and the tax
+  sample data has 193 ledger entries across all six natures, three authorities and
+  January–November 2026.
 - **Settings** is a separate module with seven pages: Company, Accounting,
   People & access, Periods, Forms & fields, Saved views, Print & templates.
   Accounting holds numbering, control accounts, projects & locations and approvals.
@@ -143,7 +152,7 @@ chart is to be replaced and fixtures remapped.
   (`Party-0001`), the group comes from Settings party groups, the control account is
   restricted to receivable heads for customers and payable heads for suppliers,
   terms and credit limit are optional and their changes are logged. An opening
-  balance posts an opening journal against 3100 Opening balance equity, keyed by
+  balance posts an opening journal against 301002 Opening balance equity, keyed by
   party code so an edit replaces rather than duplicates it.
 - **Reconciliations**: cash and party tabs each have a register (search, dates,
   column menus, click a row to open) and a form whose difference rows use the full
@@ -345,7 +354,7 @@ Known traps:
   effective-date/as-at behaviour. The full evidence and code map are in
   `CHECKPOINT-2026-11-28.md`.
 - After that review, the next tax increment is one of: period snapshot/lock and annual
-  carry-forward; final sales tax receivable/refund; or adjustment of 2220/1220 if the
+  carry-forward; final sales tax receivable/refund; or adjustment of 202006/102006 if the
   owner asks for it.
 - Open naming question: two rail entries called “Projects” (Accounting dimension page
   and Operations module). Decide whether to rename one.

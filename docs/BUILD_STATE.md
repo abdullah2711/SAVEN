@@ -8,30 +8,37 @@ returns the fixtures; no real ledger posting is claimed.
 Read `docs/design/CONTEXT_HANDOFF.md` and
 `docs/design/CHECKPOINT-2026-11-28.md` before continuing this branch.
 
-- Latest application commits: `77c5cd1` (remove stale combined-entry subtitle),
-  `bf4a9ea` (adjustment supports all six tax natures; authority/offset follow the
-  nature), `08ab592` (three entry types, final sales closing, final sales payable
-  control, effective/filed dates, sample June/July tax data, 2220/1220/2160/5400).
+- Latest application commits: `2ab7f5b` (group/code alignment), `eca93d2` (six-digit
+  chart, filing-date guard, richer sample data and rules), `77c5cd1` (remove stale combined-entry subtitle), `bf4a9ea`
+  (adjustment supports all six tax natures; authority/offset follow the nature),
+  `08ab592` (three entry types, final sales closing, final sales payable control,
+  effective/filed dates, sample tax data).
 - Tax entry has exactly three types: **Adjustment** (all six natures, partial amount and
   chosen date), **Withholding payment** (bank/cash) and **Closing** (sales tax return,
   final sales payment, income tax closing).
 - Sales tax closing uses the effective period-end date, closes open input/output/advance
-  sales after adjustments, and moves the net to **2220 Final sales tax payable** or
-  **1220 Final sales tax receivable**. Filed-on date is retained separately. Final sales
-  payment pays 2220 from bank/cash.
+  sales after adjustments, and moves the net to **202006 Final sales tax payable** or
+  **102006 Final sales tax receivable**. Filed-on date is retained separately. Final sales
+  payment pays 202006 from bank/cash. Filing is rejected when filed-on is before the
+  period end, or when the period end or filed-on is in the future.
 - All six adjustment natures were selected through the visible custom dropdown and
   saved; authority and offset followed the nature. June SRB test produced 34,000 output
   − 14,000 input − 10,000 advance = 10,000 final payable. Withholding, income-tax
   closing, partial adjustment and effective-date/as-at tests passed.
+- The demo chart has 40 six-digit accounts with no four-digit aliases; the account form
+  requires six digits. Tax sample data has 193 ledger entries across six natures, three
+  authorities and January–November 2026, plus six seeded adjustments and eight rules.
 - Checks: all UI JavaScript parses; `make-page-docs.mjs` reports 21 modules, 154 pages,
   68 built; `build_design_library.py` and `build_feature_catalog.py` report 269
   requirements/25 modules/282 screen mappings; `validate_plan.py` passes.
 - Remaining: no tax-period snapshot/lock/annual carry-forward, no real ledger
   persistence, no final sales receivable/refund flow, no cancel/reverse of tax vouchers,
   no full income-tax return computation. `TAX_SETTLEMENTS` is legacy/unused by the
-  current form.
-- Next: owner review of the tax flow, then period snapshot/lock or final sales
-  receivable/refund, or 2220/1220 adjustment if requested.
+  current form. The demo chart is migrated; production chart/data migration remains a
+  controlled gate.
+- Next: owner review of the six-digit chart, filing guard and rich sample data, then
+  period snapshot/lock or final sales receivable/refund, or 202006/102006 adjustment if
+  requested.
 
 ---
 

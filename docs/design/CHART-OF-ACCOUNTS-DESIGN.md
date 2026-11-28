@@ -1,32 +1,34 @@
 # Chart of accounts — agreed design
 
-Status: target agreed; group tagging and the tax module are implemented, the six-digit
-codes and full chart migration are not. Owner decision 26 November 2026. This document
-is the contract for the chart rebuild.
+Status: target agreed; group tagging, the tax module **and the six-digit demo chart
+migration are implemented**. The production-data migration remains separate. Owner
+decision 26 November 2026, implementation 28 November 2026. This document is the contract
+for the chart.
 
 ## Implementation status (26 November 2026)
 
 - **Implemented:** accounting heads (five classes), **accounting groups** register and
   form in the Chart page, group sequence per class, group selection and validation on
-  the account form, tax module with six natures, authorities as records, system-numbered
-  rules with multi-group scopes and conflict checks, entries, six party-balance tabs,
-  three tax-entry types (adjustment for all six natures, withholding payment, closing),
-  final sales tax payable/receivable controls, income tax payable/expense, and sample
-  June/July tax data.
+  the account form, the **six-digit demo chart** (40 accounts, no four-digit aliases),
+  the account form's six-digit code validation, tax module with six natures, authorities
+  as records, system-numbered rules with multi-group scopes and conflict checks, entries,
+  six party-balance tabs, three tax-entry types (adjustment for all six natures,
+  withholding payment, closing), final sales tax payable/receivable controls, income tax
+  payable/expense, and sample January–November 2026 tax data.
   Prices are tax-exclusive; the default authority per nature is set under Default
   accounts.
-- **Still target, not implemented:** the six-digit account codes and full fixture
-  migration; account codes remain the four-digit demo codes for now. Groups already
-  carry the two-digit segment that will become the middle of the code.
+- **Still target, not implemented:** migrating a real production database and remapping
+  real historical bytes; the demo is complete but production migration is a separate
+  controlled release task.
 - **Authorities:** the UI treats authorities as sub-accounts conceptually; the current
   demo derives authority balances from tax entries. Real chart sub-accounts are part of
   the six-digit rebuild.
-- **Demo tax accounts:** 2200 output, 1300 input, 2150 withholding income, 2210
-  withholding sales, 1400 advance income, 1024 advance sales, 2220 final sales payable,
-  1220 final sales receivable, 2160 income tax payable and 5400 income tax expense are
-  used until the migration. The adjustment P&L accounts are **5300 Tax adjustment
-  expense** and **4200 Tax adjustment income**. The six-digit codes in the migration
-  table are the target; 2220/1220/2160/5400 are already mapped there.
+- **Demo tax accounts (now six-digit):** 202001 output, 104001 input, 202005 withholding
+  income, 202002 withholding sales, 102002 advance income, 102004 advance sales, 202006
+  final sales payable, 102006 final sales receivable, 202007 income tax payable and
+  503001 income tax expense. The adjustment P&L accounts are **503002 Tax adjustment
+  expense** and **403001 Tax adjustment income**. The old four-digit values are retained
+  only in the historical migration table below.
 
 ## 1. Code structure — six digits
 
@@ -69,21 +71,21 @@ Groups are created in **Chart of accounts → Accounting groups**, not in Settin
 | Group | Name | Accounts |
 |---|---|---|
 | 01 | Cash and bank | 001 Cash control, 002 Bank control, 003 Petty cash control |
-| 02 | Receivables and advances | 001 Trade receivables, 002 Advance income tax receivable, 003 Advance sales tax receivable, 004 Supplier advances |
-| 03 | Inventory | 001 Inventory control |
+| 02 | Receivables and advances | 001 Trade receivables, 002 Advance income tax receivable, 004 Advance sales tax receivable, 005 Supplier advances paid, 006 Final sales tax receivable |
+| 03 | Inventory | 001 Finished goods, 002 Work in progress, 003 Raw materials |
 | 04 | Tax assets | 001 Input tax control (authorities are sub-accounts) |
-| 05 | Fixed assets — cost | 001 Buildings, 002 Vehicles, 003 Equipment, … |
-| 06 | Accumulated depreciation | 001 Buildings, 002 Vehicles, 003 Equipment, … |
+| 05 | Fixed assets | 001 Furniture & fixtures, 002 Motor vehicles, 003 Computer equipment, … |
+| 06 | Accumulated depreciation | 001 Furniture & fixtures, 002 Motor vehicles, 003 Computer equipment, … |
 | 07 | Other assets | generated as needed |
 
 ### Liabilities — class 2
 | Group | Name | Accounts |
 |---|---|---|
 | 01 | Payables | 001 Trade payables |
-| 02 | Tax liabilities | 001 Output tax control, 002 Sales tax withheld control, 003 Income tax withholding payable (authorities are sub-accounts) |
+| 02 | Tax liabilities | 001 Output tax control, 002 Sales tax withheld control, 005 Income tax withholding payable, 006 Final sales tax payable, 007 Income tax payable (authorities are sub-accounts) |
 | 03 | Advances | 001 Customer advances |
 | 04 | Clearing | 001 Goods received clearing |
-| 05 | Loans and other | generated as needed |
+| 05 | Loans and other | 001 Labour clearing |
 
 ### Equity — class 3
 | Group | Name | Accounts |
@@ -103,9 +105,10 @@ Groups are created in **Chart of accounts → Accounting groups**, not in Settin
 |---|---|---|
 | 01 | Cost of sales | 001 … |
 | 02 | Operating expenses | 001 … |
-| 03 | Payroll | 001 … |
-| 04 | Impairment, tax and other | 001 … |
+| 03 | Impairment and tax | 001 Income tax expense, 002 Tax adjustment expense |
+| 04 | Depreciation and overhead | 001 Depreciation expense, 002 Overhead applied |
 | 05 | Purchase returns (contra expense) | 001 … |
+| 06 | Payroll | 001 … |
 
 The exact names may change; the numbering and control flags are the contract.
 
@@ -119,17 +122,19 @@ these get control flags.
 | Cash | 101001 | cash tills | cash sub-account |
 | Bank | 101002 | bank accounts | bank sub-account |
 | Trade receivables | 102001 | customer ledger | party |
-| Supplier advances | 102003 | supplier advance ledger | party |
+| Supplier advances | 102005 | supplier advance ledger | party |
 | Inventory | 103001 | item + warehouse quantity/value | item, warehouse |
 | Input tax | 104001 | tax authority sub-accounts | document authority (default or override); party dimension |
-| Fixed assets cost — class | 10500x | asset register | asset |
-| Accumulated depreciation — class | 10600x | asset register | asset |
+| Fixed assets cost — class | 105001–105003 | asset register | asset |
+| Accumulated depreciation — class | 106001–106003 | asset register | asset |
 | Trade payables | 201001 | supplier ledger | party |
 | Output tax | 202001 | tax authority sub-accounts | document authority (default or override); party dimension |
 | Sales tax withheld | 202002 | tax authority sub-accounts | party |
 | Income tax withholding payable | 202005 | supplier ledger + authority sub-account | party |
 | Advance income tax receivable | 102002 | customer ledger + authority sub-account | party |
 | Advance sales tax receivable | 102004 | customer/supplier ledger + authority sub-account | party |
+| Final sales tax payable | 202006 | tax authority sub-accounts + Unallocated | party or Unallocated |
+| Final sales tax receivable | 102006 | tax authority sub-accounts + Unallocated | party or Unallocated |
 | Customer advances | 203001 | customer advance ledger | party |
 | Goods received clearing | 204001 | open goods receipts / bills | document, party |
 
@@ -261,12 +266,12 @@ line, the authority sub-account and the party tax entry in one transaction.
 
 | Nature | Demo control | Side | What the balance means |
 |---|---|---|---|
-| Input tax | 1300 Recoverable input tax | asset | tax we can recover from the authority |
-| Output tax | 2200 Output tax payable | liability | tax we owe the authority |
-| Advance income tax | 1400 Advance tax receivable | asset | income tax a customer deducted and paid for us |
-| Advance sales tax | 1024 Advance sales tax receivable | asset | sales tax a customer deducted and paid for us |
-| Withholding income tax | 2150 Withholding tax payable | liability | income tax we deducted and owe |
-| Withholding sales tax | 2210 Sales tax withheld | liability | sales tax we deducted and owe |
+| Input tax | 104001 Recoverable input tax | asset | tax we can recover from the authority |
+| Output tax | 202001 Output tax payable | liability | tax we owe the authority |
+| Advance income tax | 102002 Advance tax receivable | asset | income tax a customer deducted and paid for us |
+| Advance sales tax | 102004 Advance sales tax receivable | asset | sales tax a customer deducted and paid for us |
+| Withholding income tax | 202005 Withholding tax payable | liability | income tax we deducted and owe |
+| Withholding sales tax | 202002 Sales tax withheld | liability | sales tax we deducted and owe |
 
 ### 6.2 Tax adjustments
 
@@ -296,7 +301,7 @@ party balances, not a customer or supplier:
 Every line carries the party. Only the tax control line carries the authority
 sub-account; the offset line never does.
 
-The common offsets are **5300 Tax adjustment expense**, **4200 Tax adjustment income**,
+The common offsets are **503002 Tax adjustment expense**, **403001 Tax adjustment income**,
 trade receivables/payables and cash, but the voucher allows any active account. It
 updates the party tax balance and the authority sub-account in the same transaction, and
 touches AR/AP only when the chosen offset is a receivable/payable. It never edits the
@@ -309,8 +314,8 @@ invalid. The accountant records a tax reconciliation: nature input, party A, aut
 FBR, direction decrease, amount 30, offset P&L.
 
 ```
-Dr  5300 Tax adjustment expense        30   party A
-Cr  1300 Input tax control             30   party A · authority FBR
+Dr  503002 Tax adjustment expense        30   party A
+Cr  104001 Input tax control             30   party A · authority FBR
 ```
 
 - **GL:** input tax control falls by 30; tax adjustment expense rises by 30; the voucher
@@ -323,8 +328,8 @@ Cr  1300 Input tax control             30   party A · authority FBR
 If the supplier repays the 30, the same adjustment uses the party offset instead:
 
 ```
-Dr  2100 Trade payables                30   party A
-Cr  1300 Input tax control             30   party A · authority FBR
+Dr  201001 Trade payables                30   party A
+Cr  104001 Input tax control             30   party A · authority FBR
 ```
 
 The input control and FBR sub-account still fall by 30, but the other side reduces what
@@ -414,7 +419,7 @@ rule, authority, period.
 - Fixed assets: asset register and depreciation lines by project.
 - Party balances: journal lines tagged party; aging from open documents.
 
-## 11. Migration from four-digit demo codes
+## 11. Migration completed from four-digit demo codes (28 November 2026)
 
 | Old | New | Account |
 |---|---|---|
@@ -429,7 +434,13 @@ rule, authority, period.
 | 1220 | 102006 | Final sales tax receivable |
 | 2160 | 202007 | Income tax payable |
 | 2220 | 202006 | Final sales tax payable |
-| 1500/… | 10500x | Fixed asset classes |
+| 1250 | 102005 | Supplier advances paid |
+| 1500 | 105001 | Furniture & fixtures — cost |
+| 1510 | 105002 | Motor vehicles — cost |
+| 1520 | 105003 | Computer equipment — cost |
+| 1590 | 106001 | Accumulated depreciation — furniture & fixtures |
+| 1591 | 106002 | Accumulated depreciation — motor vehicles |
+| 1592 | 106003 | Accumulated depreciation — computer equipment |
 | 2100 | 201001 | Trade payables |
 | 2150 | 202005 | Income tax withholding payable |
 | 2200 | 202001 | Output tax control |
@@ -437,26 +448,32 @@ rule, authority, period.
 | 2300 | 203001 | Customer advances |
 | 2400 | 204001 | Goods received clearing |
 | 5400 | 503001 | Income tax expense |
+| 5300 | 503002 | Tax adjustment expense |
+| 6500 | 502002 | Bank charges |
+| 6600 | 504001 | Depreciation expense |
 | 3000 | 301001 | Owner capital |
 | 3100 | 301002 | Opening balance equity |
 | 4000 | 402001 | Service revenue |
 | 4100 | 404001 | Sales returns |
+| 4200 | 403001 | Tax adjustment income |
 | 5000 | 502001 | Operating expenses |
 | 5100 | 501001 | Cost of sales |
 | 5200 | 505001 | Purchase returns |
 
-All demo fixtures, invoices, payments, taxes and reports are remapped. Account
-selectors, seeds and tests must use the new codes. No alias table is kept in the demo;
-the replacement is complete.
+All demo fixtures, invoices, payments, taxes, bank controls, tax defaults, journal defaults
+and reports are remapped. The chart register and account form show six-digit codes only;
+the new-account form rejects anything except six digits. No alias table is kept in the
+demo; the replacement is complete.
 
-## 12. Open points before build
+## 12. Production migration gates
 
-1. Confirm the group catalogue names and seeds above.
-2. Confirm one AR/AP control (recommended) rather than segments.
-3. Confirm the demo tax authorities to seed as sub-accounts (e.g. two sales-tax
-   authorities plus one income-tax authority).
-4. Confirm fixed asset classes to seed (buildings, vehicles, equipment).
-5. Confirm the migration table.
-6. Confirm the tax control set: output, input, sales tax withheld, income tax
-   withholding, advance income tax and advance sales tax — authorities as
-   sub-accounts.
+The six demo decisions are settled: one AR/AP control, three authorities (FBR, SRB,
+PRA), fixed-asset classes for furniture, vehicles and computers, and the tax control set
+(output, input, sales tax withheld, income tax withholding, advance income tax and
+advance sales tax). Remaining before a real production migration:
+
+1. Map every real account to this catalogue and prove every historical line.
+2. Preserve original references, dates and bytes; reconcile every control before and
+   after the migration.
+3. Take a stopped backup and independently restore it before cutover.
+4. Cut over only with explicit owner authorization; keep the old chart and rollback.

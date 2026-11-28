@@ -217,9 +217,9 @@ against the appropriate expense or Unallocated row, so the input control net bec
 Then close the authority:
 
 ```
-Dr 2200 Output tax control       200   Unallocated · FBR
-Cr 1300 Input tax control         90   Unallocated · FBR
-Cr 2220 Final sales tax payable  110   Unallocated · FBR
+Dr 202001 Output tax control       200   Unallocated · FBR
+Cr 104001 Input tax control         90   Unallocated · FBR
+Cr 202006 Final sales tax payable  110   Unallocated · FBR
 ```
 
 Tax entries created with the closing:
@@ -230,7 +230,7 @@ Tax entries created with the closing:
 
 The 10 unclaimable input remains visible as the adjustment voucher and its party/
 Unallocated detail. If output is less than the claimable input, the closing produces a
-negative net and moves it to **1220 Final sales tax receivable**; there is no refund
+negative net and moves it to **102006 Final sales tax receivable**; there is no refund
 payment flow yet.
 
 ### 9.2 Withholding paid to the authority
@@ -238,8 +238,8 @@ payment flow yet.
 Example: withholding income tax payable 50, paid from bank:
 
 ```
-Dr 2150 Withholding tax payable   50   Unallocated · FBR (or one supplier)
-Cr 1010 Bank                      50
+Dr 202005 Withholding tax payable   50   Unallocated · FBR (or one supplier)
+Cr 101002 Bank                    50
 ```
 
 Tax entry: withholding income tax decrease 50 (authority FBR).
@@ -256,18 +256,18 @@ If the expense has not yet been recorded:
 
 ```
 Dr Income tax expense             80
-Cr 1400 Advance income tax        80   Unallocated or the customer
+Cr 102002 Advance income tax        80   Unallocated or the customer
 ```
 
 If the expense was already recorded as a liability:
 
 ```
 Dr Income tax payable             80
-Cr 1400 Advance income tax        80
+Cr 102002 Advance income tax        80
 ```
 
 The remaining advance 20 stays as an asset, is refunded, or is written off only with
-approval. The demo chart now carries **5400 Income tax expense** and **2160 Income tax
+approval. The demo chart now carries **503001 Income tax expense** and **202007 Income tax
 payable**. The advance is reduced with the party whose customer deducted it, or
 Unallocated if the annual assessment is pooled.
 
@@ -291,9 +291,11 @@ up to the effective period-end date. The net is:
 output - input - advance sales = final payable
 ```
 
-and it moves to **2220 Final sales tax payable** (control, authority sub-accounts,
-Unallocated party) or to **1220 Final sales tax receivable** if negative. Filing date and
-effective date are separate: the balance is zeroed from the effective date.
+and it moves to **202006 Final sales tax payable** (control, authority sub-accounts,
+Unallocated party) or to **102006 Final sales tax receivable** if negative. Filing date and
+effective date are separate: the balance is zeroed from the effective date. The form
+rejects a filed-on date before the period end, a period end after today and a filed-on
+date after today; the same guard applies to income-tax closing.
 
 The negative tax entries are generated per source party and period, so party and
 authority balances fall to zero while the original entries remain for history. Adjustments
@@ -331,8 +333,9 @@ system still shows as open.
 The closing form has:
 
 - **Effective period-end date** — the date balances are zeroed and negative entries are
-  dated.
-- **Filed on** — the actual filing date retained on the record.
+  dated. It cannot be after today.
+- **Filed on** — the actual filing date retained on the record. It must be on or after
+  the effective date and cannot be after today.
 
 A party with current 50, of which 35 accumulated to 30 June, closes 35 effective 30 June
 and shows 15 after that date. July activity is not touched by a June closing.
@@ -364,14 +367,14 @@ adjustment when the party is known.
 
 - **Withholding** is paid in cash/bank; it is never offset against output. The amount is
   blank = all open, or a chosen partial amount. There is no period selection.
-- **Advance income tax** is applied to income tax expense/payable (2160 or 5400) and the
+- **Advance income tax** is applied to income tax expense/payable (202007 or 503001) and the
   advance entries are reduced per customer or Unallocated. The remainder carries forward.
 - **Advance sales tax** is part of the sales tax closing:
   `output - input - advance sales = final payable`. It is not a separate offset form. If
   part of the advance is not claimable, adjust that part first; the closing then uses the
   net advance balance.
-- **Output tax** is closed into the final payable (2220) or paid immediately from
-  bank/cash. **Final sales payment** later pays any remaining 2220.
+- **Output tax** is closed into the final payable (202006) or paid immediately from
+  bank/cash. **Final sales payment** later pays any remaining 202006.
 
 ## 10. Decisions needed from the owner
 
