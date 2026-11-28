@@ -70,9 +70,9 @@ export const WORK_ORDERS = [
 ];
 
 export const ASSET_CATEGORIES = [
-  {code: 'CAT-FF', name: 'Furniture & fixtures', method: 'straight line', rate: 15, life: 7, assetAccount: '1500', depAccount: '1590', expenseAccount: '6600'},
-  {code: 'CAT-VEH', name: 'Motor vehicles', method: 'straight line', rate: 20, life: 5, assetAccount: '1510', depAccount: '1591', expenseAccount: '6600'},
-  {code: 'CAT-IT', name: 'Computer equipment', method: 'straight line', rate: 25, life: 4, assetAccount: '1520', depAccount: '1592', expenseAccount: '6600'},
+  {code: 'CAT-FF', name: 'Furniture & fixtures', method: 'straight line', rate: 15, life: 7, assetAccount: '105001', depAccount: '106001', expenseAccount: '504001'},
+  {code: 'CAT-VEH', name: 'Motor vehicles', method: 'straight line', rate: 20, life: 5, assetAccount: '105002', depAccount: '106002', expenseAccount: '504001'},
+  {code: 'CAT-IT', name: 'Computer equipment', method: 'straight line', rate: 25, life: 4, assetAccount: '105003', depAccount: '106003', expenseAccount: '504001'},
 ];
 
 export const ASSETS = [

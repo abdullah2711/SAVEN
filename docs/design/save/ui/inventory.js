@@ -110,9 +110,9 @@ function settingsPage() {
     <div class="panel-body form-grid">
       <label>Costing method<select class="inline-input"><option>Weighted average</option><option>FIFO</option></select></label>
       <label>Allow negative stock<select class="inline-input"><option>No</option><option>Warn only</option><option>Yes</option></select></label>
-      <label>Receipt clearing account<input value="1200 · Inventory"></label>
-      <label>Issue / cost account<input value="5000 · Operating expenses"></label>
-      <label>Stock adjustment account<input value="5000 · Operating expenses"></label>
+      <label>Receipt clearing account<input value="103001 · Inventory"></label>
+      <label>Issue / cost account<input value="502001 · Operating expenses"></label>
+      <label>Stock adjustment account<input value="502001 · Operating expenses"></label>
       <label>Default warehouse<select class="inline-input">${WAREHOUSES.map((w) => `<option>${esc(w.code)} · ${esc(w.name)}</option>`).join('')}</select></label>
     </div>
     <div class="panel-body"><p class="form-note">These are session defaults. They will live in Settings → Inventory when the settings module is expanded.</p></div></section>`;

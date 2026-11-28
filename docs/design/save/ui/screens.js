@@ -34,7 +34,21 @@ const ACCOUNT_GROUPS = [
   {id: 'expense-04', class: 'expense', code: '04', name: 'Impairment and tax', description: 'Impairment, tax expense and other', active: true},
   {id: 'expense-05', class: 'expense', code: '05', name: 'Purchase returns', description: 'Contra expense for returned purchases', active: true},
 ];
-const ACCOUNT_GROUP_MAP = {1000: 'Cash and bank', 1010: 'Cash and bank', 1020: 'Cash and bank', 1100: 'Receivables and advances', 1024: 'Receivables and advances', 1400: 'Receivables and advances', 1200: 'Inventory', 1300: 'Tax assets', 2100: 'Payables', 2150: 'Tax liabilities', 2200: 'Tax liabilities', 2210: 'Tax liabilities', 2300: 'Advances', 2400: 'Clearing', 3000: 'Capital and reserves', 3100: 'Capital and reserves', 4000: 'Sales — services', 4100: 'Sales returns', 5000: 'Operating expenses', 5100: 'Cost of sales', 5200: 'Purchase returns'};
+const ACCOUNT_GROUP_MAP = {
+  101001: 'Cash and bank', 101002: 'Cash and bank', 101003: 'Cash and bank',
+  102001: 'Receivables and advances', 102002: 'Receivables and advances', 102004: 'Receivables and advances', 102005: 'Receivables and advances', 102006: 'Receivables and advances',
+  103001: 'Inventory', 103002: 'Inventory', 103003: 'Inventory',
+  104001: 'Tax assets',
+  105001: 'Fixed assets — cost', 105002: 'Fixed assets — cost', 105003: 'Fixed assets — cost',
+  106001: 'Accumulated depreciation', 106002: 'Accumulated depreciation', 106003: 'Accumulated depreciation',
+  201001: 'Payables',
+  202001: 'Tax liabilities', 202002: 'Tax liabilities', 202005: 'Tax liabilities', 202006: 'Tax liabilities', 202007: 'Tax liabilities',
+  203001: 'Advances', 204001: 'Clearing', 205001: 'Clearing',
+  301001: 'Capital and reserves', 301002: 'Capital and reserves',
+  402001: 'Sales — services', 403001: 'Other income', 404001: 'Sales returns',
+  501001: 'Cost of sales', 502001: 'Operating expenses', 502002: 'Operating expenses',
+  503001: 'Tax expenses', 503002: 'Tax expenses', 504001: 'Depreciation', 504002: 'Overhead applied', 505001: 'Purchase returns',
+};
 function accountGroupFor(a) { return ACCOUNT_GROUP_MAP[a.code] || a.group || ''; }
 function nextGroupCode(cls) {
   const nums = ACCOUNT_GROUPS.filter((g) => g.class === cls).map((g) => Number(g.code) || 0);
@@ -42,6 +56,7 @@ function nextGroupCode(cls) {
 }
 const num = (v) => Number(String(v ?? '').replace(/[^0-9.-]/g, '')) || 0;
 const round2 = (n) => Math.round(n * 100) / 100;
+function todayISO() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
 const money = (n) => {
   const v = round2(Math.abs(Number(n) || 0));
   const s = v.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
@@ -126,12 +141,12 @@ const TAX_TABS = [
   ['adjustments', 'Tax entry'],
   ['defaults', 'Default accounts'],
 ];
-let TAX_DEFAULTS = {output: '2200', input: '1300', withholdingIncome: '2150', withholdingSales: '2210', advanceIncome: '1400', advanceSales: '1024', finalSales: '2220'};
+let TAX_DEFAULTS = {output: '202001', input: '104001', withholdingIncome: '202005', withholdingSales: '202002', advanceIncome: '102002', advanceSales: '102004', finalSales: '202006'};
 let TAX_DEFAULT_AUTHORITIES = {output: 'AUTH-FBR', input: 'AUTH-FBR', advance_income: 'AUTH-FBR', advance_sales: 'AUTH-SRB', withholding_income: 'AUTH-FBR', withholding_sales: 'AUTH-SRB', final_sales: 'AUTH-FBR'};
 const TAX_FIXTURE_AUTHORITIES = {...TAX_DEFAULT_AUTHORITIES};
 // Opening tax entries keep a healthy synthetic set of balances across all six
 // natures, with June and July activity so date-sensitive closing can be tested.
-const TAX_OPENING_ENTRIES = [
+const TAX_OPENING_BASE = [
   {id: 'OPEN-2026-06-OUT-1', date: '2026-06-10', party: 'Atlas Studio', kind: 'output', authority: 'AUTH-SRB', base: 200000, rate: 10, amount: 20000, period: '2026-06'},
   {id: 'OPEN-2026-06-OUT-2', date: '2026-06-20', party: 'Linden Design', kind: 'output', authority: 'AUTH-SRB', base: 140000, rate: 10, amount: 14000, period: '2026-06'},
   {id: 'OPEN-2026-06-IN-1', date: '2026-06-05', party: 'Willow Supplies', kind: 'input', authority: 'AUTH-SRB', base: 80000, rate: 10, amount: 8000, period: '2026-06'},
@@ -146,8 +161,57 @@ const TAX_OPENING_ENTRIES = [
   {id: 'OPEN-2026-07-ADVS-1', date: '2026-07-08', party: 'Atlas Studio', kind: 'advance_sales', authority: 'AUTH-SRB', base: 1000, rate: 'custom', amount: 1000, period: '2026-07'},
   {id: 'OPEN-2026-07-ADVI-1', date: '2026-07-09', party: 'Orion Logistics', kind: 'advance_income', authority: 'AUTH-FBR', base: 1000, rate: 'custom', amount: 1000, period: '2026-07'},
 ];
+// Additional monthly activity. SRB January-May is intentionally not seeded so the
+// owner's June 34,000 / 14,000 / 10,000 closing example stays a clean test. SRB
+// activity resumes in August; FBR and PRA cover every month January-November.
+const TAX_OPENING_SERIES = [
+  ['2026-01', 'AUTH-FBR', 12000, 4000, 1200, 600],
+  ['2026-02', 'AUTH-FBR', 15000, 5000, 1500, 750],
+  ['2026-03', 'AUTH-FBR', 18000, 6000, 1800, 900],
+  ['2026-04', 'AUTH-FBR', 20000, 7000, 2000, 1000],
+  ['2026-05', 'AUTH-FBR', 22000, 8000, 2200, 1100],
+  ['2026-06', 'AUTH-FBR', 24000, 8500, 2400, 1200],
+  ['2026-07', 'AUTH-FBR', 26000, 9500, 2600, 1300],
+  ['2026-08', 'AUTH-FBR', 25000, 9000, 2500, 1250],
+  ['2026-09', 'AUTH-FBR', 28000, 10000, 2800, 1400],
+  ['2026-10', 'AUTH-FBR', 30000, 11000, 3000, 1500],
+  ['2026-11', 'AUTH-FBR', 32000, 12000, 3200, 1600],
+  ['2026-01', 'AUTH-PRA', 9000, 3000, 900, 300],
+  ['2026-02', 'AUTH-PRA', 10000, 3500, 1000, 350],
+  ['2026-03', 'AUTH-PRA', 11000, 4000, 1100, 400],
+  ['2026-04', 'AUTH-PRA', 12000, 4500, 1200, 450],
+  ['2026-05', 'AUTH-PRA', 13000, 5000, 1300, 500],
+  ['2026-06', 'AUTH-PRA', 13500, 5200, 1350, 520],
+  ['2026-07', 'AUTH-PRA', 14000, 5500, 1400, 550],
+  ['2026-08', 'AUTH-PRA', 14000, 5500, 1400, 550],
+  ['2026-09', 'AUTH-PRA', 15000, 6000, 1500, 600],
+  ['2026-10', 'AUTH-PRA', 16000, 6500, 1600, 650],
+  ['2026-11', 'AUTH-PRA', 17000, 7000, 1700, 700],
+  ['2026-08', 'AUTH-SRB', 15000, 6000, 1500, 600],
+  ['2026-09', 'AUTH-SRB', 16000, 6500, 1600, 650],
+  ['2026-10', 'AUTH-SRB', 17000, 7000, 1700, 700],
+  ['2026-11', 'AUTH-SRB', 18000, 7500, 1800, 750],
+];
+const TAX_OPENING_ENTRIES = [
+  ...TAX_OPENING_BASE,
+  ...TAX_OPENING_SERIES.flatMap(([period, authority, outputTax, inputTax, advance, withholding], i) => {
+    const suffix = authority === 'AUTH-FBR' ? 'FBR' : authority === 'AUTH-PRA' ? 'PRA' : 'SRB';
+    const outputParty = ['Crescent Textiles', 'Falcon Chemicals', 'Indus Packaging'][i % 3];
+    const inputParty = ['Cedar Services', 'Pak Print House', 'Metro Office Supply'][i % 3];
+    const advanceKind = authority === 'AUTH-FBR' ? 'advance_income' : 'advance_sales';
+    const withholdingKind = authority === 'AUTH-FBR' ? 'withholding_income' : 'withholding_sales';
+    const advanceParty = authority === 'AUTH-FBR' ? 'Orion Logistics' : 'Atlas Studio';
+    const withholdingParty = authority === 'AUTH-FBR' ? 'Willow Supplies' : 'Maple Packaging';
+    return [
+      {id: `OPEN-${period}-${suffix}-OUT`, date: `${period}-05`, party: outputParty, kind: 'output', authority, base: outputTax * 10, rate: 10, amount: outputTax, period},
+      {id: `OPEN-${period}-${suffix}-IN`, date: `${period}-10`, party: inputParty, kind: 'input', authority, base: inputTax * 10, rate: 10, amount: inputTax, period},
+      {id: `OPEN-${period}-${suffix}-ADV`, date: `${period}-15`, party: advanceParty, kind: advanceKind, authority, base: advance, rate: 'custom', amount: advance, period},
+      {id: `OPEN-${period}-${suffix}-WHT`, date: `${period}-20`, party: withholdingParty, kind: withholdingKind, authority, base: withholding, rate: 'custom', amount: withholding, period},
+    ];
+  }),
+];
 
-let TAX_RULE_SEQ = 5;
+let TAX_RULE_SEQ = 9;
 let TAX_AFTER_DISCOUNT = true;
 const TAX_KINDS = [
   ['input', 'Input tax'],
@@ -158,15 +222,15 @@ const TAX_KINDS = [
   ['withholding_sales', 'Withholding — sales tax'],
 ];
 const TAX_AUTHORITY_KINDS = [...TAX_KINDS, ['final_sales', 'Final sales tax payable']];
-const TAX_CLOSING_ACCOUNTS = {finalPayable: '2220', finalReceivable: '1220', incomeTaxPayable: '2160', incomeTaxExpense: '5400'};
+const TAX_CLOSING_ACCOUNTS = {finalPayable: '202006', finalReceivable: '102006', incomeTaxPayable: '202007', incomeTaxExpense: '503001'};
 const TAX_NATURE_META = {
-  input: {defaultKey: 'input', side: 'asset', party: '2100', fallback: '1300'},
-  output: {defaultKey: 'output', side: 'liability', party: '1100', fallback: '2200'},
-  advance_income: {defaultKey: 'advanceIncome', side: 'asset', party: '1100', fallback: '1400'},
-  advance_sales: {defaultKey: 'advanceSales', side: 'asset', party: '1100', fallback: '1024'},
-  withholding_income: {defaultKey: 'withholdingIncome', side: 'liability', party: '2100', fallback: '2150'},
-  withholding_sales: {defaultKey: 'withholdingSales', side: 'liability', party: '2100', fallback: '2210'},
-  final_sales: {defaultKey: 'finalSales', side: 'liability', party: 'Unallocated', fallback: '2220'},
+  input: {defaultKey: 'input', side: 'asset', party: '201001', fallback: '104001'},
+  output: {defaultKey: 'output', side: 'liability', party: '102001', fallback: '202001'},
+  advance_income: {defaultKey: 'advanceIncome', side: 'asset', party: '102001', fallback: '102002'},
+  advance_sales: {defaultKey: 'advanceSales', side: 'asset', party: '102001', fallback: '102004'},
+  withholding_income: {defaultKey: 'withholdingIncome', side: 'liability', party: '201001', fallback: '202005'},
+  withholding_sales: {defaultKey: 'withholdingSales', side: 'liability', party: '201001', fallback: '202002'},
+  final_sales: {defaultKey: 'finalSales', side: 'liability', party: 'Unallocated', fallback: '202006'},
 };
 const TAX_AUTHORITIES = [
   {id: 'AUTH-FBR', name: 'FBR', registration: 'FBR-STRN-001', frequency: 'Monthly', kinds: ['input', 'output', 'advance_income', 'withholding_income', 'final_sales'], active: true},
@@ -174,8 +238,16 @@ const TAX_AUTHORITIES = [
   {id: 'AUTH-PRA', name: 'PRA — Punjab', registration: 'PRA-STRN-022', frequency: 'Monthly', kinds: ['input', 'output', 'advance_sales', 'withholding_sales', 'final_sales'], active: true},
 ];
 let TAX_AUTH_SEQ = 4;
-const TAX_ADJUSTMENTS = [];
-let TAX_ADJUSTMENT_SEQ = 1;
+const TAX_SAMPLE_ADJUSTMENTS = [
+  {id: 'ADJ-2026-0001', date: '2026-08-10', period: '2026-08', kind: 'input', authority: 'AUTH-PRA', party: 'Cedar Services', direction: 'decrease', amount: 300, offsetAccount: '503002', offsetSub: '', reason: 'Unclaimable input — PRA August'},
+  {id: 'ADJ-2026-0002', date: '2026-08-15', period: '2026-08', kind: 'output', authority: 'AUTH-FBR', party: 'Falcon Chemicals', direction: 'decrease', amount: 500, offsetAccount: '403001', offsetSub: '', reason: 'Credit note output difference'},
+  {id: 'ADJ-2026-0003', date: '2026-09-05', period: '2026-09', kind: 'advance_income', authority: 'AUTH-FBR', party: 'Orion Logistics', direction: 'decrease', amount: 200, offsetAccount: '503002', offsetSub: '', reason: 'Advance certificate difference'},
+  {id: 'ADJ-2026-0004', date: '2026-09-12', period: '2026-09', kind: 'advance_sales', authority: 'AUTH-PRA', party: 'Atlas Studio', direction: 'decrease', amount: 150, offsetAccount: '503002', offsetSub: '', reason: 'Advance sales not claimable'},
+  {id: 'ADJ-2026-0005', date: '2026-10-08', period: '2026-10', kind: 'withholding_income', authority: 'AUTH-FBR', party: 'Willow Supplies', direction: 'decrease', amount: 100, offsetAccount: '403001', offsetSub: '', reason: 'Withholding certificate correction'},
+  {id: 'ADJ-2026-0006', date: '2026-10-18', period: '2026-10', kind: 'withholding_sales', authority: 'AUTH-SRB', party: 'Maple Packaging', direction: 'decrease', amount: 80, offsetAccount: '403001', offsetSub: '', reason: 'Withholding sales difference'},
+];
+const TAX_ADJUSTMENTS = [...TAX_SAMPLE_ADJUSTMENTS];
+let TAX_ADJUSTMENT_SEQ = TAX_SAMPLE_ADJUSTMENTS.length + 1;
 const TAX_SETTLEMENTS = [];
 let TAX_SETTLEMENT_SEQ = 1;
 const TAX_CLOSINGS = [];
@@ -317,9 +389,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   };
   const total = (code, sign = 1) => round2(sign * accountBalance(code));
 
-  const AR = () => total('1100');
-  const AP = () => total('2100', -1);
-  const CASH = () => round2(total('1010') + total('1000') + total('1020'));
+  const AR = () => total('102001');
+  const AP = () => total('201001', -1);
+  const CASH = () => round2(total('101002') + total('101001') + total('101003'));
   const s = () => statements(fixture(getCompany()), range());
 
   /* --------------------------------------------------------------- dashboard */
@@ -327,7 +399,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const docs = fixture(getCompany()).filter((d) => d.date >= '2026-11-01' && d.date <= '2026-11-30');
     const byDay = new Map();
     for (const d of docs) {
-      const flow = d.lines.filter((l) => l.account === '1010' || l.account === '1000')
+      const flow = d.lines.filter((l) => l.account === '101002' || l.account === '101001')
         .reduce((n, l) => n + num(l.debit) - num(l.credit), 0);
       byDay.set(d.date, (byDay.get(d.date) || 0) + flow);
     }
@@ -1485,12 +1557,12 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       accounts: `<section class="panel">
         <div class="panel-head"><h2>Control accounts</h2><span class="badge">From chart flags</span></div>
         <form class="panel-body form-grid" data-settings-save="defaults">
-          <label>Trade receivables control<select name="ar" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '1100' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-          <label>Trade payables control<select name="ap" class="inline-input">${accounts().filter((a) => a.type === 'liability').map((a) => `<option value="${a.code}" ${a.code === '2100' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-          <label>Inventory account<select name="inventory" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '1200' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-          <label>Rounding / bank charges<select name="rounding" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === '6500' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Trade receivables control<select name="ar" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '102001' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Trade payables control<select name="ap" class="inline-input">${accounts().filter((a) => a.type === 'liability').map((a) => `<option value="${a.code}" ${a.code === '201001' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Inventory account<select name="inventory" class="inline-input">${accounts().filter((a) => a.type === 'asset').map((a) => `<option value="${a.code}" ${a.code === '103001' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Rounding / bank charges<select name="rounding" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === '502002' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
           <label>Default bank control<select name="bank" class="inline-input">${accounts().filter((a) => a.control === 'bank').map((a) => `<option value="${a.code}">${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-          <label>Default cash control<select name="cash" class="inline-input">${accounts().filter((a) => a.control === 'cash').map((a) => `<option value="${a.code}" ${a.code === '1000' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+          <label>Default cash control<select name="cash" class="inline-input">${accounts().filter((a) => a.control === 'cash').map((a) => `<option value="${a.code}" ${a.code === '101001' ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
           <div class="related"><button class="button primary">Save defaults</button></div>
         </form>
         <div class="panel-body"><p class="form-note">These are the general ledger controls: receivables, payables, inventory, rounding, bank and cash. Tax control accounts and authorities live in the <strong>Taxes</strong> module, so there is one source for each. A control account requires a party or sub-account on every line that uses it.</p></div>
@@ -1931,7 +2003,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         <input type="hidden" name="editingCode" value="${e(editingRow.code || '')}">
         <label>Sub-account no. (system)<input name="code" required readonly value="${e(v('code', nextCashCode()))}"><small class="secondary">Assigned in order, CB-0001, CB-0002, …</small></label>
         <label>Name<input name="name" required maxlength="70" value="${e(v('name'))}" placeholder="HBL — current 1234"></label>
-        <label>Control head<select name="control" class="inline-input" required>${controls.map((a) => `<option value="${a.code}" ${a.code === v('control', '1010') ? 'selected' : ''}>${a.code} · ${e(a.name)} (${a.control})</option>`).join('')}</select></label>
+        <label>Control head<select name="control" class="inline-input" required>${controls.map((a) => `<option value="${a.code}" ${a.code === v('control', '101002') ? 'selected' : ''}>${a.code} · ${e(a.name)} (${a.control})</option>`).join('')}</select></label>
         <label>Kind<select name="kind" class="inline-input"><option value="bank" ${v('kind') === 'bank' ? 'selected' : ''}>Bank</option><option value="cash" ${v('kind') === 'cash' ? 'selected' : ''}>Cash</option></select></label>
         <label>Bank name<input name="bank" maxlength="60" value="${e(v('bank'))}" placeholder="Habib Bank"></label>
         <label>Branch<input name="branch" maxlength="60" value="${e(v('branch'))}" placeholder="Clifton"></label>
@@ -1945,7 +2017,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
         ${ledgerIllustration('Illustrative opening entry', (() => {
           const opening = round2(Number(v('opening', '0')) || 0);
           if (!opening) return [];
-          return [{account: v('control', '1010'), party: v('name', 'Sub-account'), debit: opening, credit: 0}, {account: '3100', party: '', debit: 0, credit: opening}];
+          return [{account: v('control', '101002'), party: v('name', 'Sub-account'), debit: opening, credit: 0}, {account: '301002', party: '', debit: 0, credit: opening}];
         })(), 'Only recorded when an opening balance is entered; the control head and the sub-account move together.')}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add sub-account'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
@@ -2055,7 +2127,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   }
 
   /* ------------------------------------------------------------ parties */
-  function partyControl(type) { return type === 'customer' ? '1100' : '2100'; }
+  function partyControl(type) { return type === 'customer' ? '102001' : '201001'; }
   function nextPartyCode() {
     const nums = PARTIES.filter((p) => /^Party-\d+$/.test(p.code)).map((p) => Number(p.code.slice(6)) || 0);
     return 'Party-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(4, '0');
@@ -2068,8 +2140,8 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     const opening = round2(Number(party.opening) || 0);
     if (opening <= 0) return;
     const control = party.control || partyControl(party.type);
-    const debit = party.type === 'customer' ? control : '3100';
-    const credit = party.type === 'customer' ? '3100' : control;
+    const debit = party.type === 'customer' ? control : '301002';
+    const credit = party.type === 'customer' ? '301002' : control;
     EXTRA_JOURNALS.push({id: 'OB-' + party.code, date: '2026-07-01', subtype: 'Opening', project: '', location: 'HQ', party: party.name, partyType: party.type === 'customer' ? 'Customer' : 'Supplier', source: 'Opening balance', supplierRef: '', againstVoucher: '', lines: [
       {account: debit, debit: opening.toFixed(2), credit: '0.00', party: party.name, project: '', location: 'HQ', costCentre: ''},
       {account: credit, debit: '0.00', credit: opening.toFixed(2), party: '', project: '', location: 'HQ', costCentre: ''},
@@ -2190,9 +2262,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
           if (!opening) return [];
           const control = v('control', partyControl(v('type', 'customer')));
           return v('type', 'customer') === 'customer'
-            ? [{account: control, party: v('name', 'Party'), debit: opening, credit: 0}, {account: '3100', party: '', debit: 0, credit: opening}]
-            : [{account: '3100', party: '', debit: opening, credit: 0}, {account: control, party: v('name', 'Party'), debit: 0, credit: opening}];
-        })(), 'Only recorded when an opening balance is entered; it posts at the business start against 3100 Opening balance equity.')}
+            ? [{account: control, party: v('name', 'Party'), debit: opening, credit: 0}, {account: '301002', party: '', debit: 0, credit: opening}]
+            : [{account: '301002', party: '', debit: opening, credit: 0}, {account: control, party: v('name', 'Party'), debit: 0, credit: opening}];
+        })(), 'Only recorded when an opening balance is entered; it posts at the business start against 301002 Opening balance equity.')}
         <div class="related"><button class="button primary">${editingRow.code ? 'Save changes' : 'Add party'}</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
       </form>
       <div class="panel-body"><p class="form-note">A customer or supplier is a sub-account of its control account. The journal only offers a party where its account kind and its allowed projects and locations agree.</p>
@@ -2325,7 +2397,7 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   function openItems(party) {
     if (!party) return [];
     const isCustomer = party.type === 'customer';
-    const code = isCustomer ? '1100' : '2100';
+    const code = isCustomer ? '102001' : '201001';
     const docs = fixture(getCompany());
     return docs
       .filter((d) => d.party === party.name && (d.subtype === 'Invoice' || d.subtype === 'Bill'))
@@ -2346,9 +2418,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
       .sort((a, b) => a.date.localeCompare(b.date));
   }
   function paymentRows() {
-    const isReceipt = (d) => d.lines.some((l) => ['1010', '1000', '1020'].includes(l.account) && num(l.debit) > 0);
+    const isReceipt = (d) => d.lines.some((l) => ['101002', '101001', '101003'].includes(l.account) && num(l.debit) > 0);
     const fromFixture = fixture(getCompany()).filter((d) => d.source === 'Payment').map((d) => {
-      const bank = d.lines.find((l) => ['1010', '1000', '1020'].includes(l.account));
+      const bank = d.lines.find((l) => ['101002', '101001', '101003'].includes(l.account));
       const amount = round2(Math.abs(num(bank ? bank.debit : 0) - num(bank ? bank.credit : 0)));
       const account = bank ? bank.party || '' : '';
       return {id: d.id, date: d.date, party: d.party, account, amount, withheld: 0, net: amount, direction: isReceipt(d) ? 'receive' : 'pay', method: 'Bank transfer', against: d.againstVoucher || '', advanced: 0, allocations: d.againstVoucher ? [{id: d.againstVoucher, amount, method: 'bank', account}] : [], notes: d.narrative || '', tenders: [{method: 'bank', account, reference: d.againstVoucher || '', amount}], session: false};
@@ -2439,9 +2511,9 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
     if (total <= 0) return out;
     if (isReceipt) {
       Object.values(byAccount).forEach((x) => out.push({account: x.code, party: x.party, debit: x.amount, credit: 0}));
-      out.push({account: '1100', party, debit: 0, credit: total});
+      out.push({account: '102001', party, debit: 0, credit: total});
     } else {
-      out.push({account: '2100', party, debit: total, credit: 0});
+      out.push({account: '201001', party, debit: total, credit: 0});
       Object.values(byAccount).forEach((x) => out.push({account: x.code, party: x.party, debit: 0, credit: x.amount}));
     }
     return out;
@@ -2710,18 +2782,18 @@ export function createScreens({getCompany, range, navigate, notify, accounts, tr
   const invKey = (kind) => (kind === 'sales' ? 'sales' : 'purchase');
   const INV_DRAFT = {
     sales: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Service invoiced',
-      lines: [{item: '', account: '4000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance_income', rate: '', basis: 'net', custom: ''}], taxAuthority: '', stockMove: 'no', warehouse: 'HQ', advances: []},
+      lines: [{item: '', account: '402001', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'advance_income', rate: '', basis: 'net', custom: ''}], taxAuthority: '', stockMove: 'no', warehouse: 'HQ', advances: []},
     purchase: {party: '', date: '2026-11-30', due: '2026-12-30', terms: '30', reference: '', location: 'HQ', description: 'Supplier bill',
-      lines: [{item: '', account: '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'withholding_income', rate: '', basis: 'net', custom: ''}], taxAuthority: '', stockMove: 'no', warehouse: 'HQ', advances: []},
+      lines: [{item: '', account: '502001', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}], withholding: [{type: 'withholding_income', rate: '', basis: 'net', custom: ''}], taxAuthority: '', stockMove: 'no', warehouse: 'HQ', advances: []},
   };
   const INV_FILES = {sales: [], purchase: []};
 const STOCK_MOVES = [];
 const ITEM_ACCOUNT_RULES = [
-  {event: 'inventory', group: '', account: '1200'},
-  {event: 'cogs', group: '', account: '5100'},
-  {event: 'income', group: '', account: '4000'},
-  {event: 'expense', group: '', account: '5000'},
-  {event: 'clearing', group: '', account: '2400'},
+  {event: 'inventory', group: '', account: '103001'},
+  {event: 'cogs', group: '', account: '501001'},
+  {event: 'income', group: '', account: '402001'},
+  {event: 'expense', group: '', account: '502001'},
+  {event: 'clearing', group: '', account: '204001'},
 ];
   const PAY_FILES = [];
   if (!PAY_FORM.pay) PAY_FORM.pay = {enabled: false, lines: [{method: 'bank', account: '', amount: ''}]};
@@ -2827,7 +2899,7 @@ const ITEM_ACCOUNT_RULES = [
     }
     const wht = invoiceWhtTotal(withholding, totals);
     const due = invoiceNetDue(totals, withholding);
-    lines.push({account: isSales ? '1100' : '2100', party: draft.party, debit: isSales ? due : 0, credit: isSales ? 0 : due});
+    lines.push({account: isSales ? '102001' : '201001', party: draft.party, debit: isSales ? due : 0, credit: isSales ? 0 : due});
     const byWht = {};
     (withholding || []).forEach((w) => {
       if (!w.rate) return;
@@ -2852,18 +2924,18 @@ const ITEM_ACCOUNT_RULES = [
   function paidFor(kind, id) {
     const fromSession = PAYMENTS.reduce((n, p) => n + (p.allocations || []).filter((a) => a.id === id).reduce((m, a) => m + a.amount, 0), 0);
     const fromAdvance = round2(ADVANCE_APPLIED.filter((a) => a.docId === id).reduce((n, a) => n + Number(a.amount || 0), 0));
-    const control = kind === 'sales' ? '1100' : '2100';
+    const control = kind === 'sales' ? '102001' : '201001';
     const fromFixture = fixture(getCompany()).filter((d) => d.againstVoucher === id).reduce((n, d) => n + d.lines.filter((l) => l.account === control).reduce((m, l) => m + (kind === 'sales' ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0), 0);
     return round2(fromSession + fromFixture + fromAdvance);
   }
   function invoiceRows(kind) {
     const isSales = kind === 'sales';
-    const control = isSales ? '1100' : '2100';
+    const control = isSales ? '102001' : '201001';
     const fromFixture = fixture(getCompany())
       .filter((d) => (isSales ? d.subtype === 'Invoice' : d.subtype === 'Bill'))
       .map((d) => {
         const net = round2(d.lines.filter((l) => (isSales ? String(l.account).startsWith('4') : String(l.account).startsWith('5'))).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
-        const tax = round2(d.lines.filter((l) => l.account === (isSales ? '2200' : '1300')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
+        const tax = round2(d.lines.filter((l) => l.account === (isSales ? '202001' : '104001')).reduce((n, l) => n + (isSales ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
         const gross = round2(d.lines.filter((l) => l.account === control).reduce((n, l) => n + (isSales ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit)), 0));
         const due = new Date(new Date(d.date + 'T00:00:00Z').getTime() + 30 * 86400000).toISOString().slice(0, 10);
         const byAccount = {};
@@ -2900,7 +2972,7 @@ const ITEM_ACCOUNT_RULES = [
     const whtTotal = invoiceWhtTotal(withholding, totals);
     const netDue = invoiceNetDue(totals, withholding);
     const parties = PARTIES.filter((p) => (isSales ? p.type === 'customer' : p.type === 'supplier'));
-    const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : (a.type === 'expense' || a.code === '2400' || a.code === '1200' || a.subtype === 'clearing')));
+    const incomeAccounts = accounts().filter((a) => (isSales ? a.type === 'income' : (a.type === 'expense' || a.code === '204001' || a.code === '103001' || a.subtype === 'clearing')));
     const taxKind = isSales ? 'output' : 'input';
     const taxAuthority = (draft && draft.taxAuthority) || TAX_DEFAULT_AUTHORITIES[taxKind] || '';
     const taxAuthorityOptions = TAX_AUTHORITIES.filter((a) => authorityHas(a, taxKind) && a.active !== false);
@@ -2955,7 +3027,7 @@ const ITEM_ACCOUNT_RULES = [
     const stockEntry = draft && draft.stockMove === 'yes' && stockValue
       ? (isSales
         ? [{account: itemAccountFor('cogs'), party: '', debit: stockValue, credit: 0}, {account: itemAccountFor('inventory'), party: '', debit: 0, credit: stockValue}]
-        : [{account: itemAccountFor('inventory'), party: '', debit: stockValue, credit: 0}, {account: itemAccountFor('clearing') || '2400', party: '', debit: 0, credit: stockValue}])
+        : [{account: itemAccountFor('inventory'), party: '', debit: stockValue, credit: 0}, {account: itemAccountFor('clearing') || '204001', party: '', debit: 0, credit: stockValue}])
       : [];
     return `<section class="panel">
       <div class="panel-head"><h2>${source ? e(source.id) : isSales ? 'Sales invoice' : 'Purchase bill'}</h2><div class="related">${locked ? '<span class="badge good">Posted · read-only</span>' : `<span class="badge" data-inv-badge>${isSales ? 'Receivable' : 'Payable'} ${money(netDue)}</span>`}
@@ -3014,7 +3086,7 @@ const ITEM_ACCOUNT_RULES = [
         <div class="panel-body form-grid">${evidenceSection('invoice-' + kind, INV_FILES[kind])}${ledgerIllustration(isSales ? 'Illustrative invoice entry on save' : 'Illustrative bill entry on save', entry, isSales ? 'Receivable carries the net due after customer withholding; tax and advance tax sit in their own accounts.' : 'Payable carries the net due after withholding; input tax and withholding payable sit in their own accounts.')}
           ${INV_PAY[kind] && tenderTotal > 0 ? ledgerIllustration(isSales ? 'Illustrative receipt voucher' : 'Illustrative payment voucher', paymentEntryLines(isSales ? 'receive' : 'pay', draft ? draft.party : '', tenders.map((t) => ({account: t.account, amount: t.amount}))), `Creates ${nextDocNumber(isSales ? 'receipt' : 'payment', draft ? draft.date : '2026-11-30')} as a separate document.${tenderTotal > netDue ? ` Total received exceeds the net due by ${money(round2(tenderTotal - netDue))}; the excess is kept as an advance and is not part of this entry.` : ''}`) : ''}
           ${stockEntry.length ? ledgerIllustration(isSales ? 'Illustrative inventory issue' : 'Illustrative inventory receipt', stockEntry, isSales ? 'Goods issued at cost: cost of sales against inventory, using the item default accounts. This is the cost side of the sale; the invoice line carries the revenue.' : 'Goods received at the amount after discount and before sales tax: inventory against goods received clearing, using the item default accounts. The bill itself debits clearing, so the clearing account nets out.') : ''}
-          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '2300', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1100', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '2100', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '1250', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div>
+          ${advanceApplied > 0 ? ledgerIllustration('Illustrative advance application', isSales ? [{account: '203001', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '102001', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}] : [{account: '201001', party: draft ? draft.party : '', debit: advanceApplied, credit: 0}, {account: '102005', party: draft ? draft.party : '', debit: 0, credit: advanceApplied}], 'Applying an advance moves value already received or paid onto this document; it does not create a new cash movement.') : ''}</div>
         <div class="panel-body"><div class="related"><button type="button" class="button primary" data-inv-save>Save for this session</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">A saved document is numbered in the session series and appears in the register; no ledger entry is written in this build.</p></div>
       </form>`}
@@ -3040,7 +3112,7 @@ const ITEM_ACCOUNT_RULES = [
     const value = round2(tracked.reduce((n, l) => n + invLineNet(l), 0));
     const entry = isSales
       ? [{account: itemAccountFor('cogs'), party: '', debit: value, credit: 0}, {account: itemAccountFor('inventory'), party: '', debit: 0, credit: value}]
-      : [{account: itemAccountFor('inventory'), party: '', debit: value, credit: 0}, {account: itemAccountFor('clearing') || '2400', party: '', debit: 0, credit: value}];
+      : [{account: itemAccountFor('inventory'), party: '', debit: value, credit: 0}, {account: itemAccountFor('clearing') || '204001', party: '', debit: 0, credit: value}];
     return `<section class="panel">
       <div class="panel-head"><h2>${isSales ? 'Goods issue' : 'Goods receipt'} · ${e(inv.id)}</h2><span class="badge">Separate stock voucher</span></div>
       <form data-stock-form="${kind}"><input type="hidden" name="invoice" value="${e(inv.id)}">
@@ -3201,12 +3273,12 @@ const ITEM_ACCOUNT_RULES = [
           <div class="panel-body form-grid">${(() => {
             const retAuthority = (TAX_AUTHORITIES.find((a) => a.id === selected.taxAuthority) || defaultAuthorityFor(isSales ? 'output' : 'input')).name;
             const entry = isSales
-              ? [{account: '4100', party: '', debit: totals.net, credit: 0}, {account: TAX_DEFAULTS.output, party: '', authority: retAuthority, debit: totals.tax, credit: 0}, {account: '1100', party: selected.party, debit: 0, credit: totals.gross}]
+              ? [{account: '404001', party: '', debit: totals.net, credit: 0}, {account: TAX_DEFAULTS.output, party: '', authority: retAuthority, debit: totals.tax, credit: 0}, {account: '102001', party: selected.party, debit: 0, credit: totals.gross}]
               : (() => {
                 const trackedNet = round2(lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked).reduce((n, l) => n + retLineCalc(l).net, 0));
                 const otherNet = round2(totals.net - trackedNet);
-                const rows = [{account: '2100', party: selected.party, debit: totals.gross, credit: 0}, {account: TAX_DEFAULTS.input, party: '', authority: retAuthority, debit: 0, credit: totals.tax}];
-                if (otherNet) rows.push({account: '5200', party: '', debit: 0, credit: otherNet});
+                const rows = [{account: '201001', party: selected.party, debit: totals.gross, credit: 0}, {account: TAX_DEFAULTS.input, party: '', authority: retAuthority, debit: 0, credit: totals.tax}];
+                if (otherNet) rows.push({account: '505001', party: '', debit: 0, credit: otherNet});
                 if (trackedNet) rows.push({account: itemAccountFor('inventory'), party: '', debit: 0, credit: trackedNet});
                 return rows;
               })();
@@ -3217,7 +3289,7 @@ const ITEM_ACCOUNT_RULES = [
             if (!isSales) return '';
             const tracked = lines.filter((l) => (ITEMS.find((i) => i.code === l.item) || {}).tracked);
             const invValue = round2(tracked.reduce((n, l) => n + retLineCalc(l).net, 0));
-            return invValue ? ledgerIllustration('Illustrative inventory reversal', [{account: '1200', party: '', debit: invValue, credit: 0}, {account: '5100', party: '', debit: 0, credit: invValue}], 'Returned goods come back into inventory at their cost, reversing cost of sales.') : '';
+            return invValue ? ledgerIllustration('Illustrative inventory reversal', [{account: '103001', party: '', debit: invValue, credit: 0}, {account: '501001', party: '', debit: 0, credit: invValue}], 'Returned goods come back into inventory at their cost, reversing cost of sales.') : '';
           })()}</div>` : '<div class="panel-body"><p class="form-note">Choose the original document first; its complete line detail then appears here.</p></div>'}
         <div class="panel-body"><div class="related"><button class="button primary" ${selected ? '' : 'disabled'}>Save return</button><button type="button" class="button" data-form-cancel>Cancel</button></div>
           <p class="form-note">A return keeps the original document and reduces its balance. It is numbered in the return series. Inventory cost and refund posting are recorded as session data in this build; nothing posts to the ledger.</p></div>
@@ -3433,7 +3505,7 @@ const ITEM_ACCOUNT_RULES = [
           const i = Number(tr.dataset.invLine);
           const item = ITEMS.find((x) => x.code === before.lines[i].item);
           if (item) {
-            before.lines[i].account = kind === 'sales' ? (itemAccountFor('income', item) || item.income) : (item.tracked ? (itemAccountFor('clearing', item) || '2400') : (itemAccountFor('expense', item) || item.expense));
+            before.lines[i].account = kind === 'sales' ? (itemAccountFor('income', item) || item.income) : (item.tracked ? (itemAccountFor('clearing', item) || '204001') : (itemAccountFor('expense', item) || item.expense));
             const rate = invTaxRateFor(item.code, kind);
             if (rate !== '') before.lines[i].tax = rate;
             const rule = defaultWhtRule(item.code, kind);
@@ -3457,13 +3529,13 @@ const ITEM_ACCOUNT_RULES = [
       });
       root.querySelector('[data-inv-add-line]')?.addEventListener('click', () => {
         const d = captureInvoice(kind, root);
-        d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'});
+        d.lines.push({item: '', account: kind === 'sales' ? '402001' : '502001', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'});
         rerender();
       });
       root.querySelectorAll('[data-inv-line-remove]').forEach((b) => b.addEventListener('click', () => {
         const d = captureInvoice(kind, root);
         d.lines.splice(Number(b.dataset.invLineRemove), 1);
-        if (!d.lines.length) d.lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'});
+        if (!d.lines.length) d.lines.push({item: '', account: kind === 'sales' ? '402001' : '502001', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'});
         rerender();
       }));
       root.querySelector('[data-inv-add-wht]')?.addEventListener('click', () => {
@@ -3586,7 +3658,7 @@ const ITEM_ACCOUNT_RULES = [
         }
         INV_FILES[kind] = [];
         INV_DRAFT[invKey(kind)] = {...INV_DRAFT[invKey(kind)], party: '', description: kind === 'sales' ? 'Service invoiced' : 'Supplier bill',
-          lines: [{item: '', account: kind === 'sales' ? '4000' : '5000', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}],
+          lines: [{item: '', account: kind === 'sales' ? '402001' : '502001', project: '', qty: '1', price: '0.00', discountType: '', discountValue: '', tax: '10'}],
           withholding: [{type: kind === 'sales' ? 'advance_income' : 'withholding_income', rate: '', basis: 'net', custom: ''}], advances: [], taxAuthority: '', stockMove: 'no', warehouse: 'HQ'};
         goBack();
       });
@@ -3649,7 +3721,7 @@ const ITEM_ACCOUNT_RULES = [
     });
     retForm?.querySelector('[data-ret-add]')?.addEventListener('click', () => {
       captureRet();
-      RET_DRAFT[kind].lines.push({item: '', account: kind === 'sales' ? '4000' : '5000', qty: '1', returnQty: '1', price: '0.00', tax: '0', added: true});
+      RET_DRAFT[kind].lines.push({item: '', account: kind === 'sales' ? '402001' : '502001', qty: '1', returnQty: '1', price: '0.00', tax: '0', added: true});
       rerender();
     });
     retForm?.querySelectorAll('[data-ret-remove]').forEach((b) => b.addEventListener('click', () => {
@@ -3710,7 +3782,7 @@ const ITEM_ACCOUNT_RULES = [
     </section>`;
   }
   function bindItemDefaults(rerender, notify) {
-    document.querySelector('[data-rule-add]')?.addEventListener('click', () => { ITEM_ACCOUNT_RULES.push({event: 'inventory', group: '', account: '1200'}); rerender(); });
+    document.querySelector('[data-rule-add]')?.addEventListener('click', () => { ITEM_ACCOUNT_RULES.push({event: 'inventory', group: '', account: '103001'}); rerender(); });
     document.querySelectorAll('[data-rule-remove]').forEach((b) => b.addEventListener('click', () => { ITEM_ACCOUNT_RULES.splice(Number(b.dataset.ruleRemove), 1); rerender(); }));
     document.querySelector('[data-rule-save]')?.addEventListener('click', () => {
       document.querySelectorAll('[data-item-rule]').forEach((tr, i) => { ITEM_ACCOUNT_RULES[i] = {event: tr.querySelector('[data-rule-field="event"]').value, group: tr.querySelector('[data-rule-field="group"]').value, account: tr.querySelector('[data-rule-field="account"]').value}; });
@@ -3758,8 +3830,8 @@ const ITEM_ACCOUNT_RULES = [
         <label>Group<input name="group" maxlength="30" value="${e(v('group'))}" placeholder="Packaging"></label>
         <label>Unit<input name="unit" required maxlength="10" value="${e(v('unit', 'piece'))}"></label>
         <label class="wide">Description<input name="description" maxlength="120" value="${e(v('description'))}" placeholder="What the item is; prints on documents"></label>
-        <label>Income head<select name="income" class="inline-input">${accounts().filter((a) => a.type === 'income').map((a) => `<option value="${a.code}" ${a.code === v('income', '4000') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
-        <label>Expense head<select name="expense" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === v('expense', '5000') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+        <label>Income head<select name="income" class="inline-input">${accounts().filter((a) => a.type === 'income').map((a) => `<option value="${a.code}" ${a.code === v('income', '402001') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
+        <label>Expense head<select name="expense" class="inline-input">${accounts().filter((a) => a.type === 'expense').map((a) => `<option value="${a.code}" ${a.code === v('expense', '502001') ? 'selected' : ''}>${a.code} · ${e(a.name)}</option>`).join('')}</select></label>
         <label>Sales tax default<select name="salesTax" class="inline-input"><option value="">No tax</option>${TAX_RULES.filter((r) => r.kind === 'output').map((r) => `<option value="${r.code}" ${r.code === v('salesTax', v('tax')) ? 'selected' : ''}>${e(r.name)} · ${r.rate}%</option>`).join('')}</select></label>
         <label>Purchase tax default<select name="purchaseTax" class="inline-input"><option value="">No tax</option>${TAX_RULES.filter((r) => r.kind === 'input').map((r) => `<option value="${r.code}" ${r.code === v('purchaseTax', v('tax')) ? 'selected' : ''}>${e(r.name)} · ${r.rate}%</option>`).join('')}</select></label>
         <label>Stock<select name="tracked" class="inline-input"><option value="no" ${v('tracked') ? '' : 'selected'}>Service or untracked</option><option value="yes" ${v('tracked') ? 'selected' : ''}>Tracked in Inventory</option></select></label>
@@ -3802,7 +3874,7 @@ const ITEM_ACCOUNT_RULES = [
   /* -------------------------------------------------------------- taxes */
   function taxRule(code) { return TAX_RULES.find((r) => r.code === code) || {}; }
   function taxLinesOf(kind) {
-    const acc = kind === 'sales' ? '2200' : '1300';
+    const acc = kind === 'sales' ? '202001' : '104001';
     const out = [];
     for (const d of fixture(getCompany())) {
       const tax = d.lines.filter((l) => l.account === acc);
@@ -4079,15 +4151,15 @@ const ITEM_ACCOUNT_RULES = [
     const code = sub ? sub.control : account;
     if (!amt || !code) return [];
     return direction === 'receive'
-      ? [{account: code, party: sub ? sub.name : '', debit: amt, credit: 0}, {account: '2300', party, debit: 0, credit: amt}]
-      : [{account: '1250', party, debit: amt, credit: 0}, {account: code, party: sub ? sub.name : '', debit: 0, credit: amt}];
+      ? [{account: code, party: sub ? sub.name : '', debit: amt, credit: 0}, {account: '203001', party, debit: 0, credit: amt}]
+      : [{account: '102005', party, debit: amt, credit: 0}, {account: code, party: sub ? sub.name : '', debit: 0, credit: amt}];
   }
   function advanceApplicationLines(advance, amount) {
     const amt = round2(Number(amount) || 0);
     if (!advance || !amt) return [];
     return advance.direction === 'receive'
-      ? [{account: '2300', party: advance.party, debit: amt, credit: 0}, {account: '1100', party: advance.party, debit: 0, credit: amt}]
-      : [{account: '2100', party: advance.party, debit: amt, credit: 0}, {account: '1250', party: advance.party, debit: 0, credit: amt}];
+      ? [{account: '203001', party: advance.party, debit: amt, credit: 0}, {account: '102001', party: advance.party, debit: 0, credit: amt}]
+      : [{account: '201001', party: advance.party, debit: amt, credit: 0}, {account: '102005', party: advance.party, debit: 0, credit: amt}];
   }
   function advancesView() {
     const tab = ADV_TAB === 'transactions' ? 'transactions' : 'balances';
@@ -4328,7 +4400,7 @@ const ITEM_ACCOUNT_RULES = [
   function taxNatureMeta(kind) { return TAX_NATURE_META[kind] || TAX_NATURE_META.input; }
   function taxControlAccount(kind) { const meta = taxNatureMeta(kind); return TAX_DEFAULTS[meta.defaultKey] || meta.fallback; }
   function suggestedOffsetAccount(kind) {
-    return taxNatureMeta(kind).side === 'asset' ? '5300' : '4200';
+    return taxNatureMeta(kind).side === 'asset' ? '503002' : '403001';
   }
   function legacyOffsetAccount(record) {
     return record.offsetAccount || (record.offset === 'party' ? taxNatureMeta(record.kind).party : suggestedOffsetAccount(record.kind));
@@ -4432,6 +4504,11 @@ const ITEM_ACCOUNT_RULES = [
   function buildSalesClosing(authorityId, effectiveDate, filedOn, reference, reason, settleNow, bankAccount) {
     const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
     if (!auth || ['input', 'output', 'advance_sales', 'final_sales'].some((kind) => !authorityHas(auth, kind))) return {error: 'Choose a sales tax authority assigned to input, output, advance sales and final sales payable.'};
+    if (!effectiveDate) return {error: 'Choose the period-end date.'};
+    if (effectiveDate > todayISO()) return {error: 'The period-end date cannot be in the future.'};
+    if (!filedOn) return {error: 'Choose the filed-on date.'};
+    if (filedOn < effectiveDate) return {error: 'Filed-on date cannot be before the period-end date. Choose the date the period actually ended.'};
+    if (filedOn > todayISO()) return {error: 'The filed-on date cannot be in the future.'};
     const inputOpen = openTotal('input', authorityId, effectiveDate);
     const outputOpen = openTotal('output', authorityId, effectiveDate);
     const advanceOpen = openTotal('advance_sales', authorityId, effectiveDate);
@@ -4471,6 +4548,8 @@ const ITEM_ACCOUNT_RULES = [
   function buildWithholdingClosing(nature, authorityId, effectiveDate, amount, bankAccount, reason) {
     const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
     if (!auth || !authorityHas(auth, nature)) return {error: 'Choose an authority assigned to that withholding nature.'};
+    if (!effectiveDate) return {error: 'Choose the payment date.'};
+    if (effectiveDate > todayISO()) return {error: 'The payment date cannot be in the future.'};
     if (!bankControlFor(bankAccount)) return {error: 'Choose a valid bank or cash sub-account.'};
     const open = openTaxEntries(nature, authorityId, [], [], effectiveDate);
     const openSum = round2(open.reduce((n, e) => n + e.open, 0));
@@ -4491,6 +4570,8 @@ const ITEM_ACCOUNT_RULES = [
   function buildFinalSalesPayment(authorityId, effectiveDate, amount, bankAccount) {
     const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
     if (!auth || !authorityHas(auth, 'final_sales')) return {error: 'Choose an authority assigned to final sales tax payable.'};
+    if (!effectiveDate) return {error: 'Choose the payment date.'};
+    if (effectiveDate > todayISO()) return {error: 'The payment date cannot be in the future.'};
     if (!bankControlFor(bankAccount)) return {error: 'Choose a valid bank or cash sub-account.'};
     const open = openTaxEntries('final_sales', authorityId, [], [], effectiveDate);
     const openSum = round2(open.reduce((n, e) => n + e.open, 0));
@@ -4508,9 +4589,14 @@ const ITEM_ACCOUNT_RULES = [
     ];
     return {total, amount: target, allocations, entry};
   }
-  function buildIncomeTaxClosing(authorityId, effectiveDate, amount, targetAccount, reason) {
+  function buildIncomeTaxClosing(authorityId, effectiveDate, amount, targetAccount, reason, filedOn) {
     const auth = TAX_AUTHORITIES.find((a) => a.id === authorityId);
     if (!auth || !authorityHas(auth, 'advance_income')) return {error: 'Choose an authority assigned to advance income tax.'};
+    if (!effectiveDate) return {error: 'Choose the period-end date.'};
+    if (effectiveDate > todayISO()) return {error: 'The period-end date cannot be in the future.'};
+    if (!filedOn) return {error: 'Choose the filed-on date.'};
+    if (filedOn < effectiveDate) return {error: 'Filed-on date cannot be before the period-end date. Choose the date the period actually ended.'};
+    if (filedOn > todayISO()) return {error: 'The filed-on date cannot be in the future.'};
     const targetAccountDef = accounts().find((a) => a.code === targetAccount && a.active !== false && a.subtype !== 'tax');
     if (!targetAccountDef) return {error: 'Choose a valid non-tax income tax account.'};
     const open = openTaxEntries('advance_income', authorityId, [], [], effectiveDate);
@@ -4616,12 +4702,12 @@ const ITEM_ACCOUNT_RULES = [
       const sale = d.subtype === 'Invoice';
       const kind = sale ? 'output' : 'input';
       const authority = TAX_AUTHORITIES.find((a) => a.id === TAX_FIXTURE_AUTHORITIES[kind]) || defaultAuthorityFor(kind);
-      const taxLine = d.lines.find((l) => l.account === (sale ? '2200' : '1300'));
+      const taxLine = d.lines.find((l) => l.account === (sale ? '202001' : '104001'));
       const base = round2(d.lines.filter((l) => (sale ? String(l.account).startsWith('4') : String(l.account).startsWith('5'))).reduce((n, l) => n + (sale ? num(l.credit) - num(l.debit) : num(l.debit) - num(l.credit)), 0));
       const amount = round2(taxLine ? (sale ? num(taxLine.credit) - num(taxLine.debit) : num(taxLine.debit) - num(taxLine.credit)) : 0);
       if (amount) entries.push({id: 'TE-' + d.id, date: d.date, document: d.id, docKind: sale ? 'sales' : 'purchase', party: d.party, kind, authority: authority.id, authorityName: authority.name, base, rate: base ? round2(amount / base * 100) : 0, amount, period: d.date.slice(0, 7)});
       d.lines.forEach((l, i) => {
-        const map = {'1400': 'advance_income', '1024': 'advance_sales', '2150': 'withholding_income', '2210': 'withholding_sales'};
+        const map = {'102002': 'advance_income', '102004': 'advance_sales', '202005': 'withholding_income', '202002': 'withholding_sales'};
         if (!map[l.account]) return;
         const amt = round2(sale ? num(l.debit) - num(l.credit) : num(l.credit) - num(l.debit));
         if (!amt) return;
@@ -4862,7 +4948,7 @@ const ITEM_ACCOUNT_RULES = [
             <label>Party<select name="adjParty" class="inline-input"><option value="">Choose party</option><option value="__unallocated__">Unallocated — authority-level difference</option>${PARTIES.map((p) => `<option value="${e(p.name)}">${e(p.name)} · ${e(p.code)}</option>`).join('')}</select></label>
             <label>Direction<select name="adjDirection" class="inline-input"><option value="decrease">Decrease the tax balance</option><option value="increase">Increase the tax balance</option></select></label>
             <label>Amount<input name="adjAmount" inputmode="decimal" placeholder="0.00"></label>
-            <label>Offset account<select name="adjOffset" class="inline-input">${accountOptions('5300')}</select></label>
+            <label>Offset account<select name="adjOffset" class="inline-input">${accountOptions('503002')}</select></label>
             <label class="wide" data-adj-sub-wrap hidden>Bank / cash sub-account<select name="adjOffsetSub" class="inline-input">${bankOptions}</select></label>
           </div>
         </div>
@@ -4882,14 +4968,14 @@ const ITEM_ACCOUNT_RULES = [
           <div class="form-grid">
             <label>Closing kind<select name="closeKind" class="inline-input"><option value="sales-return">Sales tax return closing</option><option value="final-payment">Final sales tax payment</option><option value="income-tax">Income tax closing</option></select></label>
             <label>Authority<select name="closeAuthority" class="inline-input">${authorityOptions('AUTH-SRB')}</select></label>
-            <label>Period end / effective date<input name="periodEnd" type="date" value="2026-06-30" required></label>
-            <label>Filed on<input name="filedOn" type="date" value="2026-07-05"></label>
+            <label>Period end / effective date<input name="periodEnd" type="date" value="2026-06-30" max="${todayISO()}" required></label>
+            <label>Filed on<input name="filedOn" type="date" value="2026-07-05" max="${todayISO()}"></label>
             <label>Reference<input name="closeReference" maxlength="60" placeholder="Return / acknowledgement"></label>
             <label data-close-amount-wrap hidden>Amount<input name="closeAmount" inputmode="decimal" placeholder="Blank = all open"></label>
             <label data-close-target-wrap hidden>Income tax account<select name="closeTarget" class="inline-input">${accountOptions(TAX_CLOSING_ACCOUNTS.incomeTaxPayable)}</select></label>
             <label data-close-bank-wrap>Bank / cash<select name="closeBank" class="inline-input">${bankOptions}</select></label>
             <div class="wide" data-close-pay-wrap><span class="ms-label">Sales tax return payment</span><label class="checkgrid-row"><input type="checkbox" name="closeSettleNow"> Pay the final balance now from the selected bank / cash</label></div>
-            <p class="wide form-note" data-close-note>Sales tax return closes all open input, output and advance sales up to the period end and transfers the net to Final sales tax payable.</p>
+            <p class="wide form-note" data-close-note>Sales tax return closes all open input, output and advance sales up to the period end and transfers the net to Final sales tax payable. Filed-on must be on or after the period end and cannot be in the future.</p>
           </div>
         </div>
 
@@ -5090,6 +5176,13 @@ const ITEM_ACCOUNT_RULES = [
         const kind = closeKind.value;
         const sales = kind === 'sales-return';
         const income = kind === 'income-tax';
+        const periodEndInput = $('periodEnd');
+        const filedOnInput = $('filedOn');
+        if (periodEndInput) periodEndInput.max = todayISO();
+        if (filedOnInput) {
+          filedOnInput.max = todayISO();
+          filedOnInput.min = periodEndInput && periodEndInput.value ? periodEndInput.value : '';
+        }
         closeAmountWrap.hidden = sales;
         closeTargetWrap.hidden = !income;
         closePayWrap.hidden = !sales;
@@ -5113,7 +5206,7 @@ const ITEM_ACCOUNT_RULES = [
         authority.dispatchEvent(new Event('change', {bubbles: true}));
         const offset = $('adjOffset');
         const nextOffset = suggestedOffsetAccount(kind);
-        if ((!offset.value || offset.value === '5300' || offset.value === '4200') && offset.value !== nextOffset) {
+        if ((!offset.value || offset.value === '503002' || offset.value === '403001') && offset.value !== nextOffset) {
           offset.value = nextOffset;
           offset.dispatchEvent(new Event('change', {bubbles: true}));
         }
@@ -5161,7 +5254,7 @@ const ITEM_ACCOUNT_RULES = [
             else chunks.push(ledgerIllustration('Illustrative final sales payment', built.entry, `Pays ${money(built.amount)} of final sales tax payable for ${(TAX_AUTHORITIES.find((a) => a.id === v.closeAuthority) || {}).name || '—'} from ${v.closeBank}.`));
           } else {
             if (!v.filedOn) { notify('Choose the filed-on date.'); return; }
-        const built = buildIncomeTaxClosing(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeTarget, v.reason);
+        const built = buildIncomeTaxClosing(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeTarget, v.reason, v.filedOn);
             if (built.error) chunks.push(ledgerIllustration('Illustrative income tax closing', [], built.error));
             else chunks.push(ledgerIllustration('Illustrative income tax closing', built.entry, `Applies ${money(built.amount)} of advance income tax to ${taxOffsetAccountLabel(v.closeTarget)}; the remaining advance carries forward.`));
           }
@@ -5179,6 +5272,7 @@ const ITEM_ACCOUNT_RULES = [
           syncClosing();
         }
         if (ev.target === settleNow) syncClosing();
+        if (ev.target === $('periodEnd')) syncClosing();
         if (ev.target === $('whtKind')) $('whtAuthority').value = $('whtKind').value === 'withholding_income' ? 'AUTH-FBR' : 'AUTH-SRB';
         preview();
       });
@@ -5190,10 +5284,17 @@ const ITEM_ACCOUNT_RULES = [
       entryForm.querySelector('[data-form-cancel]')?.addEventListener('click', goAdjustments);
       entryForm.addEventListener('submit', (ev) => {
         ev.preventDefault();
-        if (!entryForm.reportValidity()) return;
         const v = Object.fromEntries(new FormData(entryForm));
         const type = v.entryType;
+        if (type === 'closing') {
+          if (v.periodEnd && v.periodEnd > todayISO()) { notify('The period-end date cannot be in the future.'); return; }
+          if (v.filedOn && v.periodEnd && v.filedOn < v.periodEnd) { notify('Filed-on date cannot be before the period-end date. Choose the date the period actually ended.'); return; }
+          if (v.filedOn && v.filedOn > todayISO()) { notify('The filed-on date cannot be in the future.'); return; }
+        }
+        if (type === 'withholding' && v.date > todayISO()) { notify('The payment date cannot be in the future.'); return; }
+        if (!entryForm.reportValidity()) return;
         if (type === 'adjustment') {
+          if (v.date > todayISO()) { notify('The adjustment date cannot be in the future.'); return; }
           const amount = round2(Number(v.adjAmount) || 0);
           if (amount <= 0) { notify('Enter the adjustment amount.'); return; }
           if (!v.adjParty) { notify('Choose the adjustment party or Unallocated.'); return; }
@@ -5249,7 +5350,7 @@ const ITEM_ACCOUNT_RULES = [
           return;
         }
         if (!v.filedOn) { notify('Choose the filed-on date.'); return; }
-        const built = buildIncomeTaxClosing(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeTarget, v.reason);
+        const built = buildIncomeTaxClosing(v.closeAuthority, v.periodEnd, v.closeAmount, v.closeTarget, v.reason, v.filedOn);
         if (built.error) { notify(built.error); return; }
         const id = 'CLS-2026-' + String(TAX_CLOSING_SEQ++).padStart(4, '0');
         TAX_CLOSINGS.push({id, kind: 'income-tax', authority: v.closeAuthority, effectiveDate: v.periodEnd, filedOn: v.filedOn, reference: v.closeReference, amount: built.amount, targetAccount: v.closeTarget, allocations: built.allocations, entry: built.entry, reason: v.reason});
@@ -5379,7 +5480,7 @@ const ITEM_ACCOUNT_RULES = [
   }
 
   function reportCashflow() {
-    const cashAcc = new Set(['1010', '1000', '1020']);
+    const cashAcc = new Set(['101002', '101001', '101003']);
     const docs = fixture(getCompany());
     let opening = 0, inflow = 0, outflow = 0;
     const bySource = new Map();
@@ -5404,7 +5505,7 @@ const ITEM_ACCOUNT_RULES = [
         <div class="section-title">Net movement by document type</div>
         ${[...bySource.entries()].sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([source, value]) => line(source, money(value))).join('')}
       </div>
-      <div class="table-footer">Only accounts 1000, 1010 and 1020 are cash. Transfers between them cancel out. A full indirect statement would need working-capital schedules, which are not built.</div>
+      <div class="table-footer">Only accounts 101001, 101002 and 101003 are cash. Transfers between them cancel out. A full indirect statement would need working-capital schedules, which are not built.</div>
     </section>`;
   }
 
@@ -5513,7 +5614,7 @@ const ITEM_ACCOUNT_RULES = [
       <div class="panel-head"><h2>${a.code ? e(a.name) : 'New accounting head'}</h2><span class="badge">${a.code ? `Editing ${e(a.code)}` : 'Adds to the chart'}</span></div>
       <form data-settings-form="heads" class="panel-body form-grid">
         <input type="hidden" name="editingCode" value="${e(a.code || '')}">
-        <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="5100"></label>
+        <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="501001"></label>
         <label>Name<input name="name" required maxlength="80" value="${e(v('name'))}" placeholder="Marketing expense"></label>
         <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label>Accounting group<select name="group" class="inline-input">${ACCOUNT_GROUPS.map((g) => `<option value="${e(g.name)}" ${g.name === (v('group') || (ACCOUNT_GROUPS.find((x) => x.class === v('type', 'expense')) || {}).name) ? 'selected' : ''}>${e((ACCOUNT_CLASSES.find(([k]) => k === g.class) || [g.class, g.class])[1])} · ${e(g.name)}</option>`).join('')}</select></label>
@@ -5640,7 +5741,7 @@ const ITEM_ACCOUNT_RULES = [
       <div class="panel-head"><h2>${a.code ? e(a.name) : 'New account'}</h2><span class="badge">${a.code ? `Editing ${e(a.code)}` : 'Adds to the chart'}</span></div>
       <form data-chart-form class="panel-body form-grid">
         <input type="hidden" name="editingCode" value="${e(a.code || '')}">
-        <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="5100"></label>
+        <label>Code<input name="code" required pattern="[0-9]{4,8}" value="${e(v('code'))}" ${a.code ? 'readonly' : ''} placeholder="501001"></label>
         <label>Name<input name="name" required maxlength="80" value="${e(v('name'))}" placeholder="Marketing expense"></label>
         <label>Accounting head<select name="type" class="inline-input">${['expense', 'income', 'asset', 'liability', 'equity'].map((t) => `<option value="${t}" ${v('type', 'expense') === t ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <label>Accounting group<select name="group" class="inline-input">${ACCOUNT_GROUPS.map((g) => `<option value="${e(g.name)}" ${g.name === (v('group') || (ACCOUNT_GROUPS.find((x) => x.class === v('type', 'expense')) || {}).name) ? 'selected' : ''}>${e((ACCOUNT_CLASSES.find(([k]) => k === g.class) || [g.class, g.class])[1])} · ${e(g.name)}</option>`).join('')}</select></label>
@@ -5757,10 +5858,10 @@ const ITEM_ACCOUNT_RULES = [
             <label>Negative stock<select name="negative" class="inline-input"><option>Not allowed</option><option>Warn only</option><option>Allowed</option></select></label>
             ${field('Default warehouse', 'WH-KHI · Central warehouse', '', 'warehouse')}
             ${field('Default receipt warehouse', 'WH-KHI', '', 'receiptWarehouse')}
-            ${field('Inventory account', '1200 · Inventory — finished goods', '', 'inventoryAccount')}
-            ${field('Goods received not invoiced', '2150 · Withholding tax payable', 'Placeholder until the clearing account exists', 'grniAccount')}
-            ${field('Issue / cost of sales', '5000 · Operating expenses', '', 'issueAccount')}
-            ${field('Stock adjustment', '5000 · Operating expenses', '', 'adjustAccount')}
+            ${field('Inventory account', '103001 · Inventory — finished goods', '', 'inventoryAccount')}
+            ${field('Goods received not invoiced', '204001 · Goods received clearing', '', 'grniAccount')}
+            ${field('Issue / cost of sales', '502001 · Operating expenses', '', 'issueAccount')}
+            ${field('Stock adjustment', '502001 · Operating expenses', '', 'adjustAccount')}
             <label>Capitalise landed cost<select name="landed" class="inline-input"><option>Yes, into stock value</option><option>No, expense</option></select></label>
             <label>Count tolerance %<input name="tolerance" value="2" inputmode="decimal"></label>
             <div class="related"><button class="button primary">Save inventory defaults</button></div>
@@ -5773,10 +5874,10 @@ const ITEM_ACCOUNT_RULES = [
             <label>Material issue<select name="issue" class="inline-input"><option>Manual from the work order</option><option>Automatic on release</option></select></label>
             <label>BOM required<select name="bomRequired" class="inline-input"><option>Yes</option><option>No, allow ad-hoc</option></select></label>
             ${field('Default work centre', 'WC-PRINT · Printing', '', 'centre')}
-            ${field('Scrap account', '5000 · Operating expenses', '', 'scrapAccount')}
-            ${field('Labour account', '5000 · Operating expenses', '', 'labourAccount')}
-            ${field('Overhead account', '5000 · Operating expenses', '', 'overheadAccount')}
-            ${field('WIP account', '1200 · Inventory — finished goods', 'Placeholder until WIP exists', 'wipAccount')}
+            ${field('Scrap account', '502001 · Operating expenses', '', 'scrapAccount')}
+            ${field('Labour account', '205001 · Labour clearing', '', 'labourAccount')}
+            ${field('Overhead account', '504002 · Overhead applied', '', 'overheadAccount')}
+            ${field('WIP account', '103002 · Work in progress', '', 'wipAccount')}
             <label>Close order after output<select name="autoClose" class="inline-input"><option>No, close manually</option><option>Yes</option></select></label>
             <div class="related"><button class="button primary">Save manufacturing defaults</button></div>
           </form>

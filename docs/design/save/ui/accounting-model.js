@@ -1,8 +1,49 @@
 // Independent synthetic UI fixtures. No business storage or posting endpoint.
 import {cents,decimal} from './model.js';
-export const chart=[['1000','Cash','asset','Assets','cash','cash'],['1010','Operating bank','asset','Assets','bank','bank'],['1100','Trade receivables','asset','Assets','receivable','control'],['1300','Recoverable input tax','asset','Assets','','tax'],['2100','Trade payables','liability','Liabilities','payable','control'],['2200','Output tax payable','liability','Liabilities','','tax'],['2210','Sales tax withheld','liability','Liabilities','','tax'],['3000','Owner capital','equity','Equity','',''],['3100','Opening balance equity','equity','Equity','',''],['4000','Service revenue','income','Income','',''],['4100','Sales returns','income','Income','',''],['4200','Tax adjustment income','income','Income','',''],['5000','Operating expenses','expense','Expenses','',''],['5100','Cost of sales','expense','Expenses','',''],['5200','Purchase returns','expense','Expenses','',''],['5300','Tax adjustment expense','expense','Expenses','',''],['5400','Income tax expense','expense','Expenses','',''],['1200','Inventory — finished goods','asset','Assets','',''],['1020','Petty cash','asset','Assets','cash','cash'],['1024','Advance sales tax receivable','asset','Assets','','tax'],['1400','Advance tax receivable','asset','Assets','','tax'],['2150','Withholding tax payable','liability','Liabilities','','tax'],['2160','Income tax payable','liability','Liabilities','',''],['2220','Final sales tax payable','liability','Liabilities','tax','tax'],['1220','Final sales tax receivable','asset','Assets','tax','tax'],['2300','Customer advances received','liability','Liabilities','','advance'],['2400','Goods received clearing','liability','Liabilities','','clearing'],['1250','Supplier advances paid','asset','Assets','','advance'],['6500','Bank charges','expense','Expenses','','']].map(([code,name,type,group,control,subtype])=>({code,name,type,group,control:control||'',subtype:subtype||'',currency:'PKR',active:true}));
+export const chart = [
+  ['101001', 'Cash', 'asset', 'Assets', 'cash', 'cash'],
+  ['101002', 'Operating bank', 'asset', 'Assets', 'bank', 'bank'],
+  ['101003', 'Petty cash', 'asset', 'Assets', 'cash', 'cash'],
+  ['102001', 'Trade receivables', 'asset', 'Assets', 'receivable', 'control'],
+  ['102002', 'Advance income tax receivable', 'asset', 'Assets', '', 'tax'],
+  ['102004', 'Advance sales tax receivable', 'asset', 'Assets', '', 'tax'],
+  ['102005', 'Supplier advances paid', 'asset', 'Assets', '', 'advance'],
+  ['102006', 'Final sales tax receivable', 'asset', 'Assets', 'tax', 'tax'],
+  ['103001', 'Inventory — finished goods', 'asset', 'Assets', '', ''],
+  ['103002', 'Work in progress', 'asset', 'Assets', '', ''],
+  ['103003', 'Raw materials', 'asset', 'Assets', '', ''],
+  ['104001', 'Recoverable input tax', 'asset', 'Assets', '', 'tax'],
+  ['105001', 'Furniture & fixtures — cost', 'asset', 'Assets', '', ''],
+  ['105002', 'Motor vehicles — cost', 'asset', 'Assets', '', ''],
+  ['105003', 'Computer equipment — cost', 'asset', 'Assets', '', ''],
+  ['106001', 'Accumulated depreciation — furniture & fixtures', 'asset', 'Assets', '', ''],
+  ['106002', 'Accumulated depreciation — motor vehicles', 'asset', 'Assets', '', ''],
+  ['106003', 'Accumulated depreciation — computer equipment', 'asset', 'Assets', '', ''],
+  ['201001', 'Trade payables', 'liability', 'Liabilities', 'payable', 'control'],
+  ['202001', 'Output tax payable', 'liability', 'Liabilities', '', 'tax'],
+  ['202002', 'Sales tax withheld', 'liability', 'Liabilities', '', 'tax'],
+  ['202005', 'Withholding tax payable', 'liability', 'Liabilities', '', 'tax'],
+  ['202006', 'Final sales tax payable', 'liability', 'Liabilities', 'tax', 'tax'],
+  ['202007', 'Income tax payable', 'liability', 'Liabilities', '', ''],
+  ['203001', 'Customer advances received', 'liability', 'Liabilities', '', 'advance'],
+  ['204001', 'Goods received clearing', 'liability', 'Liabilities', '', 'clearing'],
+  ['205001', 'Labour clearing', 'liability', 'Liabilities', '', ''],
+  ['301001', 'Owner capital', 'equity', 'Equity', '', ''],
+  ['301002', 'Opening balance equity', 'equity', 'Equity', '', ''],
+  ['402001', 'Service revenue', 'income', 'Income', '', ''],
+  ['403001', 'Tax adjustment income', 'income', 'Income', '', ''],
+  ['404001', 'Sales returns', 'income', 'Income', '', ''],
+  ['501001', 'Cost of sales', 'expense', 'Expenses', '', ''],
+  ['502001', 'Operating expenses', 'expense', 'Expenses', '', ''],
+  ['502002', 'Bank charges', 'expense', 'Expenses', '', ''],
+  ['503001', 'Income tax expense', 'expense', 'Expenses', '', ''],
+  ['503002', 'Tax adjustment expense', 'expense', 'Expenses', '', ''],
+  ['504001', 'Depreciation expense', 'expense', 'Expenses', '', ''],
+  ['504002', 'Overhead applied', 'expense', 'Expenses', '', ''],
+  ['505001', 'Purchase returns', 'expense', 'Expenses', '', ''],
+].map(([code, name, type, group, control, subtype]) => ({code, name, type, group, control: control || '', subtype: subtype || '', currency: 'PKR', active: true}));
 const line=(account,debit,credit,meta={})=>({account,debit,credit,project:'',location:'',costCentre:'',againstVoucher:'',supplierRef:'',...meta});
-export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital introduced',party:'Owner',source:'Journal',lines:[line('1010','5000.00','0.00'),line('3000','0.00','5000.00')]},{id:'DEMO-SI-001',date:'2026-11-03',narrative:'Service invoice',party:'Atlas Studio',source:'Sales invoice',lines:[line('1100','110.00','0.00'),line('4000','0.00','100.00'),line('2200','0.00','10.00')]},{id:'DEMO-PY-001',date:'2026-11-05',narrative:'Invoice settlement',party:'Atlas Studio',source:'Payment',lines:[line('1010','110.00','0.00'),line('1100','0.00','110.00')]},{id:'DEMO-PI-001',date:'2026-11-07',narrative:'Purchased services',party:'Willow Supplies',source:'Supplier bill',lines:[line('5000','50.00','0.00'),line('1300','5.00','0.00'),line('2100','0.00','55.00')]}];
+export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital introduced',party:'Owner',source:'Journal',lines:[line('101002','5000.00','0.00'),line('301001','0.00','5000.00')]},{id:'DEMO-SI-001',date:'2026-11-03',narrative:'Service invoice',party:'Atlas Studio',source:'Sales invoice',lines:[line('102001','110.00','0.00'),line('402001','0.00','100.00'),line('202001','0.00','10.00')]},{id:'DEMO-PY-001',date:'2026-11-05',narrative:'Invoice settlement',party:'Atlas Studio',source:'Payment',lines:[line('101002','110.00','0.00'),line('102001','0.00','110.00')]},{id:'DEMO-PI-001',date:'2026-11-07',narrative:'Purchased services',party:'Willow Supplies',source:'Supplier bill',lines:[line('502001','50.00','0.00'),line('104001','5.00','0.00'),line('201001','0.00','55.00')]}];
 
 // ---------------------------------------------------------------------------
 // Operating sample. ~195 balanced documents for November 2026, generated
@@ -10,9 +51,9 @@ export const journals=[{id:'DEMO-JV-001',date:'2026-11-01',narrative:'Capital in
 // trial balance, statements and the newer screens cannot disagree.
 // Dimensions carried by every posting line, so the ledger can be sliced by them.
 export const PROJECTS = [
-  {code: 'PRJ-FALCON', name: 'Falcon warehouse fit-out', status: 'active', manager: 'S. Iqbal', accounts: ['1010', '4000', '5000']},
-  {code: 'PRJ-MERIDIAN', name: 'Meridian clinic rollout', status: 'active', manager: 'N. Farooq', accounts: ['4000', '5000']},
-  {code: 'PRJ-INDUS', name: 'Indus retail refit', status: 'on hold', manager: 'A. Rehman', accounts: ['4000', '5000']},
+  {code: 'PRJ-FALCON', name: 'Falcon warehouse fit-out', status: 'active', manager: 'S. Iqbal', accounts: ['101002', '402001', '502001']},
+  {code: 'PRJ-MERIDIAN', name: 'Meridian clinic rollout', status: 'active', manager: 'N. Farooq', accounts: ['402001', '502001']},
+  {code: 'PRJ-INDUS', name: 'Indus retail refit', status: 'on hold', manager: 'A. Rehman', accounts: ['402001', '502001']},
 ];
 // Locations are a dimension on every posting, like project. Books stay company-wide.
 export const LOCATIONS = [
@@ -28,15 +69,15 @@ export const LOCATIONS = [
 // takes effect everywhere immediately.
 
 // Cash and bank sub-accounts. A sub-account is a party inside the control
-// account (1010 bank, 1000 cash). Membership of projects and locations is a
-// data field on the sub-account: blank means all.
+// account (101002 bank, 101001/101003 cash). Membership of projects and locations
+// is a data field on the sub-account: blank means all.
 export const BANK_NAMES = ['Standard Bank — current 0123456789', 'Meezan Bank — current 0987654321'];
 export const CASH_NAMES = ['Front desk — A. Khan', 'Store counter — S. Ali'];
 export const CASH_BANK = [
-  {code: 'CB-0001', name: BANK_NAMES[0], kind: 'bank', control: '1010', reference: 'PK36STAN0000123456789012', projects: [], locations: []},
-  {code: 'CB-0002', name: BANK_NAMES[1], kind: 'bank', control: '1010', reference: 'PK36MEZN0000987654321098', projects: [], locations: []},
-  {code: 'CB-0003', name: CASH_NAMES[0], kind: 'cash', control: '1000', reference: 'Front desk till', projects: [], locations: ['HQ']},
-  {code: 'CB-0004', name: CASH_NAMES[1], kind: 'cash', control: '1020', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
+  {code: 'CB-0001', name: BANK_NAMES[0], kind: 'bank', control: '101002', reference: 'PK36STAN0000123456789012', projects: [], locations: []},
+  {code: 'CB-0002', name: BANK_NAMES[1], kind: 'bank', control: '101002', reference: 'PK36MEZN0000987654321098', projects: [], locations: []},
+  {code: 'CB-0003', name: CASH_NAMES[0], kind: 'cash', control: '101001', reference: 'Front desk till', projects: [], locations: ['HQ']},
+  {code: 'CB-0004', name: CASH_NAMES[1], kind: 'cash', control: '101003', reference: 'Warehouse counter', projects: [], locations: ['WH-KHI']},
 ];
 
 // Tax rules. A rule is a default; a document line may override it.
@@ -55,6 +96,10 @@ export const TAX_RULES = [
   {code: 'TAX-0002', name: 'Input tax 10%', kind: 'input', rate: 10, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
   {code: 'TAX-0003', name: 'Withholding on services 4.5%', kind: 'withholding_income', rate: 4.5, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
   {code: 'TAX-0004', name: 'Advance tax deducted by customer 0.5%', kind: 'advance_income', rate: 0.5, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'TAX-0005', name: 'Output sales tax 15% — services', kind: 'output', rate: 15, basis: 'exclusive', scope: 'groups', groups: ['Services'], from: '2026-07-01', to: '', projects: [], locations: [], description: 'Specific services rate; all-items 10% remains the fallback.'},
+  {code: 'TAX-0006', name: 'Input tax 15% — packaging', kind: 'input', rate: 15, basis: 'exclusive', scope: 'groups', groups: ['Packaging'], from: '2026-07-01', to: '', projects: [], locations: [], description: 'Specific packaging purchase rate.'},
+  {code: 'TAX-0007', name: 'Advance sales tax deducted 1%', kind: 'advance_sales', rate: 1, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
+  {code: 'TAX-0008', name: 'Sales tax withheld 1%', kind: 'withholding_sales', rate: 1, basis: 'exclusive', scope: 'all', from: '2026-07-01', to: '', projects: [], locations: []},
 ];
 
 // Light item master for accounting. Tracked items are the only ones Inventory
@@ -81,10 +126,10 @@ export const ITEM_GROUPS = [
 ];
 
 export const ITEMS = [
-  {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '4000', expense: '5000', tax: 'TAX-0001', tracked: false},
-  {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '4000', expense: '5000', tax: 'TAX-0001', tracked: false},
-  {code: 'ITM-PACK', name: 'Packaging carton', unit: 'piece', income: '4000', expense: '5000', tax: 'TAX-0002', tracked: true},
-  {code: 'ITM-INK', name: 'Printing ink', unit: 'litre', income: '4000', expense: '5000', tax: 'TAX-0002', tracked: true},
+  {code: 'SRV-CONSULT', name: 'Consulting hour', unit: 'hour', income: '402001', expense: '502001', tax: 'TAX-0001', tracked: false},
+  {code: 'SRV-SUPPORT', name: 'Support retainer', unit: 'month', income: '402001', expense: '502001', tax: 'TAX-0001', tracked: false},
+  {code: 'ITM-PACK', name: 'Packaging carton', unit: 'piece', income: '402001', expense: '502001', tax: 'TAX-0002', tracked: true},
+  {code: 'ITM-INK', name: 'Printing ink', unit: 'litre', income: '402001', expense: '502001', tax: 'TAX-0002', tracked: true},
 ];
 
 export const CUSTOMER_NAMES = ['Atlas Studio','Linden Design','Harbor Workshop','Crescent Textiles','Meridian Pharma','Orion Logistics','Sapphire Retail','Indus Packaging','Kestrel Engineering','Marina Hospitality','Zenith Electrical','Falcon Chemicals'];
@@ -143,22 +188,22 @@ export const operatingJournals=(()=>{
     const project=projectFor(i), location=locationFor(i), centre=centreFor(i), against='DEMO-'+(kind==='payment'?'PI':'SI')+'-'+String(100+((i*7)%70));
     if(kind==='sale'){
       const gross=r2(25000+seeded()*50000), net=r2(gross/1.1), tax=r2(gross-net);
-      return {id:'DEMO-SI-'+String(100+i),date,subtype:'Invoice',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Sales invoice',supplierRef:'',againstVoucher:'',lines:[line('1100',amt(gross),'0.00',{project,costCentre:centre,location}),line('4000','0.00',amt(net),{project,costCentre:centre,location}),line('2200','0.00',amt(tax),{project,costCentre:centre,location})]};
+      return {id:'DEMO-SI-'+String(100+i),date,subtype:'Invoice',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Sales invoice',supplierRef:'',againstVoucher:'',lines:[line('102001',amt(gross),'0.00',{project,costCentre:centre,location}),line('402001','0.00',amt(net),{project,costCentre:centre,location}),line('202001','0.00',amt(tax),{project,costCentre:centre,location})]};
     }
     if(kind==='receipt'){
       const value=r2(30000+seeded()*55000);
-      return {id:'DEMO-PY-'+String(100+i),date,subtype:'Receipt',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Payment',supplierRef:'',againstVoucher:'DEMO-SI-'+String(100+i),lines:[line('1010',amt(value),'0.00',{project,costCentre:centre,party:BANK_NAMES[i%BANK_NAMES.length],againstVoucher:'DEMO-SI-'+String(100+i)}),line('1100','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)})]};
+      return {id:'DEMO-PY-'+String(100+i),date,subtype:'Receipt',project,location,party:customers[i%customers.length],partyType:'Customer',source:'Payment',supplierRef:'',againstVoucher:'DEMO-SI-'+String(100+i),lines:[line('101002',amt(value),'0.00',{project,costCentre:centre,party:BANK_NAMES[i%BANK_NAMES.length],againstVoucher:'DEMO-SI-'+String(100+i)}),line('102001','0.00',amt(value),{project,costCentre:centre,againstVoucher:'DEMO-SI-'+String(100+i)})]};
     }
     if(kind==='bill'){
       const value=r2(20000+seeded()*50000);
-      return {id:'DEMO-PI-'+String(100+i),date,subtype:'Bill',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Supplier bill',supplierRef:'SUP-'+String(4100+i),againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre,location}),line('2100','0.00',amt(value),{project,costCentre:centre,location})]};
+      return {id:'DEMO-PI-'+String(100+i),date,subtype:'Bill',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Supplier bill',supplierRef:'SUP-'+String(4100+i),againstVoucher:'',lines:[line('502001',amt(value),'0.00',{project,costCentre:centre,location}),line('201001','0.00',amt(value),{project,costCentre:centre,location})]};
     }
     if(kind==='payment'){
       const value=r2(30000+seeded()*50000);
-      return {id:'DEMO-JV-'+String(100+i),date,subtype:'Payment',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Payment',supplierRef:'',againstVoucher:'DEMO-PI-'+String(100+i),lines:[line('2100',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)}),line('1010','0.00',amt(value),{project,costCentre:centre,party:BANK_NAMES[i%BANK_NAMES.length],againstVoucher:'DEMO-PI-'+String(100+i)})]};
+      return {id:'DEMO-JV-'+String(100+i),date,subtype:'Payment',project,location,party:suppliers[i%suppliers.length],partyType:'Supplier',source:'Payment',supplierRef:'',againstVoucher:'DEMO-PI-'+String(100+i),lines:[line('201001',amt(value),'0.00',{project,costCentre:centre,againstVoucher:'DEMO-PI-'+String(100+i)}),line('101002','0.00',amt(value),{project,costCentre:centre,party:BANK_NAMES[i%BANK_NAMES.length],againstVoucher:'DEMO-PI-'+String(100+i)})]};
     }
     const value=r2(60000+seeded()*80000);
-    return {id:'DEMO-JV-'+String(500+i),date,subtype:'Expense',project:'',location,party:'Internal',partyType:'',source:'Journal',supplierRef:'',againstVoucher:'',lines:[line('5000',amt(value),'0.00',{project,costCentre:centre,location}),line('1010','0.00',amt(value),{project,costCentre:centre,location,party:BANK_NAMES[i%BANK_NAMES.length]})]};
+    return {id:'DEMO-JV-'+String(500+i),date,subtype:'Expense',project:'',location,party:'Internal',partyType:'',source:'Journal',supplierRef:'',againstVoucher:'',lines:[line('502001',amt(value),'0.00',{project,costCentre:centre,location}),line('101002','0.00',amt(value),{project,costCentre:centre,location,party:BANK_NAMES[i%BANK_NAMES.length]})]};
   });
   return docs.sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
 })();
